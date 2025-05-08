@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # Database service
+  postgres:
+    image: postgres:15
+    container_name: evolveme-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES__DATABASE__USER}
+      POSTGRES_PASSWORD: ${POSTGRES__DATABASE__PASSWORD}
+      POSTGRES_DB: evolveme
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - evolveme-network
+
+  # Backend API service
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: evolveme-backend
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS}
+      HOST: 0.0.0.0
+      PORT: 8080
+      RUST_LOG: info
+    networks:
+      - evolveme-network
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+    name: evolveme-postgres-data
+
+networks:
+  evolveme-network:
+    name: evolveme-network

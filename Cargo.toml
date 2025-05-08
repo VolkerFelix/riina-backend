@@ -1,0 +1,37 @@
+[package]
+name = "evolveme-backend"
+version = "0.1.0"
+edition = "2021"
+authors = ["EvolveMe Team <team@evolveme.com>"]
+description = "MVP backend server for the EvolveMe health app"
+
+[dependencies]
+# Web framework
+actix-web = "4.4.0"
+actix-cors = "0.6.4"
+
+# Authentication
+jsonwebtoken = "9.1.0"
+bcrypt = "0.15.0"
+
+# Database
+sqlx = { version = "0.7.1", features = ["runtime-tokio-rustls", "postgres", "macros", "chrono", "uuid", "json", "migrate"] }
+tokio = { version = "1.29.1", features = ["full"] }
+
+# Serialization/Deserialization
+serde = { version = "1.0.183", features = ["derive"] }
+serde_json = "1.0.105"
+
+# Validation
+validator = { version = "0.16.1", features = ["derive"] }
+
+# Utilities
+dotenv = "0.15.0"
+chrono = { version = "0.4.26", features = ["serde"] }
+uuid = { version = "1.4.1", features = ["v4", "serde"] }
+log = "0.4.20"
+env_logger = "0.10.0"
+thiserror = "1.0.47"
+
+[dev-dependencies]
+actix-rt = "2.9.0"
