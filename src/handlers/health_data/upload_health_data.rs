@@ -5,6 +5,7 @@ use uuid::Uuid;
 use crate::middleware::auth::Claims;
 use crate::db::health_data::insert_health_data;
 use crate::models::health_data::{HealthDataSyncRequest, HealthDataSyncResponse};
+use redis::AsyncCommands;
 
 #[tracing::instrument(
     name = "Sync health data",
@@ -18,6 +19,7 @@ use crate::models::health_data::{HealthDataSyncRequest, HealthDataSyncResponse};
 pub async fn upload_health_data(
     data: web::Json<HealthDataSyncRequest>,
     pool: web::Data<sqlx::PgPool>,
+    redis: web::Data<redis::Client>,
     claims: web::ReqData<Claims>
 ) -> HttpResponse {
     tracing::info!("Sync health data handler called from device: {}", data.device_id);
@@ -39,6 +41,23 @@ pub async fn upload_health_data(
     
     match insert_result {
         Ok(sync_id) => {
+            // Publish event to Redis
+            match redis.get_async_connection().await {
+                Ok(mut conn) => {
+                    let event = serde_json::json!({
+                        "event_type": "health_data_uploaded",
+                        "user_id": user_id.to_string(),
+                        "sync_id": sync_id.to_string(),
+                        "timestamp": Utc::now().to_rfc3339()
+                    });
+                    // Publish event to Redis channel
+                    match conn.publish::<_, String, String>("evolveme:events:health_data", event.to_string()).await {
+                        Ok(_) => tracing::info!("Successfully published health data event for sync_id: {}", sync_id),
+                        Err(e) => tracing::error!("Failed to publish health data event: {}", e),
+                    }
+                },
+                Err(e) => tracing::error!("Failed to connect to Redis: {}", e),
+            }
             // Prepare successful response
             let response = HealthDataSyncResponse {
                 success: true,

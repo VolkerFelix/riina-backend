@@ -76,7 +76,13 @@ async fn upload_health_data_working() {
         .await
         .expect("Failed to execute request.");
 
-    assert!(response.status().is_success());
+    let status = response.status();
+    if !status.is_success() {
+        let error_body = response.text().await.expect("Failed to read error response");
+        panic!("Health data upload failed with status {}: {}", status, error_body);
+    }
+
+    assert!(status.is_success());
 
     // Verify the data was stored correctly
     let saved = sqlx::query!(

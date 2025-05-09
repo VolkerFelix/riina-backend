@@ -1,6 +1,7 @@
 use secrecy::SecretString;
+use serde::Deserialize;
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub struct JwtSettings {
     pub secret: SecretString,
     pub expiration_hours: i64,

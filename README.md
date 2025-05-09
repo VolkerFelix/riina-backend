@@ -27,7 +27,7 @@ EvolveMe Backend is a RESTful API service that handles health data uploads from 
 ## Project Structure
 
 ```
-areum-backend/
+evolveme-backend/
 ├── .github/            # GitHub Actions workflows
 ├── .sqlx/              # SQLx prepared queries
 ├── configuration/      # Configuration files

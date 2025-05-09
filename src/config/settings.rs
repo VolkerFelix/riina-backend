@@ -4,18 +4,13 @@ use dotenv::dotenv;
 use secrecy::{ExposeSecret, SecretString};
 
 use crate::config::jwt::JwtSettings;
-
+use crate::config::redis::RedisSettings;
 #[derive(serde::Deserialize, Debug)]
 pub struct Settings{
     pub database: DatabaseSettings,
     pub application: ApplicationSettings,
-    pub jwt: JwtConfig
-}
-
-#[derive(serde::Deserialize, Debug)]
-pub struct JwtConfig {
-    pub secret: SecretString,
-    pub expiration_hours: i64,
+    pub jwt: JwtSettings,
+    pub redis: RedisSettings
 }
 
 #[derive(serde::Deserialize, Debug)]
@@ -139,4 +134,8 @@ pub fn get_jwt_settings(settings: &Settings) -> JwtSettings {
         settings.jwt.secret.expose_secret().to_string().clone(),
         settings.jwt.expiration_hours,
     )
+}
+
+pub fn get_redis_url(settings: &Settings) -> String {
+    format!("redis://{}:{}", settings.redis.host, settings.redis.port)
 }

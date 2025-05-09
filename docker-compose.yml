@@ -1,7 +1,7 @@
 services:
   postgres:
     image: postgres:14
-    container_name: areum-postgres
+    container_name: evolveme-postgres
     environment:
       POSTGRES_USER: ${POSTGRES__DATABASE__USER}
       POSTGRES_PASSWORD: ${POSTGRES__DATABASE__PASSWORD}
@@ -20,7 +20,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: areum-backend
+    container_name: evolveme-backend
     depends_on:
       postgres:
         condition: service_healthy
@@ -35,6 +35,21 @@ services:
       - "8080:8080"
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    container_name: evolveme-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres-data:
-    name: areum-postgres-data
+    name: evolveme-postgres-data
+  redis-data:
+    name: evolveme-redis-data
