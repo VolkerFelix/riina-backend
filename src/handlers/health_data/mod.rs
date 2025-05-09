@@ -1,1 +1,1 @@
-pub mod sync_health_data;
+pub mod upload_health_data;

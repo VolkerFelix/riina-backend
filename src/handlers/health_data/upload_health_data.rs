@@ -2,7 +2,6 @@ use actix_web::{web, HttpResponse};
 use chrono::Utc;
 use serde_json::json;
 use uuid::Uuid;
-use sqlx::PgPool;
 use crate::middleware::auth::Claims;
 use crate::db::health_data::insert_health_data;
 use crate::models::health_data::{HealthDataSyncRequest, HealthDataSyncResponse};
@@ -16,7 +15,7 @@ use crate::models::health_data::{HealthDataSyncRequest, HealthDataSyncResponse};
     )
 )]
 
-pub async fn sync_health_data(
+pub async fn upload_health_data(
     data: web::Json<HealthDataSyncRequest>,
     pool: web::Data<sqlx::PgPool>,
     claims: web::ReqData<Claims>
