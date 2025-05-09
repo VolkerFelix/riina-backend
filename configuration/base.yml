@@ -1,0 +1,11 @@
+application:
+  host: 0.0.0.0
+  port: 8080
+  log_level: info
+database:
+  host: localhost
+  port: 5432
+  db_name: evolveme_db
+jwt:
+  secret: "change_this_to_a_strong_secret_in_production"
+  expiration_hours: 24

@@ -1,46 +1,40 @@
-version: '3.8'
-
 services:
-  # Database service
   postgres:
-    image: postgres:15
-    container_name: evolveme-postgres
-    ports:
-      - "5432:5432"
+    image: postgres:14
+    container_name: areum-postgres
     environment:
       POSTGRES_USER: ${POSTGRES__DATABASE__USER}
       POSTGRES_PASSWORD: ${POSTGRES__DATABASE__PASSWORD}
-      POSTGRES_DB: evolveme
+      POSTGRES_DB: evolveme_db
+    ports:
+      - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
-    networks:
-      - evolveme-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES__DATABASE__USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-  # Backend API service
   backend:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: evolveme-backend
+    container_name: areum-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - APP_ENVIRONMENT=production
+      - DATABASE_URL=postgres://${POSTGRES__DATABASE__USER}:${POSTGRES__DATABASE__PASSWORD}@postgres:5432/evolveme_db
+      - POSTGRES__DATABASE__USER=${POSTGRES__DATABASE__USER}
+      - POSTGRES__DATABASE__PASSWORD=${POSTGRES__DATABASE__PASSWORD}
+      - APP__APPLICATION__USER=${APP__APPLICATION__USER}
+      - APP__APPLICATION__PASSWORD=${APP__APPLICATION__PASSWORD}
     ports:
       - "8080:8080"
-    depends_on:
-      - postgres
-    environment:
-      DATABASE_URL: ${DATABASE_URL}
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS}
-      HOST: 0.0.0.0
-      PORT: 8080
-      RUST_LOG: info
-    networks:
-      - evolveme-network
     restart: unless-stopped
 
 volumes:
   postgres-data:
-    name: evolveme-postgres-data
-
-networks:
-  evolveme-network:
-    name: evolveme-network
+    name: areum-postgres-data

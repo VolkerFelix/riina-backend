@@ -1,0 +1,143 @@
+name: Rust CI/CD backend
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+
+jobs:
+    test:
+        name: Interaction with DB
+        runs-on: ubuntu-latest
+        # Service containers to run alongside the `test` container job
+        services:
+          postgres:
+            # Docker Hub image
+            image: postgres:14
+            env:
+              POSTGRES_USER: ${{secrets.POSTGRES_USER}}
+              POSTGRES_PASSWORD: ${{secrets.POSTGRES_PASSWORD}}
+              POSTGRES_DB: evolveme_db
+            ports:
+              - 5432:5432
+        
+        env:
+          POSTGRES__DATABASE__USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES__DATABASE__PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          APP__APPLICATION__USER: ${{ secrets.APP_USER }}
+          APP__APPLICATION__PASSWORD: ${{ secrets.APP_PASSWORD }}
+          APP_ENVIRONMENT: local
+
+        steps:
+            - name: Check out repository code
+              uses: actions/checkout@v4
+    
+            - name: Install the Rust toolchain
+              uses: actions-rust-lang/setup-rust-toolchain@v1
+
+            - name: Install sqlx-cli
+              run: |
+                if ! command -v sqlx &> /dev/null; then
+                  echo "sqlx not found, installing..."
+                  cargo install sqlx-cli \
+                  --version=${{ vars.SQLX_CLI_VERSION }} \
+                  --features ${{ vars.SQLX_CLI_FEATURES }} \
+                  --no-default-features \
+                  --locked
+                else
+                  echo "sqlx-cli already installed, skipping installation."
+                fi
+                
+                echo "Verifying sqlx installation"
+                sqlx --version
+  
+            - name: Create app user in Postgres
+              run: |
+                sudo apt-get install postgresql-client
+
+                # Wait for PostgreSQL to be ready
+                for i in {1..10}; do
+                  pg_isready -h localhost -p 5432 && break
+                  echo "Waiting for PostgreSQL to be ready..."
+                  sleep 2
+                done
+        
+                # Create the application user
+                CREATE_QUERY="CREATE USER ${APP__APPLICATION__USER} WITH PASSWORD '${APP__APPLICATION__PASSWORD}';"
+                PGPASSWORD="${POSTGRES__DATABASE__PASSWORD}" psql -U "${POSTGRES__DATABASE__USER}" -h "localhost" -c "${CREATE_QUERY}"
+        
+                # Grant create db privileges to the app user
+                GRANT_QUERY="ALTER USER ${APP__APPLICATION__USER} CREATEDB;"
+                PGPASSWORD="${POSTGRES__DATABASE__PASSWORD}" psql -U "${POSTGRES__DATABASE__USER}" -h "localhost" -c "${GRANT_QUERY}"
+            
+            - name: Migrate database
+              run: |
+                SKIP_DOCKER=true ./scripts/init_db.sh
+
+            - name: Generate SQLx prepare files
+              env:
+                  RUSTFLAGS: "-A warnings"
+                  SQLX_OFFLINE: false
+                  DATABASE_URL: postgres://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/evolveme_db
+              run: |
+                cargo sqlx prepare --workspace -- --all-targets
+              
+            - name: Run tests
+              env:
+                RUSTFLAGS: "-A warnings"
+                SQLX_OFFLINE: false
+                DATABASE_URL: postgres://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/evolveme_db
+              run: cargo test --all
+
+            - name: Check that queries are fresh
+              env:
+                RUSTFLAGS: "-A warnings"
+              run: cargo sqlx prepare --workspace --check -- --all-targets
+
+
+    build_and_push:
+      name: Build and Push Multi-Architecture Docker image
+      needs: test
+      runs-on: ubuntu-latest
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      steps:
+        - name: Check out repository code
+          uses: actions/checkout@v4
+          
+        - name: Set up QEMU for multi-architecture builds
+          uses: docker/setup-qemu-action@v3
+          
+        - name: Set up Docker Buildx
+          uses: docker/setup-buildx-action@v3
+          
+        - name: Login to GitHub Container Registry
+          uses: docker/login-action@v3
+          with:
+            registry: ghcr.io
+            username: ${{ github.actor }}
+            password: ${{ secrets.GITHUB_TOKEN }}
+            
+        - name: Extract metadata for Docker
+          id: meta
+          uses: docker/metadata-action@v5
+          with:
+            images: ghcr.io/${{ github.repository }}
+            tags: |
+              type=sha,format=long
+              type=ref,event=branch
+              latest
+              
+        - name: Build and push multi-architecture Docker image
+          uses: docker/build-push-action@v5
+          with:
+            context: .
+            platforms: linux/amd64,linux/arm64
+            push: true
+            tags: ${{ steps.meta.outputs.tags }}
+            labels: ${{ steps.meta.outputs.labels }}
+            cache-from: type=gha
+            cache-to: type=gha,mode=max

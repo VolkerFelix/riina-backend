@@ -1,4 +1,4 @@
-use sqlx::{Pool, Postgres};
+use sqlx::{Pool, Postgres, Error};
 use sqlx::types::Json;
 use uuid::Uuid;
 
@@ -10,10 +10,28 @@ pub async fn insert_health_data(
     data: &HealthDataSyncRequest,
 ) -> Result<Uuid, sqlx::Error> {
     // Convert SleepData to Json<SleepData> if present
-    let sleep_json = data.sleep.as_ref().map(|s| Json(s.clone()));
+    let sleep_json = match &data.sleep {
+        Some(sleep) => match serde_json::to_value(sleep) {
+            Ok(json) => json,
+            Err(e) => {
+                tracing::error!("Failed to serialize SleepData to Json: {}", e);
+                return Err(Error::Protocol("Failed to serialize SleepData".into()));
+            }
+        },
+        None => serde_json::Value::Null,
+    };
     
     // Convert additional_metrics to Json if present
-    let additional_metrics_json = data.additional_metrics.as_ref().map(|m| Json(m.clone()));
+    let additional_metrics_json = match &data.additional_metrics {
+        Some(metrics) => match serde_json::to_value(metrics) {
+            Ok(json) => json,
+            Err(e) => {
+                tracing::error!("Failed to serialize additional_metrics to Json: {}", e);
+                return Err(Error::Protocol("Failed to serialize additional_metrics".into()));
+            }
+        },
+        None => serde_json::Value::Null,
+    };
     
     let record = sqlx::query_as!(
         HealthData,
@@ -32,56 +50,12 @@ pub async fn insert_health_data(
         data.timestamp,
         data.steps,
         data.heart_rate,
-        sleep_json as Option<Json<SleepData>>,
+        sleep_json,
         data.active_energy_burned,
-        additional_metrics_json as Option<Json<serde_json::Value>>
+        additional_metrics_json
     )
     .fetch_one(pool)
     .await?;
     
     Ok(record.id)
-}
-
-// This function is used during user registration or login
-pub async fn get_user_by_email(
-    pool: &Pool<Postgres>,
-    email: &str,
-) -> Result<Option<crate::models::User>, sqlx::Error> {
-    let user = sqlx::query_as!(
-        crate::models::User,
-        r#"
-        SELECT id, email, username, password_hash, created_at, updated_at
-        FROM users
-        WHERE email = $1
-        "#,
-        email
-    )
-    .fetch_optional(pool)
-    .await?;
-    
-    Ok(user)
-}
-
-// This function is used during user registration
-pub async fn create_user(
-    pool: &Pool<Postgres>,
-    email: &str,
-    username: &str,
-    password_hash: &str,
-) -> Result<crate::models::User, sqlx::Error> {
-    let user = sqlx::query_as!(
-        crate::models::User,
-        r#"
-        INSERT INTO users (email, username, password_hash)
-        VALUES ($1, $2, $3)
-        RETURNING id, email, username, password_hash, created_at, updated_at
-        "#,
-        email,
-        username,
-        password_hash
-    )
-    .fetch_one(pool)
-    .await?;
-    
-    Ok(user)
 }

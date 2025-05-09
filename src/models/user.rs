@@ -1,63 +1,44 @@
+use std::fmt;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::FromRow;
 use uuid::Uuid;
-use validator::Validate;
+use secrecy::SecretString;
 
-#[derive(Debug, FromRow, Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct User {
     pub id: Uuid,
     pub email: String,
     pub username: String,
-    pub password_hash: String,
+    #[serde(serialize_with = "serialize_secret_string", deserialize_with = "deserialize_secret_string")]
+    pub password_hash: SecretString,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Validate, Deserialize)]
-pub struct RegisterUserDto {
-    #[validate(email)]
-    pub email: String,
-    
-    #[validate(length(min = 3, max = 30))]
+#[derive(Serialize, Deserialize)]
+pub struct RegistrationRequest {
     pub username: String,
-    
-    #[validate(length(min = 8, message = "Password must be at least 8 characters"))]
-    pub password: String,
-}
-
-#[derive(Debug, Validate, Deserialize)]
-pub struct LoginUserDto {
     pub email: String,
-    pub password: String,
+    #[serde(serialize_with = "serialize_secret_string", deserialize_with = "deserialize_secret_string")]
+    pub password: SecretString,
 }
-
-#[derive(Debug, Serialize)]
-pub struct UserResponse {
-    pub id: Uuid,
-    pub email: String,
-    pub username: String,
-}
-
-impl From<User> for UserResponse {
-    fn from(user: User) -> Self {
-        UserResponse {
-            id: user.id,
-            email: user.email,
-            username: user.username,
-        }
+impl std::fmt::Display for RegistrationRequest{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Username: {}, Email: {}", self.username, self.email)
     }
 }
 
-#[derive(Debug, Serialize)]
-pub struct AuthResponse {
-    pub user: UserResponse,
-    pub token: String,
+pub fn serialize_secret_string<S>(_: &SecretString, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str("[REDACTED]")
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct TokenClaims {
-    pub sub: String, // user id
-    pub exp: usize,  // expiration time
-    pub iat: usize,  // issued at
+pub fn deserialize_secret_string<'de, D>(deserializer: D) -> Result<SecretString, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    Ok(SecretString::new(s.into_boxed_str()))
 }
