@@ -80,7 +80,7 @@ APP_ENVIRONMENT=local
 
 ```bash
 # Run the database setup script
-./scripts/init_db.sh
+./scripts/init_db_and_redis.sh
 ```
 
 4. **Build and run the application**

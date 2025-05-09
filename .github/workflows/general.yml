@@ -76,7 +76,7 @@ jobs:
             
             - name: Migrate database
               run: |
-                SKIP_DOCKER=true ./scripts/init_db.sh
+                SKIP_DOCKER=true ./scripts/init_db_and_redis.sh
 
             - name: Generate SQLx prepare files
               env:
