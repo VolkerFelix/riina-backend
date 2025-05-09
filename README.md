@@ -1,21 +1,17 @@
-# Areum Health Backend
+# EvolveMe Backend
 
-Areum Health Backend is a RESTful API service that handles health data uploads from mobile and wearable devices. The service provides authentication, data storage, and data retrieval endpoints for various health metrics including acceleration, heart rate, blood oxygen, skin temperature, and GPS location.
+EvolveMe Backend is a RESTful API service that handles health data uploads from mobile and wearable devices. The service provides authentication, data storage, and data retrieval endpoints.
 
 ## Features
 
 - User authentication with JWT
 - Secure data storage in PostgreSQL database
 - Health data upload endpoints for various metrics:
-  - Acceleration data
   - Heart rate data
   - Blood oxygen levels
-  - Skin temperature
-  - GPS location
-- Combined data queries (e.g., health data with corresponding GPS locations)
+  - Sleep data
 - Containerized deployment with Docker
 - CI/CD pipeline with GitHub Actions
-- Deployment to Fly.io
 
 ## Technology Stack
 
@@ -27,7 +23,6 @@ Areum Health Backend is a RESTful API service that handles health data uploads f
 - **Configuration**: Environment variables + YAML files
 - **Containerization**: Docker
 - **CI/CD**: GitHub Actions
-- **Hosting**: Fly.io
 
 ## Project Structure
 
@@ -36,7 +31,6 @@ areum-backend/
 ├── .github/            # GitHub Actions workflows
 ├── .sqlx/              # SQLx prepared queries
 ├── configuration/      # Configuration files
-├── health_data/        # Example health data files
 ├── migrations/         # Database migrations
 ├── scripts/            # Utility scripts
 ├── src/                # Source code
@@ -65,8 +59,8 @@ areum-backend/
 1. **Clone the repository**
 
 ```bash
-git clone https://github.com/yourusername/backendareum.git
-cd backendareum
+git clone https://github.com/yourusername/evolvemebackend.git
+cd evolvemebackend
 ```
 
 2. **Setup environment variables**
@@ -103,7 +97,7 @@ The server will start at http://localhost:8080
 1. **Build the Docker image**
 
 ```bash
-docker build -t areum-backend .
+docker build -t evolveme-backend .
 ```
 
 2. **Run with Docker Compose**
@@ -123,17 +117,8 @@ For detailed API documentation, see [API.md](API.md).
   - `POST /login` - Login and get JWT token
 
 - **Health Data Endpoints** (require authentication)
-  - `POST /health/upload_acceleration` - Upload acceleration data
-  - `GET /health/acceleration_data` - Get user's acceleration data
-  - `POST /health/upload_heart_rate` - Upload heart rate data
-  - `GET /health/heart_rate_data` - Get user's heart rate data
-  - `POST /health/upload_blood_oxygen` - Upload blood oxygen data
-  - `GET /health/blood_oxygen_data` - Get user's blood oxygen data
-  - `POST /health/upload_skin_temperature` - Upload skin temperature data
-  - `GET /health/skin_temperature_data` - Get user's skin temperature data
-  - `POST /health/upload_gps_location` - Upload GPS location data
-  - `GET /health/gps_location_data` - Get user's GPS location data
-  - `GET /health/health_data_with_gps` - Get health data with corresponding GPS data
+  - `POST /health/upload_health` - Upload health data (includes all health metrics)
+  - `GET /protected/resource` - Access protected resources
 
 - **System Health**
   - `GET /backend_health` - Check service health
@@ -149,21 +134,6 @@ cargo test backend_health_working
 
 # Run with logs visible
 TEST_LOG=true cargo test
-```
-
-## Deployment
-
-The application is set up for continuous deployment to Fly.io:
-
-1. Commits to the main branch trigger the CI/CD pipeline
-2. Tests are run
-3. If tests pass, a Docker image is built and pushed
-4. The application is deployed to Fly.io
-
-Manual deployment can be performed with:
-
-```bash
-flyctl deploy
 ```
 
 ## Contributing

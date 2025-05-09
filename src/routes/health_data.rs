@@ -4,8 +4,8 @@ use crate::handlers::health_data::upload_health_data::upload_health_data;
 use crate::middleware::auth::Claims;
 use crate::models::health_data::HealthDataSyncRequest;
 
-#[post("/sync_health")]
-async fn sync_health(
+#[post("/upload_health")]
+async fn upload_health(
     data: web::Json<HealthDataSyncRequest>,
     pool: web::Data<sqlx::PgPool>,
     claims: web::ReqData<Claims>
