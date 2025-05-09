@@ -18,7 +18,7 @@ pub fn run(
     listener: TcpListener,
     db_pool: PgPool,
     jwt_settings: JwtSettings,
-    redis_client: redis::Client
+    redis_client: Option<redis::Client>
 ) -> Result<Server, std::io::Error> {
     // Wrap using web::Data, which boils down to an Arc smart pointer
     let db_pool = web::Data::new(db_pool);

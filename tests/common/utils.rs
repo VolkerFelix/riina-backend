@@ -51,7 +51,7 @@ pub async fn spawn_app() -> TestApp {
         .await;
     let jwt_settings = get_jwt_settings(&configuration);
     let redis_client = redis::Client::open(get_redis_url(&configuration))
-        .expect("Failed to create Redis client");
+        .ok();
     let server = run(listener, connection_pool.clone(), jwt_settings, redis_client)
         .expect("Failed to bind address");
     // Launch the server as a background task

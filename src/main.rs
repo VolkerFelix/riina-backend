@@ -19,8 +19,13 @@ async fn main() -> std::io::Result<()> {
     // JWT
     let jwt_settings = get_jwt_settings(&config);
     // Redis
-    let redis_client = redis::Client::open(get_redis_url(&config))
-        .expect("Failed to create Redis client");
+    let redis_client = match redis::Client::open(get_redis_url(&config)) {
+        Ok(client) => Some(client),
+        Err(e) => {
+            tracing::warn!("Failed to create Redis client: {}. Continuing without Redis.", e);
+            None
+        }
+    };
     // Only try to establish connection when actually used
     let conection_pool = PgPoolOptions::new()
         .acquire_timeout(Duration::from_secs(2))
