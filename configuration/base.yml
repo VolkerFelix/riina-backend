@@ -9,3 +9,6 @@ database:
 jwt:
   secret: "change_this_to_a_strong_secret_in_production"
   expiration_hours: 24
+redis:
+  host: localhost
+  port: 6379

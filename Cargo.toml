@@ -1,5 +1,5 @@
 [package]
-name = "areum-backend"
+name = "evolveme-backend"
 version = "0.1.0"
 authors = ["Volker Leukhardt"]
 edition = "2021"
@@ -8,7 +8,7 @@ edition = "2021"
 path = "src/lib.rs"
 
 [[bin]]
-name = "areum-backend"
+name = "evolveme-backend"
 path = "src/main.rs"
 
 [dependencies]
@@ -35,6 +35,7 @@ futures-util = "0.3"
 tracing-actix-web = "0.7.16"
 argon2 = "0.5.0"
 rand = "0.8.5"
+redis = { version = "0.23.0", features = ["tokio-comp"] }
 
 [dev-dependencies]
 reqwest = { version = "0.12.12", features = ["json"] }

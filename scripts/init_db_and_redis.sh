@@ -13,6 +13,12 @@ if ! [ -x "$(command -v sqlx)" ]; then
     echo >&2 "to install it."
     exit 1
 fi
+if ! [ -x "$(command -v redis-cli)" ]; then
+    echo >&2 "Error: redis-cli is not installed."
+    echo >&2 "Use:"
+    echo >&2 " brew install redis"
+    exit 1
+fi
 
 # Load .env file if not in CI environment (e.g., GitHub Actions)
 if [ -z "${CI}" ]; then
@@ -28,9 +34,10 @@ else
     echo "CI environment detected - Skipping loading .env file."
 fi
 
-# Allow to skip Docker if a dockerized Postgres database is already running
+# Allow to skip Docker if dockerized services are already running
 if [[ -z "${SKIP_DOCKER}" ]]
 then
+    # Start PostgreSQL container
     docker run \
     -e POSTGRES_USER=${POSTGRES__DATABASE__USER} \
     -e POSTGRES_PASSWORD=${POSTGRES__DATABASE__PASSWORD} \
@@ -38,6 +45,13 @@ then
     -p 5432:5432 \
     -d postgres \
     postgres -N 1000
+
+    # Start Redis container
+    docker run \
+    -e REDIS_PASSWORD=${REDIS_PASSWORD} \
+    -p 6379:6379 \
+    -d redis \
+    redis-server --requirepass ${REDIS_PASSWORD}
 fi
 
 # Keep pinging Postgres until it's ready to accept commands
@@ -47,7 +61,13 @@ until psql -h "localhost" -U "${POSTGRES__DATABASE__USER}" -p 5432 -d evolveme_d
     sleep 1
 done
 
->&2 echo "Postgres is up and running on port 5432 - running migrations now!"
+# Keep pinging Redis until it's ready to accept commands
+until redis-cli -h localhost -p 6379 -a ${REDIS_PASSWORD} ping; do
+    >&2 echo "Redis is still unavailable - sleeping"
+    sleep 1
+done
+
+>&2 echo "Postgres and Redis are up and running - running migrations now!"
 
 DATABASE_URL=postgres://${POSTGRES__DATABASE__USER}:${POSTGRES__DATABASE__PASSWORD}@localhost:5432/evolveme_db
 export DATABASE_URL

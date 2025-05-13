@@ -37,7 +37,7 @@ RUN mkdir -p configuration
 COPY --from=builder /app/configuration/ /app/configuration/
 
 # Copy the compiled binary from the builder stage
-COPY --from=builder /app/target/release/areum-backend /usr/local/bin/areum-backend
+COPY --from=builder /app/target/release/evolveme-backend /usr/local/bin/evolveme-backend
 
 # Copy migrations and startup script
 COPY --from=builder /app/migrations /app/migrations

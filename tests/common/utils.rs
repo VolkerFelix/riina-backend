@@ -4,9 +4,9 @@ use std::net::TcpListener;
 use uuid::Uuid;
 use once_cell::sync::Lazy;
 
-use areum_backend::run;
-use areum_backend::config::settings::{get_config, DatabaseSettings, get_jwt_settings};
-use areum_backend::telemetry::{get_subscriber, init_subscriber};
+use evolveme_backend::run;
+use evolveme_backend::config::settings::{get_config, DatabaseSettings, get_jwt_settings, get_redis_url};
+use evolveme_backend::telemetry::{get_subscriber, init_subscriber};
 
 // Ensure that the `tracing` stack is only initialised once using `once_cell`
 static TRACING: Lazy<()> = Lazy::new(|| {
@@ -50,7 +50,9 @@ pub async fn spawn_app() -> TestApp {
     let connection_pool = configure_db(&configuration.database)
         .await;
     let jwt_settings = get_jwt_settings(&configuration);
-    let server = run(listener, connection_pool.clone(), jwt_settings)
+    let redis_client = redis::Client::open(get_redis_url(&configuration))
+        .ok();
+    let server = run(listener, connection_pool.clone(), jwt_settings, redis_client)
         .expect("Failed to bind address");
     // Launch the server as a background task
     // tokio::spawn returns a handle to the spawned future,

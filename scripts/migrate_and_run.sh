@@ -13,4 +13,4 @@ else
 fi
 
 echo "Starting application..."
-exec areum-backend
+exec evolveme-backend

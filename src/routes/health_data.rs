@@ -8,7 +8,8 @@ use crate::models::health_data::HealthDataSyncRequest;
 async fn upload_health(
     data: web::Json<HealthDataSyncRequest>,
     pool: web::Data<sqlx::PgPool>,
+    redis: Option<web::Data<redis::Client>>,
     claims: web::ReqData<Claims>
 ) -> HttpResponse {
-    upload_health_data(data, pool, claims).await
+    upload_health_data(data, pool, redis, claims).await
 }
