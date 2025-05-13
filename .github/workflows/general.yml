@@ -54,6 +54,16 @@ jobs:
                 
                 echo "Verifying sqlx installation"
                 sqlx --version
+
+            - name: Install redis-cli
+              run: |
+                if ! command -v redis-cli &> /dev/null; then
+                  echo "redis-cli not found, installing..."
+                  sudo apt-get install redis-tools
+                fi
+
+                echo "Verifying redis-cli installation"
+                redis-cli --version
   
             - name: Create app user in Postgres
               run: |
