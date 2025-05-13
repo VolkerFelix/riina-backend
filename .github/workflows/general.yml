@@ -24,6 +24,12 @@ jobs:
               POSTGRES_DB: evolveme_db
             ports:
               - 5432:5432
+          redis:
+            image: redis:latest
+            env:
+              REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+            ports:
+              - 6379:6379
         
         env:
           POSTGRES__DATABASE__USER: ${{ secrets.POSTGRES_USER }}
