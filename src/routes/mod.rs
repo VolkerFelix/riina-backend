@@ -5,8 +5,11 @@ pub mod backend_health;
 pub mod auth;
 pub mod protected;
 pub mod health_data;
+pub mod websocket;
 
 use crate::middleware::auth::AuthMiddleware;
+use crate::routes::websocket::ws_route;
+
 
 pub fn init_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(registration::register)
@@ -22,5 +25,10 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
         web::scope("/health")
             .wrap(AuthMiddleware)
             .service(health_data::upload_health)
+    );
+    cfg.service(
+        web::resource("/ws")
+            .wrap(AuthMiddleware)
+            .route(web::get().to(ws_route))
     );
 }
