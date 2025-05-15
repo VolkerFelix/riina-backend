@@ -150,6 +150,20 @@ async fn websocket_redis_pubsub_working() {
         .await
         .expect("Failed to connect to WebSocket server");
 
+    // Wait for the Redis subscription to be active before publishing messages
+    if let Some(msg) = ws_stream.next().await {
+        match msg {
+            Ok(Message::Text(text)) => {
+                println!("Received subscription confirmation: {}", text);
+                assert!(text.contains("Redis subscription active!"), "Expected subscription active message");
+            },
+            Ok(other) => panic!("Expected text message for subscription ack, got {:?}", other),
+            Err(e) => panic!("Error receiving subscription ack: {:?}", e),
+        }
+    } else {
+        panic!("WebSocket closed before subscription ack");
+    }
+
     println!("WebSocket connected for Redis PubSub test");
 
     // Create Redis client - IMPORTANT FIX
