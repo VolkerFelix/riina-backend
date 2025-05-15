@@ -42,7 +42,7 @@ pub async fn upload_health_data(
     match insert_result {
         Ok(sync_id) => {
             // Publish event to Redis for global health data events
-            match publish_health_data_event(redis, user_id,sync_id).await {
+            match publish_health_data_event(redis.clone(), user_id,sync_id).await {
                 Ok(_) => {
                     tracing::info!("Successfully published health data event for sync_id: {}", sync_id);
                 },

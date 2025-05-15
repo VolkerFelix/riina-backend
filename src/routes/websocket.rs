@@ -1,12 +1,12 @@
 // src/routes/websocket.rs
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
+use futures::StreamExt;
 use std::time::{Duration, Instant};
-use actix::{Actor, ActorContext, AsyncContext, Handler, StreamHandler, WrapFuture, ActorFutureExt};
+use actix::{Actor, ActorContext, AsyncContext, Handler, StreamHandler, WrapFuture};
 use actix::prelude::*;
 use uuid::Uuid;
 use crate::middleware::auth::Claims;
-use redis::AsyncCommands;
 
 // How often heartbeat pings are sent
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
@@ -14,6 +14,7 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// WebSocket connection is represented by `WsConnection` actor
+#[allow(dead_code)]
 struct WsConnection {
     /// Client must send ping at least once per 10 seconds,
     /// otherwise we drop connection
@@ -37,11 +38,12 @@ impl Actor for WsConnection {
         if let Some(redis_client) = &self.redis {
             let redis = redis_client.clone();
             let user_id = self.user_id.clone();
+            let addr = ctx.address();
             
             // Create a separate Redis connection for subscribing
             let fut = async move {
                 match redis.get_async_connection().await {
-                    Ok(mut con) => {
+                    Ok(con) => {
                         // Subscribe to user-specific channel and global events
                         let mut pubsub = con.into_pubsub();
                         let channel = format!("evolveme:events:user:{}", user_id);
@@ -67,8 +69,8 @@ impl Actor for WsConnection {
                             let payload: String = msg.get_payload().unwrap_or_default();
                             tracing::debug!("Received Redis message: {}", payload);
                             
-                            // Forward the message to the WebSocket connection
-                            ctx.text(payload);
+                            // Send message to actor using Addr
+                            addr.do_send(RedisMessage(payload));
                         }
                     }
                     Err(e) => {
@@ -157,4 +159,17 @@ pub async fn ws_route(
     )?;
     
     Ok(resp)
+}
+
+// Add this struct and impl before the WsConnection struct
+#[derive(Message)]
+#[rtype(result = "()")]
+struct RedisMessage(String);
+
+impl Handler<RedisMessage> for WsConnection {
+    type Result = ();
+
+    fn handle(&mut self, msg: RedisMessage, ctx: &mut Self::Context) {
+        ctx.text(msg.0);
+    }
 }
