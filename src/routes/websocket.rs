@@ -2,7 +2,6 @@ use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
 use std::time::{Duration, Instant};
 use actix::{Actor, ActorContext, AsyncContext, StreamHandler};
-use uuid::Uuid;
 use serde::Deserialize;
 use crate::middleware::auth::Claims;
 use futures_util::StreamExt;

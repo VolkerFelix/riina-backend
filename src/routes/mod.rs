@@ -8,8 +8,6 @@ pub mod health_data;
 pub mod websocket;
 
 use crate::middleware::auth::AuthMiddleware;
-use crate::routes::websocket::ws_route;
-
 
 pub fn init_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(registration::register)
