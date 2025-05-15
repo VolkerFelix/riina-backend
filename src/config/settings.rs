@@ -82,6 +82,12 @@ pub fn get_config() -> Result<Settings, ConfigError> {
                 .prefix_separator("__")
                 .separator("__")
         )
+        .add_source(
+            config::Environment::default()
+                .prefix("REDIS")
+                .prefix_separator("__")
+                .separator("__")
+        )
         .build()?;
 
     let mut settings = config.try_deserialize::<Settings>()?;
@@ -136,6 +142,6 @@ pub fn get_jwt_settings(settings: &Settings) -> JwtSettings {
     )
 }
 
-pub fn get_redis_url(settings: &Settings) -> String {
-    format!("redis://{}:{}", settings.redis.host, settings.redis.port)
+pub fn get_redis_url(settings: &Settings) -> SecretString {
+    SecretString::new(format!("redis://:{}@{}:{}", settings.redis.password.expose_secret(), settings.redis.host, settings.redis.port).into_boxed_str())
 }

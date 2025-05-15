@@ -19,10 +19,15 @@ async fn main() -> std::io::Result<()> {
     // JWT
     let jwt_settings = get_jwt_settings(&config);
     // Redis
-    let redis_client = match redis::Client::open(get_redis_url(&config)) {
-        Ok(client) => Some(client),
+    let redis_client = match redis::Client::open(get_redis_url(&config).expose_secret()) {
+        Ok(client) => {
+            tracing::info!("Redis client created successfully");
+            println!("Redis client created successfully");
+            Some(client)
+        },
         Err(e) => {
             tracing::warn!("Failed to create Redis client: {}. Continuing without Redis.", e);
+            eprintln!("Failed to create Redis client: {}", e);
             None
         }
     };

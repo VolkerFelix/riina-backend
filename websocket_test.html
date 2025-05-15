@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple WebSocket Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #log {
+            border: 1px solid #ccc;
+            padding: 10px;
+            height: 300px;
+            overflow-y: scroll;
+            background-color: #f8f8f8;
+            margin-bottom: 10px;
+        }
+        input, button {
+            padding: 8px;
+            margin: 5px 0;
+        }
+        input {
+            width: 100%;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        .message {
+            margin: 5px 0;
+        }
+        .system { color: gray; }
+        .error { color: red; }
+        .sent { color: blue; }
+        .received { color: green; }
+    </style>
+</head>
+<body>
+    <h1>Simple WebSocket Test</h1>
+    
+    <div>
+        <label for="token">JWT Token:</label>
+        <input type="text" id="token" placeholder="Paste your JWT token here">
+    </div>
+    
+    <div>
+        <button id="connect">Connect</button>
+        <button id="disconnect" disabled>Disconnect</button>
+    </div>
+    
+    <div id="log"></div>
+    
+    <div>
+        <input type="text" id="message" placeholder="Type a message to send" disabled>
+        <button id="send" disabled>Send</button>
+    </div>
+    
+    <script>
+        const logElement = document.getElementById('log');
+        const tokenInput = document.getElementById('token');
+        const messageInput = document.getElementById('message');
+        const connectButton = document.getElementById('connect');
+        const disconnectButton = document.getElementById('disconnect');
+        const sendButton = document.getElementById('send');
+        
+        let socket = null;
+        
+        function log(message, type = 'system') {
+            const div = document.createElement('div');
+            div.className = `message ${type}`;
+            div.textContent = `${new Date().toLocaleTimeString()} - ${message}`;
+            logElement.appendChild(div);
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+        
+        connectButton.addEventListener('click', () => {
+            const token = tokenInput.value.trim();
+            if (!token) {
+                log('Please enter a JWT token', 'error');
+                return;
+            }
+            
+            // Hard-code localhost and port for simplicity
+            // Add token as a query parameter
+            const wsUrl = `ws://localhost:8080/ws?token=${encodeURIComponent(token)}`;
+            log(`Connecting to ${wsUrl}...`);
+            
+            try {
+                socket = new WebSocket(wsUrl);
+                
+                socket.onopen = () => {
+                    log('Connection established!');
+                    
+                    // Send token as first message for authentication
+                    socket.send(JSON.stringify({ token: token }));
+                    log(`Sent authentication token`, 'sent');
+                    
+                    // Enable UI elements
+                    connectButton.disabled = true;
+                    disconnectButton.disabled = false;
+                    messageInput.disabled = false;
+                    sendButton.disabled = false;
+                };
+                
+                socket.onmessage = (event) => {
+                    log(`Received: ${event.data}`, 'received');
+                };
+                
+                socket.onclose = (event) => {
+                    if (event.wasClean) {
+                        log(`Connection closed cleanly, code=${event.code}, reason=${event.reason}`);
+                    } else {
+                        log('Connection died unexpectedly', 'error');
+                    }
+                    resetUI();
+                };
+                
+                socket.onerror = (error) => {
+                    log(`WebSocket error: ${error.message || 'Unknown error'}`, 'error');
+                    resetUI();
+                };
+            } catch (err) {
+                log(`Error creating WebSocket: ${err.message}`, 'error');
+            }
+        });
+        
+        disconnectButton.addEventListener('click', () => {
+            if (socket) {
+                socket.close(1000, "User disconnected");
+                log('Disconnecting...');
+            }
+            resetUI();
+        });
+        
+        sendButton.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+        
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (message && socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(message);
+                log(`Sent: ${message}`, 'sent');
+                messageInput.value = '';
+            }
+        }
+        
+        function resetUI() {
+            socket = null;
+            connectButton.disabled = false;
+            disconnectButton.disabled = true;
+            messageInput.disabled = true;
+            sendButton.disabled = true;
+        }
+        
+        // Initial log message
+        log('Ready to connect. Enter your JWT token and click Connect.');
+    </script>
+</body>
+</html>

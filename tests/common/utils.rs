@@ -50,7 +50,7 @@ pub async fn spawn_app() -> TestApp {
     let connection_pool = configure_db(&configuration.database)
         .await;
     let jwt_settings = get_jwt_settings(&configuration);
-    let redis_client = redis::Client::open(get_redis_url(&configuration))
+    let redis_client = redis::Client::open(get_redis_url(&configuration).expose_secret())
         .ok();
     let server = run(listener, connection_pool.clone(), jwt_settings, redis_client)
         .expect("Failed to bind address");

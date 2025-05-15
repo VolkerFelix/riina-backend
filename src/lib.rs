@@ -23,15 +23,22 @@ pub fn run(
     // Wrap using web::Data, which boils down to an Arc smart pointer
     let db_pool = web::Data::new(db_pool);
     let jwt_settings = web::Data::new(jwt_settings);
+    let redis_client = redis_client.map(|client| {
+        web::Data::new(client)
+    });
 
     let server = HttpServer::new( move || {
-        App::new()
+        let mut app = App::new()
             .wrap(TracingLogger::default())
-            .configure(init_routes)
             // Get a pointer copy and attach it to the application state
             .app_data(db_pool.clone())
-            .app_data(jwt_settings.clone())
-            .app_data(redis_client.clone())
+            .app_data(jwt_settings.clone());
+        if let Some(ref redis) = redis_client {
+            tracing::info!("Adding Redis client to app_data");
+            app = app.app_data(redis.clone());
+        }
+
+        app.configure(init_routes)
     })
     .listen(listener)?
     .run();

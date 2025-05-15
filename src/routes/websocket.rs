@@ -1,91 +1,122 @@
-// src/routes/websocket.rs
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
-use futures::StreamExt;
 use std::time::{Duration, Instant};
-use actix::{Actor, ActorContext, AsyncContext, Handler, StreamHandler, WrapFuture};
-use actix::prelude::*;
+use actix::{Actor, ActorContext, AsyncContext, StreamHandler};
 use uuid::Uuid;
+use serde::Deserialize;
 use crate::middleware::auth::Claims;
+use futures_util::StreamExt;
+use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
+use secrecy::ExposeSecret;
+use crate::config::jwt::JwtSettings;
 
 // How often heartbeat pings are sent
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 // How long before lack of client response causes a timeout
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// WebSocket connection is represented by `WsConnection` actor
-#[allow(dead_code)]
+// Query parameter struct for token
+#[derive(Deserialize)]
+pub struct TokenQuery {
+    token: String,
+}
+
+// WebSocket connection actor
 struct WsConnection {
-    /// Client must send ping at least once per 10 seconds,
-    /// otherwise we drop connection
     heartbeat: Instant,
-    /// Unique session id
-    id: String,
-    /// User id from JWT claims
     user_id: String,
-    /// Redis client for pub/sub
     redis: Option<web::Data<redis::Client>>,
 }
 
 impl Actor for WsConnection {
     type Context = ws::WebsocketContext<Self>;
 
-    /// Method is called on actor start
     fn started(&mut self, ctx: &mut Self::Context) {
+        println!("⭐ WebSocket started for user: {}", self.user_id);
         self.heartbeat(ctx);
         
-        // Start listening for Redis messages if Redis is available
-        if let Some(redis_client) = &self.redis {
-            let redis = redis_client.clone();
-            let user_id = self.user_id.clone();
-            let addr = ctx.address();
+        // Redis subscription setup
+        let user_id = self.user_id.clone();
+        let addr = ctx.address();
+
+        // Check if Redis client is available
+        if let Some(redis_client) = self.redis.clone() {
+            println!("⭐ Redis client found! Setting up subscription for user: {}", user_id);
             
-            // Create a separate Redis connection for subscribing
-            let fut = async move {
-                match redis.get_async_connection().await {
-                    Ok(con) => {
-                        // Subscribe to user-specific channel and global events
-                        let mut pubsub = con.into_pubsub();
+            // Launch Redis subscriber in separate task
+            tokio::spawn(async move {
+                println!("⭐ Starting Redis task for user: {}", user_id);
+                
+                // Connect to Redis
+                match redis_client.get_async_connection().await {
+                    Ok(conn) => {
+                        println!("⭐ Redis connection successful for user: {}", user_id);
+                        
+                        // Create PubSub
+                        let mut pubsub = conn.into_pubsub();
                         let channel = format!("evolveme:events:user:{}", user_id);
                         
-                        if let Err(e) = pubsub.subscribe(&channel).await {
-                            tracing::error!("Failed to subscribe to Redis channel {}: {}", channel, e);
-                            return;
+                        // Subscribe to user channel
+                        println!("⭐ Subscribing to channel: {}", channel);
+                        match pubsub.subscribe(&channel).await {
+                            Ok(_) => {
+                                println!("⭐ Successfully subscribed to: {}", channel);
+                                
+                                // Subscribe to global channel too
+                                let global_channel = "evolveme:events:health_data";
+                                let _ = pubsub.subscribe(global_channel).await;
+                                
+                                // Process messages
+                                let mut stream = pubsub.on_message();
+                                println!("⭐ Listening for Redis messages on: {}", channel);
+                                
+                                // Send a test message to the WebSocket to confirm it's working
+                                addr.do_send(RedisMessage(String::from("{\"test\":\"Redis subscription active!\"}")));
+                                
+                                // Process actual Redis messages
+                                while let Some(msg) = stream.next().await {
+                                    match msg.get_payload::<String>() {
+                                        Ok(payload) => {
+                                            println!("⭐ Received Redis message: {}", payload);
+                                            addr.do_send(RedisMessage(payload));
+                                        },
+                                        Err(e) => {
+                                            println!("❌ Failed to parse Redis message: {}", e);
+                                        }
+                                    }
+                                }
+                            },
+                            Err(e) => {
+                                println!("❌ Failed to subscribe to channel {}: {}", channel, e);
+                            }
                         }
-                        
-                        // Also subscribe to global health data events
-                        if let Err(e) = pubsub.subscribe("evolveme:events:health_data").await {
-                            tracing::error!("Failed to subscribe to Redis global channel: {}", e);
-                            return;
-                        }
-                        
-                        tracing::info!("WebSocket subscribed to Redis channels for user {}", user_id);
-                        
-                        // Listen for published messages
-                        let mut msg_stream = pubsub.on_message();
-                        
-                        // Process incoming Redis messages
-                        while let Some(msg) = msg_stream.next().await {
-                            let payload: String = msg.get_payload().unwrap_or_default();
-                            tracing::debug!("Received Redis message: {}", payload);
-                            
-                            // Send message to actor using Addr
-                            addr.do_send(RedisMessage(payload));
-                        }
-                    }
+                    },
                     Err(e) => {
-                        tracing::error!("Failed to get Redis connection for WebSocket: {}", e);
+                        println!("❌ Failed to connect to Redis: {}", e);
                     }
                 }
-            };
-            
-            // Spawn the future into the Actor's context
-            ctx.spawn(fut.into_actor(self));
+            });
+        } else {
+            println!("❌ No Redis client available for WebSocket - check your app configuration!");
         }
     }
 }
 
-/// Handler for WebSocket messages
+// Message from Redis to WebSocket
+#[derive(actix::Message)]
+#[rtype(result = "()")]
+struct RedisMessage(String);
+
+// Handle Redis messages
+impl actix::Handler<RedisMessage> for WsConnection {
+    type Result = ();
+    
+    fn handle(&mut self, msg: RedisMessage, ctx: &mut Self::Context) {
+        ctx.text(msg.0);
+    }
+}
+
+// Handle WebSocket messages
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConnection {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
@@ -97,17 +128,13 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConnection {
                 self.heartbeat = Instant::now();
             }
             Ok(ws::Message::Text(text)) => {
-                tracing::debug!("WS Text message: {}", text);
-                // Implement command handling logic here if needed
-                // For now, we just echo the message back
+                println!("⭐ WebSocket text message: {}", text);
                 ctx.text(format!("Echo: {}", text));
             }
             Ok(ws::Message::Binary(bin)) => {
-                tracing::debug!("WS Binary message: {:?}", bin);
                 ctx.binary(bin);
             }
             Ok(ws::Message::Close(reason)) => {
-                tracing::info!("WebSocket closed with reason: {:?}", reason);
                 ctx.close(reason);
                 ctx.stop();
             }
@@ -120,56 +147,81 @@ impl WsConnection {
     fn new(user_id: String, redis: Option<web::Data<redis::Client>>) -> Self {
         Self {
             heartbeat: Instant::now(),
-            id: Uuid::new_v4().to_string(),
             user_id,
             redis,
         }
     }
     
-    /// Heartbeat to check for disconnection
     fn heartbeat(&self, ctx: &mut ws::WebsocketContext<Self>) {
         ctx.run_interval(HEARTBEAT_INTERVAL, |act, ctx| {
-            // If heartbeat is older than CLIENT_TIMEOUT, disconnect
             if Instant::now().duration_since(act.heartbeat) > CLIENT_TIMEOUT {
-                tracing::info!("WebSocket client timed out, disconnecting!");
+                println!("❌ WebSocket heartbeat failed, disconnecting!");
                 ctx.stop();
                 return;
             }
-            
-            // Send ping
             ctx.ping(b"");
         });
     }
 }
 
-/// WebSocket route handler
+// Helper function to decode JWT token
+fn decode_token(token: &str, jwt_settings: &web::Data<JwtSettings>) -> Result<Claims, jsonwebtoken::errors::Error> {
+    decode::<Claims>(
+        token,
+        &DecodingKey::from_secret(jwt_settings.secret.expose_secret().as_bytes()),
+        &Validation::new(Algorithm::HS256)
+    ).map(|data| data.claims)
+}
+
+// WebSocket route handler that supports both Authorization header and query parameter
 pub async fn ws_route(
     req: HttpRequest,
     stream: web::Payload,
-    claims: web::ReqData<Claims>,
+    query: Option<web::Query<TokenQuery>>,
+    claims: Option<web::ReqData<Claims>>,
     redis: Option<web::Data<redis::Client>>,
+    jwt_settings: web::Data<JwtSettings>,
 ) -> Result<HttpResponse, Error> {
-    tracing::info!("New WebSocket connection from user: {}", claims.username);
+    println!("⭐ New WebSocket connection request");
     
-    // Create websocket connection
+    // Try to get user_id from different sources
+    let user_id = if let Some(claims) = claims {
+        // JWT from Authorization header via middleware
+        println!("⭐ Using JWT from Authorization header");
+        claims.sub.clone()
+    } else if let Some(query) = query {
+        // JWT from query parameter
+        println!("⭐ Using JWT from query parameter");
+        match decode_token(&query.token, &jwt_settings) {
+            Ok(token_claims) => {
+                println!("⭐ JWT from query parameter verified for user: {}", token_claims.username);
+                token_claims.sub
+            },
+            Err(e) => {
+                println!("❌ Invalid JWT in query parameter: {}", e);
+                return Err(actix_web::error::ErrorUnauthorized("Invalid token"));
+            }
+        }
+    } else {
+        // No authentication provided
+        println!("❌ No authentication provided");
+        return Err(actix_web::error::ErrorUnauthorized("No authentication"));
+    };
+    
+    // Check Redis client
+    if redis.is_some() {
+        println!("⭐ Redis client is available");
+    } else {
+        println!("❌ No Redis client provided");
+    }
+    
+    // Start WebSocket connection
     let resp = ws::start(
-        WsConnection::new(claims.sub.clone(), redis),
+        WsConnection::new(user_id, redis),
         &req,
         stream,
     )?;
     
+    println!("⭐ WebSocket connection established");
     Ok(resp)
-}
-
-// Add this struct and impl before the WsConnection struct
-#[derive(Message)]
-#[rtype(result = "()")]
-struct RedisMessage(String);
-
-impl Handler<RedisMessage> for WsConnection {
-    type Result = ();
-
-    fn handle(&mut self, msg: RedisMessage, ctx: &mut Self::Context) {
-        ctx.text(msg.0);
-    }
 }

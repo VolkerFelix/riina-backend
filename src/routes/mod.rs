@@ -28,7 +28,6 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     );
     cfg.service(
         web::resource("/ws")
-            .wrap(AuthMiddleware)
-            .route(web::get().to(ws_route))
+            .route(web::get().to(websocket::ws_route))
     );
 }

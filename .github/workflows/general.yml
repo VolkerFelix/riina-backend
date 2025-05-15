@@ -37,6 +37,7 @@ jobs:
           APP__APPLICATION__USER: ${{ secrets.APP_USER }}
           APP__APPLICATION__PASSWORD: ${{ secrets.APP_PASSWORD }}
           APP_ENVIRONMENT: local
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
 
         steps:
             - name: Check out repository code
