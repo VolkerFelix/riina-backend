@@ -8,7 +8,7 @@ use crate::models::health_data::{HealthDataSyncRequest, HealthDataSyncResponse};
 use redis::AsyncCommands;
 
 #[tracing::instrument(
-    name = "Sync health data",
+    name = "Upload health data",
     skip(data, pool, redis, claims),
     fields(
         username = %claims.username,
