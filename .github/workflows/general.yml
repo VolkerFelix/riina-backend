@@ -25,7 +25,7 @@ jobs:
             ports:
               - 5432:5432
           redis:
-            image: redis:latest
+            image: bitnami/redis:latest
             env:
               REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
             ports:
@@ -37,6 +37,7 @@ jobs:
           APP__APPLICATION__USER: ${{ secrets.APP_USER }}
           APP__APPLICATION__PASSWORD: ${{ secrets.APP_PASSWORD }}
           APP_ENVIRONMENT: local
+          REDIS__REDIS__PASSWORD: ${{ secrets.REDIS_PASSWORD }}
 
         steps:
             - name: Check out repository code
@@ -70,6 +71,17 @@ jobs:
 
                 echo "Verifying redis-cli installation"
                 redis-cli --version
+
+            - name: Wait for Redis to be ready
+              run: |
+                for i in {1..10}; do
+                  if redis-cli -h localhost -p 6379 ping > /dev/null 2>&1; then
+                    echo "Redis is ready!"
+                    break
+                  fi
+                  echo "Waiting for Redis to be ready..."
+                  sleep 2
+                done
   
             - name: Create app user in Postgres
               run: |

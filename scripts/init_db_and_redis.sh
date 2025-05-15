@@ -48,10 +48,10 @@ then
 
     # Start Redis container
     docker run \
-    -e REDIS_PASSWORD=${REDIS_PASSWORD} \
+    -e REDIS_PASSWORD=${REDIS__REDIS__PASSWORD} \
     -p 6379:6379 \
     -d redis \
-    redis-server --requirepass ${REDIS_PASSWORD}
+    redis-server --requirepass ${REDIS__REDIS__PASSWORD}
 fi
 
 # Keep pinging Postgres until it's ready to accept commands
@@ -62,7 +62,7 @@ until psql -h "localhost" -U "${POSTGRES__DATABASE__USER}" -p 5432 -d evolveme_d
 done
 
 # Keep pinging Redis until it's ready to accept commands
-until redis-cli -h localhost -p 6379 -a ${REDIS_PASSWORD} ping; do
+until redis-cli -h localhost -p 6379 -a ${REDIS__REDIS__PASSWORD} ping; do
     >&2 echo "Redis is still unavailable - sleeping"
     sleep 1
 done

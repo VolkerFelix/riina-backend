@@ -23,6 +23,7 @@ export POSTGRES__DATABASE__PASSWORD=${POSTGRES__DATABASE__PASSWORD:-postgres}
 # Actix Web Configuration
 export APP__APPLICATION__USER=${APP__APPLICATION__USER:-testuser}
 export APP__APPLICATION__PASSWORD=${APP__APPLICATION__PASSWORD:-testpassword}
+export REDIS__REDIS__PASSWORD=${REDIS__REDIS__PASSWORD:-redis}
 
 # Default configuration
 DB_HOST="localhost"
@@ -58,7 +59,20 @@ prepare_sqlx() {
 # Function to run tests
 run_tests() {
     echo -e "${YELLOW}Running tests...${NC}"
-    RUST_BACKTRACE=1 cargo test
+    if [ -n "${TEST_NAME:-}" ]; then
+        echo -e "${YELLOW}Running test matching pattern: $TEST_NAME${NC}"
+        if [ "${SHOW_OUTPUT:-false}" = "true" ]; then
+            RUST_BACKTRACE=1 cargo test "$TEST_NAME" -- --nocapture
+        else
+            RUST_BACKTRACE=1 cargo test "$TEST_NAME"
+        fi
+    else
+        if [ "${SHOW_OUTPUT:-false}" = "true" ]; then
+            RUST_BACKTRACE=1 cargo test -- --nocapture
+        else
+            RUST_BACKTRACE=1 cargo test
+        fi
+    fi
 }
 
 # Main script execution
@@ -95,6 +109,8 @@ show_help() {
     echo "  -p, --port           PostgreSQL port (default: 5432)"
     echo "  -d, --database       Database name (default: evolveme_db)"
     echo "  --host               PostgreSQL host (default: localhost)"
+    echo "  -t, --test           Run a specific test by name pattern"
+    echo "  -v, --verbose        Show test output (print statements, etc.)"
 }
 
 # Parse command line arguments
@@ -120,6 +136,14 @@ while [[ $# -gt 0 ]]; do
         --host)
             DB_HOST="$2"
             shift 2
+            ;;
+        -t|--test)
+            TEST_NAME="$2"
+            shift 2
+            ;;
+        -v|--verbose)
+            SHOW_OUTPUT="true"
+            shift
             ;;
         *)
             echo "Unknown option: $1"

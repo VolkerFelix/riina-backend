@@ -13,6 +13,8 @@ path = "src/main.rs"
 
 [dependencies]
 actix-web = "4"
+actix-web-actors = "4.2" # Added for WebSocket support
+actix = "0.13" # Actor framework for WebSockets
 dotenv = "0.15.0"
 sqlx = { version = "0.8.3", features = ["runtime-tokio", "postgres", "uuid", "chrono", "migrate"] }
 jsonwebtoken = "9.3.1"
@@ -39,5 +41,7 @@ redis = { version = "0.23.0", features = ["tokio-comp"] }
 
 [dev-dependencies]
 reqwest = { version = "0.12.12", features = ["json"] }
-#tokio = { version = "1.43.0", features = ["full", "macros", "rt-multi-thread"] }
 once_cell = "1.20.3"
+tokio-tungstenite = { version = "0.19", features = ["native-tls"] }
+http = "0.2"
+base64 = "0.13"
