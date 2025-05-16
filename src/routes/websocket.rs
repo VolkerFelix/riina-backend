@@ -188,9 +188,9 @@ impl WsConnection {
     
     fn heartbeat(&self, ctx: &mut ws::WebsocketContext<Self>) {
         // Set a longer interval for heartbeats to reduce unnecessary traffic
-        ctx.run_interval(Duration::from_secs(30), |act, ctx| { // 30 seconds between heartbeats
+        ctx.run_interval(HEARTBEAT_INTERVAL, |act, ctx| {
             // Check if we've missed too many heartbeats
-            if Instant::now().duration_since(act.heartbeat) > Duration::from_secs(120) { // 2 minute timeout
+            if Instant::now().duration_since(act.heartbeat) > CLIENT_TIMEOUT {
                 tracing::warn!("WebSocket client heartbeat missed, disconnecting!");
                 ctx.stop();
                 return;
