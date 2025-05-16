@@ -1,27 +1,18 @@
-use actix_web::{web, Error, HttpRequest, HttpResponse};
-use actix_web_actors::ws;
-use std::time::{Duration, Instant};
 use actix::{Actor, ActorContext, AsyncContext, StreamHandler};
-use serde::Deserialize;
-use crate::middleware::auth::Claims;
-use futures_util::StreamExt;
-use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
-use secrecy::ExposeSecret;
-use crate::config::jwt::JwtSettings;
+use actix_web_actors::ws;
+use futures::StreamExt;
+use std::time::{Duration, Instant};
+use actix_web::web;
+use crate::routes::websocket::messages::RedisMessage;
+use tracing;
 
 // How often heartbeat pings are sent
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 // How long before lack of client response causes a timeout
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(120);
 
-// Query parameter struct for token
-#[derive(Deserialize)]
-pub struct TokenQuery {
-    token: String,
-}
-
 // WebSocket connection actor
-struct WsConnection {
+pub struct WsConnection {
     heartbeat: Instant,
     user_id: String,
     redis: Option<web::Data<redis::Client>>,
@@ -32,8 +23,34 @@ impl Actor for WsConnection {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         self.heartbeat(ctx);
+        self.send_welcome_message(ctx);
+        self.setup_redis_subscription(ctx);
+    }
+}
 
-        // Send a welcome message
+impl WsConnection {
+    pub fn new(user_id: String, redis: Option<web::Data<redis::Client>>) -> Self {
+        Self {
+            heartbeat: Instant::now(),
+            user_id,
+            redis,
+        }
+    }
+    
+    fn heartbeat(&self, ctx: &mut ws::WebsocketContext<Self>) {
+        ctx.run_interval(HEARTBEAT_INTERVAL, |act, ctx| {
+            if Instant::now().duration_since(act.heartbeat) > CLIENT_TIMEOUT {
+                tracing::warn!("WebSocket client heartbeat missed, disconnecting!");
+                ctx.stop();
+                return;
+            }
+            
+            tracing::debug!("Sending WebSocket heartbeat ping");
+            ctx.ping(b"ping");
+        });
+    }
+
+    fn send_welcome_message(&self, ctx: &mut ws::WebsocketContext<Self>) {
         let welcome_msg = serde_json::json!({
             "type": "welcome",
             "message": "WebSocket connection established",
@@ -42,36 +59,28 @@ impl Actor for WsConnection {
         });
     
         ctx.text(serde_json::to_string(&welcome_msg).unwrap_or_default());
-        
-        // Redis subscription setup
+    }
+
+    fn setup_redis_subscription(&self, ctx: &mut ws::WebsocketContext<Self>) {
         let user_id = self.user_id.clone();
         let addr = ctx.address();
 
-        // Check if Redis client is available
         if let Some(redis_client) = self.redis.clone() {            
-            // Launch Redis subscriber in separate task
             tokio::spawn(async move {
-                // Connect to Redis
                 match redis_client.get_async_connection().await {
                     Ok(conn) => {                        
-                        // Create PubSub
                         let mut pubsub = conn.into_pubsub();
                         let channel = format!("evolveme:events:user:{}", user_id);
-                        // Subscribe to user channel
+                        
                         match pubsub.subscribe(&channel).await {
                             Ok(_) => {
                                 tracing::info!("Successfully subscribed to: {}", channel);                                
-                                // Subscribe to global channel too
                                 let global_channel = "evolveme:events:health_data";
                                 let _ = pubsub.subscribe(global_channel).await;
                                 
-                                // Process messages
                                 let mut stream = pubsub.on_message();
-                                
-                                // Send a test message to the WebSocket to confirm it's working
                                 addr.do_send(RedisMessage(String::from("{\"test\":\"Redis subscription active!\"}")));
                                 
-                                // Process actual Redis messages
                                 while let Some(msg) = stream.next().await {
                                     match msg.get_payload::<String>() {
                                         Ok(payload) => {
@@ -100,21 +109,6 @@ impl Actor for WsConnection {
     }
 }
 
-// Message from Redis to WebSocket
-#[derive(actix::Message)]
-#[rtype(result = "()")]
-struct RedisMessage(String);
-
-// Handle Redis messages
-impl actix::Handler<RedisMessage> for WsConnection {
-    type Result = ();
-    
-    fn handle(&mut self, msg: RedisMessage, ctx: &mut Self::Context) {
-        ctx.text(msg.0);
-    }
-}
-
-// In src/routes/websocket.rs
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConnection {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
@@ -130,14 +124,11 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConnection {
             Ok(ws::Message::Text(text)) => {
                 tracing::debug!("Received text message: {}", text);
                 
-                // Try to parse the message as JSON
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
-                    // Check if it's a ping message
                     if json.get("type").and_then(|t| t.as_str()) == Some("ping") {
                         tracing::debug!("Received ping message from client");
                         self.heartbeat = Instant::now();
                         
-                        // Send a pong response
                         let pong = serde_json::json!({
                             "type": "pong",
                             "timestamp": chrono::Utc::now().to_rfc3339()
@@ -147,7 +138,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConnection {
                         return;
                     }
                     
-                    // Check if it's a pong message
                     if json.get("type").and_then(|t| t.as_str()) == Some("pong") {
                         tracing::debug!("Received pong message from client");
                         self.heartbeat = Instant::now();
@@ -155,7 +145,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConnection {
                     }
                 }
                 
-                // Echo back other messages for debugging
                 let response = serde_json::json!({
                     "type": "echo",
                     "content": text.to_string(),
@@ -177,83 +166,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConnection {
     }
 }
 
-impl WsConnection {
-    fn new(user_id: String, redis: Option<web::Data<redis::Client>>) -> Self {
-        Self {
-            heartbeat: Instant::now(),
-            user_id,
-            redis,
-        }
+impl actix::Handler<RedisMessage> for WsConnection {
+    type Result = ();
+    
+    fn handle(&mut self, msg: RedisMessage, ctx: &mut Self::Context) {
+        ctx.text(msg.0);
     }
-    
-    fn heartbeat(&self, ctx: &mut ws::WebsocketContext<Self>) {
-        // Set a longer interval for heartbeats to reduce unnecessary traffic
-        ctx.run_interval(HEARTBEAT_INTERVAL, |act, ctx| {
-            // Check if we've missed too many heartbeats
-            if Instant::now().duration_since(act.heartbeat) > CLIENT_TIMEOUT {
-                tracing::warn!("WebSocket client heartbeat missed, disconnecting!");
-                ctx.stop();
-                return;
-            }
-            
-            // Send a ping with some data (this is important)
-            tracing::debug!("Sending WebSocket heartbeat ping");
-            ctx.ping(b"ping");
-        });
-    }
-}
-
-// Helper function to decode JWT token
-fn decode_token(token: &str, jwt_settings: &web::Data<JwtSettings>) -> Result<Claims, jsonwebtoken::errors::Error> {
-    decode::<Claims>(
-        token,
-        &DecodingKey::from_secret(jwt_settings.secret.expose_secret().as_bytes()),
-        &Validation::new(Algorithm::HS256)
-    ).map(|data| data.claims)
-}
-
-// WebSocket route handler that supports both Authorization header and query parameter
-pub async fn ws_route(
-    req: HttpRequest,
-    stream: web::Payload,
-    query: Option<web::Query<TokenQuery>>,
-    claims: Option<web::ReqData<Claims>>,
-    redis: Option<web::Data<redis::Client>>,
-    jwt_settings: web::Data<JwtSettings>,
-) -> Result<HttpResponse, Error> {
-    tracing::info!("New WebSocket connection request");
-    
-    // Try to get user_id from different sources
-    let user_id = if let Some(claims) = claims {
-        // JWT from Authorization header via middleware
-        tracing::info!("Using JWT from Authorization header");
-        claims.sub.clone()
-    } else if let Some(query) = query {
-        // JWT from query parameter
-        tracing::info!("Using JWT from query parameter");
-        match decode_token(&query.token, &jwt_settings) {
-            Ok(token_claims) => {
-                tracing::info!("JWT from query parameter verified for user: {}", token_claims.username);
-                token_claims.sub
-            },
-            Err(e) => {
-                tracing::error!("Invalid JWT in query parameter: {}", e);
-                return Err(actix_web::error::ErrorUnauthorized("Invalid token"));
-            }
-        }
-    } else {
-        // No authentication provided
-        tracing::error!("No authentication provided");
-        return Err(actix_web::error::ErrorUnauthorized("No authentication"));
-    };
-    
-    // Start WebSocket connection
-    let resp = ws::start(
-        WsConnection::new(user_id, redis),
-        &req,
-        stream,
-    )?;
-    
-    tracing::info!("WebSocket connection established");
-    Ok(resp)
-}
+} 
