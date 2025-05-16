@@ -23,6 +23,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
         web::scope("/health")
             .wrap(AuthMiddleware)
             .service(health_data::upload_health)
+            .service(health_data::get_health)
     );
     cfg.service(
         web::resource("/ws")

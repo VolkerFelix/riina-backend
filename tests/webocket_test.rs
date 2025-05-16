@@ -70,19 +70,56 @@ async fn websocket_connection_working() {
 
     println!("WebSocket connected");
 
-    // Send a message
-    let msg = "Hello WebSocket Server!";
-    ws_stream.send(Message::Text(msg.into())).await.unwrap();
+    // Wait for welcome message
+    let welcome_msg = ws_stream.next().await.expect("No welcome message received").unwrap();
+    let welcome_text = match welcome_msg {
+        Message::Text(text) => text,
+        _ => panic!("Expected text message for welcome"),
+    };
     
-    // Wait for the response (should be an echo)
-    let response = ws_stream.next().await.expect("No response received").unwrap();
+    // Parse welcome message
+    let welcome_json: serde_json::Value = serde_json::from_str(&welcome_text)
+        .expect("Failed to parse welcome message as JSON");
+    assert_eq!(welcome_json["type"], "welcome", "Expected welcome message type");
+    assert!(welcome_json["user_id"].is_string(), "Welcome message should contain user_id");
+
+    // Send a ping message
+    let ping_msg = json!({
+        "type": "ping",
+        "timestamp": chrono::Utc::now().to_rfc3339()
+    });
+    ws_stream.send(Message::Text(ping_msg.to_string())).await.unwrap();
+    
+    // Wait for pong response
+    let pong_msg = ws_stream.next().await.expect("No pong response received").unwrap();
+    let pong_text = match pong_msg {
+        Message::Text(text) => text,
+        _ => panic!("Expected text message for pong"),
+    };
+    
+    let pong_json: serde_json::Value = serde_json::from_str(&pong_text)
+        .expect("Failed to parse pong message as JSON");
+    assert_eq!(pong_json["type"], "pong", "Expected pong message type");
+
+    // Send a test message
+    let test_msg = json!({
+        "type": "test",
+        "content": "Hello WebSocket Server!"
+    });
+    ws_stream.send(Message::Text(test_msg.to_string())).await.unwrap();
+    
+    // Wait for the echo response
+    let response = ws_stream.next().await.expect("No echo response received").unwrap();
     
     let resp_text = match response {
         Message::Text(text) => text,
         _ => panic!("Expected text message"),
     };
     
-    assert_eq!(resp_text, format!("Echo: {}", msg), "Server should echo back the message");
+    let echo_json: serde_json::Value = serde_json::from_str(&resp_text)
+        .expect("Failed to parse echo message as JSON");
+    assert_eq!(echo_json["type"], "echo", "Expected echo message type");
+    assert_eq!(echo_json["content"], test_msg.to_string(), "Echo should contain original message");
     
     // Close the connection
     ws_stream.send(Message::Close(None)).await.unwrap();
@@ -150,19 +187,49 @@ async fn websocket_redis_pubsub_working() {
         .await
         .expect("Failed to connect to WebSocket server");
 
-    // Wait for the Redis subscription to be active before publishing messages
-    if let Some(msg) = ws_stream.next().await {
-        match msg {
-            Ok(Message::Text(text)) => {
-                println!("Received subscription confirmation: {}", text);
-                assert!(text.contains("Redis subscription active!"), "Expected subscription active message");
-            },
-            Ok(other) => panic!("Expected text message for subscription ack, got {:?}", other),
-            Err(e) => panic!("Error receiving subscription ack: {:?}", e),
+    // Wait for welcome message
+    let welcome_msg = ws_stream.next().await.expect("No welcome message received").unwrap();
+    let welcome_text = match welcome_msg {
+        Message::Text(text) => text,
+        _ => panic!("Expected text message for welcome"),
+    };
+    
+    // Parse welcome message
+    let welcome_json: serde_json::Value = serde_json::from_str(&welcome_text)
+        .expect("Failed to parse welcome message as JSON");
+    assert_eq!(welcome_json["type"], "welcome", "Expected welcome message type");
+    assert!(welcome_json["user_id"].is_string(), "Welcome message should contain user_id");
+
+    // Wait for Redis subscription confirmation
+    let mut subscription_confirmed = false;
+    let timeout = tokio::time::sleep(Duration::from_secs(5));
+    tokio::pin!(timeout);
+
+    loop {
+        tokio::select! {
+            Some(msg) = ws_stream.next() => {
+                match msg {
+                    Ok(Message::Text(text)) => {
+                        println!("Received message: {}", text);
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                            if json.get("test").and_then(|t| t.as_str()) == Some("Redis subscription active!") {
+                                subscription_confirmed = true;
+                                break;
+                            }
+                        }
+                    },
+                    Ok(other) => println!("Received non-text message: {:?}", other),
+                    Err(e) => println!("Error receiving message: {:?}", e),
+                }
+            }
+            _ = &mut timeout => {
+                println!("Timeout waiting for Redis subscription confirmation");
+                break;
+            }
         }
-    } else {
-        panic!("WebSocket closed before subscription ack");
     }
+
+    assert!(subscription_confirmed, "Did not receive Redis subscription confirmation");
 
     println!("WebSocket connected for Redis PubSub test");
 

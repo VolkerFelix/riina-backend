@@ -8,7 +8,7 @@ use crate::models::health_data::{HealthDataSyncRequest, HealthDataSyncResponse};
 use redis::AsyncCommands;
 
 #[tracing::instrument(
-    name = "Sync health data",
+    name = "Upload health data",
     skip(data, pool, redis, claims),
     fields(
         username = %claims.username,
@@ -138,9 +138,15 @@ async fn publish_user_notification(
         "timestamp": Utc::now().to_rfc3339()
     });
 
+    let message_str = serde_json::to_string(&notification)
+    .unwrap_or_else(|e| {
+        tracing::error!("Failed to serialize Redis message: {}", e);
+        "{}".to_string()
+    });
+
     // Publish to the user-specific channel
     let channel = format!("evolveme:events:user:{}", user_id.to_string());
-    conn.publish::<_, String, String>(&channel, notification.to_string())
+    conn.publish::<_, String, String>(&channel, message_str)
         .await?;
     
     Ok(())
