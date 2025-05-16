@@ -37,7 +37,10 @@ pub fn run(
                 http::header::AUTHORIZATION,
                 http::header::ACCEPT,
                 http::header::CONTENT_TYPE,
+                http::header::UPGRADE,
+                http::header::CONNECTION,
             ])
+            .supports_credentials()
             .max_age(3600);
 
         let mut app = App::new()

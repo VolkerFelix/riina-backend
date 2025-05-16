@@ -10,9 +10,9 @@ use secrecy::ExposeSecret;
 use crate::config::jwt::JwtSettings;
 
 // How often heartbeat pings are sent
-const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 // How long before lack of client response causes a timeout
-const CLIENT_TIMEOUT: Duration = Duration::from_secs(30);
+const CLIENT_TIMEOUT: Duration = Duration::from_secs(120);
 
 // Query parameter struct for token
 #[derive(Deserialize)]
@@ -32,6 +32,16 @@ impl Actor for WsConnection {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         self.heartbeat(ctx);
+
+        // Send a welcome message
+        let welcome_msg = serde_json::json!({
+            "type": "welcome",
+            "message": "WebSocket connection established",
+            "user_id": self.user_id,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        });
+    
+        ctx.text(serde_json::to_string(&welcome_msg).unwrap_or_default());
         
         // Redis subscription setup
         let user_id = self.user_id.clone();
@@ -104,25 +114,61 @@ impl actix::Handler<RedisMessage> for WsConnection {
     }
 }
 
-// Handle WebSocket messages
+// In src/routes/websocket.rs
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConnection {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
             Ok(ws::Message::Ping(msg)) => {
+                tracing::debug!("Received ping from client");
                 self.heartbeat = Instant::now();
                 ctx.pong(&msg);
             }
             Ok(ws::Message::Pong(_)) => {
+                tracing::debug!("Received pong from client");
                 self.heartbeat = Instant::now();
             }
             Ok(ws::Message::Text(text)) => {
-                tracing::info!("WebSocket text message: {}", text);
-                ctx.text(format!("Echo: {}", text));
+                tracing::debug!("Received text message: {}", text);
+                
+                // Try to parse the message as JSON
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                    // Check if it's a ping message
+                    if json.get("type").and_then(|t| t.as_str()) == Some("ping") {
+                        tracing::debug!("Received ping message from client");
+                        self.heartbeat = Instant::now();
+                        
+                        // Send a pong response
+                        let pong = serde_json::json!({
+                            "type": "pong",
+                            "timestamp": chrono::Utc::now().to_rfc3339()
+                        });
+                        
+                        ctx.text(serde_json::to_string(&pong).unwrap_or_default());
+                        return;
+                    }
+                    
+                    // Check if it's a pong message
+                    if json.get("type").and_then(|t| t.as_str()) == Some("pong") {
+                        tracing::debug!("Received pong message from client");
+                        self.heartbeat = Instant::now();
+                        return;
+                    }
+                }
+                
+                // Echo back other messages for debugging
+                let response = serde_json::json!({
+                    "type": "echo",
+                    "content": text.to_string(),
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                });
+                
+                ctx.text(serde_json::to_string(&response).unwrap_or_default());
             }
             Ok(ws::Message::Binary(bin)) => {
                 ctx.binary(bin);
             }
             Ok(ws::Message::Close(reason)) => {
+                tracing::info!("WebSocket closing with reason: {:?}", reason);
                 ctx.close(reason);
                 ctx.stop();
             }
@@ -141,13 +187,18 @@ impl WsConnection {
     }
     
     fn heartbeat(&self, ctx: &mut ws::WebsocketContext<Self>) {
-        ctx.run_interval(HEARTBEAT_INTERVAL, |act, ctx| {
-            if Instant::now().duration_since(act.heartbeat) > CLIENT_TIMEOUT {
-                tracing::error!("WebSocket heartbeat failed, disconnecting!");
+        // Set a longer interval for heartbeats to reduce unnecessary traffic
+        ctx.run_interval(Duration::from_secs(30), |act, ctx| { // 30 seconds between heartbeats
+            // Check if we've missed too many heartbeats
+            if Instant::now().duration_since(act.heartbeat) > Duration::from_secs(120) { // 2 minute timeout
+                tracing::warn!("WebSocket client heartbeat missed, disconnecting!");
                 ctx.stop();
                 return;
             }
-            ctx.ping(b"");
+            
+            // Send a ping with some data (this is important)
+            tracing::debug!("Sending WebSocket heartbeat ping");
+            ctx.ping(b"ping");
         });
     }
 }

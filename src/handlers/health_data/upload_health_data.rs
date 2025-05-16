@@ -138,9 +138,15 @@ async fn publish_user_notification(
         "timestamp": Utc::now().to_rfc3339()
     });
 
+    let message_str = serde_json::to_string(&notification)
+    .unwrap_or_else(|e| {
+        tracing::error!("Failed to serialize Redis message: {}", e);
+        "{}".to_string()
+    });
+
     // Publish to the user-specific channel
     let channel = format!("evolveme:events:user:{}", user_id.to_string());
-    conn.publish::<_, String, String>(&channel, notification.to_string())
+    conn.publish::<_, String, String>(&channel, message_str)
         .await?;
     
     Ok(())

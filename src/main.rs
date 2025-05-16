@@ -9,20 +9,22 @@ use evolveme_backend::telemetry::{get_subscriber, init_subscriber};
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
+    // Panic if we can't read the config
+    let config = get_config().expect("Failed to read the config.");
+    
     let subscriber = get_subscriber(
-        "evolveme-backend".into(), "info".into(), std::io::stdout
+        "evolveme-backend".into(), 
+        config.application.log_level.clone(), 
+        std::io::stdout
     );
     init_subscriber(subscriber);
 
-    // Panic if we can't read the config
-    let config = get_config().expect("Failed to read the config.");
     // JWT
     let jwt_settings = get_jwt_settings(&config);
     // Redis
     let redis_client = match redis::Client::open(get_redis_url(&config).expose_secret()) {
         Ok(client) => {
             tracing::info!("Redis client created successfully");
-            println!("Redis client created successfully");
             Some(client)
         },
         Err(e) => {
