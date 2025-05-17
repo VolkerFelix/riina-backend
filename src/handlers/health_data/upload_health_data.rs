@@ -41,8 +41,31 @@ pub async fn upload_health_data(
     
     match insert_result {
         Ok(sync_id) => {
+            // Identify the type of data for event classification
+            let data_types = determine_data_types(&data);
+            tracing::info!("Data types detected: {:?}", data_types);
+
+            // Publish separate events based on the data types present
+            for data_type in &data_types {
+                let event_type = match data_type.as_str() {
+                    "sleep" => "sleep_data_uploaded",
+                    "steps" => "activity_data_uploaded",
+                    "heart_rate" => "vitals_data_uploaded",
+                    _ => "health_data_uploaded",
+                };
+                
+                match publish_health_data_event(redis.clone(), user_id, sync_id, event_type).await {
+                    Ok(_) => {
+                        tracing::info!("Successfully published {} event for sync_id: {}", event_type, sync_id);
+                    },
+                    Err(e) => {
+                        tracing::error!("Failed to publish {} event: {}", event_type, e);
+                    }
+                }
+            }
+
             // Publish event to Redis for global health data events
-            match publish_health_data_event(redis.clone(), user_id,sync_id).await {
+            match publish_health_data_event(redis.clone(), user_id, sync_id, "health_data_uploaded").await {
                 Ok(_) => {
                     tracing::info!("Successfully published health data event for sync_id: {}", sync_id);
                 },
@@ -52,7 +75,7 @@ pub async fn upload_health_data(
             }
             
             // Publish event to user-specific Redis channel for real-time notification
-            match publish_user_notification(redis, user_id, sync_id, &claims.username).await {
+            match publish_user_notification(redis, user_id, sync_id, &claims.username, &data_types).await {
                 Ok(_) => {
                     tracing::info!("Successfully published user notification for sync_id: {}", sync_id);
                 },
@@ -88,7 +111,8 @@ pub async fn upload_health_data(
 async fn publish_health_data_event(
     redis: Option<web::Data<redis::Client>>,
     user_id: Uuid,
-    sync_id: Uuid
+    sync_id: Uuid,
+    event_type: &str
 ) -> Result<(), redis::RedisError> {
     let redis_client = match redis {
         Some(client) => client,
@@ -101,7 +125,7 @@ async fn publish_health_data_event(
     let mut conn = redis_client.get_async_connection().await?;
     
     let event = serde_json::json!({
-        "event_type": "health_data_uploaded",
+        "event_type": event_type,
         "user_id": user_id.to_string(),
         "sync_id": sync_id.to_string(),
         "timestamp": Utc::now().to_rfc3339()
@@ -116,7 +140,8 @@ async fn publish_user_notification(
     redis: Option<web::Data<redis::Client>>,
     user_id: Uuid,
     sync_id: Uuid,
-    username: &str
+    username: &str,
+    data_types: &[String]
 ) -> Result<(), redis::RedisError> {
     let redis_client = match redis {
         Some(client) => client,
@@ -134,7 +159,8 @@ async fn publish_user_notification(
         "user_id": user_id.to_string(),
         "username": username,
         "sync_id": sync_id.to_string(),
-        "message": "New health data available",
+        "message": "New health data available.",
+        "data_types": data_types,
         "timestamp": Utc::now().to_rfc3339()
     });
 
@@ -150,4 +176,57 @@ async fn publish_user_notification(
         .await?;
     
     Ok(())
+}
+
+fn determine_data_types(data: &HealthDataSyncRequest) -> Vec<String> {
+    let mut data_types = Vec::new();
+    
+    if data.sleep.is_some() {
+        data_types.push("sleep".to_string());
+    }
+    
+    if data.steps.is_some() && data.steps.unwrap() > 0 {
+        data_types.push("steps".to_string());
+    }
+    
+    if data.heart_rate.is_some() {
+        data_types.push("heart_rate".to_string());
+    }
+    
+    if data.active_energy_burned.is_some() {
+        data_types.push("energy".to_string());
+    }
+    
+    if data.additional_metrics.is_some() {
+        // Extract metrics from additional_metrics
+        if let Some(ref metrics) = data.additional_metrics {
+            let json_value = serde_json::to_value(metrics).unwrap_or(serde_json::Value::Null);
+            
+            if let serde_json::Value::Object(obj) = json_value {
+                // Check for specific additional metrics we care about
+                if obj.contains_key("blood_oxygen") {
+                    data_types.push("blood_oxygen".to_string());
+                }
+                
+                if obj.contains_key("respiratory_rate") {
+                    data_types.push("respiratory".to_string());
+                }
+                
+                if obj.contains_key("hrv") {
+                    data_types.push("hrv".to_string());
+                }
+                
+                if obj.contains_key("stress_level") {
+                    data_types.push("stress".to_string());
+                }
+            }
+        }
+    }
+    
+    // If no specific types are detected, add a generic "health" type
+    if data_types.is_empty() {
+        data_types.push("health".to_string());
+    }
+    
+    data_types
 }

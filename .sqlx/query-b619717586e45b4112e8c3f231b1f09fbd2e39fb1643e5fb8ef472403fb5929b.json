@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT state_type, state_value, last_updated\n        FROM user_states\n        WHERE user_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "state_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 1,
+        "name": "state_value",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 2,
+        "name": "last_updated",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "b619717586e45b4112e8c3f231b1f09fbd2e39fb1643e5fb8ef472403fb5929b"
+}
