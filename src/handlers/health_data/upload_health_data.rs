@@ -54,23 +54,61 @@ pub async fn upload_health_data(
                     _ => "health_data_uploaded",
                 };
                 
-                match publish_health_data_event(redis.clone(), user_id, sync_id, event_type).await {
-                    Ok(_) => {
-                        tracing::info!("Successfully published {} event for sync_id: {}", event_type, sync_id);
-                    },
-                    Err(e) => {
-                        tracing::error!("Failed to publish {} event: {}", event_type, e);
+                let event = serde_json::json!({
+                    "event_type": event_type,
+                    "user_id": user_id.to_string(),
+                    "sync_id": sync_id.to_string(),
+                    "timestamp": Utc::now().to_rfc3339()
+                });
+
+                let message_str = serde_json::to_string(&event)
+                    .unwrap_or_else(|e| {
+                        tracing::error!("Failed to serialize Redis message: {}", e);
+                        "{}".to_string()
+                    });
+
+                if let Some(redis_client) = &redis {
+                    match redis_client.get_async_connection().await {
+                        Ok(mut conn) => {
+                            if let Err(e) = conn.publish::<_, String, String>("evolveme:events:health_data", message_str).await {
+                                tracing::error!("Failed to publish {} event: {}", event_type, e);
+                            } else {
+                                tracing::info!("Successfully published {} event for sync_id: {}", event_type, sync_id);
+                            }
+                        },
+                        Err(e) => {
+                            tracing::error!("Failed to get Redis connection: {}", e);
+                        }
                     }
                 }
             }
 
             // Publish event to Redis for global health data events
-            match publish_health_data_event(redis.clone(), user_id, sync_id, "health_data_uploaded").await {
-                Ok(_) => {
-                    tracing::info!("Successfully published health data event for sync_id: {}", sync_id);
-                },
-                Err(e) => {
-                    tracing::error!("Failed to publish health data event: {}", e);
+            let global_event = serde_json::json!({
+                "event_type": "health_data_uploaded",
+                "user_id": user_id.to_string(),
+                "sync_id": sync_id.to_string(),
+                "timestamp": Utc::now().to_rfc3339()
+            });
+
+            let global_message_str = serde_json::to_string(&global_event)
+                .unwrap_or_else(|e| {
+                    tracing::error!("Failed to serialize Redis message: {}", e);
+                    "{}".to_string()
+                });
+
+            if let Some(redis_client) = &redis {
+                match redis_client.get_async_connection().await {
+                    Ok(mut conn) => {
+                        if let Err(e) = conn.publish::<_, String, String>("evolveme:events:health_data", global_message_str).await {
+                            tracing::error!("Failed to publish health data event: {}", e);
+                        } else {
+                            tracing::info!("Successfully published health data event for sync_id: {}", sync_id);
+                        }
+                    },
+                    Err(e) => {
+                        tracing::error!("Failed to get Redis connection: {}", e);
+                    }
                 }
             }
             
@@ -106,34 +144,6 @@ pub async fn upload_health_data(
             HttpResponse::InternalServerError().json(response)
         }
     }
-}
-
-async fn publish_health_data_event(
-    redis: Option<web::Data<redis::Client>>,
-    user_id: Uuid,
-    sync_id: Uuid,
-    event_type: &str
-) -> Result<(), redis::RedisError> {
-    let redis_client = match redis {
-        Some(client) => client,
-        None => {
-            tracing::info!("Redis not available - skipping event publication");
-            return Ok(());
-        }
-    };
-
-    let mut conn = redis_client.get_async_connection().await?;
-    
-    let event = serde_json::json!({
-        "event_type": event_type,
-        "user_id": user_id.to_string(),
-        "sync_id": sync_id.to_string(),
-        "timestamp": Utc::now().to_rfc3339()
-    });
-
-    conn.publish::<_, String, String>("evolveme:events:health_data", event.to_string())
-        .await?;
-    Ok(())
 }
 
 async fn publish_user_notification(
