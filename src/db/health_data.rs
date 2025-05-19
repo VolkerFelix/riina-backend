@@ -1,8 +1,6 @@
 use sqlx::{Pool, Postgres, Error};
 use uuid::Uuid;
 use serde_json::Value as JsonValue;
-use sqlx::types::Json;
-use crate::models::health_data::{HealthData, SleepData, AdditionalMetrics};
 
 use crate::models::health_data::HealthDataSyncRequest;
 
@@ -29,20 +27,17 @@ pub async fn insert_health_data(
         None => JsonValue::Null,
     };
     
-    let record = sqlx::query_as!(
-        HealthData,
+    let record = sqlx::query!(
         r#"
         INSERT INTO health_data (
             user_id, device_id, timestamp, steps, heart_rate, 
             sleep, active_energy_burned, additional_metrics
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        RETURNING id, user_id, device_id, timestamp, steps, heart_rate, 
-                  sleep as "sleep: Json<SleepData>?", active_energy_burned,
-                  additional_metrics as "additional_metrics: Json<AdditionalMetrics>?", created_at
+        RETURNING id
         "#,
         user_id,
-        data.device_id,
+        &data.device_id,
         data.timestamp,
         data.steps,
         data.heart_rate,

@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO health_data (\n            user_id, device_id, timestamp, steps, heart_rate, \n            sleep, active_energy_burned, additional_metrics\n        )\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\n        RETURNING id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Varchar",
+        "Timestamptz",
+        "Int4",
+        "Float4",
+        "Jsonb",
+        "Float4",
+        "Jsonb"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "ab4d38b201ee95d33e7a7e9032784e17df7d8fdf5063c7c4e5c8beeb38902322"
+}
