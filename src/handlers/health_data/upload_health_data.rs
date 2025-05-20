@@ -70,10 +70,14 @@ pub async fn upload_health_data(
                 if let Some(redis_client) = &redis {
                     match redis_client.get_async_connection().await {
                         Ok(mut conn) => {
-                            if let Err(e) = conn.publish::<_, String, String>("evolveme:events:health_data", message_str).await {
-                                tracing::error!("Failed to publish {} event: {}", event_type, e);
-                            } else {
-                                tracing::info!("Successfully published {} event for sync_id: {}", event_type, sync_id);
+                            let pub_result: Result<i32, redis::RedisError> = conn.publish("evolveme:events:health_data", message_str).await;
+                            match pub_result {
+                                Ok(receivers) => {
+                                    tracing::info!("Successfully published {} event for sync_id: {} to {} receivers", event_type, sync_id, receivers);
+                                }
+                                Err(e) => {
+                                    tracing::error!("Failed to publish {} event: {}", event_type, e);
+                                }
                             }
                         },
                         Err(e) => {
@@ -100,10 +104,14 @@ pub async fn upload_health_data(
             if let Some(redis_client) = &redis {
                 match redis_client.get_async_connection().await {
                     Ok(mut conn) => {
-                        if let Err(e) = conn.publish::<_, String, String>("evolveme:events:health_data", global_message_str).await {
-                            tracing::error!("Failed to publish health data event: {}", e);
-                        } else {
-                            tracing::info!("Successfully published health data event for sync_id: {}", sync_id);
+                        let pub_result: Result<i32, redis::RedisError> = conn.publish("evolveme:events:health_data", global_message_str).await;
+                        match pub_result {
+                            Ok(receivers) => {
+                                tracing::info!("Successfully published health data event for sync_id: {} to {} receivers", sync_id, receivers);
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to publish health data event: {}", e);
+                            }
                         }
                     },
                     Err(e) => {
@@ -182,9 +190,15 @@ async fn publish_user_notification(
 
     // Publish to the user-specific channel
     let channel = format!("evolveme:events:user:{}", user_id.to_string());
-    conn.publish::<_, String, String>(&channel, message_str)
-        .await?;
-    
+    let pub_result: Result<i32, redis::RedisError> = conn.publish(&channel, message_str).await;
+    match pub_result {
+        Ok(receivers) => {
+            tracing::info!("Successfully published user notification for sync_id: {} to {} receivers", sync_id, receivers);
+        }
+        Err(e) => {
+            tracing::error!("Failed to publish user notification: {}", e);
+        }
+    }
     Ok(())
 }
 
