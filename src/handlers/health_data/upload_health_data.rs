@@ -78,16 +78,6 @@ pub async fn upload_health_data(
                     }
                 }
             }
-            
-            // Publish event to user-specific Redis channel for real-time notification
-            match publish_user_notification(redis, user_id, sync_id, &claims.username, &data_types).await {
-                Ok(_) => {
-                    tracing::info!("Successfully published user notification for sync_id: {}", sync_id);
-                },
-                Err(e) => {
-                    tracing::error!("Failed to publish user notification: {}", e);
-                }
-            }
 
             // Prepare successful response
             let response = HealthDataSyncResponse {
@@ -111,54 +101,6 @@ pub async fn upload_health_data(
             HttpResponse::InternalServerError().json(response)
         }
     }
-}
-
-async fn publish_user_notification(
-    redis: Option<web::Data<redis::Client>>,
-    user_id: Uuid,
-    sync_id: Uuid,
-    username: &str,
-    data_types: &[String]
-) -> Result<(), redis::RedisError> {
-    let redis_client = match redis {
-        Some(client) => client,
-        None => {
-            tracing::warn!("Redis not available - skipping user notification");
-            return Ok(());
-        }
-    };
-
-    let mut conn = redis_client.get_async_connection().await?;
-    
-    // Create notification event with details needed by the frontend
-    let notification = serde_json::json!({
-        "event_type": "new_health_data",
-        "user_id": user_id.to_string(),
-        "username": username,
-        "sync_id": sync_id.to_string(),
-        "message": "New health data available.",
-        "data_types": data_types,
-        "timestamp": Utc::now().to_rfc3339()
-    });
-
-    let message_str = serde_json::to_string(&notification)
-    .unwrap_or_else(|e| {
-        tracing::error!("Failed to serialize Redis message: {}", e);
-        "{}".to_string()
-    });
-
-    // Publish to the user-specific channel
-    let channel = format!("evolveme:events:user:{}", user_id.to_string());
-    let pub_result: Result<i32, redis::RedisError> = conn.publish(&channel, message_str).await;
-    match pub_result {
-        Ok(receivers) => {
-            tracing::info!("Successfully published user notification for sync_id: {} to {} receivers", sync_id, receivers);
-        }
-        Err(e) => {
-            tracing::error!("Failed to publish user notification: {}", e);
-        }
-    }
-    Ok(())
 }
 
 fn determine_data_types(data: &HealthDataSyncRequest) -> Vec<String> {
