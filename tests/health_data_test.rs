@@ -62,7 +62,7 @@ async fn upload_health_data_working() {
         },
         "active_energy_burned": 250.5,
         "additional_metrics": {
-            "blood_oxygen": 98.5,
+            "blood_oxygen": 98,
             "skin_temperature": 36.6
         }
     });

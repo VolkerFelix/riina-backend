@@ -74,10 +74,7 @@ impl WsConnection {
                         
                         match pubsub.subscribe(&channel).await {
                             Ok(_) => {
-                                tracing::info!("Successfully subscribed to: {}", channel);                                
-                                let global_channel = "evolveme:events:health_data";
-                                let _ = pubsub.subscribe(global_channel).await;
-                                
+                                tracing::info!("Successfully subscribed to: {}", channel);                                                                
                                 let mut stream = pubsub.on_message();
                                 addr.do_send(RedisMessage(String::from("{\"test\":\"Redis subscription active!\"}")));
                                 

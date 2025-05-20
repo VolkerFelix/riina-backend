@@ -19,7 +19,7 @@ pub struct HealthData {
     #[serde(default)]
     pub active_energy_burned: Option<f32>,
     #[serde(default)]
-    pub additional_metrics: Option<Json<serde_json::Value>>,
+    pub additional_metrics: Option<Json<AdditionalMetrics>>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -32,6 +32,15 @@ pub struct SleepData {
     pub out_bed_time: Option<i64>,
     #[serde(default)]
     pub time_in_bed: Option<f32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AdditionalMetrics {
+    pub blood_oxygen: Option<i16>,
+    pub rest_heart_rate: Option<i16>,
+    pub heart_rate_variability: Option<i16>,
+    pub respiratory_rate: Option<i16>,
+    pub stress_level: Option<i16>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -47,7 +56,7 @@ pub struct HealthDataSyncRequest {
     #[serde(default)]
     pub active_energy_burned: Option<f32>,
     #[serde(default)]
-    pub additional_metrics: Option<Json<serde_json::Value>>,
+    pub additional_metrics: Option<AdditionalMetrics>,
 }
 
 #[derive(Debug, Serialize)]

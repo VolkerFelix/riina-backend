@@ -1,6 +1,6 @@
 use actix_web::{get, post, web, HttpResponse};
+use crate::handlers::health_data::get_user_health_state::get_user_health_state;
 use crate::handlers::health_data::upload_health_data::upload_health_data;
-use crate::handlers::health_data::get_health_data::get_health_data;
 use crate::middleware::auth::Claims;
 use crate::models::health_data::HealthDataSyncRequest;
 
@@ -14,10 +14,10 @@ async fn upload_health(
     upload_health_data(data, pool, redis, claims).await
 }
 
-#[get("/data")]
-async fn get_health(
+#[get("/state")]
+async fn get_state(
     pool: web::Data<sqlx::PgPool>,
     claims: web::ReqData<Claims>
 ) -> HttpResponse {
-    get_health_data(pool, claims).await
+    get_user_health_state(pool, claims).await
 }

@@ -9,7 +9,7 @@ use crate::config::jwt::JwtSettings;
 use tracing;
 
 pub use connection::WsConnection;
-pub use messages::{RedisMessage, TokenQuery};
+pub use messages::TokenQuery;
 pub use auth::decode_token;
 
 // WebSocket route handler that supports both Authorization header and query parameter
