@@ -2,18 +2,21 @@ use std::env;
 use config::{Config, File, ConfigError};
 use dotenv::dotenv;
 use secrecy::{ExposeSecret, SecretString};
+use serde::Deserialize;
 
 use crate::config::jwt::JwtSettings;
 use crate::config::redis::RedisSettings;
-#[derive(serde::Deserialize, Debug)]
+
+#[derive(Deserialize, Debug)]
 pub struct Settings{
     pub database: DatabaseSettings,
     pub application: ApplicationSettings,
     pub jwt: JwtSettings,
-    pub redis: RedisSettings
+    pub redis: RedisSettings,
+    pub llm: LLMSettings
 }
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
 pub struct DatabaseSettings{
     pub user: String,
     pub password: SecretString,
@@ -45,13 +48,22 @@ impl DatabaseSettings {
     }
 }
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
 pub struct ApplicationSettings{
     pub user: String,
     pub password: SecretString, 
     pub port: u16,
     pub host: String,
     pub log_level: String
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LLMSettings {
+    pub service_url: String,
+    pub timeout_seconds: u64,
+    pub max_retries: usize,
+    pub model_name: String,
+    pub enabled: bool,
 }
 
 pub fn get_config() -> Result<Settings, ConfigError> {
@@ -85,6 +97,12 @@ pub fn get_config() -> Result<Settings, ConfigError> {
         .add_source(
             config::Environment::default()
                 .prefix("REDIS")
+                .prefix_separator("__")
+                .separator("__")
+        )
+        .add_source(
+            config::Environment::default()
+                .prefix("LLM")
                 .prefix_separator("__")
                 .separator("__")
         )
