@@ -30,9 +30,10 @@ async fn main() -> std::io::Result<()> {
             Some(client)
         },
         Err(e) => {
-            tracing::warn!("Failed to create Redis client: {}. Continuing without Redis.", e);
+            tracing::error!("Failed to create Redis client: {}. LLM features will not work properly.", e);
             eprintln!("Failed to create Redis client: {}", e);
-            None
+            eprintln!("Redis is required for LLM integration. Please ensure Redis is running.");
+            std::process::exit(1);
         }
     };
     // Initialize conversation service

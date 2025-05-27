@@ -15,20 +15,20 @@ use crate::models::conversation::{
 };
 use redis::AsyncCommands;
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 pub struct GenerateThoughtRequest {
     pub trigger: Option<String>,
     pub context: Option<serde_json::Value>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 pub struct UserResponseRequest {
     pub response_id: String,
     pub response_text: String,
     pub conversation_id: Uuid,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 pub struct UpdateReactionRequest {
     pub message_id: Uuid,
     pub reaction_type: String, // "positive", "negative", "neutral", "curious", "dismissive"
@@ -285,7 +285,7 @@ pub async fn handle_user_response(
             }
 
             // Potentially evolve personality based on interaction
-            if let Ok(Some(personality_change)) = conversation_service.evolve_personality(&user_id, "user_interaction").await {
+            if let Ok(Some(personality_change)) = conversation_service.evolve_personality(&user_id).await {
                 tracing::info!("Twin personality evolved: {:?}", personality_change);
             }
 
@@ -511,7 +511,7 @@ pub async fn trigger_health_reaction(
 
 // Helper functions
 
-async fn get_user_health_context(user_id: &Uuid) -> Option<HealthContext> {
+async fn get_user_health_context(_user_id: &Uuid) -> Option<HealthContext> {
     // TODO: Implement based on your health data structure
     // This should pull from your existing health data tables
     Some(HealthContext::default())

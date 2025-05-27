@@ -10,7 +10,7 @@ use crate::models::conversation::{
 
 #[derive(Clone)]
 pub struct ConversationService {
-    redis_client: redis::Client,
+    pub redis_client: redis::Client,
 }
 
 impl ConversationService {
@@ -46,6 +46,23 @@ impl ConversationService {
                 Ok(new_context)
             }
         }
+    }
+
+    /// Publish a twin message to WebSocket via Redis
+    pub async fn publish_twin_message(
+        &self,
+        user_id: &Uuid,
+        message: &crate::models::llm::TwinWebSocketMessage,
+    ) -> Result<(), ConversationError> {
+        let mut conn = self.redis_client.get_async_connection().await?;
+        
+        let channel = format!("evolveme:events:user:{}", user_id);
+        let message_json = serde_json::to_string(message)?;
+        
+        let _: i32 = conn.publish(&channel, message_json).await?;
+        
+        tracing::debug!("Published twin message to WebSocket channel: {}", channel);
+        Ok(())
     }
 
     /// Save conversation context to Redis

@@ -6,7 +6,7 @@ use chrono::Utc;
 
 use crate::models::llm::{
     TwinRequest, TwinResponse, LLMError, TwinMessageType, 
-    ResponseMetadata, SuggestedResponse
+    ResponseMetadata, SuggestedResponse, TwinTrigger
 };
 
 #[derive(Clone)]
@@ -112,34 +112,109 @@ impl LLMService {
     fn generate_fallback_response(&self, request: &TwinRequest) -> TwinResponse {
         let world_state = &request.health_context.world_state;
         
-        let (content, mood) = match world_state.as_str() {
-            "stressed" => (
+        tracing::debug!("Generating fallback response for world state: {}", world_state);
+        
+        // Determine message type based on trigger
+        let message_type = match &request.trigger {
+            TwinTrigger::HealthDataUpdate => TwinMessageType::Reaction,
+            TwinTrigger::UserMessage(_) => TwinMessageType::ThoughtBubble,
+            TwinTrigger::RandomThought => TwinMessageType::ThoughtBubble,
+            TwinTrigger::WorldStateChange { .. } => TwinMessageType::Reaction,
+            TwinTrigger::MissionCompleted(_) => TwinMessageType::Celebration,
+            TwinTrigger::TimeBasedCheck => TwinMessageType::CheckIn,
+        };
+        
+        let (content, mood) = match (&request.trigger, world_state.as_str()) {
+            // Health data update reactions
+            (TwinTrigger::HealthDataUpdate, "stressed") => (
+                "Whoa! I can feel the stress waves radiating through our connection! 😵‍💫 Let's find some calm in this storm.",
+                "concerned"
+            ),
+            (TwinTrigger::HealthDataUpdate, "sedentary") => (
+                "I see we're in full couch-potato mode! 🥔 My circuits are getting a bit sluggish too...",
+                "lazy"
+            ),
+            (TwinTrigger::HealthDataUpdate, "sleepy") => (
+                "Detecting major drowsiness levels! 😴 Even my digital eyelids are getting heavy...",
+                "drowsy"
+            ),
+            (TwinTrigger::HealthDataUpdate, "active") => (
+                "ENERGY SURGE DETECTED! ⚡ I'm practically bouncing off the digital walls right now!",
+                "energetic"
+            ),
+            (TwinTrigger::HealthDataUpdate, "balanced") => (
+                "Ahh, perfect harmony! 🧘‍♀️ Everything feels just right in our world.",
+                "content"
+            ),
+            (TwinTrigger::HealthDataUpdate, _) => (
+                "New health data incoming! 📊 Let me process these fascinating biometrics...",
+                "curious"
+            ),
+            
+            // World state change reactions
+            (TwinTrigger::WorldStateChange { from, to }, _) => {
+                match (from.as_str(), to.as_str()) {
+                    (_, "active") => ("Woah! Energy levels are SOARING! 🚀", "energetic"),
+                    (_, "stressed") => ("Uh oh, things are getting intense in here... 😰", "worried"),
+                    (_, "sleepy") => ("Everything is getting... so... sleepy... 😴", "drowsy"),
+                    (_, "balanced") => ("Ahh, much better! Balance restored! ⚖️", "relieved"),
+                    _ => ("Something's shifting in my world... 🌍", "curious")
+                }
+            },
+            
+            // User message responses
+            (TwinTrigger::UserMessage(_), _) => (
+                "I hear you! Let me think about that... 🤔",
+                "thoughtful"
+            ),
+            
+            // Mission completed
+            (TwinTrigger::MissionCompleted(_), _) => (
+                "Mission accomplished! 🎉 We make a great team!",
+                "celebratory"
+            ),
+            
+            // Time-based check-ins
+            (TwinTrigger::TimeBasedCheck, _) => (
+                "Just checking in! How are things going? 👋",
+                "friendly"
+            ),
+            
+            // Random thoughts based on world state - THIS IS THE KEY PART
+            (TwinTrigger::RandomThought, "stressed") => (
                 "I'm feeling a bit scattered right now... like my thoughts are doing jumping jacks! 🤸‍♂️",
                 "scattered"
             ),
-            "sedentary" => (
+            (TwinTrigger::RandomThought, "sedentary") => (
                 "I've been practicing my advanced couch-sitting techniques. I'm getting really good at it! 🛋️",
                 "lazy"
             ),
-            "sleepy" => (
+            (TwinTrigger::RandomThought, "sleepy") => (
                 "*yawn* Did someone say something? I was just resting my eyes... for the past hour... 😴",
                 "drowsy"
             ),
-            "active" => (
+            (TwinTrigger::RandomThought, "active") => (
                 "I'm feeling AMAZING! Like I could run a marathon... or at least think about running one! 🏃‍♂️",
                 "energetic"
             ),
-            _ => (
-                "Just hanging out, living my best digital life! How are you doing? 😊",
+            (TwinTrigger::RandomThought, "balanced") => (
+                "Everything's in perfect harmony right now! It's like digital zen! ✨",
                 "content"
-            )
+            ),
+            // Make sure to handle any unknown world states for random thoughts
+            (TwinTrigger::RandomThought, _) => (
+                "Hmm, I'm in an interesting state: {}... Let me contemplate this! 🤔",
+                "curious"
+            ),
         };
+
+        tracing::debug!("Generated fallback content for {}: {}", world_state, content);
 
         TwinResponse {
             id: Uuid::new_v4(),
             content: content.to_string(),
             mood: mood.to_string(),
-            message_type: TwinMessageType::ThoughtBubble,
+            message_type,
             suggested_responses: vec![
                 SuggestedResponse {
                     id: "response_1".to_string(),
@@ -197,26 +272,35 @@ impl LLMService {
     }
 
     fn generate_quick_fallback_reaction(&self, request: &TwinRequest) -> TwinResponse {
-        let content = match &request.trigger {
-            crate::models::llm::TwinTrigger::HealthDataUpdate => {
-                "Ooh, new data! Let me process this... 🤔"
-            }
-            crate::models::llm::TwinTrigger::WorldStateChange { from: _, to } => {
-                match to.as_str() {
-                    "active" => "Woah! I'm feeling the energy! ⚡",
-                    "stressed" => "Things are getting a bit intense in here... 😵‍💫",
-                    "sleepy" => "Everything is getting... so... sleepy... 😴",
-                    _ => "Something's changing in my world... 🌍"
+        let (content, message_type) = match &request.trigger {
+            TwinTrigger::HealthDataUpdate => {
+                let health_score = request.health_context.health_score;
+                let energy_score = request.health_context.energy_score;
+                
+                if health_score > 80 && energy_score > 80 {
+                    ("Wow! Your vitals are looking amazing! I'm practically glowing over here! ✨", TwinMessageType::Reaction)
+                } else if health_score < 50 || energy_score < 50 {
+                    ("I'm sensing some challenges in the data... let's work on this together! 💪", TwinMessageType::Reaction)
+                } else {
+                    ("Ooh, new data! Let me process this... 🤔", TwinMessageType::Reaction)
                 }
             }
-            _ => "Something interesting just happened! 🎉"
+            TwinTrigger::WorldStateChange { from: _, to } => {
+                match to.as_str() {
+                    "active" => ("Woah! I'm feeling the energy! ⚡", TwinMessageType::Reaction),
+                    "stressed" => ("Things are getting a bit intense in here... 😵‍💫", TwinMessageType::Reaction),
+                    "sleepy" => ("Everything is getting... so... sleepy... 😴", TwinMessageType::Reaction),
+                    _ => ("Something's changing in my world... 🌍", TwinMessageType::Reaction)
+                }
+            }
+            _ => ("Something interesting just happened! 🎉", TwinMessageType::ThoughtBubble)
         };
 
         TwinResponse {
             id: Uuid::new_v4(),
             content: content.to_string(),
             mood: "processing".to_string(),
-            message_type: TwinMessageType::Reaction,
+            message_type,
             suggested_responses: vec![],
             personality_evolution: None,
             metadata: ResponseMetadata {
