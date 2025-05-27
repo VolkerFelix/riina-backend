@@ -70,9 +70,8 @@ pub async fn generate_twin_thought(
         }
     };
 
-    // Get user's current health context
-    let health_context = get_user_health_context(&user_id).await
-        .unwrap_or_default();
+    // Get user's current health context from the request context
+    let health_context = extract_health_context_from_request(&req).unwrap_or_default();
 
     // Convert conversation context to LLM format
     let conversation_history = conversation_context.recent_messages
@@ -146,12 +145,12 @@ pub async fn generate_twin_thought(
                 tracing::error!("Failed to store conversation message: {:?}", e);
             }
 
-            // Send via WebSocket
+            // Send via WebSocket if Redis is available
             let ws_message = TwinWebSocketMessage::TwinThought {
                 response: response.clone(),
                 requires_response: !response.suggested_responses.is_empty(),
             };
-            let _ = publish_to_websocket_redis(&conversation_service, &user_id, &ws_message).await;
+            let _ = conversation_service.publish_twin_message(&user_id, &ws_message).await;
 
             Ok(HttpResponse::Ok().json(response))
         }
@@ -515,6 +514,43 @@ async fn get_user_health_context(_user_id: &Uuid) -> Option<HealthContext> {
     // TODO: Implement based on your health data structure
     // This should pull from your existing health data tables
     Some(HealthContext::default())
+}
+
+fn extract_health_context_from_request(req: &GenerateThoughtRequest) -> Option<HealthContext> {
+    if let Some(context) = &req.context {
+        let health_score = context.get("health_score")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(70) as i32;
+        
+        let energy_score = context.get("energy_score")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(70) as i32;
+        
+        let stress_score = context.get("stress_score")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(50) as i32;
+        
+        let cognitive_score = context.get("cognitive_score")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(70) as i32;
+
+        let world_state = context.get("world_state")
+            .and_then(|v| v.as_str())
+            .unwrap_or("balanced")
+            .to_string();
+
+        Some(HealthContext {
+            overall_health: health_score,
+            health_score,
+            energy_score,
+            cognitive_score,
+            stress_score,
+            world_state,
+            recent_changes: vec![],
+        })
+    } else {
+        None
+    }
 }
 
 fn extract_health_context_from_data(health_data: &serde_json::Value) -> Result<HealthContext> {

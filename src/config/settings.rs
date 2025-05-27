@@ -63,7 +63,6 @@ pub struct LLMSettings {
     pub timeout_seconds: u64,
     pub max_retries: usize,
     pub model_name: String,
-    pub enabled: bool,
 }
 
 pub fn get_config() -> Result<Settings, ConfigError> {

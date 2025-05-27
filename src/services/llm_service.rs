@@ -1,5 +1,4 @@
-use std::time::{Duration, Instant};
-use reqwest::Client;
+use std::time::Instant;
 use tokio_retry::{strategy::FixedInterval, Retry};
 use uuid::Uuid;
 use chrono::Utc;
@@ -8,28 +7,25 @@ use crate::models::llm::{
     TwinRequest, TwinResponse, LLMError, TwinMessageType, 
     ResponseMetadata, SuggestedResponse, TwinTrigger
 };
+use crate::services::ollama::ollama::Ollama;
 
 #[derive(Clone)]
 pub struct LLMService {
-    client: Client,
-    base_url: String,
-    timeout: Duration,
+    ollama: Ollama,
     max_retries: usize,
 }
 
 impl LLMService {
-    pub fn new(base_url: String) -> Self {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()
-            .expect("Failed to create HTTP client");
-
+    pub fn new(model_name: String, base_url: String) -> Self {
         Self {
-            client,
-            base_url,
-            timeout: Duration::from_secs(25),
+            ollama: Ollama::new(model_name, base_url),
             max_retries: 3,
         }
+    }
+
+    /// Health check for LLM service
+    pub async fn health_check(&self) -> bool {
+        self.ollama.health_check().await
     }
 
     /// Generate twin response with retry logic
@@ -39,7 +35,7 @@ impl LLMService {
         let retry_strategy = FixedInterval::from_millis(1000).take(self.max_retries);
         
         let result = Retry::spawn(retry_strategy, || {
-            self.call_llm_service(request.clone())
+            self.ollama.call(request.clone())
         }).await;
 
         match result {
@@ -53,58 +49,6 @@ impl LLMService {
                 // Return fallback response if LLM service is down
                 Ok(self.generate_fallback_response(&request))
             }
-        }
-    }
-
-    /// Make actual HTTP call to LLM service
-    async fn call_llm_service(&self, request: TwinRequest) -> Result<TwinResponse, LLMError> {
-        tracing::debug!("Calling LLM service for user: {}", request.user_id);
-
-        let response = self.client
-            .post(&format!("{}/generate_twin_response", self.base_url))
-            .json(&request)
-            .timeout(self.timeout)
-            .send()
-            .await
-            .map_err(|e| {
-                if e.is_timeout() {
-                    LLMError::Timeout
-                } else {
-                    LLMError::NetworkError(e)
-                }
-            })?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response.text().await.unwrap_or_default();
-            
-            return Err(match status.as_u16() {
-                429 => LLMError::RateLimited,
-                500..=599 => LLMError::ServiceUnavailable(error_text),
-                _ => LLMError::InvalidResponse(format!("HTTP {}: {}", status, error_text))
-            });
-        }
-
-        let llm_response: TwinResponse = response.json().await?;
-        
-        // Validate response
-        if llm_response.content.is_empty() {
-            return Err(LLMError::InvalidResponse("Empty content".to_string()));
-        }
-
-        Ok(llm_response)
-    }
-
-    /// Health check for LLM service
-    pub async fn health_check(&self) -> bool {
-        match self.client
-            .get(&format!("{}/health", self.base_url))
-            .timeout(Duration::from_secs(5))
-            .send()
-            .await
-        {
-            Ok(response) => response.status().is_success(),
-            Err(_) => false,
         }
     }
 
@@ -241,73 +185,6 @@ impl LLMService {
                 model_used: "fallback".to_string(),
                 generation_time_ms: 0,
                 confidence_score: Some(0.8),
-                context_tokens: None,
-            },
-        }
-    }
-
-    /// Quick response for immediate reactions (like health data updates)
-    pub async fn generate_quick_reaction(&self, request: TwinRequest) -> Result<TwinResponse, LLMError> {
-        // For quick reactions, we want faster turnaround, so shorter timeout
-        let quick_client = Client::builder()
-            .timeout(Duration::from_secs(10))
-            .build()
-            .expect("Failed to create quick HTTP client");
-
-        let response = quick_client
-            .post(&format!("{}/generate_quick_reaction", self.base_url))
-            .json(&request)
-            .send()
-            .await;
-
-        match response {
-            Ok(resp) if resp.status().is_success() => {
-                Ok(resp.json().await?)
-            }
-            _ => {
-                // Quick fallback for immediate reactions
-                Ok(self.generate_quick_fallback_reaction(&request))
-            }
-        }
-    }
-
-    fn generate_quick_fallback_reaction(&self, request: &TwinRequest) -> TwinResponse {
-        let (content, message_type) = match &request.trigger {
-            TwinTrigger::HealthDataUpdate => {
-                let health_score = request.health_context.health_score;
-                let energy_score = request.health_context.energy_score;
-                
-                if health_score > 80 && energy_score > 80 {
-                    ("Wow! Your vitals are looking amazing! I'm practically glowing over here! ✨", TwinMessageType::Reaction)
-                } else if health_score < 50 || energy_score < 50 {
-                    ("I'm sensing some challenges in the data... let's work on this together! 💪", TwinMessageType::Reaction)
-                } else {
-                    ("Ooh, new data! Let me process this... 🤔", TwinMessageType::Reaction)
-                }
-            }
-            TwinTrigger::WorldStateChange { from: _, to } => {
-                match to.as_str() {
-                    "active" => ("Woah! I'm feeling the energy! ⚡", TwinMessageType::Reaction),
-                    "stressed" => ("Things are getting a bit intense in here... 😵‍💫", TwinMessageType::Reaction),
-                    "sleepy" => ("Everything is getting... so... sleepy... 😴", TwinMessageType::Reaction),
-                    _ => ("Something's changing in my world... 🌍", TwinMessageType::Reaction)
-                }
-            }
-            _ => ("Something interesting just happened! 🎉", TwinMessageType::ThoughtBubble)
-        };
-
-        TwinResponse {
-            id: Uuid::new_v4(),
-            content: content.to_string(),
-            mood: "processing".to_string(),
-            message_type,
-            suggested_responses: vec![],
-            personality_evolution: None,
-            metadata: ResponseMetadata {
-                generated_at: Utc::now(),
-                model_used: "quick_fallback".to_string(),
-                generation_time_ms: 0,
-                confidence_score: Some(0.9),
                 context_tokens: None,
             },
         }

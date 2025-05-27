@@ -29,7 +29,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/llm")
             .wrap(AuthMiddleware)
-            .service(llm::generate_twin_thought)
+            .service(llm::generate_thought)
             .service(llm::handle_user_response)
             .service(llm::get_twin_history)
             .service(llm::update_user_reaction)

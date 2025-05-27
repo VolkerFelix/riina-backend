@@ -39,9 +39,9 @@ async fn main() -> std::io::Result<()> {
     // Initialize conversation service
     let conversation_service = ConversationService::new(redis_client.clone().unwrap());
     // Initialize LLM service
-    let llm_service = if config.llm.enabled {
+    let llm_service = {
         tracing::info!("Initializing LLM service at: {}", config.llm.service_url);
-        let service = LLMService::new(config.llm.service_url.clone());
+        let service = LLMService::new(config.llm.model_name.clone(), config.llm.service_url.clone());
         
         // Test LLM service health
         if service.health_check().await {
@@ -50,9 +50,6 @@ async fn main() -> std::io::Result<()> {
             tracing::warn!("LLM service health check failed - will use fallback responses");
         }
         service
-    } else {
-        tracing::info!("LLM service disabled in configuration");
-        LLMService::new("http://disabled".to_string())
     };
     // Only try to establish connection when actually used
     let conection_pool = PgPoolOptions::new()

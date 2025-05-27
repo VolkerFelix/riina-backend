@@ -217,7 +217,6 @@ if [ -f "configuration/local.yml" ]; then
     echo "llm:"
     echo "  service_url: \"http://localhost:11434\""
     echo "  model_name: \"$LLM_MODEL\""
-    echo "  enabled: true"
     echo "  timeout_seconds: 30"
     echo "  max_retries: 3"
     echo ""
