@@ -38,11 +38,8 @@ jobs:
             ports:
               - 11434:11434
             options: >-
-              --health-cmd "curl -s http://localhost:11434/api/version || exit 1"
-              --health-interval 30s
-              --health-timeout 10s
-              --health-retries 10
-              --health-start-period 40s
+              --memory=4g
+              --cpus=2
         
         env:
           POSTGRES__DATABASE__USER: ${{ secrets.POSTGRES_USER }}
@@ -102,28 +99,28 @@ jobs:
 
             - name: Wait for Ollama and pull model
               run: |
-                # Wait for Ollama to be ready
-                for i in {1..30}; do
-                  if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+                # Wait for Ollama to be ready with increased timeout
+                for i in {1..60}; do
+                  if curl -s http://localhost:11434/api/version > /dev/null 2>&1; then
                     echo "Ollama is ready!"
                     break
                   fi
-                  echo "Waiting for Ollama to be ready... (attempt $i/30)"
-                  sleep 5
+                  echo "Waiting for Ollama to be ready... (attempt $i/60)"
+                  sleep 10
                 done
                 
-                # Pull the model
+                # Pull the model with increased timeout
                 echo "Pulling LLM model..."
-                curl -X POST http://localhost:11434/api/pull -d "{\"name\": \"$LLM_MODEL\"}"
+                curl -X POST http://localhost:11434/api/pull -d "{\"name\": \"$LLM_MODEL\"}" --max-time 300
                 
-                # Wait for model to be ready
-                for i in {1..30}; do
+                # Wait for model to be ready with increased timeout
+                for i in {1..60}; do
                   if curl -s http://localhost:11434/api/tags | grep -q "$LLM_MODEL"; then
                     echo "Model is ready!"
                     break
                   fi
-                  echo "Waiting for model to be ready... (attempt $i/30)"
-                  sleep 5
+                  echo "Waiting for model to be ready... (attempt $i/60)"
+                  sleep 10
                 done
   
             - name: Create app user in Postgres
