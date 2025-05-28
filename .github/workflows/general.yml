@@ -37,6 +37,11 @@ jobs:
               OLLAMA_PORT: 11434
             ports:
               - 11434:11434
+            options: >-
+              --health-cmd "curl -s http://localhost:11434/api/tags"
+              --health-interval 10s
+              --health-timeout 5s
+              --health-retries 5
         
         env:
           POSTGRES__DATABASE__USER: ${{ secrets.POSTGRES_USER }}
@@ -92,6 +97,32 @@ jobs:
                   fi
                   echo "Waiting for Redis to be ready..."
                   sleep 2
+                done
+
+            - name: Wait for Ollama and pull model
+              run: |
+                # Wait for Ollama to be ready
+                for i in {1..30}; do
+                  if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+                    echo "Ollama is ready!"
+                    break
+                  fi
+                  echo "Waiting for Ollama to be ready... (attempt $i/30)"
+                  sleep 5
+                done
+                
+                # Pull the model
+                echo "Pulling LLM model..."
+                curl -X POST http://localhost:11434/api/pull -d "{\"name\": \"$LLM_MODEL\"}"
+                
+                # Wait for model to be ready
+                for i in {1..30}; do
+                  if curl -s http://localhost:11434/api/tags | grep -q "$LLM_MODEL"; then
+                    echo "Model is ready!"
+                    break
+                  fi
+                  echo "Waiting for model to be ready... (attempt $i/30)"
+                  sleep 5
                 done
   
             - name: Create app user in Postgres
