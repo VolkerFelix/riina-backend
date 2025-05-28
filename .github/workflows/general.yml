@@ -38,10 +38,11 @@ jobs:
             ports:
               - 11434:11434
             options: >-
-              --health-cmd "curl -s http://localhost:11434/api/tags"
-              --health-interval 10s
-              --health-timeout 5s
-              --health-retries 5
+              --health-cmd "curl -s http://localhost:11434/api/version || exit 1"
+              --health-interval 30s
+              --health-timeout 10s
+              --health-retries 10
+              --health-start-period 40s
         
         env:
           POSTGRES__DATABASE__USER: ${{ secrets.POSTGRES_USER }}
