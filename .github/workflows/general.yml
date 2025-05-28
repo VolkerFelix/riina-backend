@@ -45,11 +45,15 @@ jobs:
           APP__APPLICATION__PASSWORD: ${{ secrets.APP_PASSWORD }}
           APP_ENVIRONMENT: local
           REDIS__REDIS__PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          LLM_MODEL: llama3.2:3b-instruct-q4_K_M
 
         steps:
             - name: Check out repository code
               uses: actions/checkout@v4
     
+            - name: Install Docker
+              uses: docker/setup-buildx-action@v3
+
             - name: Install the Rust toolchain
               uses: actions-rust-lang/setup-rust-toolchain@v1
 
