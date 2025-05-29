@@ -54,7 +54,7 @@ pub async fn spawn_app() -> TestApp {
     let jwt_settings = get_jwt_settings(&configuration);
     let redis_client = redis::Client::open(get_redis_url(&configuration).expose_secret())
         .ok();
-    let llm_service = LLMService::new(configuration.llm.service_url.clone());
+    let llm_service = LLMService::new(configuration.llm.service_url.clone(), configuration.llm.model_name.clone());
     let conversation_service = ConversationService::new(redis_client.clone().unwrap());
     let server = run(
         listener, 

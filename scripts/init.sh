@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
+# Detect if we're in CI environment
+if [ -n "${CI}" ]; then
+    echo "🔧 CI environment detected - using service containers"
+    exec "$(dirname "$0")/init_db_and_redis.sh"
+fi
+
+echo "🔧 Local development environment detected - using Docker containers"
+
 if ! [ -x "$(command -v psql)" ]; then
     echo >&2 "Error: psql is not installed."
     exit 1
@@ -25,18 +33,12 @@ if ! [ -x "$(command -v docker)" ]; then
     exit 1
 fi
 
-# Load .env file if not in CI environment (e.g., GitHub Actions)
-if [ -z "${CI}" ]; then
-    # Load .env file
-    PARENT_DIR="$(dirname "$(pwd)")"
-    if [ -f .env ]; then
-        export $(grep -v '^#' .env | xargs)
-    else
-        echo ".env file not found."
-        exit 1
-    fi
+# Load .env file for local development
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | xargs)
 else
-    echo "CI environment detected - Skipping loading .env file."
+    echo ".env file not found."
+    exit 1
 fi
 
 # Default LLM model - can be overridden via environment variable
@@ -210,14 +212,3 @@ echo "Redis: localhost:6379"
 echo "Ollama: http://localhost:11434"
 echo "LLM Model: $LLM_MODEL"
 echo ""
-
-# Optional: Update configuration file
-if [ -f "configuration/local.yml" ]; then
-    echo "📝 Configuration suggestions for configuration/local.yml:"
-    echo "llm:"
-    echo "  service_url: \"http://localhost:11434\""
-    echo "  model_name: \"$LLM_MODEL\""
-    echo "  timeout_seconds: 30"
-    echo "  max_retries: 3"
-    echo ""
-fi
