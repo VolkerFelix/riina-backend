@@ -41,7 +41,7 @@ jobs:
           APP_ENVIRONMENT: local
           REDIS__REDIS__PASSWORD: ${{ secrets.REDIS_PASSWORD }}
           LLM__LLM__SERVICE_URL: http://localhost:11434
-          LLM__LLM__MODEL: llama3.2:1b-instruct-q4_K_M  # Use smaller model for CI
+          LLM__LLM__MODEL_NAME: llama3.2:1b-instruct-q4_K_M  # Use smaller model for CI
           DATABASE_URL: postgres://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/evolveme_db
 
         steps:
