@@ -105,12 +105,12 @@ jobs:
 
             - name: Pull and test LLM model
               run: |
-                echo "Pulling model: $LLM__LLM__MODEL"
-                if timeout 300 ollama pull $LLM__LLM__MODEL; then
+                echo "Pulling model: $LLM__LLM__MODEL_NAME"
+                if timeout 300 ollama pull $LLM__LLM__MODEL_NAME; then
                   echo "✅ Model pulled successfully"
                   
                   echo "Testing model..."
-                  if response=$(timeout 60 ollama run $LLM__LLM__MODEL "Say 'OK' if you understand" 2>/dev/null); then
+                  if response=$(timeout 60 ollama run $LLM__LLM__MODEL_NAME "Say 'OK' if you understand" 2>/dev/null); then
                     echo "Model response: $response"
                     if [[ "$response" =~ [Oo][Kk] ]]; then
                       echo "✅ Model is working correctly"
