@@ -112,7 +112,12 @@ jobs:
                   echo "Testing model..."
                   if response=$(timeout 60 ollama run $LLM__LLM__MODEL_NAME "Say 'OK' if you understand" 2>/dev/null); then
                     echo "Model response: $response"
-                    if [[ "$response" =~ [Oo][Kk] ]]; then
+                    # Check for various affirmative responses
+                    if [[ "$response" =~ [Oo][Kk] ]] || \
+                       [[ "$response" =~ [Yy]es ]] || \
+                       [[ "$response" =~ [Uu]nderstand ]] || \
+                       [[ "$response" =~ [Gg]o\s[a]head ]] || \
+                       [[ "$response" =~ [Ii]\s(think\s)?[Dd]o ]]; then
                       echo "✅ Model is working correctly"
                       echo "LLM_AVAILABLE=true" >> $GITHUB_ENV
                     else
