@@ -104,7 +104,6 @@ jobs:
                 fi
 
             - name: Pull and test LLM model
-              continue-on-error: true  # Don't fail the entire job if model pull fails
               run: |
                 echo "Pulling model: $LLM__LLM__MODEL"
                 if timeout 300 ollama pull $LLM__LLM__MODEL; then
@@ -119,14 +118,24 @@ jobs:
                     else
                       echo "⚠️ Model test gave unexpected response"
                       echo "LLM_AVAILABLE=false" >> $GITHUB_ENV
+                      exit 1
                     fi
                   else
                     echo "⚠️ Model test timed out or failed"
                     echo "LLM_AVAILABLE=false" >> $GITHUB_ENV
+                    exit 1
                   fi
                 else
                   echo "❌ Model pull failed or timed out"
                   echo "LLM_AVAILABLE=false" >> $GITHUB_ENV
+                  exit 1
+                fi
+
+            - name: Verify LLM availability
+              run: |
+                if [ "$LLM_AVAILABLE" != "true" ]; then
+                  echo "❌ LLM is not available. Aborting workflow."
+                  exit 1
                 fi
 
             - name: Setup database and services
@@ -141,20 +150,18 @@ jobs:
               run: |
                 cargo sqlx prepare --workspace -- --all-targets
 
-            - name: Run tests with LLM fallback
+            - name: Run tests with LLM
               env:
                 RUSTFLAGS: "-A warnings"
                 SQLX_OFFLINE: false
-                # Allow tests to use fallback responses if LLM fails
-                ALLOW_LLM_FALLBACK: true
               run: |
                 echo "Running tests..."
                 if [ "$LLM_AVAILABLE" = "true" ]; then
                   echo "Running tests with LLM enabled"
                   cargo test --all -- --test-threads=1
                 else
-                  echo "Running tests with LLM fallback mode"
-                  FORCE_LLM_FALLBACK=true cargo test --all -- --test-threads=1
+                  echo "Running tests with LLM"
+                  cargo test --all -- --test-threads=1
                 fi
                 
             - name: Check SQLx queries are fresh
@@ -171,89 +178,9 @@ jobs:
                   kill $OLLAMA_PID || true
                 fi
 
-    test_without_llm:
-        name: Test without LLM (Fallback mode)
-        runs-on: ubuntu-latest
-        
-        services:
-          postgres:
-            image: postgres:14
-            env:
-              POSTGRES_USER: ${{secrets.POSTGRES_USER}}
-              POSTGRES_PASSWORD: ${{secrets.POSTGRES_PASSWORD}}
-              POSTGRES_DB: evolveme_db
-            ports:
-              - 5432:5432
-          
-          redis:
-            image: bitnami/redis:latest
-            env:
-              REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
-            ports:
-              - 6379:6379
-        
-        env:
-          POSTGRES__DATABASE__USER: ${{ secrets.POSTGRES_USER }}
-          POSTGRES__DATABASE__PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          APP__APPLICATION__USER: ${{ secrets.APP_USER }}
-          APP__APPLICATION__PASSWORD: ${{ secrets.APP_PASSWORD }}
-          APP_ENVIRONMENT: local
-          REDIS__REDIS__PASSWORD: ${{ secrets.REDIS_PASSWORD }}
-          LLM__LLM__SERVICE_URL: http://localhost:8082  # Non-existent URL to force fallback
-          LLM__LLM__MODEL: fallback-model
-          DATABASE_URL: postgres://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/evolveme_db
-          FORCE_LLM_FALLBACK: true
-
-        steps:
-            - name: Check out repository code
-              uses: actions/checkout@v4
-    
-            - name: Install the Rust toolchain
-              uses: actions-rust-lang/setup-rust-toolchain@v1
-
-            - name: Install system dependencies
-              run: |
-                sudo apt-get update
-                sudo apt-get install -y postgresql-client redis-tools
-
-            - name: Install sqlx-cli
-              run: |
-                cargo install sqlx-cli \
-                  --version=${{ vars.SQLX_CLI_VERSION || '0.8.3' }} \
-                  --features ${{ vars.SQLX_CLI_FEATURES || 'postgres' }} \
-                  --no-default-features \
-                  --locked
-                sqlx --version
-
-            - name: Setup database
-              run: |
-                # Create the application user
-                PGPASSWORD="${POSTGRES__DATABASE__PASSWORD}" psql -h localhost -U "${POSTGRES__DATABASE__USER}" -c "CREATE USER ${APP__APPLICATION__USER} WITH PASSWORD '${APP__APPLICATION__PASSWORD}';" || echo "User might already exist"
-                
-                # Grant privileges
-                PGPASSWORD="${POSTGRES__DATABASE__PASSWORD}" psql -h localhost -U "${POSTGRES__DATABASE__USER}" -c "ALTER USER ${APP__APPLICATION__USER} CREATEDB;"
-                
-                # Run migrations
-                sqlx migrate run --database-url $DATABASE_URL
-
-            - name: Generate SQLx prepare files
-              env:
-                RUSTFLAGS: "-A warnings"
-                SQLX_OFFLINE: false
-              run: |
-                cargo sqlx prepare --workspace -- --all-targets
-
-            - name: Run tests in fallback mode
-              env:
-                RUSTFLAGS: "-A warnings"
-                SQLX_OFFLINE: false
-              run: |
-                echo "Running tests in fallback mode (no LLM)..."
-                cargo test --all -- --test-threads=1
-
     build_and_push:
       name: Build and Push Multi-Architecture Docker image
-      needs: [test, test_without_llm]
+      needs: [test]
       runs-on: ubuntu-latest
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
       
