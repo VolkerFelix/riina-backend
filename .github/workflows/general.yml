@@ -11,12 +11,13 @@ on:
 
 jobs:
     test:
-        name: Interaction with DB
+        name: Test with Database and LLM
         runs-on: ubuntu-latest
+        timeout-minutes: 30
+        
         # Service containers to run alongside the `test` container job
         services:
           postgres:
-            # Docker Hub image
             image: postgres:14
             env:
               POSTGRES_USER: ${{secrets.POSTGRES_USER}}
@@ -24,6 +25,7 @@ jobs:
               POSTGRES_DB: evolveme_db
             ports:
               - 5432:5432
+          
           redis:
             image: bitnami/redis:latest
             env:
@@ -38,6 +40,9 @@ jobs:
           APP__APPLICATION__PASSWORD: ${{ secrets.APP_PASSWORD }}
           APP_ENVIRONMENT: local
           REDIS__REDIS__PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          LLM__LLM__SERVICE_URL: http://localhost:11434
+          LLM__LLM__MODEL_NAME: llama3.2:1b-instruct-q4_K_M  # Use smaller model for CI
+          DATABASE_URL: postgres://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/evolveme_db
 
         steps:
             - name: Check out repository code
@@ -46,92 +51,144 @@ jobs:
             - name: Install the Rust toolchain
               uses: actions-rust-lang/setup-rust-toolchain@v1
 
+            - name: Install system dependencies
+              run: |
+                sudo apt-get update
+                sudo apt-get install -y postgresql-client redis-tools curl
+
             - name: Install sqlx-cli
               run: |
                 if ! command -v sqlx &> /dev/null; then
-                  echo "sqlx not found, installing..."
+                  echo "Installing sqlx-cli..."
                   cargo install sqlx-cli \
-                  --version=${{ vars.SQLX_CLI_VERSION }} \
-                  --features ${{ vars.SQLX_CLI_FEATURES }} \
-                  --no-default-features \
-                  --locked
+                    --version=${{ vars.SQLX_CLI_VERSION || '0.8.3' }} \
+                    --features ${{ vars.SQLX_CLI_FEATURES || 'postgres' }} \
+                    --no-default-features \
+                    --locked
                 else
-                  echo "sqlx-cli already installed, skipping installation."
+                  echo "sqlx-cli already installed"
                 fi
-                
-                echo "Verifying sqlx installation"
                 sqlx --version
 
-            - name: Install redis-cli
+            - name: Setup and start Ollama
               run: |
-                if ! command -v redis-cli &> /dev/null; then
-                  echo "redis-cli not found, installing..."
-                  sudo apt-get install redis-tools
-                fi
-
-                echo "Verifying redis-cli installation"
-                redis-cli --version
-
-            - name: Wait for Redis to be ready
-              run: |
-                for i in {1..10}; do
-                  if redis-cli -h localhost -p 6379 ping > /dev/null 2>&1; then
-                    echo "Redis is ready!"
+                echo "Installing Ollama..."
+                curl -fsSL https://ollama.ai/install.sh | sh
+                
+                echo "Starting Ollama service in background..."
+                ollama serve &
+                OLLAMA_PID=$!
+                echo "OLLAMA_PID=$OLLAMA_PID" >> $GITHUB_ENV
+                
+                # Give Ollama time to start
+                sleep 10
+                
+                echo "Waiting for Ollama to be ready..."
+                for i in {1..30}; do
+                  if curl -s http://localhost:11434/api/version >/dev/null 2>&1; then
+                    echo "✅ Ollama is ready!"
                     break
                   fi
-                  echo "Waiting for Redis to be ready..."
-                  sleep 2
+                  echo "Waiting for Ollama... (attempt $i/30)"
+                  sleep 5
                 done
-  
-            - name: Create app user in Postgres
-              run: |
-                sudo apt-get install postgresql-client
+                
+                # Verify Ollama is responding
+                if ! curl -s http://localhost:11434/api/version; then
+                  echo "❌ ERROR: Ollama failed to start properly"
+                  echo "Checking Ollama process..."
+                  ps aux | grep ollama || echo "No ollama process found"
+                  echo "Checking Ollama logs..."
+                  tail -n 20 ~/.ollama/logs/server.log 2>/dev/null || echo "No logs found"
+                  exit 1
+                fi
 
-                # Wait for PostgreSQL to be ready
-                for i in {1..10}; do
-                  pg_isready -h localhost -p 5432 && break
-                  echo "Waiting for PostgreSQL to be ready..."
-                  sleep 2
-                done
-        
-                # Create the application user
-                CREATE_QUERY="CREATE USER ${APP__APPLICATION__USER} WITH PASSWORD '${APP__APPLICATION__PASSWORD}';"
-                PGPASSWORD="${POSTGRES__DATABASE__PASSWORD}" psql -U "${POSTGRES__DATABASE__USER}" -h "localhost" -c "${CREATE_QUERY}"
-        
-                # Grant create db privileges to the app user
-                GRANT_QUERY="ALTER USER ${APP__APPLICATION__USER} CREATEDB;"
-                PGPASSWORD="${POSTGRES__DATABASE__PASSWORD}" psql -U "${POSTGRES__DATABASE__USER}" -h "localhost" -c "${GRANT_QUERY}"
-            
-            - name: Migrate database
+            - name: Pull and test LLM model
               run: |
-                SKIP_DOCKER=true ./scripts/init_db_and_redis.sh
+                echo "Pulling model: $LLM__LLM__MODEL_NAME"
+                if timeout 300 ollama pull $LLM__LLM__MODEL_NAME; then
+                  echo "✅ Model pulled successfully"
+                  
+                  echo "Testing model..."
+                  if response=$(timeout 60 ollama run $LLM__LLM__MODEL_NAME "Say 'OK' if you understand" 2>/dev/null); then
+                    echo "Model response: $response"
+                    # Check for various affirmative responses
+                    if [[ "$response" =~ [Oo][Kk] ]] || \
+                       [[ "$response" =~ [Yy]es ]] || \
+                       [[ "$response" =~ [Uu]nderstand ]] || \
+                       [[ "$response" =~ [Gg]o\s[a]head ]] || \
+                       [[ "$response" =~ [Ii]\s(think\s)?[Dd]o ]]; then
+                      echo "✅ Model is working correctly"
+                      echo "LLM_AVAILABLE=true" >> $GITHUB_ENV
+                    else
+                      echo "⚠️ Model test gave unexpected response"
+                      echo "LLM_AVAILABLE=false" >> $GITHUB_ENV
+                      exit 1
+                    fi
+                  else
+                    echo "⚠️ Model test timed out or failed"
+                    echo "LLM_AVAILABLE=false" >> $GITHUB_ENV
+                    exit 1
+                  fi
+                else
+                  echo "❌ Model pull failed or timed out"
+                  echo "LLM_AVAILABLE=false" >> $GITHUB_ENV
+                  exit 1
+                fi
+
+            - name: Verify LLM availability
+              run: |
+                if [ "$LLM_AVAILABLE" != "true" ]; then
+                  echo "❌ LLM is not available. Aborting workflow."
+                  exit 1
+                fi
+
+            - name: Setup database and services
+              run: |                
+                # Run the CI initialization
+                ./scripts/init_db_and_redis_ci.sh
 
             - name: Generate SQLx prepare files
               env:
-                  RUSTFLAGS: "-A warnings"
-                  SQLX_OFFLINE: false
-                  DATABASE_URL: postgres://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/evolveme_db
+                RUSTFLAGS: "-A warnings"
+                SQLX_OFFLINE: false
               run: |
                 cargo sqlx prepare --workspace -- --all-targets
-              
-            - name: Run tests
+
+            - name: Run tests with LLM
               env:
                 RUSTFLAGS: "-A warnings"
                 SQLX_OFFLINE: false
-                DATABASE_URL: postgres://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/evolveme_db
-              run: cargo test --all
-
-            - name: Check that queries are fresh
+              run: |
+                echo "Running tests..."
+                if [ "$LLM_AVAILABLE" = "true" ]; then
+                  echo "Running tests with LLM enabled"
+                  cargo test --all -- --test-threads=1
+                else
+                  echo "Running tests with LLM"
+                  cargo test --all -- --test-threads=1
+                fi
+                
+            - name: Check SQLx queries are fresh
               env:
                 RUSTFLAGS: "-A warnings"
-              run: cargo sqlx prepare --workspace --check -- --all-targets
+              run: |
+                cargo sqlx prepare --workspace --check -- --all-targets
 
+            - name: Cleanup
+              if: always()
+              run: |
+                if [ -n "$OLLAMA_PID" ]; then
+                  echo "Stopping Ollama (PID: $OLLAMA_PID)"
+                  kill $OLLAMA_PID || true
+                fi
 
     build_and_push:
       name: Build and Push Multi-Architecture Docker image
-      needs: test
+      needs: [test]
       runs-on: ubuntu-latest
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      
       steps:
         - name: Check out repository code
           uses: actions/checkout@v4

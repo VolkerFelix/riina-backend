@@ -1,0 +1,605 @@
+use actix_web::{web, HttpResponse, Result};
+use uuid::Uuid;
+use serde_json::json;
+use chrono::Utc;
+
+use crate::middleware::auth::Claims;
+use crate::models::llm::{
+    TwinRequest, HealthContext, TwinTrigger, TwinPersonality, 
+    TwinWebSocketMessage
+};
+use crate::services::llm_service::LLMService;
+use crate::services::conversation_service::ConversationService;
+use crate::models::conversation::{
+    ConversationMessage, MessageSender, MessageType, MessageIntent, UserReaction, UserReactionType
+};
+use redis::AsyncCommands;
+
+#[derive(serde::Deserialize, Debug)]
+pub struct GenerateThoughtRequest {
+    pub trigger: Option<String>,
+    pub context: Option<serde_json::Value>,
+}
+
+#[derive(serde::Deserialize, Debug)]
+pub struct UserResponseRequest {
+    pub response_id: String,
+    pub response_text: String,
+    pub conversation_id: Uuid,
+}
+
+#[derive(serde::Deserialize, Debug)]
+pub struct UpdateReactionRequest {
+    pub message_id: Uuid,
+    pub reaction_type: String, // "positive", "negative", "neutral", "curious", "dismissive"
+    pub engagement_score: f64, // 0.0 - 1.0
+    pub response_time_seconds: Option<u64>,
+}
+
+/// Generate a twin thought bubble
+#[tracing::instrument(
+    name = "Generate twin thought",
+    skip(llm_service, conversation_service, claims),
+    fields(username = %claims.username)
+)]
+pub async fn generate_twin_thought(
+    req: web::Json<GenerateThoughtRequest>,
+    llm_service: web::Data<LLMService>,
+    conversation_service: web::Data<ConversationService>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(json!({
+                "error": "Invalid user ID"
+            })));
+        }
+    };
+
+    tracing::info!("Generating twin thought for user: {}", user_id);
+
+    // Get conversation context from Redis
+    let conversation_context = match conversation_service.get_or_create_context(&user_id).await {
+        Ok(context) => context,
+        Err(e) => {
+            tracing::error!("Failed to get conversation context: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(json!({
+                "error": "Failed to load conversation context"
+            })));
+        }
+    };
+
+    // Get user's current health context from the request context
+    let health_context = extract_health_context_from_request(&req).unwrap_or_default();
+
+    // Convert conversation context to LLM format
+    let conversation_history = conversation_context.recent_messages
+        .iter()
+        .map(|msg| crate::models::llm::ConversationEntry {
+            id: msg.id,
+            timestamp: msg.timestamp,
+            message_type: match msg.message_type {
+                MessageType::ThoughtBubble => crate::models::llm::MessageType::TwinThought,
+                MessageType::Reaction => crate::models::llm::MessageType::TwinReaction,
+                MessageType::UserResponse => crate::models::llm::MessageType::UserResponse,
+                _ => crate::models::llm::MessageType::SystemEvent,
+            },
+            content: msg.content.clone(),
+            user_response: None,
+            twin_mood: msg.mood.clone(),
+        })
+        .collect();
+
+    // Convert twin personality
+    let twin_personality = TwinPersonality {
+        humor_level: conversation_context.twin_personality.humor_level,
+        sarcasm_level: conversation_context.twin_personality.sarcasm_level,
+        encouragement_style: match conversation_context.twin_personality.encouragement_style {
+            crate::models::conversation::EncouragementStyle::Gentle => "gentle".to_string(),
+            crate::models::conversation::EncouragementStyle::Enthusiastic => "enthusiastic".to_string(),
+            crate::models::conversation::EncouragementStyle::ToughLove => "tough-love".to_string(),
+            crate::models::conversation::EncouragementStyle::Humorous => "humorous".to_string(),
+            crate::models::conversation::EncouragementStyle::Scientific => "scientific".to_string(),
+            crate::models::conversation::EncouragementStyle::Supportive => "supportive".to_string(),
+        },
+        relationship_stage: conversation_context.conversation_summary.relationship_stage.as_str().to_string(),
+        preferred_topics: conversation_context.conversation_summary.dominant_topics.clone(),
+        quirks: conversation_context.twin_personality.communication_quirks.clone(),
+    };
+
+    // Determine trigger
+    let trigger = match req.trigger.as_deref() {
+        Some("health_update") => TwinTrigger::HealthDataUpdate,
+        Some("random") => TwinTrigger::RandomThought,
+        Some("user_message") => TwinTrigger::UserMessage("".to_string()),
+        _ => TwinTrigger::RandomThought,
+    };
+
+    let twin_request = TwinRequest {
+        user_id,
+        health_context,
+        trigger,
+        conversation_history,
+        twin_personality,
+    };
+
+    match llm_service.generate_twin_response(twin_request).await {
+        Ok(response) => {
+            // Create conversation message
+            let conversation_message = ConversationMessage {
+                id: response.id,
+                timestamp: Utc::now(),
+                message_type: MessageType::ThoughtBubble,
+                sender: MessageSender::Twin,
+                content: response.content.clone(),
+                mood: Some(response.mood.clone()),
+                context_tags: vec!["twin_thought".to_string()],
+                user_reaction: None,
+                twin_confidence: response.metadata.confidence_score,
+                message_intent: Some(MessageIntent::Question),
+            };
+
+            // Store the conversation message
+            if let Err(e) = conversation_service.add_message(&user_id, conversation_message).await {
+                tracing::error!("Failed to store conversation message: {:?}", e);
+            }
+
+            // Send via WebSocket if Redis is available
+            let ws_message = TwinWebSocketMessage::TwinThought {
+                response: response.clone(),
+                requires_response: !response.suggested_responses.is_empty(),
+            };
+            let _ = conversation_service.publish_twin_message(&user_id, &ws_message).await;
+
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            tracing::error!("Failed to generate twin response: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(json!({
+                "error": "Failed to generate twin response",
+                "details": e.to_string()
+            })))
+        }
+    }
+}
+
+/// Handle user response to twin message
+#[tracing::instrument(
+    name = "Handle user response",
+    skip(llm_service, conversation_service, claims),
+    fields(username = %claims.username)
+)]
+pub async fn handle_user_response(
+    req: web::Json<UserResponseRequest>,
+    llm_service: web::Data<LLMService>,
+    conversation_service: web::Data<ConversationService>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(json!({
+                "error": "Invalid user ID"
+            })));
+        }
+    };
+
+    tracing::info!("Processing user response from: {}", user_id);
+
+    // Create user response message
+    let user_message = ConversationMessage {
+        id: Uuid::new_v4(),
+        timestamp: Utc::now(),
+        message_type: MessageType::UserResponse,
+        sender: MessageSender::User,
+        content: req.response_text.clone(),
+        mood: None,
+        context_tags: vec!["user_response".to_string()],
+        user_reaction: None,
+        twin_confidence: None,
+        message_intent: None,
+    };
+
+    // Store user response
+    if let Err(e) = conversation_service.add_message(&user_id, user_message).await {
+        tracing::error!("Failed to store user response: {:?}", e);
+    }
+
+    // Get updated conversation context for follow-up
+    let conversation_context = match conversation_service.get_or_create_context(&user_id).await {
+        Ok(context) => context,
+        Err(e) => {
+            tracing::error!("Failed to get conversation context: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(json!({
+                "error": "Failed to load conversation context"
+            })));
+        }
+    };
+
+    // Generate follow-up response
+    let health_context = get_user_health_context(&user_id).await
+        .unwrap_or_default();
+
+    let conversation_history = conversation_context.recent_messages
+        .iter()
+        .map(|msg| crate::models::llm::ConversationEntry {
+            id: msg.id,
+            timestamp: msg.timestamp,
+            message_type: match msg.message_type {
+                MessageType::ThoughtBubble => crate::models::llm::MessageType::TwinThought,
+                MessageType::Reaction => crate::models::llm::MessageType::TwinReaction,
+                MessageType::UserResponse => crate::models::llm::MessageType::UserResponse,
+                _ => crate::models::llm::MessageType::SystemEvent,
+            },
+            content: msg.content.clone(),
+            user_response: None,
+            twin_mood: msg.mood.clone(),
+        })
+        .collect();
+
+    let twin_personality = TwinPersonality {
+        humor_level: conversation_context.twin_personality.humor_level,
+        sarcasm_level: conversation_context.twin_personality.sarcasm_level,
+        encouragement_style: match conversation_context.twin_personality.encouragement_style {
+            crate::models::conversation::EncouragementStyle::Gentle => "gentle".to_string(),
+            crate::models::conversation::EncouragementStyle::Enthusiastic => "enthusiastic".to_string(),
+            crate::models::conversation::EncouragementStyle::ToughLove => "tough-love".to_string(),
+            crate::models::conversation::EncouragementStyle::Humorous => "humorous".to_string(),
+            crate::models::conversation::EncouragementStyle::Scientific => "scientific".to_string(),
+            crate::models::conversation::EncouragementStyle::Supportive => "supportive".to_string(),
+        },
+        relationship_stage: conversation_context.conversation_summary.relationship_stage.as_str().to_string(),
+        preferred_topics: conversation_context.conversation_summary.dominant_topics.clone(),
+        quirks: conversation_context.twin_personality.communication_quirks.clone(),
+    };
+
+    let twin_request = TwinRequest {
+        user_id,
+        health_context,
+        trigger: TwinTrigger::UserMessage(req.response_text.clone()),
+        conversation_history,
+        twin_personality,
+    };
+
+    match llm_service.generate_twin_response(twin_request).await {
+        Ok(response) => {
+            // Create follow-up conversation message
+            let conversation_message = ConversationMessage {
+                id: response.id,
+                timestamp: Utc::now(),
+                message_type: MessageType::ThoughtBubble,
+                sender: MessageSender::Twin,
+                content: response.content.clone(),
+                mood: Some(response.mood.clone()),
+                context_tags: vec!["follow_up".to_string()],
+                user_reaction: None,
+                twin_confidence: response.metadata.confidence_score,
+                message_intent: Some(MessageIntent::Encouragement),
+            };
+
+            // Store twin's follow-up
+            if let Err(e) = conversation_service.add_message(&user_id, conversation_message).await {
+                tracing::error!("Failed to store twin follow-up: {:?}", e);
+            }
+
+            // Potentially evolve personality based on interaction
+            if let Ok(Some(personality_change)) = conversation_service.evolve_personality(&user_id).await {
+                tracing::info!("Twin personality evolved: {:?}", personality_change);
+            }
+
+            // Send via WebSocket
+            let ws_message = TwinWebSocketMessage::TwinThought {
+                response: response.clone(),
+                requires_response: !response.suggested_responses.is_empty(),
+            };
+            let _ = publish_to_websocket_redis(&conversation_service, &user_id, &ws_message).await;
+
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            tracing::error!("Failed to generate follow-up response: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(json!({
+                "error": "Failed to generate follow-up response"
+            })))
+        }
+    }
+}
+
+/// Get twin conversation history
+pub async fn get_twin_history(
+    conversation_service: web::Data<ConversationService>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(json!({
+                "error": "Invalid user ID"
+            })));
+        }
+    };
+
+    match conversation_service.get_recent_messages(&user_id, 50).await {
+        Ok(messages) => {
+            let stats = conversation_service.get_conversation_stats(&user_id).await
+                .unwrap_or_else(|_| crate::services::conversation_service::ConversationStats {
+                    total_messages: 0,
+                    relationship_stage: "first_meeting".to_string(),
+                    engagement_level: 0.5,
+                    trust_level: 0.5,
+                    humor_level: 7,
+                    empathy_level: 7,
+                    personality_changes: 0,
+                });
+
+            Ok(HttpResponse::Ok().json(json!({
+                "conversation_history": messages,
+                "conversation_stats": stats,
+                "total_messages": messages.len()
+            })))
+        }
+        Err(e) => {
+            tracing::error!("Failed to get conversation history: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(json!({
+                "error": "Failed to get conversation history"
+            })))
+        }
+    }
+}
+
+/// Update user reaction to a twin message
+pub async fn update_user_reaction(
+    req: web::Json<UpdateReactionRequest>,
+    conversation_service: web::Data<ConversationService>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(json!({
+                "error": "Invalid user ID"
+            })));
+        }
+    };
+
+    let reaction_type = match req.reaction_type.as_str() {
+        "positive" => UserReactionType::Positive,
+        "negative" => UserReactionType::Negative,
+        "neutral" => UserReactionType::Neutral,
+        "curious" => UserReactionType::Curious,
+        "dismissive" => UserReactionType::Dismissive,
+        _ => UserReactionType::Neutral,
+    };
+
+    let user_reaction = UserReaction {
+        reaction_type,
+        response_time_seconds: req.response_time_seconds,
+        engagement_score: req.engagement_score.clamp(0.0, 1.0),
+    };
+
+    match conversation_service.update_user_reaction(&user_id, &req.message_id, user_reaction).await {
+        Ok(_) => {
+            Ok(HttpResponse::Ok().json(json!({
+                "status": "success",
+                "message": "User reaction updated"
+            })))
+        }
+        Err(e) => {
+            tracing::error!("Failed to update user reaction: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(json!({
+                "error": "Failed to update user reaction"
+            })))
+        }
+    }
+}
+
+/// Trigger a health-based twin reaction
+pub async fn trigger_health_reaction(
+    health_data: web::Json<serde_json::Value>,
+    llm_service: web::Data<LLMService>,
+    conversation_service: web::Data<ConversationService>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(json!({
+                "error": "Invalid user ID"
+            })));
+        }
+    };
+
+    tracing::info!("Triggering health reaction for user: {}", user_id);
+
+    // Get conversation context
+    let conversation_context = match conversation_service.get_or_create_context(&user_id).await {
+        Ok(context) => context,
+        Err(e) => {
+            tracing::error!("Failed to get conversation context: {:?}", e);
+            return Ok(HttpResponse::InternalServerError().json(json!({
+                "error": "Failed to load conversation context"
+            })));
+        }
+    };
+
+    // Extract health context from the data
+    let health_context = extract_health_context_from_data(&health_data)?;
+
+    // Convert conversation context to LLM format
+    let conversation_history = conversation_context.recent_messages
+        .iter()
+        .map(|msg| crate::models::llm::ConversationEntry {
+            id: msg.id,
+            timestamp: msg.timestamp,
+            message_type: match msg.message_type {
+                MessageType::ThoughtBubble => crate::models::llm::MessageType::TwinThought,
+                MessageType::Reaction => crate::models::llm::MessageType::TwinReaction,
+                MessageType::UserResponse => crate::models::llm::MessageType::UserResponse,
+                _ => crate::models::llm::MessageType::SystemEvent,
+            },
+            content: msg.content.clone(),
+            user_response: None,
+            twin_mood: msg.mood.clone(),
+        })
+        .collect();
+
+    let twin_personality = TwinPersonality {
+        humor_level: conversation_context.twin_personality.humor_level,
+        sarcasm_level: conversation_context.twin_personality.sarcasm_level,
+        encouragement_style: match conversation_context.twin_personality.encouragement_style {
+            crate::models::conversation::EncouragementStyle::Gentle => "gentle".to_string(),
+            crate::models::conversation::EncouragementStyle::Enthusiastic => "enthusiastic".to_string(),
+            crate::models::conversation::EncouragementStyle::ToughLove => "tough-love".to_string(),
+            crate::models::conversation::EncouragementStyle::Humorous => "humorous".to_string(),
+            crate::models::conversation::EncouragementStyle::Scientific => "scientific".to_string(),
+            crate::models::conversation::EncouragementStyle::Supportive => "supportive".to_string(),
+        },
+        relationship_stage: conversation_context.conversation_summary.relationship_stage.as_str().to_string(),
+        preferred_topics: conversation_context.conversation_summary.dominant_topics.clone(),
+        quirks: conversation_context.twin_personality.communication_quirks.clone(),
+    };
+
+    let twin_request = TwinRequest {
+        user_id,
+        health_context,
+        trigger: TwinTrigger::HealthDataUpdate,
+        conversation_history,
+        twin_personality,
+    };
+
+    match llm_service.generate_twin_response(twin_request).await {
+        Ok(response) => {
+            // Create health reaction message
+            let conversation_message = ConversationMessage {
+                id: response.id,
+                timestamp: Utc::now(),
+                message_type: MessageType::HealthDataReaction,
+                sender: MessageSender::Twin,
+                content: response.content.clone(),
+                mood: Some(response.mood.clone()),
+                context_tags: vec!["health_reaction".to_string(), "automatic".to_string()],
+                user_reaction: None,
+                twin_confidence: response.metadata.confidence_score,
+                message_intent: Some(MessageIntent::Celebration),
+            };
+
+            // Store the conversation message
+            if let Err(e) = conversation_service.add_message(&user_id, conversation_message).await {
+                tracing::error!("Failed to store health reaction message: {:?}", e);
+            }
+
+            // Send via WebSocket
+            let ws_message = TwinWebSocketMessage::TwinReaction {
+                response: response.clone(),
+                trigger_event: "health_data_update".to_string(),
+            };
+            let _ = publish_to_websocket_redis(&conversation_service, &user_id, &ws_message).await;
+
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            tracing::error!("Failed to generate health reaction: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(json!({
+                "error": "Failed to generate health reaction",
+                "details": e.to_string()
+            })))
+        }
+    }
+}
+
+// Helper functions
+
+async fn get_user_health_context(_user_id: &Uuid) -> Option<HealthContext> {
+    // TODO: Implement based on your health data structure
+    // This should pull from your existing health data tables
+    Some(HealthContext::default())
+}
+
+fn extract_health_context_from_request(req: &GenerateThoughtRequest) -> Option<HealthContext> {
+    if let Some(context) = &req.context {
+        let health_score = context.get("health_score")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(70) as i32;
+        
+        let energy_score = context.get("energy_score")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(70) as i32;
+        
+        let stress_score = context.get("stress_score")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(50) as i32;
+        
+        let cognitive_score = context.get("cognitive_score")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(70) as i32;
+
+        let world_state = context.get("world_state")
+            .and_then(|v| v.as_str())
+            .unwrap_or("balanced")
+            .to_string();
+
+        Some(HealthContext {
+            overall_health: health_score,
+            health_score,
+            energy_score,
+            cognitive_score,
+            stress_score,
+            world_state,
+            recent_changes: vec![],
+        })
+    } else {
+        None
+    }
+}
+
+fn extract_health_context_from_data(health_data: &serde_json::Value) -> Result<HealthContext> {
+    // Extract health context from incoming health data
+    let health_score = health_data.get("health_score")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(70) as i32;
+    
+    let energy_score = health_data.get("energy_score")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(70) as i32;
+    
+    let stress_score = health_data.get("stress_score")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(50) as i32;
+    
+    let cognitive_score = health_data.get("cognitive_score")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(70) as i32;
+
+    let world_state = health_data.get("world_state")
+        .and_then(|v| v.as_str())
+        .unwrap_or("balanced")
+        .to_string();
+
+    Ok(HealthContext {
+        overall_health: health_score,
+        health_score,
+        energy_score,
+        cognitive_score,
+        stress_score,
+        world_state,
+        recent_changes: vec![], // TODO: Extract from health data
+    })
+}
+
+async fn publish_to_websocket_redis(
+    conversation_service: &ConversationService,
+    user_id: &Uuid,
+    message: &TwinWebSocketMessage,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Get Redis connection from conversation service
+    let mut conn = conversation_service.redis_client.get_async_connection().await?;
+    
+    let channel = format!("evolveme:events:user:{}", user_id);
+    let message_json = serde_json::to_string(message)?;
+    
+    let _: i32 = conn.publish(&channel, message_json).await?;
+    
+    tracing::debug!("Published twin message to WebSocket channel: {}", channel);
+    Ok(())
+}
