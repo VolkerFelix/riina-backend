@@ -80,33 +80,19 @@ jobs:
               run: |
                 cargo sqlx prepare --workspace -- --all-targets
 
-            - name: Run tests with LLM
+            - name: Run tests
               env:
                 RUSTFLAGS: "-A warnings"
                 SQLX_OFFLINE: false
               run: |
                 echo "Running tests..."
-                if [ "$LLM_AVAILABLE" = "true" ]; then
-                  echo "Running tests with LLM enabled"
-                  cargo test --all -- --test-threads=1
-                else
-                  echo "Running tests with LLM"
-                  cargo test --all -- --test-threads=1
-                fi
+                cargo test --all -- --test-threads=1
                 
             - name: Check SQLx queries are fresh
               env:
                 RUSTFLAGS: "-A warnings"
               run: |
                 cargo sqlx prepare --workspace --check -- --all-targets
-
-            - name: Cleanup
-              if: always()
-              run: |
-                if [ -n "$OLLAMA_PID" ]; then
-                  echo "Stopping Ollama (PID: $OLLAMA_PID)"
-                  kill $OLLAMA_PID || true
-                fi
 
     build_and_push:
       name: Build and Push Multi-Architecture Docker image
