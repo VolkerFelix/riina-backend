@@ -25,7 +25,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .service(health_data::upload_health)
     );
     cfg.service(
-        web::resource("/ws")
-            .route(web::get().to(websocket::ws_route))
+        web::resource("/game-ws")
+            .route(web::get().to(websocket::game_ws_route))
     );
 }
