@@ -8,12 +8,13 @@ use actix_cors::Cors;
 pub mod config;
 mod routes;
 mod handlers;
-mod models;
+pub mod models;
 mod utils;
 pub mod telemetry;
 mod middleware;
 mod db;
 pub mod services;
+pub mod game;
 use crate::routes::init_routes;
 use crate::config::jwt::JwtSettings;
 
