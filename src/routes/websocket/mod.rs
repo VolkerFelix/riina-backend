@@ -1,3 +1,5 @@
+// Updated src/routes/websocket/mod.rs - Include registry module
+
 mod connection;
 mod messages;
 mod auth;
@@ -13,7 +15,7 @@ pub use connection::GameConnection;
 pub use messages::TokenQuery;
 pub use auth::decode_token;
 
-/// Game-focused WebSocket route handler
+/// Game-focused WebSocket route handler with connection deduplication
 pub async fn game_ws_route(
     req: HttpRequest,
     stream: web::Payload,
@@ -57,13 +59,13 @@ pub async fn game_ws_route(
         }
     };
     
-    // Start game WebSocket connection
+    // Start game WebSocket connection - the registry will handle duplicates
     let resp = ws::start(
-        GameConnection::new(user_uuid, username, redis),
+        GameConnection::new(user_uuid, username.clone(), redis),
         &req,
         stream,
     )?;
     
-    tracing::info!("Game WebSocket connection established for user: {}", user_uuid);
+    tracing::info!("Game WebSocket connection initiated for user: {} ({})", user_uuid, username);
     Ok(resp)
 }

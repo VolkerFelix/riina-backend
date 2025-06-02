@@ -1,3 +1,5 @@
+// Simple fix: Use your original connection.rs with better logging
+
 use actix::{Actor, ActorContext, AsyncContext, StreamHandler, Handler};
 use actix_web_actors::ws;
 use futures::StreamExt;
@@ -27,36 +29,48 @@ impl Actor for GameConnection {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
+        tracing::info!("🔗 GameConnection started for user {} ({}) - session: {}", 
+            self.user_id, self.username, self.session_id);
+        
         self.heartbeat(ctx);
         self.send_connection_established(ctx);
         self.setup_game_event_subscription(ctx);
     }
 
     fn stopped(&mut self, _ctx: &mut Self::Context) {
+        tracing::info!("❌ GameConnection stopped for user {} ({}) - session: {}", 
+            self.user_id, self.username, self.session_id);
+        
         self.broadcast_player_left();
     }
 }
 
 impl GameConnection {
     pub fn new(user_id: Uuid, username: String, redis: Option<web::Data<redis::Client>>) -> Self {
+        let session_id = Uuid::new_v4();
+        tracing::info!("🆕 Creating new GameConnection for user {} ({}) - session: {}", 
+            user_id, username, session_id);
+        
         Self {
             heartbeat: Instant::now(),
             user_id,
             username,
             redis,
-            session_id: Uuid::new_v4(),
+            session_id,
         }
     }
     
     fn heartbeat(&self, ctx: &mut ws::WebsocketContext<Self>) {
         ctx.run_interval(HEARTBEAT_INTERVAL, |act, ctx| {
             if Instant::now().duration_since(act.heartbeat) > CLIENT_TIMEOUT {
-                tracing::warn!("Game client heartbeat missed, disconnecting user: {}", act.user_id);
+                tracing::warn!("💔 Game client heartbeat missed, disconnecting user: {} ({}) - session: {}", 
+                    act.user_id, act.username, act.session_id);
                 ctx.stop();
                 return;
             }
             
-            tracing::debug!("Sending game client heartbeat ping");
+            tracing::debug!("💓 Sending game client heartbeat ping for user: {} ({}) - session: {}", 
+                act.user_id, act.username, act.session_id);
             ctx.ping(b"ping");
         });
     }
@@ -77,6 +91,8 @@ impl GameConnection {
 
     fn setup_game_event_subscription(&self, ctx: &mut ws::WebsocketContext<Self>) {
         let user_id = self.user_id;
+        let session_id = self.session_id;
+        let username = self.username.clone();
         let addr = ctx.address();
 
         if let Some(redis_client) = self.redis.clone() {            
@@ -95,10 +111,12 @@ impl GameConnection {
                         
                         for channel in &channels {
                             if let Err(e) = pubsub.subscribe(channel).await {
-                                tracing::error!("Failed to subscribe to game channel {}: {}", channel, e);
+                                tracing::error!("❌ Failed to subscribe to game channel {} for {} ({}): {}", 
+                                    channel, user_id, username, e);
                                 continue;
                             }
-                            tracing::info!("Subscribed to game events channel: {}", channel);
+                            tracing::info!("📡 Subscribed to game events channel: {} for {} ({}) - session: {}", 
+                                channel, user_id, username, session_id);
                         }
                         
                         let mut stream = pubsub.on_message();
@@ -106,22 +124,26 @@ impl GameConnection {
                         while let Some(msg) = stream.next().await {
                             match msg.get_payload::<String>() {
                                 Ok(payload) => {
-                                    tracing::debug!("Received game event: {}", payload);
+                                    tracing::debug!("📥 Received game event for {} ({}) session {}: {}", 
+                                        user_id, username, session_id, payload);
                                     addr.do_send(GameEventMessage(payload));
                                 },
                                 Err(e) => {
-                                    tracing::error!("Failed to parse game event: {}", e);
+                                    tracing::error!("❌ Failed to parse game event for {} ({}) session {}: {}", 
+                                        user_id, username, session_id, e);
                                 }
                             }
                         }
                     },
                     Err(e) => {
-                        tracing::error!("Failed to connect to Redis for game events: {}", e);
+                        tracing::error!("❌ Failed to connect to Redis for game events for {} ({}) session {}: {}", 
+                            user_id, username, session_id, e);
                     }
                 }
             });
         } else {
-            tracing::warn!("No Redis client available for game events - real-time features disabled");
+            tracing::warn!("⚠️  No Redis client available for game events - real-time features disabled for {} ({}) session: {}", 
+                user_id, username, session_id);
         }
     }
 
@@ -171,22 +193,29 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for GameConnection {
             Ok(ws::Message::Ping(msg)) => {
                 self.heartbeat = Instant::now();
                 ctx.pong(&msg);
+                tracing::debug!("🏓 Pong sent for {} ({}) session: {}", 
+                    self.user_id, self.username, self.session_id);
             }
             Ok(ws::Message::Pong(_)) => {
                 self.heartbeat = Instant::now();
+                tracing::debug!("🏓 Pong received for {} ({}) session: {}", 
+                    self.user_id, self.username, self.session_id);
             }
             Ok(ws::Message::Text(text)) => {
-                tracing::debug!("Received game message from {}: {}", self.user_id, text);
+                tracing::debug!("📨 Received game message from {} ({}) session {}: {}", 
+                    self.user_id, self.username, self.session_id, text);
                 self.heartbeat = Instant::now();
                 
                 // Handle incoming game commands
                 self.handle_game_message(&text, ctx);
             }
             Ok(ws::Message::Binary(_)) => {
-                tracing::warn!("Received unexpected binary message from game client");
+                tracing::warn!("⚠️  Received unexpected binary message from {} ({}) session: {}", 
+                    self.user_id, self.username, self.session_id);
             }
             Ok(ws::Message::Close(reason)) => {
-                tracing::info!("Game WebSocket closing for user {}: {:?}", self.user_id, reason);
+                tracing::info!("🔒 Game WebSocket closing for {} ({}) session {}: {:?}", 
+                    self.user_id, self.username, self.session_id, reason);
                 ctx.close(reason);
                 ctx.stop();
             }
@@ -203,9 +232,12 @@ impl GameConnection {
                 Some("ping") => {
                     let pong = serde_json::json!({
                         "type": "pong",
-                        "timestamp": Utc::now().to_rfc3339()
+                        "timestamp": Utc::now().to_rfc3339(),
+                        "session_id": self.session_id
                     });
                     ctx.text(serde_json::to_string(&pong).unwrap_or_default());
+                    tracing::debug!("🏓 App-level pong sent for {} ({}) session: {}", 
+                        self.user_id, self.username, self.session_id);
                 }
                 Some("avatar_position_update") => {
                     // Handle avatar position updates
@@ -227,7 +259,8 @@ impl GameConnection {
                     self.handle_leaderboard_request(ctx);
                 }
                 _ => {
-                    tracing::debug!("Unknown game command: {}", message);
+                    tracing::debug!("❓ Unknown game command from {} ({}) session {}: {}", 
+                        self.user_id, self.username, self.session_id, message);
                 }
             }
         }
@@ -271,7 +304,8 @@ impl GameConnection {
     }
     
     fn handle_battle_strategy(&self, strategy: &str) {
-        tracing::info!("User {} selected battle strategy: {}", self.user_id, strategy);
+        tracing::info!("⚔️  User {} ({}) session {} selected battle strategy: {}", 
+            self.user_id, self.username, self.session_id, strategy);
         // TODO: Implement battle strategy handling
     }
     
