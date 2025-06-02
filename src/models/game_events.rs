@@ -1,0 +1,189 @@
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+/// Game-specific WebSocket message types
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "event_type")]
+pub enum GameEvent {
+    #[serde(rename = "player_joined")]
+    PlayerJoined {
+        user_id: Uuid,
+        username: String,
+        avatar_level: u32,
+        position: Position,
+        timestamp: DateTime<Utc>,
+    },
+
+    #[serde(rename = "player_left")]
+    PlayerLeft {
+        user_id: Uuid,
+        username: String,
+        timestamp: DateTime<Utc>,
+    },
+
+    #[serde(rename = "avatar_updated")]
+    AvatarUpdated {
+        user_id: Uuid,
+        username: String,
+        stats: AvatarStats,
+        level: u32,
+        position: Position,
+        timestamp: DateTime<Utc>,
+    },
+
+    #[serde(rename = "leaderboard_update")]
+    LeaderboardUpdate {
+        daily_rankings: Vec<PlayerRanking>,
+        updated_at: DateTime<Utc>,
+    },
+
+    #[serde(rename = "battle_started")]
+    BattleStarted {
+        battle_id: Uuid,
+        team_a: BattleTeam,
+        team_b: BattleTeam,
+        start_time: DateTime<Utc>,
+    },
+
+    #[serde(rename = "battle_ended")]
+    BattleEnded {
+        battle_id: Uuid,
+        winner_team_id: Uuid,
+        results: BattleResults,
+        end_time: DateTime<Utc>,
+    },
+
+    #[serde(rename = "territory_conquered")]
+    TerritoryConquered {
+        territory_id: Uuid,
+        territory_name: String,
+        conquering_team_id: Uuid,
+        conquering_team_name: String,
+        conquered_at: DateTime<Utc>,
+    },
+
+    #[serde(rename = "health_data_processed")]
+    HealthDataProcessed {
+        user_id: Uuid,
+        sync_id: Uuid,
+        stat_changes: StatChanges,
+        timestamp: DateTime<Utc>,
+    },
+
+    #[serde(rename = "team_invitation")]
+    TeamInvitation {
+        invitation_id: Uuid,
+        from_user_id: Uuid,
+        from_username: String,
+        team_name: String,
+        message: Option<String>,
+        expires_at: DateTime<Utc>,
+    },
+
+    #[serde(rename = "notification")]
+    Notification {
+        notification_id: Uuid,
+        user_id: Uuid,
+        title: String,
+        message: String,
+        notification_type: NotificationType,
+        action_url: Option<String>,
+        created_at: DateTime<Utc>,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Position {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AvatarStats {
+    pub stamina: u32,
+    pub strength: u32,
+    pub wisdom: u32,
+    pub mana: u32,
+    pub experience_points: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PlayerRanking {
+    pub user_id: Uuid,
+    pub username: String,
+    pub avatar_level: u32,
+    pub total_stats: u32,
+    pub rank: u32,
+    pub score: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BattleTeam {
+    pub team_id: Uuid,
+    pub team_name: String,
+    pub members: Vec<BattleMember>,
+    pub strategy: BattleStrategy,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BattleMember {
+    pub user_id: Uuid,
+    pub username: String,
+    pub avatar_level: u32,
+    pub stats: AvatarStats,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum BattleStrategy {
+    Attack,
+    Defend,
+    Hold,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BattleResults {
+    pub winner_score: u32,
+    pub loser_score: u32,
+    pub mvp_user_id: Uuid,
+    pub stat_contributions: Vec<StatContribution>,
+    pub experience_gained: Vec<ExperienceGain>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StatContribution {
+    pub user_id: Uuid,
+    pub username: String,
+    pub stamina_contribution: u32,
+    pub strength_contribution: u32,
+    pub wisdom_contribution: u32,
+    pub mana_contribution: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ExperienceGain {
+    pub user_id: Uuid,
+    pub experience_gained: u64,
+    pub level_up: bool,
+    pub new_level: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StatChanges {
+    pub stamina_change: i32,
+    pub strength_change: i32,
+    pub wisdom_change: i32,
+    pub mana_change: i32,
+    pub experience_change: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum NotificationType {
+    BattleInvite,
+    TeamInvite,
+    Achievement,
+    LevelUp,
+    DailyChallenge,
+    TerritoryAlert,
+    System,
+}

@@ -1177,6 +1177,7 @@ dependencies = [
  "futures-util",
  "http 0.2.12",
  "jsonwebtoken",
+ "lazy_static",
  "once_cell",
  "rand",
  "redis",
