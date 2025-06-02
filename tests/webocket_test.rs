@@ -4,7 +4,6 @@ use reqwest::Client;
 use serde_json::json;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-use tokio_tungstenite::tungstenite::http::HeaderValue;
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -61,7 +60,7 @@ async fn websocket_connection_working() {
     println!("Connecting to WebSocket server at: {}", ws_url);
     
     // Create client request with proper WebSocket headers
-    let mut request = ws_url.into_client_request().expect("Failed to create request");
+    let request = ws_url.into_client_request().expect("Failed to create request");
     
     // Connect to WebSocket server
     let (mut ws_stream, _) = connect_async(request)
@@ -180,7 +179,7 @@ async fn websocket_redis_pubsub_working() {
     let ws_url = format!("{}/ws?token={}", test_app.address.replace("http", "ws"), token);
     
     // Create a proper WebSocket request
-    let mut request = ws_url.into_client_request().expect("Failed to create request");
+    let request = ws_url.into_client_request().expect("Failed to create request");
     
     // Connect to WebSocket server
     let (mut ws_stream, _) = connect_async(request)

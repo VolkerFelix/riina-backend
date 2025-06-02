@@ -16,15 +16,11 @@ mod db;
 pub mod services;
 use crate::routes::init_routes;
 use crate::config::jwt::JwtSettings;
-use crate::services::llm_service::LLMService;
-use crate::services::conversation_service::ConversationService;
 
 pub fn run(
     listener: TcpListener,
     db_pool: PgPool,
     jwt_settings: JwtSettings,
-    llm_service: LLMService,
-    conversation_service: ConversationService,
     redis_client: Option<redis::Client>
 ) -> Result<Server, std::io::Error> {
     // Wrap using web::Data, which boils down to an Arc smart pointer
@@ -33,8 +29,6 @@ pub fn run(
     let redis_client = redis_client.map(|client| {
         web::Data::new(client)
     });
-    let llm_service = web::Data::new(llm_service);
-    let conversation_service = web::Data::new(conversation_service);
 
     let server = HttpServer::new( move || {
         let cors = Cors::default()
@@ -55,9 +49,7 @@ pub fn run(
             .wrap(cors)
             // Get a pointer copy and attach it to the application state
             .app_data(db_pool.clone())
-            .app_data(jwt_settings.clone())
-            .app_data(llm_service.clone())
-            .app_data(conversation_service.clone());
+            .app_data(jwt_settings.clone());
         if let Some(ref redis) = redis_client {
             app = app.app_data(redis.clone());
         }

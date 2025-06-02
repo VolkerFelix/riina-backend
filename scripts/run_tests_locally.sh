@@ -25,10 +25,6 @@ export APP__APPLICATION__USER=${APP__APPLICATION__USER:-testuser}
 export APP__APPLICATION__PASSWORD=${APP__APPLICATION__PASSWORD:-testpassword}
 # Redis Config
 export REDIS__REDIS__PASSWORD=${REDIS__REDIS__PASSWORD:-redis}
-# LLM Config
-export LLM__LLM__SERVICE_URL=${LLM__LLM__SERVICE_URL:-http://localhost:8082}
-export LLM__LLM__MODEL=${LLM__LLM__MODEL:-llama3.2:3b-instruct-q4_K_M}
-
 
 # Default configuration
 DB_HOST="localhost"
