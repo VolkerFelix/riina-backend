@@ -97,6 +97,9 @@ impl GameConnection {
 
         if let Some(redis_client) = self.redis.clone() {            
             tokio::spawn(async move {
+                tracing::info!("🔗 Starting Redis subscription setup for user {} ({}) session: {}", 
+                    user_id, username, session_id);
+                
                 match redis_client.get_async_connection().await {
                     Ok(conn) => {                        
                         let mut pubsub = conn.into_pubsub();
@@ -109,41 +112,100 @@ impl GameConnection {
                             "game:events:territories".to_string(),             // Territory events
                         ];
                         
+                        let mut successful_subscriptions = 0;
                         for channel in &channels {
-                            if let Err(e) = pubsub.subscribe(channel).await {
-                                tracing::error!("❌ Failed to subscribe to game channel {} for {} ({}): {}", 
-                                    channel, user_id, username, e);
-                                continue;
+                            match pubsub.subscribe(channel).await {
+                                Ok(_) => {
+                                    successful_subscriptions += 1;
+                                    tracing::info!("✅ Successfully subscribed to game events channel: {} for {} ({}) - session: {}", 
+                                        channel, user_id, username, session_id);
+                                },
+                                Err(e) => {
+                                    tracing::error!("❌ Failed to subscribe to game channel {} for {} ({}): {}", 
+                                        channel, user_id, username, e);
+                                }
                             }
-                            tracing::info!("📡 Subscribed to game events channel: {} for {} ({}) - session: {}", 
-                                channel, user_id, username, session_id);
+                        }
+                        
+                        if successful_subscriptions > 0 {
+                            // Send confirmation that subscriptions are active
+                            let confirmation_msg = serde_json::json!({
+                                "event_type": "redis_subscriptions_ready",
+                                "user_id": user_id.to_string(),
+                                "session_id": session_id.to_string(),
+                                "subscribed_channels": successful_subscriptions,
+                                "message": format!("Subscribed to {} Redis channels", successful_subscriptions),
+                                "timestamp": chrono::Utc::now().to_rfc3339()
+                            });
+                            
+                            if let Ok(msg_str) = serde_json::to_string(&confirmation_msg) {
+                                addr.do_send(GameEventMessage(msg_str));
+                            }
+                            
+                            tracing::info!("📡 Redis subscriptions confirmed for {} ({}) session: {} - listening for events", 
+                                user_id, username, session_id);
+                        } else {
+                            tracing::error!("❌ No successful Redis subscriptions for {} ({}) session: {}", 
+                                user_id, username, session_id);
+                            return;
                         }
                         
                         let mut stream = pubsub.on_message();
+                        tracing::info!("🎧 Redis message stream started for {} ({}) session: {}", 
+                            user_id, username, session_id);
                         
                         while let Some(msg) = stream.next().await {
                             match msg.get_payload::<String>() {
                                 Ok(payload) => {
-                                    tracing::debug!("📥 Received game event for {} ({}) session {}: {}", 
+                                    tracing::debug!("📥 Received Redis event for {} ({}) session {}: {}", 
                                         user_id, username, session_id, payload);
                                     addr.do_send(GameEventMessage(payload));
                                 },
                                 Err(e) => {
-                                    tracing::error!("❌ Failed to parse game event for {} ({}) session {}: {}", 
+                                    tracing::error!("❌ Failed to parse Redis event for {} ({}) session {}: {}", 
                                         user_id, username, session_id, e);
                                 }
                             }
                         }
+                        
+                        tracing::warn!("🔌 Redis message stream ended for {} ({}) session: {}", 
+                            user_id, username, session_id);
                     },
                     Err(e) => {
                         tracing::error!("❌ Failed to connect to Redis for game events for {} ({}) session {}: {}", 
                             user_id, username, session_id, e);
+                        
+                        // Send error notification to client
+                        let error_msg = serde_json::json!({
+                            "event_type": "redis_connection_failed",
+                            "user_id": user_id.to_string(),
+                            "session_id": session_id.to_string(),
+                            "error": format!("Redis connection failed: {}", e),
+                            "timestamp": chrono::Utc::now().to_rfc3339()
+                        });
+                        
+                        if let Ok(msg_str) = serde_json::to_string(&error_msg) {
+                            addr.do_send(GameEventMessage(msg_str));
+                        }
                     }
                 }
             });
         } else {
             tracing::warn!("⚠️  No Redis client available for game events - real-time features disabled for {} ({}) session: {}", 
                 user_id, username, session_id);
+            
+            // Send notification that Redis is not available
+            let no_redis_msg = serde_json::json!({
+                "event_type": "redis_not_available",
+                "user_id": user_id.to_string(),
+                "session_id": session_id.to_string(),
+                "message": "Redis not configured - real-time events disabled",
+                "timestamp": chrono::Utc::now().to_rfc3339()
+            });
+            
+            if let Ok(msg_str) = serde_json::to_string(&no_redis_msg) {
+                ctx.text(msg_str);
+            }
         }
     }
 

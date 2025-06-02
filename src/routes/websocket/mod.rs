@@ -1,5 +1,3 @@
-// Updated src/routes/websocket/mod.rs - Include registry module
-
 mod connection;
 mod messages;
 mod auth;
@@ -24,7 +22,7 @@ pub async fn game_ws_route(
     redis: Option<web::Data<redis::Client>>,
     jwt_settings: web::Data<JwtSettings>,
 ) -> Result<HttpResponse, Error> {
-    tracing::info!("New game WebSocket connection request");
+    tracing::info!("🔗 New game WebSocket connection request");
     
     // Try to get user info from different sources
     let (user_id, username) = if let Some(claims) = claims {
@@ -66,6 +64,6 @@ pub async fn game_ws_route(
         stream,
     )?;
     
-    tracing::info!("Game WebSocket connection initiated for user: {} ({})", user_uuid, username);
+    tracing::info!("✅ Game WebSocket connection initiated for user: {} ({})", user_uuid, username);
     Ok(resp)
 }
