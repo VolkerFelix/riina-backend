@@ -1,28 +1,31 @@
+// Enhanced src/handlers/health_data/upload_health_data.rs - Now with game stats!
+
 use actix_web::{web, HttpResponse};
 use chrono::Utc;
 use serde_json::json;
 use uuid::Uuid;
 use crate::middleware::auth::Claims;
 use crate::db::health_data::insert_health_data;
-use crate::models::health_data::{HealthDataSyncRequest, HealthDataSyncResponse};
+use crate::models::health_data::HealthDataSyncRequest;
+use crate::game::stats_calculator::StatCalculator;
 use redis::AsyncCommands;
 
 #[tracing::instrument(
-    name = "Upload health data",
+    name = "Upload health data with game stats",
     skip(data, pool, redis, claims),
     fields(
         username = %claims.username,
         data_type = %data.device_id
     )
 )]
-
 pub async fn upload_health_data(
     data: web::Json<HealthDataSyncRequest>,
     pool: web::Data<sqlx::PgPool>,
     redis: Option<web::Data<redis::Client>>,
     claims: web::ReqData<Claims>
 ) -> HttpResponse {
-    tracing::info!("Sync health data handler called from device: {}", data.device_id);
+    tracing::info!("🎮 Processing health data with game mechanics for user: {}", claims.username);
+    
     let user_id = match Uuid::parse_str(&claims.sub) {
         Ok(id) => {
             tracing::info!("User ID parsed successfully: {}", id);
@@ -35,123 +38,121 @@ pub async fn upload_health_data(
                 "message": "Invalid user ID"
             }));
         }
-    };    
+    };
+
+    // 🎲 CALCULATE GAME STATS FROM HEALTH DATA
+    let stat_changes = StatCalculator::calculate_stat_changes(&data);
+    tracing::info!("📊 Calculated stat changes for {}: +{} stamina, +{} strength, +{} wisdom, +{} mana, +{} XP", 
+        claims.username, 
+        stat_changes.stamina_change, 
+        stat_changes.strength_change, 
+        stat_changes.wisdom_change, 
+        stat_changes.mana_change, 
+        stat_changes.experience_change
+    );
+
     // Insert health data into database
     let insert_result = insert_health_data(&pool, user_id, &data).await;
     
     match insert_result {
         Ok(sync_id) => {
-            // Identify the type of data for event classification
-            let data_types = determine_data_types(&data);
-            tracing::info!("Data types detected: {:?}", data_types);
-
-            let event = serde_json::json!({
-                "event_type": "health_data_uploaded",
+            // 🎯 PREPARE GAME EVENT FOR REAL-TIME NOTIFICATION
+            let game_event = json!({
+                "event_type": "health_data_processed",
                 "user_id": user_id.to_string(),
+                "username": claims.username,
                 "sync_id": sync_id.to_string(),
-                "timestamp": Utc::now().to_rfc3339(),
-                "data_types": data_types
+                "stat_changes": {
+                    "stamina_change": stat_changes.stamina_change,
+                    "strength_change": stat_changes.strength_change,
+                    "wisdom_change": stat_changes.wisdom_change,
+                    "mana_change": stat_changes.mana_change,
+                    "experience_change": stat_changes.experience_change
+                },
+                "reasoning": stat_changes.reasoning,
+                "timestamp": Utc::now().to_rfc3339()
             });
 
-            let message_str = serde_json::to_string(&event)
-                .unwrap_or_else(|e| {
-                    tracing::error!("Failed to serialize Redis message: {}", e);
-                    "{}".to_string()
-                });
-
+            // 📡 PUBLISH TO REDIS FOR REAL-TIME NOTIFICATION
             if let Some(redis_client) = &redis {
-                match redis_client.get_async_connection().await {
-                    Ok(mut conn) => {
-                        let pub_result: Result<i32, redis::RedisError> = conn.publish("evolveme:events:health_data", message_str).await;
-                        match pub_result {
-                            Ok(receivers) => {
-                                tracing::info!("Successfully published health data event for sync_id: {} to {} receivers",
-                                    sync_id, receivers);
+                let user_channel = format!("game:events:user:{}", user_id);
+                let global_channel = "game:events:global".to_string();
+                let event_str = serde_json::to_string(&game_event)
+                    .unwrap_or_else(|e| {
+                        tracing::error!("Failed to serialize game event: {}", e);
+                        "{}".to_string()
+                    });
+
+                let redis_client = redis_client.clone();
+                let event_str_clone = event_str.clone();
+                let username_clone = claims.username.clone();
+                
+                tokio::spawn(async move {
+                    match redis_client.get_async_connection().await {
+                        Ok(mut conn) => {
+                            // Publish to user-specific channel
+                            let user_result: Result<i32, redis::RedisError> = 
+                                conn.publish(&user_channel, &event_str).await;
+                            
+                            // Also publish to global channel for leaderboards/social features
+                            let global_result: Result<i32, redis::RedisError> = 
+                                conn.publish(&global_channel, &event_str_clone).await;
+                            
+                            match (user_result, global_result) {
+                                (Ok(user_receivers), Ok(global_receivers)) => {
+                                    tracing::info!("🎮 Published game event for {} to {} user subscribers and {} global subscribers", 
+                                        username_clone, user_receivers, global_receivers);
+                                }
+                                (Err(e), _) | (_, Err(e)) => {
+                                    tracing::error!("❌ Failed to publish game event for {}: {}", username_clone, e);
+                                }
                             }
-                            Err(e) => {
-                                tracing::error!("Failed to publish health data event: {}", e);
-                            }
+                        },
+                        Err(e) => {
+                            tracing::error!("❌ Redis connection failed during game event publishing: {}", e);
                         }
-                    },
-                    Err(e) => {
-                        tracing::error!("Failed to get Redis connection: {}", e);
                     }
-                }
+                });
+            } else {
+                tracing::warn!("⚠️  Redis not available - game events will not be published in real-time");
             }
 
-            // Prepare successful response
-            let response = HealthDataSyncResponse {
-                success: true,
-                message: "Health data synced successfully".to_string(),
-                sync_id,
-                timestamp: Utc::now(),
-            };
-            tracing::info!("Health data synced successfully: {}", sync_id); 
+            // 🎉 ENHANCED RESPONSE WITH GAME STATS
+            let response = json!({
+                "success": true,
+                "message": "Health data synced and game stats calculated!",
+                "sync_id": sync_id,
+                "timestamp": Utc::now(),
+                "game_stats": {
+                    "stat_changes": {
+                        "stamina_change": stat_changes.stamina_change,
+                        "strength_change": stat_changes.strength_change,
+                        "wisdom_change": stat_changes.wisdom_change,
+                        "mana_change": stat_changes.mana_change,
+                        "experience_change": stat_changes.experience_change
+                    },
+                    "reasoning": stat_changes.reasoning,
+                    "summary": format!("Gained {} total stat points and {} XP!", 
+                        stat_changes.stamina_change + stat_changes.strength_change + 
+                        stat_changes.wisdom_change + stat_changes.mana_change,
+                        stat_changes.experience_change
+                    )
+                }
+            });
+
+            tracing::info!("✅ Health data processed successfully with game mechanics for {}: {}", 
+                claims.username, sync_id);
             HttpResponse::Ok().json(response)
         }
         Err(e) => {
-            // Prepare error response
-            let response = HealthDataSyncResponse {
-                success: false,
-                message: format!("Failed to sync health data: {}", e),
-                sync_id: uuid::Uuid::nil(), // Use nil UUID for error case
-                timestamp: Utc::now(),
-            };
-            tracing::error!("Failed to sync health data: {}", e);
+            let response = json!({
+                "success": false,
+                "message": format!("Failed to sync health data: {}", e),
+                "sync_id": null,
+                "timestamp": Utc::now()
+            });
+            tracing::error!("❌ Failed to sync health data for {}: {}", claims.username, e);
             HttpResponse::InternalServerError().json(response)
         }
     }
-}
-
-fn determine_data_types(data: &HealthDataSyncRequest) -> Vec<String> {
-    let mut data_types = Vec::new();
-    
-    if data.sleep.is_some() {
-        data_types.push("sleep".to_string());
-    }
-    
-    if data.steps.is_some() && data.steps.unwrap() > 0 {
-        data_types.push("steps".to_string());
-    }
-    
-    if data.heart_rate.is_some() {
-        data_types.push("heart_rate".to_string());
-    }
-    
-    if data.active_energy_burned.is_some() {
-        data_types.push("energy".to_string());
-    }
-    
-    if data.additional_metrics.is_some() {
-        // Extract metrics from additional_metrics
-        if let Some(ref metrics) = data.additional_metrics {
-            let json_value = serde_json::to_value(metrics).unwrap_or(serde_json::Value::Null);
-            
-            if let serde_json::Value::Object(obj) = json_value {
-                // Check for specific additional metrics we care about
-                if obj.contains_key("blood_oxygen") {
-                    data_types.push("blood_oxygen".to_string());
-                }
-                
-                if obj.contains_key("respiratory_rate") {
-                    data_types.push("respiratory".to_string());
-                }
-                
-                if obj.contains_key("hrv") {
-                    data_types.push("hrv".to_string());
-                }
-                
-                if obj.contains_key("stress_level") {
-                    data_types.push("stress".to_string());
-                }
-            }
-        }
-    }
-    
-    // If no specific types are detected, add a generic "health" type
-    if data_types.is_empty() {
-        data_types.push("health".to_string());
-    }
-    
-    data_types
 }
