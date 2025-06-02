@@ -1188,7 +1188,6 @@ dependencies = [
  "sqlx-cli",
  "thiserror 1.0.69",
  "tokio",
- "tokio-retry",
  "tokio-tungstenite",
  "tracing",
  "tracing-actix-web",

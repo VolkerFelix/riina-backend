@@ -13,7 +13,6 @@ pub struct Settings{
     pub application: ApplicationSettings,
     pub jwt: JwtSettings,
     pub redis: RedisSettings,
-    pub llm: LLMSettings
 }
 
 #[derive(Deserialize, Debug)]
@@ -57,14 +56,6 @@ pub struct ApplicationSettings{
     pub log_level: String
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct LLMSettings {
-    pub service_url: String,
-    pub timeout_seconds: u64,
-    pub max_retries: usize,
-    pub model_name: String,
-}
-
 pub fn get_config() -> Result<Settings, ConfigError> {
     let base_path = std::env::current_dir()
         .expect("Failed to determine the current directory");
@@ -96,12 +87,6 @@ pub fn get_config() -> Result<Settings, ConfigError> {
         .add_source(
             config::Environment::default()
                 .prefix("REDIS")
-                .prefix_separator("__")
-                .separator("__")
-        )
-        .add_source(
-            config::Environment::default()
-                .prefix("LLM")
                 .prefix_separator("__")
                 .separator("__")
         )

@@ -7,8 +7,6 @@ use once_cell::sync::Lazy;
 use evolveme_backend::run;
 use evolveme_backend::config::settings::{get_config, DatabaseSettings, get_jwt_settings, get_redis_url};
 use evolveme_backend::telemetry::{get_subscriber, init_subscriber};
-use evolveme_backend::services::llm_service::LLMService;
-use evolveme_backend::services::conversation_service::ConversationService;
 
 // Ensure that the `tracing` stack is only initialised once using `once_cell`
 static TRACING: Lazy<()> = Lazy::new(|| {
@@ -54,14 +52,10 @@ pub async fn spawn_app() -> TestApp {
     let jwt_settings = get_jwt_settings(&configuration);
     let redis_client = redis::Client::open(get_redis_url(&configuration).expose_secret())
         .ok();
-    let llm_service = LLMService::new(configuration.llm.service_url.clone(), configuration.llm.model_name.clone());
-    let conversation_service = ConversationService::new(redis_client.clone().unwrap());
     let server = run(
         listener, 
         connection_pool.clone(), 
-        jwt_settings, 
-        llm_service,
-        conversation_service,
+        jwt_settings,
         redis_client,
 
     )
