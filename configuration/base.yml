@@ -12,6 +12,3 @@ jwt:
 redis:
   host: localhost
   port: 6379
-llm:
-  timeout_seconds: 30
-  max_retries: 3
