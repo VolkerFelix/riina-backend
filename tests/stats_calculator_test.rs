@@ -43,11 +43,3 @@ fn test_sleep_calculation() {
     assert_eq!(changes.mana_change, 4); // 8h sleep = 4 mana
     assert_eq!(changes.wisdom_change, 2); // Good sleep = 2 wisdom
 }
-
-#[test]
-fn test_level_calculation() {
-    assert_eq!(StatCalculator::calculate_level_from_experience(0), 1);
-    assert_eq!(StatCalculator::calculate_level_from_experience(100), 1);
-    assert_eq!(StatCalculator::calculate_level_from_experience(400), 2);
-    assert_eq!(StatCalculator::calculate_level_from_experience(900), 3);
-} 

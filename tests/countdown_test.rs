@@ -1,0 +1,41 @@
+use chrono::{TimeZone, Utc, Datelike, Timelike, Weekday, DateTime};
+use evolveme_backend::league::countdown::{CountdownService, UrgencyLevel};
+
+#[test]
+fn test_next_game_time_is_saturday() {
+    let service = CountdownService::new();
+    let next_game = service.get_next_game_time();
+    assert_eq!(next_game.weekday(), Weekday::Sat);
+    assert_eq!(next_game.hour(), 22);
+    assert_eq!(next_game.minute(), 0);
+}
+
+#[test]
+fn test_countdown_formatting() {
+    let service = CountdownService::new();
+    assert_eq!(service.format_countdown(0), "Game time!");
+    assert_eq!(service.format_countdown(30), "30s");
+    assert_eq!(service.format_countdown(90), "1m 30s");
+    assert_eq!(service.format_countdown(3661), "1h 1m 1s");
+    assert_eq!(service.format_countdown(90061), "1d 1h 1m 1s");
+}
+
+#[test]
+fn test_valid_game_time() {
+    let service = CountdownService::new();
+    let valid_time = Utc.with_ymd_and_hms(2024, 1, 6, 22, 0, 0).unwrap(); // Saturday 10pm
+    let invalid_time = Utc.with_ymd_and_hms(2024, 1, 6, 21, 0, 0).unwrap(); // Saturday 9pm
+    
+    assert!(service.is_valid_game_time(valid_time));
+    assert!(!service.is_valid_game_time(invalid_time));
+}
+
+#[test]
+fn test_urgency_levels() {
+    let service = CountdownService::new();
+    assert_eq!(service.get_urgency_level(0), UrgencyLevel::GameTime);
+    assert_eq!(service.get_urgency_level(1800), UrgencyLevel::Critical);
+    assert_eq!(service.get_urgency_level(10800), UrgencyLevel::High);
+    assert_eq!(service.get_urgency_level(43200), UrgencyLevel::Medium);
+    assert_eq!(service.get_urgency_level(172800), UrgencyLevel::Low);
+} 

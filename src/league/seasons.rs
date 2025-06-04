@@ -102,9 +102,9 @@ impl SeasonService {
         let mut param_count = 1;
         let mut params: Vec<Box<dyn sqlx::Encode<sqlx::Postgres> + Send + Sync>> = Vec::new();
 
-        if let Some(name) = name {
+        if let Some(ref name) = name {
             query.push_str(&format!(", name = ${}", param_count));
-            params.push(Box::new(name));
+            params.push(Box::new(name.clone()));
             param_count += 1;
         }
 
@@ -216,7 +216,7 @@ impl SeasonService {
         };
 
         Ok(SeasonStatistics {
-            season,
+            season: season.clone(),
             total_games: stats.total_games.unwrap_or(0) as i32,
             completed_games: stats.completed_games.unwrap_or(0) as i32,
             total_teams: stats.total_teams.unwrap_or(0) as i32,

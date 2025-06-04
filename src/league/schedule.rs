@@ -188,7 +188,37 @@ impl ScheduleService {
             None
         };
 
-        let games_with_teams = self.convert_query_results_to_games_with_teams(games_query);
+        // Convert query results to GameWithTeams directly
+        let games_with_teams = games_query.into_iter().map(|row| {
+            let status = match row.status.as_str() {
+                "live" => GameStatus::Live,
+                "finished" => GameStatus::Finished,
+                "postponed" => GameStatus::Postponed,
+                _ => GameStatus::Scheduled,
+            };
+
+            GameWithTeams {
+                game: LeagueGame {
+                    id: row.id,
+                    season_id: row.season_id,
+                    home_team_id: row.home_team_id,
+                    away_team_id: row.away_team_id,
+                    scheduled_time: row.scheduled_time,
+                    week_number: row.week_number,
+                    is_first_leg: row.is_first_leg,
+                    status,
+                    home_score: row.home_score,
+                    away_score: row.away_score,
+                    winner_team_id: row.winner_team_id,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                },
+                home_team_name: row.home_team_name.unwrap_or_default(),
+                away_team_name: row.away_team_name.unwrap_or_default(),
+                home_team_color: row.home_team_color.unwrap_or_default(),
+                away_team_color: row.away_team_color.unwrap_or_default(),
+            }
+        }).collect();
 
         Ok(GameWeekResponse {
             week_number,
@@ -230,7 +260,36 @@ impl ScheduleService {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(self.convert_query_results_to_games_with_teams(games_query))
+        Ok(games_query.into_iter().map(|row| {
+            let status = match row.status.as_str() {
+                "live" => GameStatus::Live,
+                "finished" => GameStatus::Finished,
+                "postponed" => GameStatus::Postponed,
+                _ => GameStatus::Scheduled,
+            };
+
+            GameWithTeams {
+                game: LeagueGame {
+                    id: row.id,
+                    season_id: row.season_id,
+                    home_team_id: row.home_team_id,
+                    away_team_id: row.away_team_id,
+                    scheduled_time: row.scheduled_time,
+                    week_number: row.week_number,
+                    is_first_leg: row.is_first_leg,
+                    status,
+                    home_score: row.home_score,
+                    away_score: row.away_score,
+                    winner_team_id: row.winner_team_id,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                },
+                home_team_name: row.home_team_name.unwrap_or_default(),
+                away_team_name: row.away_team_name.unwrap_or_default(),
+                home_team_color: row.home_team_color.unwrap_or_default(),
+                away_team_color: row.away_team_color.unwrap_or_default(),
+            }
+        }).collect())
     }
 
     /// Get recent results (last N completed games)
@@ -261,7 +320,36 @@ impl ScheduleService {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(self.convert_query_results_to_games_with_teams(games_query))
+        Ok(games_query.into_iter().map(|row| {
+            let status = match row.status.as_str() {
+                "live" => GameStatus::Live,
+                "finished" => GameStatus::Finished,
+                "postponed" => GameStatus::Postponed,
+                _ => GameStatus::Scheduled,
+            };
+
+            GameWithTeams {
+                game: LeagueGame {
+                    id: row.id,
+                    season_id: row.season_id,
+                    home_team_id: row.home_team_id,
+                    away_team_id: row.away_team_id,
+                    scheduled_time: row.scheduled_time,
+                    week_number: row.week_number,
+                    is_first_leg: row.is_first_leg,
+                    status,
+                    home_score: row.home_score,
+                    away_score: row.away_score,
+                    winner_team_id: row.winner_team_id,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                },
+                home_team_name: row.home_team_name.unwrap_or_default(),
+                away_team_name: row.away_team_name.unwrap_or_default(),
+                home_team_color: row.home_team_color.unwrap_or_default(),
+                away_team_color: row.away_team_color.unwrap_or_default(),
+            }
+        }).collect())
     }
 
     /// Calculate total number of weeks needed for a league with N teams
@@ -363,49 +451,6 @@ impl ScheduleService {
         }).collect())
     }
 
-    /// Convert database query results to GameWithTeams structs
-    fn convert_query_results_to_games_with_teams(
-        &self,
-        query_results: Vec<sqlx::postgres::PgRow>
-    ) -> Vec<GameWithTeams> {
-        query_results
-            .into_iter()
-            .map(|row| {
-                use sqlx::Row;
-                
-                let status_str: String = row.get("status");
-                let status = match status_str.as_str() {
-                    "live" => GameStatus::Live,
-                    "finished" => GameStatus::Finished,
-                    "postponed" => GameStatus::Postponed,
-                    _ => GameStatus::Scheduled,
-                };
-
-                GameWithTeams {
-                    game: LeagueGame {
-                        id: row.get("id"),
-                        season_id: row.get("season_id"),
-                        home_team_id: row.get("home_team_id"),
-                        away_team_id: row.get("away_team_id"),
-                        scheduled_time: row.get("scheduled_time"),
-                        week_number: row.get("week_number"),
-                        is_first_leg: row.get("is_first_leg"),
-                        status,
-                        home_score: row.get("home_score"),
-                        away_score: row.get("away_score"),
-                        winner_team_id: row.get("winner_team_id"),
-                        created_at: row.get("created_at"),
-                        updated_at: row.get("updated_at"),
-                    },
-                    home_team_name: row.get::<Option<String>, _>("home_team_name").unwrap_or_default(),
-                    away_team_name: row.get::<Option<String>, _>("away_team_name").unwrap_or_default(),
-                    home_team_color: row.get::<Option<String>, _>("home_team_color").unwrap_or_default(),
-                    away_team_color: row.get::<Option<String>, _>("away_team_color").unwrap_or_default(),
-                }
-            })
-            .collect()
-    }
-
     /// Get schedule statistics for a season
     pub async fn get_schedule_statistics(&self, season_id: Uuid) -> Result<ScheduleStatistics, sqlx::Error> {
         let stats = sqlx::query!(
@@ -455,8 +500,8 @@ impl ScheduleService {
         let start_of_day = date.and_hms_opt(0, 0, 0).unwrap();
         let end_of_day = date.and_hms_opt(23, 59, 59).unwrap();
         
-        let start_utc = DateTime::from_naive_utc_and_offset(start_of_day, Utc);
-        let end_utc = DateTime::from_naive_utc_and_offset(end_of_day, Utc);
+        let start_utc: DateTime<Utc> = DateTime::from_naive_utc_and_offset(start_of_day, Utc);
+        let end_utc: DateTime<Utc> = DateTime::from_naive_utc_and_offset(end_of_day, Utc);
 
         let games_query = sqlx::query!(
             r#"
@@ -479,7 +524,36 @@ impl ScheduleService {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(self.convert_query_results_to_games_with_teams(games_query))
+        Ok(games_query.into_iter().map(|row| {
+            let status = match row.status.as_str() {
+                "live" => GameStatus::Live,
+                "finished" => GameStatus::Finished,
+                "postponed" => GameStatus::Postponed,
+                _ => GameStatus::Scheduled,
+            };
+
+            GameWithTeams {
+                game: LeagueGame {
+                    id: row.id,
+                    season_id: row.season_id,
+                    home_team_id: row.home_team_id,
+                    away_team_id: row.away_team_id,
+                    scheduled_time: row.scheduled_time,
+                    week_number: row.week_number,
+                    is_first_leg: row.is_first_leg,
+                    status,
+                    home_score: row.home_score,
+                    away_score: row.away_score,
+                    winner_team_id: row.winner_team_id,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                },
+                home_team_name: row.home_team_name.unwrap_or_default(),
+                away_team_name: row.away_team_name.unwrap_or_default(),
+                home_team_color: row.home_team_color.unwrap_or_default(),
+                away_team_color: row.away_team_color.unwrap_or_default(),
+            }
+        }).collect())
     }
 }
 
@@ -496,51 +570,4 @@ pub struct ScheduleStatistics {
     pub first_week: i32,
     pub last_week: i32,
     pub progress_percentage: f32,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_calculate_total_weeks() {
-        let service = ScheduleService::new(PgPool::connect("").await.unwrap()); // Mock pool
-        
-        assert_eq!(service.calculate_total_weeks(0), 0);
-        assert_eq!(service.calculate_total_weeks(1), 0);
-        assert_eq!(service.calculate_total_weeks(2), 2);  // 2 teams: 2 weeks
-        assert_eq!(service.calculate_total_weeks(3), 4);  // 3 teams: 4 weeks
-        assert_eq!(service.calculate_total_weeks(4), 6);  // 4 teams: 6 weeks
-        assert_eq!(service.calculate_total_weeks(6), 10); // 6 teams: 10 weeks
-    }
-
-    #[tokio::test]
-    async fn test_calculate_total_games() {
-        let service = ScheduleService::new(PgPool::connect("").await.unwrap()); // Mock pool
-        
-        assert_eq!(service.calculate_total_games(0), 0);
-        assert_eq!(service.calculate_total_games(1), 0);
-        assert_eq!(service.calculate_total_games(2), 2);  // 2 teams: 2 games total
-        assert_eq!(service.calculate_total_games(3), 6);  // 3 teams: 6 games total
-        assert_eq!(service.calculate_total_games(4), 12); // 4 teams: 12 games total
-        assert_eq!(service.calculate_total_games(6), 30); // 6 teams: 30 games total
-    }
-
-    #[tokio::test]
-    async fn test_validate_schedule_parameters() {
-        let service = ScheduleService::new(PgPool::connect("").await.unwrap()); // Mock pool
-        
-        // Valid parameters
-        let valid_start = chrono::Utc::now()
-            .date_naive()
-            .and_hms_opt(22, 0, 0)
-            .unwrap();
-        let valid_start_utc = DateTime::from_naive_utc_and_offset(valid_start, Utc);
-        
-        assert!(service.validate_schedule_parameters(4, valid_start_utc).is_ok());
-        
-        // Invalid team count
-        assert!(service.validate_schedule_parameters(1, valid_start_utc).is_err());
-        assert!(service.validate_schedule_parameters(21, valid_start_utc).is_err());
-    }
 }

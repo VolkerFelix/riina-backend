@@ -61,7 +61,8 @@ pub struct LeagueStanding {
     pub wins: i32,
     pub draws: i32,
     pub losses: i32,
-    pub points: i32,
+    // Points is a generated column in the database, so it can be NULL in some edge cases
+    pub points: Option<i32>,
     pub position: i32,
     pub last_updated: DateTime<Utc>,
 }
@@ -137,10 +138,28 @@ impl GameStatus {
 }
 
 impl LeagueStanding {
+    /// Get points with a safe default of 0 if None
+    pub fn get_points(&self) -> i32 {
+        self.points.unwrap_or(0)
+    }
+
+    /// Calculate form percentage based on points
     pub fn form_percentage(&self) -> f32 {
         if self.games_played == 0 {
             return 0.0;
         }
-        (self.points as f32) / (self.games_played as f32 * 3.0) * 100.0
+        (self.get_points() as f32) / (self.games_played as f32 * 3.0) * 100.0
+    }
+
+    /// Calculate points manually (in case the generated column isn't working)
+    pub fn calculate_points(&self) -> i32 {
+        self.wins * 3 + self.draws
+    }
+
+    /// Ensure points are correctly calculated
+    pub fn ensure_points_calculated(&mut self) {
+        if self.points.is_none() {
+            self.points = Some(self.calculate_points());
+        }
     }
 }

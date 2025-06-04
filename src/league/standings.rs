@@ -136,8 +136,7 @@ impl StandingsService {
 
         let standings: Vec<StandingWithTeam> = standings_with_teams
             .into_iter()
-            .enumerate()
-            .map(|(index, row)| {
+            .map(|row| {
                 StandingWithTeam {
                     standing: LeagueStanding {
                         id: row.id,
@@ -147,8 +146,8 @@ impl StandingsService {
                         wins: row.wins,
                         draws: row.draws,
                         losses: row.losses,
-                        points: row.points.unwrap_or(0),
-                        position: (index + 1) as i32,
+                        points: row.points,
+                        position: row.position,
                         last_updated: row.last_updated,
                     },
                     team_name: row.team_name.unwrap_or_default(),
