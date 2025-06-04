@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE league_seasons \n            SET is_active = FALSE, updated_at = NOW()\n            WHERE end_date < $1 AND is_active = TRUE\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "017cc922b70d7761d196d5fd75da26b19cd28fd8df966c477a10b7a46304b724"
+}

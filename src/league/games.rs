@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc, Duration};
+use chrono::Datelike;
 use sqlx::PgPool;
 use uuid::Uuid;
 use crate::models::league::*;
@@ -140,7 +140,6 @@ impl GameService {
                     home_score: row.home_score,
                     away_score: row.away_score,
                     winner_team_id: row.winner_team_id,
-                    match_data: row.match_data.map(|data| sqlx::types::Json(data)),
                     created_at: row.created_at,
                     updated_at: row.updated_at,
                 },
@@ -150,5 +149,122 @@ impl GameService {
                 away_team_color: row.away_team_color.unwrap_or_default(),
             }
         }))
+    }
+
+
+    /// Get next upcoming game for a season
+    pub async fn get_next_game(&self, season_id: Uuid) -> Result<Option<GameWithTeams>, sqlx::Error> {
+        let now = chrono::Utc::now();
+        
+        let game_query = sqlx::query!(
+            r#"
+            SELECT 
+                lg.*,
+                'Team ' || SUBSTRING(lg.home_team_id::text, 1, 8) as home_team_name,
+                'Team ' || SUBSTRING(lg.away_team_id::text, 1, 8) as away_team_name,
+                '#E74C3C' as home_team_color,
+                '#3498DB' as away_team_color
+            FROM league_games lg
+            WHERE lg.season_id = $1 
+            AND lg.status = 'scheduled'
+            AND lg.scheduled_time >= $2
+            ORDER BY lg.scheduled_time ASC
+            LIMIT 1
+            "#,
+            season_id,
+            now
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(game_query.map(|row| {
+            let status = match row.status.as_str() {
+                "live" => GameStatus::Live,
+                "finished" => GameStatus::Finished,
+                "postponed" => GameStatus::Postponed,
+                _ => GameStatus::Scheduled,
+            };
+
+            GameWithTeams {
+                game: LeagueGame {
+                    id: row.id,
+                    season_id: row.season_id,
+                    home_team_id: row.home_team_id,
+                    away_team_id: row.away_team_id,
+                    scheduled_time: row.scheduled_time,
+                    week_number: row.week_number,
+                    is_first_leg: row.is_first_leg,
+                    status,
+                    home_score: row.home_score,
+                    away_score: row.away_score,
+                    winner_team_id: row.winner_team_id,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                },
+                home_team_name: row.home_team_name.unwrap_or_default(),
+                away_team_name: row.away_team_name.unwrap_or_default(),
+                home_team_color: row.home_team_color.unwrap_or_default(),
+                away_team_color: row.away_team_color.unwrap_or_default(),
+            }
+        }))
+    }
+
+    /// Get games scheduled for this week
+    pub async fn get_games_this_week(&self, season_id: Uuid) -> Result<Vec<GameWithTeams>, sqlx::Error> {
+        let now = chrono::Utc::now();
+        let week_start = now - chrono::Duration::days(now.weekday().num_days_from_monday() as i64);
+        let week_end = week_start + chrono::Duration::days(7);
+
+        let games_query = sqlx::query!(
+            r#"
+            SELECT 
+                lg.*,
+                'Team ' || SUBSTRING(lg.home_team_id::text, 1, 8) as home_team_name,
+                'Team ' || SUBSTRING(lg.away_team_id::text, 1, 8) as away_team_name,
+                '#E74C3C' as home_team_color,
+                '#3498DB' as away_team_color
+            FROM league_games lg
+            WHERE lg.season_id = $1 
+            AND lg.scheduled_time >= $2
+            AND lg.scheduled_time < $3
+            ORDER BY lg.scheduled_time ASC
+            "#,
+            season_id,
+            week_start,
+            week_end
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(games_query.into_iter().map(|row| {
+            let status = match row.status.as_str() {
+                "live" => GameStatus::Live,
+                "finished" => GameStatus::Finished,
+                "postponed" => GameStatus::Postponed,
+                _ => GameStatus::Scheduled,
+            };
+
+            GameWithTeams {
+                game: LeagueGame {
+                    id: row.id,
+                    season_id: row.season_id,
+                    home_team_id: row.home_team_id,
+                    away_team_id: row.away_team_id,
+                    scheduled_time: row.scheduled_time,
+                    week_number: row.week_number,
+                    is_first_leg: row.is_first_leg,
+                    status,
+                    home_score: row.home_score,
+                    away_score: row.away_score,
+                    winner_team_id: row.winner_team_id,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                },
+                home_team_name: row.home_team_name.unwrap_or_default(),
+                away_team_name: row.away_team_name.unwrap_or_default(),
+                home_team_color: row.home_team_color.unwrap_or_default(),
+                away_team_color: row.away_team_color.unwrap_or_default(),
+            }
+        }).collect())
     }
 }

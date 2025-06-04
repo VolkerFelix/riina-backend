@@ -2,7 +2,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use sqlx::types::Json;
 use uuid::Uuid;
 
 #[derive(Debug, FromRow, Serialize, Deserialize, Clone)]
@@ -29,7 +28,6 @@ pub struct LeagueGame {
     pub home_score: Option<i32>,
     pub away_score: Option<i32>,
     pub winner_team_id: Option<Uuid>,
-    pub match_data: Option<Json<MatchData>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -41,6 +39,17 @@ pub enum GameStatus {
     Live,
     Finished,
     Postponed,
+}
+
+impl From<String> for GameStatus {
+    fn from(s: String) -> Self {
+        match s.to_lowercase().as_str() {
+            "live" => GameStatus::Live,
+            "finished" => GameStatus::Finished,
+            "postponed" => GameStatus::Postponed,
+            _ => GameStatus::Scheduled,
+        }
+    }
 }
 
 #[derive(Debug, FromRow, Serialize, Deserialize, Clone)]
@@ -58,7 +67,7 @@ pub struct LeagueStanding {
 }
 
 // Request/Response DTOs
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CreateSeasonRequest {
     pub name: String,
     pub start_date: DateTime<Utc>,

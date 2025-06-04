@@ -1,0 +1,119 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT \n                lg.*,\n                'Team ' || SUBSTRING(lg.home_team_id::text, 1, 8) as home_team_name,\n                'Team ' || SUBSTRING(lg.away_team_id::text, 1, 8) as away_team_name,\n                '#E74C3C' as home_team_color,\n                '#3498DB' as away_team_color\n            FROM league_games lg\n            WHERE lg.season_id = $1 AND lg.week_number = $2\n            ORDER BY lg.scheduled_time ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "season_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "home_team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "away_team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "scheduled_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "week_number",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "is_first_leg",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 7,
+        "name": "status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "winner_team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 9,
+        "name": "home_score",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 10,
+        "name": "away_score",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 11,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "home_team_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 14,
+        "name": "away_team_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 15,
+        "name": "home_team_color",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 16,
+        "name": "away_team_color",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "b8a20538a2a519866f8bc5ba35568f7338c477e96e0ad49e21b8c8f8ddf1a5c2"
+}

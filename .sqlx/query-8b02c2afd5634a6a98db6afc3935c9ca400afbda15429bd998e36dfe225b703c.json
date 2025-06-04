@@ -1,0 +1,95 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT \n                ls.*,\n                'Team ' || SUBSTRING(ls.team_id::text, 1, 8) as team_name,\n                '#4F46E5' as team_color,\n                '⚽' as team_icon\n            FROM league_standings ls\n            WHERE ls.season_id = $1\n            ORDER BY ls.points DESC, ls.wins DESC\n            LIMIT $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "season_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "games_played",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 4,
+        "name": "wins",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "draws",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "losses",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "points",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "position",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 9,
+        "name": "last_updated",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "team_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "team_color",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "team_icon",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "8b02c2afd5634a6a98db6afc3935c9ca400afbda15429bd998e36dfe225b703c"
+}

@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS league_games (
     is_first_leg BOOLEAN NOT NULL DEFAULT TRUE, -- True for first meeting, false for second
     status VARCHAR(50) NOT NULL DEFAULT 'scheduled', -- scheduled, live, finished, postponed
     winner_team_id UUID NULL,
-    match_data JSONB, -- Store detailed match statistics
+    home_score INTEGER,
+    away_score INTEGER,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     

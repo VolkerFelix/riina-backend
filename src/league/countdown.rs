@@ -1,7 +1,4 @@
-use chrono::{DateTime, Utc, Datelike, Duration, Weekday};
-use serde_json::json;
-
-/// Service responsible for all time calculations and countdown logic
+use chrono::{DateTime, Utc, Datelike, Duration, Weekday, Timelike};
 pub struct CountdownService;
 
 impl CountdownService {

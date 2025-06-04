@@ -331,7 +331,36 @@ impl ScheduleService {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(self.convert_query_results_to_games_with_teams(games_query))
+        Ok(games_query.into_iter().map(|row| {
+            let status = match row.status.as_str() {
+                "live" => GameStatus::Live,
+                "finished" => GameStatus::Finished,
+                "postponed" => GameStatus::Postponed,
+                _ => GameStatus::Scheduled,
+            };
+
+            GameWithTeams {
+                game: LeagueGame {
+                    id: row.id,
+                    season_id: row.season_id,
+                    home_team_id: row.home_team_id,
+                    away_team_id: row.away_team_id,
+                    scheduled_time: row.scheduled_time,
+                    week_number: row.week_number,
+                    is_first_leg: row.is_first_leg,
+                    status,
+                    home_score: row.home_score,
+                    away_score: row.away_score,
+                    winner_team_id: row.winner_team_id,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                },
+                home_team_name: row.home_team_name.unwrap_or_default(),
+                away_team_name: row.away_team_name.unwrap_or_default(),
+                home_team_color: row.home_team_color.unwrap_or_default(),
+                away_team_color: row.away_team_color.unwrap_or_default(),
+            }
+        }).collect())
     }
 
     /// Convert database query results to GameWithTeams structs
@@ -365,8 +394,6 @@ impl ScheduleService {
                         home_score: row.get("home_score"),
                         away_score: row.get("away_score"),
                         winner_team_id: row.get("winner_team_id"),
-                        match_data: row.get::<Option<sqlx::types::JsonValue>, _>("match_data")
-                            .map(|data| sqlx::types::Json(data)),
                         created_at: row.get("created_at"),
                         updated_at: row.get("updated_at"),
                     },
@@ -475,8 +502,8 @@ pub struct ScheduleStatistics {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_calculate_total_weeks() {
+    #[tokio::test]
+    async fn test_calculate_total_weeks() {
         let service = ScheduleService::new(PgPool::connect("").await.unwrap()); // Mock pool
         
         assert_eq!(service.calculate_total_weeks(0), 0);
@@ -487,8 +514,8 @@ mod tests {
         assert_eq!(service.calculate_total_weeks(6), 10); // 6 teams: 10 weeks
     }
 
-    #[test]
-    fn test_calculate_total_games() {
+    #[tokio::test]
+    async fn test_calculate_total_games() {
         let service = ScheduleService::new(PgPool::connect("").await.unwrap()); // Mock pool
         
         assert_eq!(service.calculate_total_games(0), 0);
@@ -499,8 +526,8 @@ mod tests {
         assert_eq!(service.calculate_total_games(6), 30); // 6 teams: 30 games total
     }
 
-    #[test]
-    fn test_validate_schedule_parameters() {
+    #[tokio::test]
+    async fn test_validate_schedule_parameters() {
         let service = ScheduleService::new(PgPool::connect("").await.unwrap()); // Mock pool
         
         // Valid parameters

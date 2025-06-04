@@ -2,8 +2,11 @@ use sqlx::PgPool;
 use uuid::Uuid;
 use crate::league::schedule::ScheduleService;
 use crate::league::games::GameService;
+use crate::league::seasons::SeasonService;
 use crate::league::countdown::CountdownService;
 use crate::league::validation::LeagueValidator;
+use crate::league::standings::StandingsService;
+use crate::models::league::*;
 
 /// Main league service that orchestrates all league-related operations
 pub struct LeagueService {
@@ -40,13 +43,6 @@ impl LeagueService {
         // Create season through season service
         let season = self.seasons.create_season(request.clone()).await?;
 
-        // Generate schedule through schedule service
-        let games_created = self.schedule.generate_schedule(
-            season.id,
-            &request.team_ids,
-            request.start_date,
-        ).await?;
-
         // Initialize standings through standings service
         self.standings.initialize_for_season(season.id, &request.team_ids).await?;
 
@@ -66,11 +62,12 @@ impl LeagueService {
                 let countdown_seconds = self.countdown.seconds_until_next_game();
                 let next_game = self.games.get_next_game(season.id).await?;
                 let games_this_week = self.games.get_games_this_week(season.id).await?;
+                let week_number = next_game.as_ref().map(|g| g.game.week_number);
 
                 Ok(NextGameInfo {
                     next_game,
                     countdown_seconds,
-                    week_number: next_game.as_ref().map(|g| g.game.week_number),
+                    week_number,
                     games_this_week,
                 })
             }
