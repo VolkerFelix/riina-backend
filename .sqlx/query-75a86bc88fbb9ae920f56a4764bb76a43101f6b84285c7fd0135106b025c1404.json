@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT \n            tm.id,\n            tm.team_id,\n            tm.user_id,\n            u.username,\n            u.email,\n            tm.role as \"role: TeamRole\",\n            tm.status as \"status: MemberStatus\",\n            tm.joined_at,\n            tm.updated_at\n        FROM team_members tm\n        JOIN users u ON tm.user_id = u.id\n        WHERE tm.team_id = $1\n        ORDER BY \n            CASE tm.role \n                WHEN 'owner' THEN 1\n                WHEN 'admin' THEN 2\n                WHEN 'member' THEN 3\n            END,\n            tm.joined_at ASC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "username",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "email",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "role: TeamRole",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "status: MemberStatus",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "joined_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "75a86bc88fbb9ae920f56a4764bb76a43101f6b84285c7fd0135106b025c1404"
+}

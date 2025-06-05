@@ -103,6 +103,19 @@ pub async fn register_new_team(
     let team_id = Uuid::new_v4();
     let now = Utc::now();
 
+    // Start a transaction to ensure both team and membership are created atomically
+    let mut tx = match pool.begin().await {
+        Ok(tx) => tx,
+        Err(e) => {
+            tracing::error!("Failed to start transaction: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "message": "Failed to start database transaction"
+            })));
+        }
+    };
+
+    // Create the team
     match sqlx::query!(
         r#"
         INSERT INTO teams (id, user_id, team_name, team_description, team_color, team_icon, created_at, updated_at)
@@ -117,11 +130,56 @@ pub async fn register_new_team(
         now,
         now
     )
-    .execute(pool.get_ref())
+    .execute(&mut *tx)
     .await
     {
         Ok(_) => {
-            tracing::info!("Successfully registered team '{}' with ID: {}", 
+            tracing::info!("Successfully created team '{}' with ID: {}", 
+                team_request.team_name, team_id);
+        }
+        Err(e) => {
+            tracing::error!("Failed to create team: {}", e);
+            let _ = tx.rollback().await;
+            return Ok(HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "message": "Failed to create team"
+            })));
+        }
+    }
+
+    // Add the team owner as a member with 'owner' role
+    let member_id = Uuid::new_v4();
+    match sqlx::query!(
+        r#"
+        INSERT INTO team_members (id, team_id, user_id, role, status, joined_at, updated_at)
+        VALUES ($1, $2, $3, 'owner', 'active', $4, $5)
+        "#,
+        member_id,
+        team_id,
+        user_id,
+        now,
+        now
+    )
+    .execute(&mut *tx)
+    .await
+    {
+        Ok(_) => {
+            tracing::info!("Successfully added team owner as member for team {}", team_id);
+        }
+        Err(e) => {
+            tracing::error!("Failed to add team owner as member: {}", e);
+            let _ = tx.rollback().await;
+            return Ok(HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "message": "Failed to add team owner as member"
+            })));
+        }
+    }
+
+    // Commit the transaction
+    match tx.commit().await {
+        Ok(_) => {
+            tracing::info!("Successfully registered team '{}' with ID: {} and added owner as member", 
                 team_request.team_name, team_id);
 
             Ok(HttpResponse::Created().json(json!({
@@ -136,10 +194,10 @@ pub async fn register_new_team(
             })))
         }
         Err(e) => {
-            tracing::error!("Failed to register team: {}", e);
+            tracing::error!("Failed to commit team registration transaction: {}", e);
             Ok(HttpResponse::InternalServerError().json(json!({
                 "success": false,
-                "message": "Failed to register team"
+                "message": "Failed to complete team registration"
             })))
         }
     }
