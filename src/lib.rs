@@ -13,8 +13,8 @@ mod utils;
 pub mod telemetry;
 mod middleware;
 mod db;
-pub mod services;
 pub mod game;
+pub mod league;
 use crate::routes::init_routes;
 use crate::config::jwt::JwtSettings;
 

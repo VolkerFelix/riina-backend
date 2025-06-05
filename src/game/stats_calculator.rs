@@ -251,35 +251,4 @@ impl StatCalculator {
 
         bonus
     }
-
-    /// Calculate level from experience points
-    pub fn calculate_level_from_experience(experience: u64) -> u32 {
-        // Level formula: Level = floor(sqrt(XP / 100))
-        // Level 1: 100 XP, Level 2: 400 XP, Level 3: 900 XP, etc.
-        ((experience as f64 / 100.0).sqrt().floor() as u32).max(1)
-    }
-
-    /// Calculate XP needed for next level
-    pub fn experience_for_next_level(current_level: u32) -> u64 {
-        let next_level = current_level + 1;
-        (next_level * next_level * 100) as u64
-    }
-
-    /// Apply stat changes to current stats (with level-up detection)
-    pub fn apply_stat_changes(current_stats: &GameStats, changes: &StatChanges) -> (GameStats, bool) {
-        let new_experience = (current_stats.experience_points as i64 + changes.experience_change).max(0) as u64;
-        let new_level = Self::calculate_level_from_experience(new_experience);
-        let leveled_up = new_level > current_stats.level;
-
-        let new_stats = GameStats {
-            stamina: ((current_stats.stamina as i32 + changes.stamina_change).max(0) as u32).min(100),
-            strength: ((current_stats.strength as i32 + changes.strength_change).max(0) as u32).min(100),
-            wisdom: ((current_stats.wisdom as i32 + changes.wisdom_change).max(0) as u32).min(100),
-            mana: ((current_stats.mana as i32 + changes.mana_change).max(0) as u32).min(100),
-            experience_points: new_experience,
-            level: new_level,
-        };
-
-        (new_stats, leveled_up)
-    }
 }
