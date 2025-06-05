@@ -10,7 +10,7 @@ use crate::models::league::*;
 
 /// Main league service that orchestrates all league-related operations
 pub struct LeagueService {
-    pool: PgPool,
+    _pool: PgPool,
     schedule: ScheduleService,
     standings: StandingsService,
     games: GameService,
@@ -22,7 +22,7 @@ pub struct LeagueService {
 impl LeagueService {
     pub fn new(pool: PgPool) -> Self {
         Self {
-            pool: pool.clone(),
+            _pool: pool.clone(),
             schedule: ScheduleService::new(pool.clone()),
             standings: StandingsService::new(pool.clone()),
             games: GameService::new(pool.clone()),

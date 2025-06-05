@@ -3,6 +3,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
+use std::fmt;
 
 #[derive(Debug, FromRow, Serialize, Deserialize, Clone)]
 pub struct LeagueSeason {
@@ -123,6 +124,47 @@ pub struct GameWeekResponse {
     pub games: Vec<GameWithTeams>,
     pub is_current_week: bool,
     pub countdown_seconds: Option<i64>, // Only for current week
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GameResultRequest {
+    pub home_score: i32,
+    pub away_score: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CountdownQuery {
+    pub season_id: Option<Uuid>,
+}
+
+impl fmt::Display for CountdownQuery {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "season_id: {:?}", self.season_id)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpcomingGamesQuery {
+    pub season_id: Option<Uuid>,
+    pub limit: Option<i64>,
+}
+
+impl fmt::Display for UpcomingGamesQuery {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "season_id: {:?}, limit: {:?}", self.season_id, self.limit)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RecentResultsQuery {
+    pub season_id: Option<Uuid>,
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PaginationQuery {
+    pub page: Option<i64>,
+    pub limit: Option<i64>,
 }
 
 // Helper implementations
