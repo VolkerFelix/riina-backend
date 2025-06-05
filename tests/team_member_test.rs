@@ -26,21 +26,26 @@ async fn test_add_user_to_team_success() {
         .expect("Failed to execute registration request");
     assert_eq!(response.status().as_u16(), 200);
     
-    // Create second user (to be added as member)
-    let member_username = format!("team_member_{}", Uuid::new_v4());
-    let member_user = json!({
-        "username": member_username,
-        "email": format!("{}@example.com", member_username),
-        "password": "password123"
-    });
-    
-    let response = client
-        .post(&format!("{}/register_user", test_app.address))
-        .json(&member_user)
-        .send()
-        .await
-        .expect("Failed to execute registration request");
-    assert_eq!(response.status().as_u16(), 200);
+    // Create 4 more users(to be added as members)
+    let mut member_usernames = Vec::new();
+    for i in 1..5 {
+        let member_username = format!("team_member_{}", Uuid::new_v4());
+        let member_user = json!({
+            "username": member_username,
+            "email": format!("{}@example.com", member_username),
+            "password": "password123"
+        });
+
+        let response = client
+            .post(&format!("{}/register_user", test_app.address))
+            .json(&member_user)
+            .send()
+            .await
+            .expect("Failed to execute registration request");
+        assert_eq!(response.status().as_u16(), 200);
+        
+        member_usernames.push(member_username);
+    }
     
     // Login as owner
     let login_data = json!({
@@ -80,10 +85,12 @@ async fn test_add_user_to_team_success() {
     let team_body: serde_json::Value = response.json().await.unwrap();
     let team_id = team_body["data"]["team_id"].as_str().unwrap();
     
-    // Add member to team
+    // Add members to team
     let add_member_data = json!({
-        "username": member_username,
-        "role": "member"
+        "member_request": member_usernames.iter().map(|username| json!({
+            "username": username,
+            "role": "member"
+        })).collect::<Vec<_>>()
     });
     
     let response = client
@@ -92,13 +99,19 @@ async fn test_add_user_to_team_success() {
         .json(&add_member_data)
         .send()
         .await
-        .expect("Failed to execute add team member request");
+        .expect("Failed to execute add team members request");
     assert_eq!(response.status().as_u16(), 201);
     
     let member_body: serde_json::Value = response.json().await.unwrap();
     assert!(member_body["success"].as_bool().unwrap());
-    assert_eq!(member_body["member"]["username"].as_str().unwrap(), member_username);
-    assert_eq!(member_body["member"]["role"].as_str().unwrap(), "member");
+    
+    // Verify all members were added
+    let members = member_body["members"].as_array().unwrap();
+    assert_eq!(members.len(), 4);
+    for (i, member) in members.iter().enumerate() {
+        assert_eq!(member["username"].as_str().unwrap(), member_usernames[i]);
+        assert_eq!(member["role"].as_str().unwrap(), "member");
+    }
 }
 
 #[tokio::test]

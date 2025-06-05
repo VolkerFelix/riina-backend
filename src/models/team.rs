@@ -196,13 +196,19 @@ impl std::str::FromStr for MemberStatus {
     }
 }
 
-/// Request to add a user to a team
+/// Team member request
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AddTeamMemberRequest {
+pub struct TeamMemberRequest {
     pub user_id: Option<Uuid>,
     pub username: Option<String>,
     pub email: Option<String>,
     pub role: Option<TeamRole>,
+}
+
+/// Request to add a user to a team
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AddTeamMemberRequest {
+    pub member_request: Vec<TeamMemberRequest>,
 }
 
 /// Request to update a team member
@@ -363,30 +369,21 @@ impl TeamUpdateRequest {
 impl AddTeamMemberRequest {
     /// Validate add team member request
     pub fn validate(&self) -> Result<(), String> {
-        // Must provide at least one identifier
-        if self.user_id.is_none() && self.username.is_none() && self.email.is_none() {
-            return Err("Must provide user_id, username, or email to identify the user".to_string());
+        // Must provide at least one member request
+        if self.member_request.is_empty() {
+            return Err("Must provide at least one member request".to_string());
         }
 
-        // Validate username if provided
-        if let Some(username) = &self.username {
-            let username = username.trim();
-            if username.is_empty() {
-                return Err("Username cannot be empty".to_string());
+        // Validate each member request
+        for member in &self.member_request {
+            if member.user_id.is_none() && member.username.is_none() && member.email.is_none() {
+                return Err("Each member request must provide at least one identifier".to_string());
             }
-            if username.len() < 2 {
-                return Err("Username must be at least 2 characters".to_string());
-            }
-        }
 
-        // Validate email if provided
-        if let Some(email) = &self.email {
-            let email = email.trim();
-            if email.is_empty() {
-                return Err("Email cannot be empty".to_string());
-            }
-            if !email.contains('@') {
-                return Err("Invalid email format".to_string());
+            if let Some(user_id) = member.user_id {
+                if user_id == Uuid::nil() {
+                    return Err("Invalid user ID".to_string());
+                }
             }
         }
 
