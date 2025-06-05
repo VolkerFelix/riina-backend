@@ -94,6 +94,146 @@ pub struct TeamSeasonHistory {
     pub goals_against: i32,
 }
 
+/// Team member model
+#[derive(Debug, FromRow, Serialize, Deserialize, Clone)]
+pub struct TeamMember {
+    pub id: Uuid,
+    pub team_id: Uuid,
+    pub user_id: Uuid,
+    pub role: TeamRole,
+    pub status: MemberStatus,
+    pub joined_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Team member with user information
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TeamMemberInfo {
+    pub id: Uuid,
+    pub team_id: Uuid,
+    pub user_id: Uuid,
+    pub username: String,
+    pub email: String,
+    pub role: TeamRole,
+    pub status: MemberStatus,
+    pub joined_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Team role enumeration
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, sqlx::Type)]
+#[sqlx(type_name = "text")]
+#[sqlx(rename_all = "lowercase")]
+pub enum TeamRole {
+    #[serde(rename = "owner")]
+    Owner,
+    #[serde(rename = "admin")]
+    Admin,
+    #[serde(rename = "member")]
+    Member,
+}
+
+impl std::fmt::Display for TeamRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TeamRole::Owner => write!(f, "owner"),
+            TeamRole::Admin => write!(f, "admin"),
+            TeamRole::Member => write!(f, "member"),
+        }
+    }
+}
+
+impl std::str::FromStr for TeamRole {
+    type Err = String;
+    
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "owner" => Ok(TeamRole::Owner),
+            "admin" => Ok(TeamRole::Admin),
+            "member" => Ok(TeamRole::Member),
+            _ => Err(format!("Invalid team role: {}", s)),
+        }
+    }
+}
+
+/// Member status enumeration
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, sqlx::Type)]
+#[sqlx(type_name = "text")]
+#[sqlx(rename_all = "lowercase")]
+pub enum MemberStatus {
+    #[serde(rename = "active")]
+    Active,
+    #[serde(rename = "inactive")]
+    Inactive,
+    #[serde(rename = "pending")]
+    Pending,
+    #[serde(rename = "banned")]
+    Banned,
+}
+
+impl std::fmt::Display for MemberStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MemberStatus::Active => write!(f, "active"),
+            MemberStatus::Inactive => write!(f, "inactive"),
+            MemberStatus::Pending => write!(f, "pending"),
+            MemberStatus::Banned => write!(f, "banned"),
+        }
+    }
+}
+
+impl std::str::FromStr for MemberStatus {
+    type Err = String;
+    
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "active" => Ok(MemberStatus::Active),
+            "inactive" => Ok(MemberStatus::Inactive),
+            "pending" => Ok(MemberStatus::Pending),
+            "banned" => Ok(MemberStatus::Banned),
+            _ => Err(format!("Invalid member status: {}", s)),
+        }
+    }
+}
+
+/// Team member request
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TeamMemberRequest {
+    pub user_id: Option<Uuid>,
+    pub username: Option<String>,
+    pub email: Option<String>,
+    pub role: Option<TeamRole>,
+}
+
+/// Request to add a user to a team
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AddTeamMemberRequest {
+    pub member_request: Vec<TeamMemberRequest>,
+}
+
+/// Request to update a team member
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UpdateTeamMemberRequest {
+    pub role: Option<TeamRole>,
+    pub status: Option<MemberStatus>,
+}
+
+/// Response for team member operations
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TeamMemberResponse {
+    pub success: bool,
+    pub message: String,
+    pub member: Option<TeamMemberInfo>,
+}
+
+/// Team with its members
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TeamWithMembers {
+    pub team: TeamInfo,
+    pub members: Vec<TeamMemberInfo>,
+    pub member_count: usize,
+}
+
 impl TeamRegistrationRequest {
     /// Validate team registration request
     pub fn validate(&self) -> Result<(), String> {
@@ -220,6 +360,43 @@ impl TeamUpdateRequest {
             if icon.len() > 10 {
                 return Err("Team icon must be 10 characters or less".to_string());
             }
+        }
+
+        Ok(())
+    }
+}
+
+impl AddTeamMemberRequest {
+    /// Validate add team member request
+    pub fn validate(&self) -> Result<(), String> {
+        // Must provide at least one member request
+        if self.member_request.is_empty() {
+            return Err("Must provide at least one member request".to_string());
+        }
+
+        // Validate each member request
+        for member in &self.member_request {
+            if member.user_id.is_none() && member.username.is_none() && member.email.is_none() {
+                return Err("Each member request must provide at least one identifier".to_string());
+            }
+
+            if let Some(user_id) = member.user_id {
+                if user_id == Uuid::nil() {
+                    return Err("Invalid user ID".to_string());
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl UpdateTeamMemberRequest {
+    /// Validate update team member request
+    pub fn validate(&self) -> Result<(), String> {
+        // Must provide at least one field to update
+        if self.role.is_none() && self.status.is_none() {
+            return Err("Must provide at least one field to update".to_string());
         }
 
         Ok(())

@@ -3,10 +3,10 @@ use actix_web::{get, post, put, web, HttpResponse, Result};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::handlers::league::{team_handler, game_handler, league_handler, season_handler};
+use crate::handlers::league::{team_handler, team_member_handler, game_handler, league_handler, season_handler};
 use crate::middleware::auth::Claims;
 use crate::models::league::*;
-use crate::models::team::{TeamRegistrationRequest, TeamUpdateRequest};
+use crate::models::team::{TeamRegistrationRequest, TeamUpdateRequest, AddTeamMemberRequest, UpdateTeamMemberRequest};
 
 /// Create a new league season
 #[post("/season_create")]
@@ -163,4 +163,46 @@ async fn get_team_history(
 ) -> Result<HttpResponse> {
     let team_id = path.into_inner();
     team_handler::get_team_league_history(team_id, pool).await
+}
+
+/// Add a user to a team
+#[post("/teams/{team_id}/members")]
+async fn add_team_member(
+    path: web::Path<Uuid>,
+    request: web::Json<AddTeamMemberRequest>,
+    pool: web::Data<PgPool>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    team_member_handler::add_team_member(path, request, pool, claims).await
+}
+
+/// Get all members of a team
+#[get("/teams/{team_id}/members")]
+async fn get_team_members(
+    path: web::Path<Uuid>,
+    pool: web::Data<PgPool>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    team_member_handler::get_team_members(path, pool, claims).await
+}
+
+/// Remove a user from a team
+#[actix_web::delete("/teams/{team_id}/members/{user_id}")]
+async fn remove_team_member(
+    path: web::Path<(Uuid, Uuid)>,
+    pool: web::Data<PgPool>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    team_member_handler::remove_team_member(path, pool, claims).await
+}
+
+/// Update a team member's role or status
+#[put("/teams/{team_id}/members/{user_id}")]
+async fn update_team_member(
+    path: web::Path<(Uuid, Uuid)>,
+    request: web::Json<UpdateTeamMemberRequest>,
+    pool: web::Data<PgPool>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    team_member_handler::update_team_member(path, request, pool, claims).await
 }
