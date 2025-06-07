@@ -2,8 +2,8 @@ use serde::{Serialize, Deserialize};
 use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 
-use crate::models::health_data::{HealthDataSyncRequest, HeartRateData};
-use crate::game::helper::get_heart_rate_reserve;
+use crate::models::health_data::{HealthDataSyncRequest, HeartRateData, HeartRateZones};
+use crate::game::helper::get_hhr_and_resting_hr;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StatChanges {
@@ -54,7 +54,8 @@ impl StatCalculator {
             reasoning: Vec::new(),
         };
 
-        let hhr = get_heart_rate_reserve(pool, user_id).await.unwrap();
+        let (hhr, resting_heart_rate) = get_hhr_and_resting_hr(pool, user_id).await.unwrap();
+        let heart_rate_zones = HeartRateZones::new(hhr, resting_heart_rate);
 
         // Determine HRR zone based on heart rate percentage
         // Assuming max HR ~= 220 - age (using 180 as average for adults)

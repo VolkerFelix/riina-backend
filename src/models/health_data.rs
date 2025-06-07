@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -34,4 +36,56 @@ pub struct HealthDataSyncResponse {
     pub message: String,
     pub sync_id: Uuid,
     pub timestamp: DateTime<Utc>,
+}
+
+struct ZoneRange {
+    pub low: i16,
+    pub high: i16,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
+enum ZoneName {
+    Zone1,
+    Zone2,
+    Zone3,
+    Zone4,
+    Zone5,
+}
+
+pub struct HeartRateZones {
+    pub zones: HashMap<ZoneName, ZoneRange>,
+}
+
+impl HeartRateZones {
+    pub fn new(hhr: i16, resting_heart_rate: i16) -> Self {
+        let zone_1 = ZoneRange {
+            low: resting_heart_rate + (hhr as f32 * 0.5) as i16,
+            high: resting_heart_rate + (hhr as f32 * 0.6) as i16 - 1,
+        };
+        let zone_2 = ZoneRange {
+            low: resting_heart_rate + (hhr as f32 * 0.6) as i16,
+            high: resting_heart_rate + (hhr as f32 * 0.7) as i16 - 1,
+        };
+        let zone_3 = ZoneRange {
+            low: resting_heart_rate + (hhr as f32 * 0.7) as i16,
+            high: resting_heart_rate + (hhr as f32 * 0.8) as i16 - 1,
+        };
+        let zone_4 = ZoneRange {
+            low: resting_heart_rate + (hhr as f32 * 0.8) as i16,
+            high: resting_heart_rate + (hhr as f32 * 0.9) as i16 - 1,
+        };
+        let zone_5 = ZoneRange {
+            low: resting_heart_rate + (hhr as f32 * 0.9) as i16,
+            high: resting_heart_rate + hhr,
+        };
+        Self {
+            zones: HashMap::from([
+                (ZoneName::Zone1, zone_1),
+                (ZoneName::Zone2, zone_2),
+                (ZoneName::Zone3, zone_3),
+                (ZoneName::Zone4, zone_4),
+                (ZoneName::Zone5, zone_5),
+            ]),
+        }
+    }
 }
