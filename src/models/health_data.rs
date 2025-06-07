@@ -43,8 +43,8 @@ struct ZoneRange {
     pub high: i16,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
-enum ZoneName {
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum ZoneName {
     Zone1,
     Zone2,
     Zone3,
@@ -87,5 +87,14 @@ impl HeartRateZones {
                 (ZoneName::Zone5, zone_5),
             ]),
         }
+    }
+
+    pub fn get_zone(&self, heart_rate: f32) -> Option<ZoneName> {
+        for (zone_name, zone_range) in &self.zones {
+            if heart_rate >= zone_range.low as f32 && heart_rate <= zone_range.high as f32 {
+                return Some(zone_name.clone());
+            }
+        }
+        None
     }
 }
