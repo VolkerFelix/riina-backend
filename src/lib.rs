@@ -15,6 +15,7 @@ mod middleware;
 mod db;
 pub mod game;
 pub mod league;
+mod workout;
 use crate::routes::init_routes;
 use crate::config::jwt::JwtSettings;
 

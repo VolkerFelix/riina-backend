@@ -42,11 +42,10 @@ pub async fn upload_health_data(
 
     // 🎲 CALCULATE GAME STATS FROM HEALTH DATA
     let stat_changes = StatCalculator::calculate_stat_changes(&pool, user_id, &data).await;
-    tracing::info!("📊 Calculated stat changes for {}: +{} stamina, +{} strength, +{} XP", 
+    tracing::info!("📊 Calculated stat changes for {}: +{} stamina, +{} strength", 
         claims.username, 
         stat_changes.stamina_change, 
         stat_changes.strength_change, 
-        stat_changes.experience_change
     );
 
     // Insert health data into database
@@ -63,7 +62,6 @@ pub async fn upload_health_data(
                 "stat_changes": {
                     "stamina_change": stat_changes.stamina_change,
                     "strength_change": stat_changes.strength_change,
-                    "experience_change": stat_changes.experience_change
                 },
                 "reasoning": stat_changes.reasoning,
                 "timestamp": Utc::now().to_rfc3339()
@@ -123,12 +121,10 @@ pub async fn upload_health_data(
                     "stat_changes": {
                         "stamina_change": stat_changes.stamina_change,
                         "strength_change": stat_changes.strength_change,
-                        "experience_change": stat_changes.experience_change
                     },
                     "reasoning": stat_changes.reasoning,
-                    "summary": format!("Gained {} total stat points and {} XP!", 
-                        stat_changes.stamina_change + stat_changes.strength_change,
-                        stat_changes.experience_change
+                    "summary": format!("Gained {} total stat points!", 
+                        stat_changes.stamina_change + stat_changes.strength_change
                     )
                 }
             });

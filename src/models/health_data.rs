@@ -38,12 +38,26 @@ pub struct HealthDataSyncResponse {
     pub timestamp: DateTime<Utc>,
 }
 
-struct ZoneRange {
-    pub low: i16,
-    pub high: i16,
+#[derive(Debug, Clone)]
+pub struct UserProfile {
+    pub age: i32,
+    pub gender: Gender,
+    pub resting_heart_rate: Option<i32>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone)]
+pub enum Gender {
+    Male,
+    Female,
+    Other, // Use male formulas as default
+}
+
+pub struct ZoneRange {
+    pub low: i32,
+    pub high: i32,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum ZoneName {
     Zone1,
     Zone2,
@@ -57,26 +71,26 @@ pub struct HeartRateZones {
 }
 
 impl HeartRateZones {
-    pub fn new(hhr: i16, resting_heart_rate: i16) -> Self {
+    pub fn new(hhr: i32, resting_heart_rate: i32, max_heart_rate: i32) -> Self {
         let zone_1 = ZoneRange {
-            low: resting_heart_rate + (hhr as f32 * 0.5) as i16,
-            high: resting_heart_rate + (hhr as f32 * 0.6) as i16 - 1,
+            low: resting_heart_rate + (hhr as f32 * 0.5) as i32,
+            high: resting_heart_rate + (hhr as f32 * 0.6) as i32 - 1,
         };
         let zone_2 = ZoneRange {
-            low: resting_heart_rate + (hhr as f32 * 0.6) as i16,
-            high: resting_heart_rate + (hhr as f32 * 0.7) as i16 - 1,
+            low: resting_heart_rate + (hhr as f32 * 0.6) as i32,
+            high: resting_heart_rate + (hhr as f32 * 0.7) as i32 - 1,
         };
         let zone_3 = ZoneRange {
-            low: resting_heart_rate + (hhr as f32 * 0.7) as i16,
-            high: resting_heart_rate + (hhr as f32 * 0.8) as i16 - 1,
+            low: resting_heart_rate + (hhr as f32 * 0.7) as i32,
+            high: resting_heart_rate + (hhr as f32 * 0.8) as i32 - 1,
         };
         let zone_4 = ZoneRange {
-            low: resting_heart_rate + (hhr as f32 * 0.8) as i16,
-            high: resting_heart_rate + (hhr as f32 * 0.9) as i16 - 1,
+            low: resting_heart_rate + (hhr as f32 * 0.8) as i32,
+            high: resting_heart_rate + (hhr as f32 * 0.9) as i32 - 1,
         };
         let zone_5 = ZoneRange {
-            low: resting_heart_rate + (hhr as f32 * 0.9) as i16,
-            high: resting_heart_rate + hhr,
+            low: resting_heart_rate + (hhr as f32 * 0.9) as i32,
+            high: max_heart_rate,
         };
         Self {
             zones: HashMap::from([

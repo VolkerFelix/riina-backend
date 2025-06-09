@@ -1,5 +1,6 @@
 use sqlx::{Pool, Postgres};
 use uuid::Uuid;
+use serde_json::json;
 
 use crate::models::health_data::HealthDataSyncRequest;
 
@@ -11,16 +12,15 @@ pub async fn insert_health_data(
     let record = sqlx::query!(
         r#"
         INSERT INTO health_data (
-            user_id, device_id, timestamp, heart_rate, 
+            user_id, device_id, heart_rate_data, 
             active_energy_burned
         )
-        VALUES ($1, $2, $3, $4, $5)
+        VALUES ($1, $2, $3, $4)
         RETURNING id
         "#,
         user_id,
         &data.device_id,
-        data.timestamp,
-        data.heart_rate,
+        json!(data.heart_rate),
         data.active_energy_burned
     )
     .fetch_one(pool)
