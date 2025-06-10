@@ -7,6 +7,8 @@ pub mod protected;
 pub mod health_data;
 pub mod websocket;
 pub mod league;
+pub mod profile;
+pub mod health_activity;
 
 use crate::middleware::auth::AuthMiddleware;
 
@@ -24,6 +26,16 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
         web::scope("/health")
             .wrap(AuthMiddleware)
             .service(health_data::upload_health)
+            .service(health_activity::get_activity_sum)
+            .service(health_activity::get_zone_ana)
+    );
+    // Profile routes (require authentication)
+    cfg.service(
+        web::scope("/profile")
+            .wrap(AuthMiddleware)
+            .service(profile::get_profile)
+            .service(profile::get_health_prof)
+            .service(profile::update_health_prof)
     );
     // League routes (require authentication)
     cfg.service(

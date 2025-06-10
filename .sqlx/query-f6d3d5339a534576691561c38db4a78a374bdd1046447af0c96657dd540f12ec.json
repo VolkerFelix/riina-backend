@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO user_avatars (user_id, stamina, strength, experience_points, avatar_level, avatar_style)\n        VALUES ($1, 50, 50, 0, 1, 'warrior')\n        ON CONFLICT (user_id) DO NOTHING\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f6d3d5339a534576691561c38db4a78a374bdd1046447af0c96657dd540f12ec"
+}

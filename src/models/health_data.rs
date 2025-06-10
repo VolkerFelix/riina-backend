@@ -112,3 +112,28 @@ impl HeartRateZones {
         None
     }
 }
+
+#[derive(serde::Serialize)]
+pub struct ActivitySummaryResponse {
+    pub recent_workouts: i32,
+    pub total_sessions: i32,
+    pub zone_distribution: HashMap<String, f32>,
+    pub last_sync: Option<DateTime<Utc>>,
+    pub weekly_stats: WeeklyStats,
+    pub monthly_trend: MonthlyTrend,
+}
+
+#[derive(serde::Serialize)]
+pub struct WeeklyStats {
+    pub total_calories: f32,
+    pub total_exercise_time: i32, // in minutes
+    pub strength_sessions: i32,
+    pub cardio_sessions: i32,
+}
+
+#[derive(serde::Serialize)]
+pub struct MonthlyTrend {
+    pub stamina_gain: i32,
+    pub strength_gain: i32,
+    pub level_ups: i32,
+}

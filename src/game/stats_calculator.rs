@@ -14,14 +14,6 @@ pub struct StatChanges {
     pub reasoning: Vec<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GameStats {
-    pub stamina: u32,
-    pub strength: u32,
-    pub experience_points: u64,
-    pub level: u32,
-}
-
 pub struct StatCalculator;
 
 impl StatCalculator {
