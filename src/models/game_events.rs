@@ -103,8 +103,6 @@ pub struct Position {
 pub struct AvatarStats {
     pub stamina: u32,
     pub strength: u32,
-    pub wisdom: u32,
-    pub mana: u32,
     pub experience_points: u64,
 }
 
@@ -156,8 +154,6 @@ pub struct StatContribution {
     pub username: String,
     pub stamina_contribution: u32,
     pub strength_contribution: u32,
-    pub wisdom_contribution: u32,
-    pub mana_contribution: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -172,8 +168,6 @@ pub struct ExperienceGain {
 pub struct StatChanges {
     pub stamina_change: i32,
     pub strength_change: i32,
-    pub wisdom_change: i32,
-    pub mana_change: i32,
     pub experience_change: i64,
 }
 

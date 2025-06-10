@@ -1,7 +1,8 @@
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use sqlx::types::Json;
 use uuid::Uuid;
 
 #[derive(Debug, FromRow, Serialize)]
@@ -10,53 +11,23 @@ pub struct HealthData {
     pub user_id: Uuid,
     pub device_id: String,
     pub timestamp: DateTime<Utc>,
-    #[serde(default)]
-    pub steps: Option<i32>,
-    #[serde(default)]
-    pub heart_rate: Option<f32>,
-    #[serde(default)]
-    pub sleep: Option<Json<SleepData>>,
-    #[serde(default)]
+    pub heart_rate: Option<Vec<HeartRateData>>,
     pub active_energy_burned: Option<f32>,
-    #[serde(default)]
-    pub additional_metrics: Option<Json<AdditionalMetrics>>,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SleepData {
-    pub total_sleep_hours: f32,
-    #[serde(default)]
-    pub in_bed_time: Option<i64>,
-    #[serde(default)]
-    pub out_bed_time: Option<i64>,
-    #[serde(default)]
-    pub time_in_bed: Option<f32>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AdditionalMetrics {
-    pub blood_oxygen: Option<i16>,
-    pub rest_heart_rate: Option<i16>,
-    pub heart_rate_variability: Option<i16>,
-    pub respiratory_rate: Option<i16>,
-    pub stress_level: Option<i16>,
+pub struct HeartRateData {
+    pub timestamp: DateTime<Utc>,
+    pub heart_rate: f32,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct HealthDataSyncRequest {
     pub device_id: String,
     pub timestamp: DateTime<Utc>,
-    #[serde(default)]
-    pub steps: Option<i32>,
-    #[serde(default)]
-    pub heart_rate: Option<f32>,
-    #[serde(default)]
-    pub sleep: Option<SleepData>,
-    #[serde(default)]
+    pub heart_rate: Option<Vec<HeartRateData>>,
     pub active_energy_burned: Option<f32>,
-    #[serde(default)]
-    pub additional_metrics: Option<AdditionalMetrics>,
 }
 
 #[derive(Debug, Serialize)]
@@ -65,4 +36,79 @@ pub struct HealthDataSyncResponse {
     pub message: String,
     pub sync_id: Uuid,
     pub timestamp: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UserProfile {
+    pub age: i32,
+    pub gender: Gender,
+    pub resting_heart_rate: Option<i32>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Gender {
+    Male,
+    Female,
+    Other, // Use male formulas as default
+}
+
+pub struct ZoneRange {
+    pub low: i32,
+    pub high: i32,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum ZoneName {
+    Zone1,
+    Zone2,
+    Zone3,
+    Zone4,
+    Zone5,
+}
+
+pub struct HeartRateZones {
+    pub zones: HashMap<ZoneName, ZoneRange>,
+}
+
+impl HeartRateZones {
+    pub fn new(hhr: i32, resting_heart_rate: i32, max_heart_rate: i32) -> Self {
+        let zone_1 = ZoneRange {
+            low: resting_heart_rate + (hhr as f32 * 0.5) as i32,
+            high: resting_heart_rate + (hhr as f32 * 0.6) as i32 - 1,
+        };
+        let zone_2 = ZoneRange {
+            low: resting_heart_rate + (hhr as f32 * 0.6) as i32,
+            high: resting_heart_rate + (hhr as f32 * 0.7) as i32 - 1,
+        };
+        let zone_3 = ZoneRange {
+            low: resting_heart_rate + (hhr as f32 * 0.7) as i32,
+            high: resting_heart_rate + (hhr as f32 * 0.8) as i32 - 1,
+        };
+        let zone_4 = ZoneRange {
+            low: resting_heart_rate + (hhr as f32 * 0.8) as i32,
+            high: resting_heart_rate + (hhr as f32 * 0.9) as i32 - 1,
+        };
+        let zone_5 = ZoneRange {
+            low: resting_heart_rate + (hhr as f32 * 0.9) as i32,
+            high: max_heart_rate,
+        };
+        Self {
+            zones: HashMap::from([
+                (ZoneName::Zone1, zone_1),
+                (ZoneName::Zone2, zone_2),
+                (ZoneName::Zone3, zone_3),
+                (ZoneName::Zone4, zone_4),
+                (ZoneName::Zone5, zone_5),
+            ]),
+        }
+    }
+
+    pub fn get_zone(&self, heart_rate: f32) -> Option<ZoneName> {
+        for (zone_name, zone_range) in &self.zones {
+            if heart_rate >= zone_range.low as f32 && heart_rate <= zone_range.high as f32 {
+                return Some(zone_name.clone());
+            }
+        }
+        None
+    }
 }

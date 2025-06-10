@@ -1,22 +1,23 @@
-use crate::models::health_data::{HealthDataSyncRequest, AdditionalMetrics, SleepData};
 use serde::{Serialize, Deserialize};
+use sqlx::{Pool, Postgres};
+use uuid::Uuid;
+
+use crate::models::game::*;
+use crate::models::health_data::{HealthDataSyncRequest, HeartRateData, HeartRateZones, ZoneName};
+use crate::game::helper::{get_user_profile, calc_max_heart_rate};
+use crate::workout::workout_analyzer::WorkoutAnalyzer;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StatChanges {
     pub stamina_change: i32,
     pub strength_change: i32,
-    pub wisdom_change: i32,
-    pub mana_change: i32,
-    pub experience_change: i64,
-    pub reasoning: Vec<String>, // Explain why stats changed
+    pub reasoning: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GameStats {
     pub stamina: u32,
     pub strength: u32,
-    pub wisdom: u32,
-    pub mana: u32,
     pub experience_points: u64,
     pub level: u32,
 }
@@ -24,231 +25,82 @@ pub struct GameStats {
 pub struct StatCalculator;
 
 impl StatCalculator {
-    /// Calculate stat changes based on uploaded health data
-    pub fn calculate_stat_changes(health_data: &HealthDataSyncRequest) -> StatChanges {
+    /// Calculate stat changes based on HRR zones from heart rate and calories
+    pub async fn calculate_stat_changes(pool: &Pool<Postgres>, user_id: Uuid, health_data: &HealthDataSyncRequest) -> StatChanges {
         let mut changes = StatChanges {
             stamina_change: 0,
             strength_change: 0,
-            wisdom_change: 0,
-            mana_change: 0,
-            experience_change: 0,
             reasoning: Vec::new(),
         };
 
-        // 🚶‍♂️ STEPS → STAMINA & EXPERIENCE
-        if let Some(steps) = health_data.steps {
-            let stamina_gain = Self::calculate_stamina_from_steps(steps);
-            let exp_gain = Self::calculate_experience_from_steps(steps);
-            
-            if stamina_gain > 0 {
-                changes.stamina_change += stamina_gain;
-                changes.experience_change += exp_gain;
-                changes.reasoning.push(format!("🚶‍♂️ {} steps → +{} Stamina, +{} XP", 
-                    steps, stamina_gain, exp_gain));
+        if let Some(heart_rate) = &health_data.heart_rate {
+            let stats_changes = Self::calc_stats_hhr_based(pool, user_id, heart_rate).await;
+            changes.stamina_change += stats_changes.stamina_change;
+            changes.strength_change += stats_changes.strength_change;
+        }
+        changes
+    }
+
+    /// Calculate base stats from HRR zones based on heart rate
+    async fn calc_stats_hhr_based(pool: &Pool<Postgres>, user_id: Uuid, heart_rate: &Vec<HeartRateData>) -> StatChanges {
+        let mut changes = StatChanges {
+            stamina_change: 0,
+            strength_change: 0,
+            reasoning: Vec::new(),
+        };
+
+        let user_profile = get_user_profile(pool, user_id).await.unwrap();
+        let max_heart_rate = calc_max_heart_rate(user_profile.age, user_profile.gender);
+        let hrr = max_heart_rate - user_profile.resting_heart_rate.unwrap_or(0);
+        let heart_rate_zones = HeartRateZones::new(hrr, user_profile.resting_heart_rate.unwrap_or(0), max_heart_rate);
+        if let Some(workout_analysis) = WorkoutAnalyzer::new(heart_rate, &heart_rate_zones) {
+            let points_changes = Self::calc_points_from_workout_analysis(&workout_analysis);
+            changes.stamina_change += points_changes.stamina_change;
+            changes.strength_change += points_changes.strength_change;
+
+            // Add zone distribution info
+            for (zone, minutes) in &workout_analysis.zone_durations {
+                if *minutes > 0.5 { // Only show zones with significant time
+                    changes.reasoning.push(format!(
+                        "{:?}: {:.1} min", zone, minutes
+                    ));
+                }
             }
-        }
 
-        // 💓 HEART RATE → STRENGTH & STAMINA
-        if let Some(heart_rate) = health_data.heart_rate {
-            let (strength_gain, stamina_gain) = Self::calculate_stats_from_heart_rate(heart_rate);
-            
-            if strength_gain > 0 || stamina_gain > 0 {
-                changes.strength_change += strength_gain;
-                changes.stamina_change += stamina_gain;
-                changes.experience_change += (strength_gain + stamina_gain) as i64 * 5;
-                changes.reasoning.push(format!("💓 {} BPM workout → +{} Strength, +{} Stamina", 
-                    heart_rate as i32, strength_gain, stamina_gain));
-            }
-        }
-
-        // 😴 SLEEP → MANA & WISDOM
-        if let Some(sleep_data) = &health_data.sleep {
-            let (mana_gain, wisdom_gain, exp_gain) = Self::calculate_stats_from_sleep(sleep_data);
-            
-            changes.mana_change += mana_gain;
-            changes.wisdom_change += wisdom_gain;
-            changes.experience_change += exp_gain;
-            
-            if mana_gain > 0 || wisdom_gain > 0 {
-                changes.reasoning.push(format!("😴 {:.1}h sleep → +{} Mana, +{} Wisdom", 
-                    sleep_data.total_sleep_hours, mana_gain, wisdom_gain));
-            }
-        }
-
-        // 🔥 ACTIVE ENERGY → STRENGTH & EXPERIENCE
-        if let Some(energy_burned) = health_data.active_energy_burned {
-            let (strength_gain, exp_gain) = Self::calculate_stats_from_energy(energy_burned);
-            
-            if strength_gain > 0 {
-                changes.strength_change += strength_gain;
-                changes.experience_change += exp_gain;
-                changes.reasoning.push(format!("🔥 {} cal burned → +{} Strength, +{} XP", 
-                    energy_burned as i32, strength_gain, exp_gain));
-            }
-        }
-
-        // 🧘‍♂️ ADDITIONAL METRICS → VARIOUS STATS
-        if let Some(additional) = &health_data.additional_metrics {
-            let additional_changes = Self::calculate_stats_from_additional_metrics(additional);
-            
-            changes.stamina_change += additional_changes.stamina_change;
-            changes.strength_change += additional_changes.strength_change;
-            changes.wisdom_change += additional_changes.wisdom_change;
-            changes.mana_change += additional_changes.mana_change;
-            changes.experience_change += additional_changes.experience_change;
-            changes.reasoning.extend(additional_changes.reasoning);
-        }
-
-        // 🌟 BONUS: Daily activity bonus
-        let activity_bonus = Self::calculate_daily_activity_bonus(&changes);
-        if activity_bonus.experience_change > 0 {
-            changes.experience_change += activity_bonus.experience_change;
-            changes.reasoning.extend(activity_bonus.reasoning);
+            changes.reasoning.push(format!(
+                "Avg HR: {:.0} bpm, Peak HR: {:.0} bpm", 
+                workout_analysis.avg_heart_rate, workout_analysis.peak_heart_rate
+            ));
         }
 
         changes
     }
 
-    /// Steps → Stamina (1 point per 1000 steps, max 10 per session)
-    fn calculate_stamina_from_steps(steps: i32) -> i32 {
-        if steps < 500 { return 0; } // Minimum threshold
-        
-        let base_gain = steps / 1000; // 1 point per 1000 steps
-        let bonus = if steps >= 10000 { 2 } else { 0 }; // 10k step bonus
-        
-        (base_gain + bonus).min(10) // Cap at 10 points per session
-    }
-
-    /// Steps → Experience (5 XP per 1000 steps)
-    fn calculate_experience_from_steps(steps: i32) -> i64 {
-        if steps < 500 { return 0; }
-        (steps as f64 / 1000.0 * 5.0) as i64
-    }
-
-    /// Heart Rate → Strength & Stamina (workout intensity-based)
-    fn calculate_stats_from_heart_rate(heart_rate: f32) -> (i32, i32) {
-        match heart_rate as i32 {
-            0..=60 => (0, 0),           // Resting
-            61..=100 => (1, 1),         // Light activity  
-            101..=140 => (2, 2),        // Moderate activity
-            141..=170 => (3, 3),        // Vigorous activity
-            171.. => (4, 2),            // High intensity (more strength, less stamina)
-            _ => (0, 0),
-        }
-    }
-
-    /// Sleep → Mana & Wisdom (recovery and learning)
-    fn calculate_stats_from_sleep(sleep_data: &SleepData) -> (i32, i32, i64) {
-        let sleep_hours = sleep_data.total_sleep_hours;
-        
-        // Quality sleep → Mana (magical energy from rest)
-        let mana_gain = match sleep_hours {
-            h if h < 4.0 => -2,         // Sleep debt
-            h if h < 6.0 => 0,          // Poor sleep
-            h if h < 7.0 => 1,          // Decent sleep
-            h if h < 8.0 => 3,          // Good sleep
-            h if h < 9.0 => 4,          // Great sleep
-            _ => 3,                     // Too much sleep
-        }.max(0);
-
-        // Sleep → Wisdom (learning consolidation)
-        let wisdom_gain = if sleep_hours >= 7.0 && sleep_hours <= 9.0 { 2 } else { 0 };
-        
-        // Experience bonus for good sleep
-        let exp_gain = (mana_gain + wisdom_gain) as i64 * 3;
-
-        (mana_gain, wisdom_gain, exp_gain)
-    }
-
-    /// Active Energy → Strength & Experience
-    fn calculate_stats_from_energy(energy_burned: f32) -> (i32, i64) {
-        let calories = energy_burned as i32;
-        
-        let strength_gain = match calories {
-            0..=100 => 0,
-            101..=200 => 1,
-            201..=350 => 2,
-            351..=500 => 3,
-            501.. => 4,
-            _ => 0,
-        };
-
-        let exp_gain = (calories / 50) as i64; // 1 XP per 50 calories
-
-        (strength_gain, exp_gain)
-    }
-
-    /// Additional Metrics → Various Stats
-    fn calculate_stats_from_additional_metrics(metrics: &AdditionalMetrics) -> StatChanges {
+    fn calc_points_from_workout_analysis(workout_analysis: &WorkoutAnalyzer) -> StatChanges {
         let mut changes = StatChanges {
             stamina_change: 0,
             strength_change: 0,
-            wisdom_change: 0,
-            mana_change: 0,
-            experience_change: 0,
             reasoning: Vec::new(),
         };
 
-        // Blood Oxygen → Stamina
-        if let Some(blood_oxygen) = metrics.blood_oxygen {
-            if blood_oxygen >= 95 {
-                changes.stamina_change += 1;
-                changes.reasoning.push(format!("🫁 {}% blood oxygen → +1 Stamina", blood_oxygen));
-            }
+        let mut total_stamina = 0.0;
+        let mut total_strength = 0.0;
+
+        for (zone, duration_minutes) in &workout_analysis.zone_durations {
+            let (stamina_per_min, strength_per_min) = match zone {
+                ZoneName::Zone1 => (ZONE_1_STAMINA_POINTS_PER_MIN, ZONE_1_STRENGTH_POINTS_PER_MIN),
+                ZoneName::Zone2 => (ZONE_2_STAMINA_POINTS_PER_MIN, ZONE_2_STRENGTH_POINTS_PER_MIN),
+                ZoneName::Zone3 => (ZONE_3_STAMINA_POINTS_PER_MIN, ZONE_3_STRENGTH_POINTS_PER_MIN),
+                ZoneName::Zone4 => (ZONE_4_STAMINA_POINTS_PER_MIN, ZONE_4_STRENGTH_POINTS_PER_MIN),
+                ZoneName::Zone5 => (ZONE_5_STAMINA_POINTS_PER_MIN, ZONE_5_STRENGTH_POINTS_PER_MIN),
+            };
+            
+            total_stamina += duration_minutes * stamina_per_min as f32;
+            total_strength += duration_minutes * strength_per_min as f32;
         }
 
-        // HRV → Mana (stress recovery indicator)
-        if let Some(hrv) = metrics.heart_rate_variability {
-            if hrv >= 30 { // Good HRV indicates good recovery
-                changes.mana_change += 2;
-                changes.reasoning.push(format!("❤️‍🩹 {} HRV → +2 Mana (good recovery)", hrv));
-            }
-        }
-
-        // Low Stress → Wisdom
-        if let Some(stress_level) = metrics.stress_level {
-            if stress_level <= 30 { // Lower stress is better
-                changes.wisdom_change += 1;
-                changes.reasoning.push(format!("🧘‍♂️ Low stress ({}) → +1 Wisdom", stress_level));
-            }
-        }
-
-        // Resting Heart Rate → Stamina (lower is better)
-        if let Some(rhr) = metrics.rest_heart_rate {
-            if rhr <= 60 { // Athlete-level resting HR
-                changes.stamina_change += 2;
-                changes.reasoning.push(format!("💚 {} RHR → +2 Stamina (excellent fitness)", rhr));
-            }
-        }
-
+        changes.stamina_change = total_stamina as i32;
+        changes.strength_change = total_strength as i32;
         changes
-    }
-
-    /// Daily Activity Bonus (reward consistent activity)
-    fn calculate_daily_activity_bonus(base_changes: &StatChanges) -> StatChanges {
-        let total_stat_gains = base_changes.stamina_change + 
-                              base_changes.strength_change + 
-                              base_changes.wisdom_change + 
-                              base_changes.mana_change;
-
-        let mut bonus = StatChanges {
-            stamina_change: 0,
-            strength_change: 0,
-            wisdom_change: 0,
-            mana_change: 0,
-            experience_change: 0,
-            reasoning: Vec::new(),
-        };
-
-        // Bonus for well-rounded activity (multiple stat types improved)
-        if total_stat_gains >= 8 {
-            bonus.experience_change = 50;
-            bonus.reasoning.push("🌟 Well-rounded activity bonus → +50 XP".to_string());
-        } else if total_stat_gains >= 5 {
-            bonus.experience_change = 25;
-            bonus.reasoning.push("⭐ Active day bonus → +25 XP".to_string());
-        }
-
-        bonus
     }
 }

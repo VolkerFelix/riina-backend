@@ -344,8 +344,6 @@ impl GameConnection {
                         stats: crate::models::game_events::AvatarStats {
                             stamina: 50,
                             strength: 50,
-                            wisdom: 50,
-                            mana: 50,
                             experience_points: 1000,
                         },
                         level: 1,
