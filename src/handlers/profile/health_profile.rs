@@ -78,6 +78,7 @@ pub async fn update_health_profile(
             }));
         }
     };
+    tracing::info!("Updating health profile for user: {}", user_id);
 
     // Validate input data
     if let Some(age) = profile_data.age {
@@ -112,7 +113,7 @@ pub async fn update_health_profile(
         }
     }
 
-    match sqlx::query!(
+    let result = sqlx::query!(
         r#"
         INSERT INTO user_health_profiles (user_id, age, gender, resting_heart_rate, weight, height, last_updated)
         VALUES ($1, $2, $3, $4, $5, $6, NOW())
@@ -134,8 +135,9 @@ pub async fn update_health_profile(
         profile_data.height
     )
     .fetch_one(&**pool)
-    .await
-    {
+    .await;
+
+    match result {
         Ok(_) => {
             tracing::info!("Successfully updated health profile for user: {}", claims.username);
             
