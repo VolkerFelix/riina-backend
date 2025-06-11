@@ -48,6 +48,36 @@ pub async fn upload_health_data(
         stat_changes.strength_change, 
     );
 
+    // 💾 APPLY STAT CHANGES TO DATABASE
+    let update_result = sqlx::query!(
+        r#"
+        UPDATE user_avatars 
+        SET stamina = stamina + $1, 
+            strength = strength + $2,
+            experience_points = experience_points + $3
+        WHERE user_id = $4
+        "#,
+        stat_changes.stamina_change,
+        stat_changes.strength_change,
+        (stat_changes.stamina_change + stat_changes.strength_change) as i64, // Experience based on total stat gain
+        user_id
+    )
+    .execute(&**pool)
+    .await;
+
+    match update_result {
+        Ok(_) => {
+            tracing::info!("✅ Successfully updated avatar stats for {}", claims.username);
+        }
+        Err(e) => {
+            tracing::error!("❌ Failed to update avatar stats for {}: {}", claims.username, e);
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": "Failed to update avatar stats"
+            }));
+        }
+    }
+
     // Insert health data into database
     let insert_result = insert_health_data(&pool, user_id, &data).await;
     

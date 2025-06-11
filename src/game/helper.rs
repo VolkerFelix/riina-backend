@@ -4,6 +4,7 @@ use uuid::Uuid;
 use crate::models::health_data::{UserProfile, Gender};
 
 pub async fn get_user_profile(pool: &Pool<Postgres>, user_id: Uuid) -> Result<UserProfile, Error> {
+    tracing::info!("🔍 Fetching health profile for user: {}", user_id);
     let result = sqlx::query!(
         r#"
         SELECT age, gender, resting_heart_rate
@@ -23,13 +24,19 @@ pub async fn get_user_profile(pool: &Pool<Postgres>, user_id: Uuid) -> Result<Us
                 _ => Gender::Other,
             };
 
-            Ok(UserProfile {
+            let profile = UserProfile {
                 age: row.age.unwrap_or(30), // Default age if not provided
                 gender,
                 resting_heart_rate: row.resting_heart_rate,
-            })
+            };
+            
+            tracing::info!("✅ Found health profile: age={}, gender={:?}, resting_hr={:?}", 
+                profile.age, profile.gender, profile.resting_heart_rate);
+            
+            Ok(profile)
         }
         None => {
+            tracing::warn!("⚠️ No health profile found for user, using defaults");
             // Default profile if user data not found
             Ok(UserProfile {
                 age: 30,

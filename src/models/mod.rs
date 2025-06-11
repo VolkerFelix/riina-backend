@@ -5,3 +5,4 @@ pub mod game_events;
 pub mod league;
 pub mod team;
 pub mod game;
+pub mod profile;

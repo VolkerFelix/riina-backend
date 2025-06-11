@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT MAX(created_at) as last_sync\n        FROM health_data \n        WHERE user_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "last_sync",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "c39cd5df050635462f59111c9168abf19d2a07128d97a07fa6e28f68de2ad7c4"
+}

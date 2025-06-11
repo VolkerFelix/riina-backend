@@ -1,0 +1,27 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO user_health_profiles (user_id, age, gender, resting_heart_rate, weight, height, last_updated)\n        VALUES ($1, $2, $3, $4, $5, $6, NOW())\n        ON CONFLICT (user_id) \n        DO UPDATE SET \n            age = COALESCE($2, user_health_profiles.age),\n            gender = COALESCE($3, user_health_profiles.gender),\n            resting_heart_rate = COALESCE($4, user_health_profiles.resting_heart_rate),\n            weight = COALESCE($5, user_health_profiles.weight),\n            height = COALESCE($6, user_health_profiles.height),\n            last_updated = NOW()\n        RETURNING id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int4",
+        "Varchar",
+        "Int4",
+        "Float4",
+        "Float4"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "8f453def27b8b55467ed48799736530a9bcafcb9fee501695b1c8747b6cd22cc"
+}

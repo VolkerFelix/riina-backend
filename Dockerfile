@@ -14,8 +14,6 @@ WORKDIR /app
 COPY --from=planner /app/recipe.json recipe.json
 # Build dependencies only
 RUN cargo chef cook --release --recipe-path recipe.json
-# Install sqlx-cli for migrations
-RUN cargo install sqlx-cli --no-default-features --features postgres
 
 # Stage 4: Build application - this only rebuilds your actual code
 COPY . .
@@ -39,12 +37,8 @@ COPY --from=builder /app/configuration/ /app/configuration/
 # Copy the compiled binary from the builder stage
 COPY --from=builder /app/target/release/evolveme-backend /usr/local/bin/evolveme-backend
 
-# Copy migrations and startup script
-COPY --from=builder /app/migrations /app/migrations
-COPY --from=builder /usr/local/cargo/bin/sqlx /usr/local/bin/sqlx
-COPY scripts/migrate_and_run.sh /app/migrate_and_run.sh
-RUN chmod +x /app/migrate_and_run.sh
+# Expose port
+EXPOSE 8080
 
-ENV APP_ENVIRONMENT=production
-# Set the entry point
-CMD ["/app/migrate_and_run.sh"]
+# Run the application
+CMD ["evolveme-backend"]

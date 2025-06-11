@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        WITH ranked_users AS (\n            SELECT \n                user_id,\n                ROW_NUMBER() OVER (ORDER BY (stamina + strength) DESC, experience_points DESC) as rank\n            FROM user_avatars\n        )\n        SELECT rank::int as rank\n        FROM ranked_users\n        WHERE user_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "rank",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "3c9471ead92e56217ebeea5ba78bb777bb826e72d1357753eba6152bffc88389"
+}
