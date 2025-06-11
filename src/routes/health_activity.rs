@@ -1,4 +1,3 @@
-// src/routes/health_activity.rs
 use actix_web::{web, get, HttpResponse};
 use sqlx::PgPool;
 use crate::middleware::auth::Claims;

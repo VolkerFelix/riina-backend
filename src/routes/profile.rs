@@ -5,8 +5,8 @@ use crate::handlers::profile::health_profile::{get_health_profile, update_health
 use crate::middleware::auth::Claims;
 use crate::models::profile::UpdateHealthProfileRequest;
 
-#[get("/profile")]
-async fn get_profile(
+#[get("/user")]
+async fn get_user(
     pool: web::Data<PgPool>,
     claims: web::ReqData<Claims>
 ) -> HttpResponse {

@@ -9,12 +9,7 @@ CREATE TABLE IF NOT EXISTS user_avatars (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     
-    CONSTRAINT unique_user_avatar UNIQUE(user_id),
-    CONSTRAINT reasonable_stats CHECK (
-        stamina >= 0 AND stamina <= 200 AND
-        strength >= 0 AND strength <= 200 AND
-        experience_points >= 0
-    )
+    CONSTRAINT unique_user_avatar UNIQUE(user_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_avatars_user_id ON user_avatars(user_id);

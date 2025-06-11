@@ -25,6 +25,8 @@ pub async fn get_user_profile(
         }
     };
 
+    tracing::info!("Fetching user profile for: {}", user_id);
+
     // Get user basic info
     let user_info = match sqlx::query!(
         r#"
@@ -50,6 +52,8 @@ pub async fn get_user_profile(
             }));
         }
     };
+
+    tracing::info!("Fetching avatar stats for: {}", user_id);
 
     // Get user game stats (avatar stats)
     let game_stats = match sqlx::query!(
@@ -89,6 +93,7 @@ pub async fn get_user_profile(
         }
     };
 
+    tracing::info!("Getting stats for user: {}", user_id);
     // Get user rank from leaderboard
     let rank = get_user_rank(&pool, user_id).await.unwrap_or(999);
 

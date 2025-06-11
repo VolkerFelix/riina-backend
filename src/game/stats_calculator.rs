@@ -43,9 +43,29 @@ impl StatCalculator {
 
         let user_profile = get_user_profile(pool, user_id).await.unwrap();
         let max_heart_rate = calc_max_heart_rate(user_profile.age, user_profile.gender);
-        let hrr = max_heart_rate - user_profile.resting_heart_rate.unwrap_or(0);
-        let heart_rate_zones = HeartRateZones::new(hrr, user_profile.resting_heart_rate.unwrap_or(0), max_heart_rate);
+        let resting_heart_rate = user_profile.resting_heart_rate.unwrap_or(60); // Default 60 BPM instead of 0
+        let hrr = max_heart_rate - resting_heart_rate;
+        
+        tracing::info!("💓 Heart rate calculation: max_hr={}, resting_hr={}, hrr={}", 
+            max_heart_rate, resting_heart_rate, hrr);
+        
+        let heart_rate_zones = HeartRateZones::new(hrr, resting_heart_rate, max_heart_rate);
+        
+        tracing::info!("📊 Processing {} heart rate data points", heart_rate.len());
+        if heart_rate.len() > 0 {
+            let avg_hr: f32 = heart_rate.iter().map(|hr| hr.heart_rate).sum::<f32>() / heart_rate.len() as f32;
+            tracing::info!("💗 Heart rate range: avg={:.1}, min={:.1}, max={:.1}", 
+                avg_hr,
+                heart_rate.iter().map(|hr| hr.heart_rate).fold(f32::INFINITY, f32::min),
+                heart_rate.iter().map(|hr| hr.heart_rate).fold(0.0, f32::max)
+            );
+        }
+        
         if let Some(workout_analysis) = WorkoutAnalyzer::new(heart_rate, &heart_rate_zones) {
+            tracing::info!("✅ WorkoutAnalyzer created successfully");
+            for (zone, minutes) in &workout_analysis.zone_durations {
+                tracing::info!("📈 Zone {:?}: {:.1} minutes", zone, minutes);
+            }
             let points_changes = Self::calc_points_from_workout_analysis(&workout_analysis);
             changes.stamina_change += points_changes.stamina_change;
             changes.strength_change += points_changes.strength_change;
@@ -63,6 +83,11 @@ impl StatCalculator {
                 "Avg HR: {:.0} bpm, Peak HR: {:.0} bpm", 
                 workout_analysis.avg_heart_rate, workout_analysis.peak_heart_rate
             ));
+            
+            tracing::info!("🎯 Final stat changes: stamina +{}, strength +{}", 
+                changes.stamina_change, changes.strength_change);
+        } else {
+            tracing::error!("❌ WorkoutAnalyzer::new() returned None - no stats calculated");
         }
 
         changes

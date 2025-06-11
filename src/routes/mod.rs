@@ -33,7 +33,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/profile")
             .wrap(AuthMiddleware)
-            .service(profile::get_profile)
+            .service(profile::get_user)
             .service(profile::get_health_prof)
             .service(profile::update_health_prof)
     );
