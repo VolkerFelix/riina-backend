@@ -3,8 +3,6 @@ CREATE TABLE IF NOT EXISTS user_avatars (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     stamina INTEGER NOT NULL DEFAULT 50,
     strength INTEGER NOT NULL DEFAULT 50,
-    experience_points BIGINT NOT NULL DEFAULT 0,
-    avatar_level INTEGER NOT NULL DEFAULT 1,
     avatar_style VARCHAR(50) DEFAULT 'warrior',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -15,4 +13,3 @@ CREATE TABLE IF NOT EXISTS user_avatars (
 CREATE INDEX IF NOT EXISTS idx_user_avatars_user_id ON user_avatars(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_avatars_stamina ON user_avatars(stamina DESC);
 CREATE INDEX IF NOT EXISTS idx_user_avatars_strength ON user_avatars(strength DESC);
-CREATE INDEX IF NOT EXISTS idx_user_avatars_experience ON user_avatars(experience_points DESC);

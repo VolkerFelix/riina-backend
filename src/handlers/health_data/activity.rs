@@ -207,13 +207,9 @@ async fn calculate_monthly_trend(pool: &PgPool, user_id: Uuid, since: DateTime<U
     let stamina_gain = (activity_count * 2).min(50); // Max 50 points gain per month
     let strength_gain = (activity_count * 1).min(30); // Max 30 points gain per month
     
-    // Estimate level ups (every ~1000 experience points)
-    let level_ups = ((stamina_gain + strength_gain) * 10 / 1000).max(0);
-
     MonthlyTrend {
         stamina_gain,
         strength_gain,
-        level_ups,
     }
 }
 

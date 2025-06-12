@@ -58,7 +58,7 @@ pub async fn get_user_profile(
     // Get user game stats (avatar stats)
     let game_stats = match sqlx::query!(
         r#"
-        SELECT stamina, strength, experience_points, avatar_level, avatar_style
+        SELECT stamina, strength, avatar_style
         FROM user_avatars 
         WHERE user_id = $1
         "#,
@@ -70,7 +70,6 @@ pub async fn get_user_profile(
         Ok(Some(avatar)) => GameStats {
             stamina: avatar.stamina,
             strength: avatar.strength,
-            experience_points: avatar.experience_points,
         },
         Ok(None) => {
             // Create default avatar if none exists
@@ -79,7 +78,6 @@ pub async fn get_user_profile(
                 Err(_) => GameStats {
                     stamina: 50,
                     strength: 50,
-                    experience_points: 0,
                 }
             }
         }
@@ -88,7 +86,6 @@ pub async fn get_user_profile(
             GameStats {
                 stamina: 50,
                 strength: 50,
-                experience_points: 0,
             }
         }
     };
@@ -97,10 +94,10 @@ pub async fn get_user_profile(
     // Get user rank from leaderboard
     let rank = get_user_rank(&pool, user_id).await.unwrap_or(999);
 
-    // Get avatar style and level
-    let (level, avatar_style) = match sqlx::query!(
+    // Get avatar style
+    let avatar_style = match sqlx::query!(
         r#"
-        SELECT avatar_level, avatar_style
+        SELECT avatar_style
         FROM user_avatars 
         WHERE user_id = $1
         "#,
@@ -109,9 +106,9 @@ pub async fn get_user_profile(
     .fetch_optional(&**pool)
     .await
     {
-        Ok(Some(avatar)) => (avatar.avatar_level, avatar.avatar_style.unwrap_or_else(|| "warrior".to_string())),
-        Ok(None) => (1, "warrior".to_string()),
-        Err(_) => (1, "warrior".to_string()),
+        Ok(Some(avatar)) => avatar.avatar_style.unwrap_or_else(|| "warrior".to_string()),
+        Ok(None) => "warrior".to_string(),
+        Err(_) => "warrior".to_string(),
     };
 
     let total_stats = game_stats.stamina + game_stats.strength;
@@ -119,8 +116,6 @@ pub async fn get_user_profile(
     let profile = UserProfileResponse {
         id: user_info.id,
         username: user_info.username,
-        level,
-        experience_points: game_stats.experience_points,
         stats: game_stats,
         rank,
         avatar_style,
@@ -139,8 +134,8 @@ pub async fn get_user_profile(
 async fn create_default_avatar(pool: &PgPool, user_id: Uuid) -> Result<GameStats, sqlx::Error> {
     sqlx::query!(
         r#"
-        INSERT INTO user_avatars (user_id, stamina, strength, experience_points, avatar_level, avatar_style)
-        VALUES ($1, 50, 50, 0, 1, 'warrior')
+        INSERT INTO user_avatars (user_id, stamina, strength, avatar_style)
+        VALUES ($1, 50, 50, 'warrior')
         ON CONFLICT (user_id) DO NOTHING
         "#,
         user_id
@@ -151,7 +146,6 @@ async fn create_default_avatar(pool: &PgPool, user_id: Uuid) -> Result<GameStats
     Ok(GameStats {
         stamina: 50,
         strength: 50,
-        experience_points: 0,
     })
 }
 
@@ -161,7 +155,7 @@ async fn get_user_rank(pool: &PgPool, user_id: Uuid) -> Result<i32, sqlx::Error>
         WITH ranked_users AS (
             SELECT 
                 user_id,
-                ROW_NUMBER() OVER (ORDER BY (stamina + strength) DESC, experience_points DESC) as rank
+                ROW_NUMBER() OVER (ORDER BY (stamina + strength) DESC) as rank
             FROM user_avatars
         )
         SELECT rank::int as rank

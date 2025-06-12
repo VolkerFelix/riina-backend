@@ -5,8 +5,6 @@ use chrono::{DateTime, Utc};
 pub struct UserProfileResponse {
     pub id: Uuid,
     pub username: String,
-    pub level: i32,
-    pub experience_points: i64,
     pub stats: GameStats,
     pub rank: i32,
     pub avatar_style: String,
@@ -19,7 +17,6 @@ pub struct UserProfileResponse {
 pub struct GameStats {
     pub stamina: i32,
     pub strength: i32,
-    pub experience_points: i64,
 }
 
 #[derive(sqlx::FromRow, serde::Serialize)]
