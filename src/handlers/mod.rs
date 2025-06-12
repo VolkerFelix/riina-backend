@@ -4,3 +4,4 @@ pub mod auth_handler;
 pub mod health_data;
 pub mod league;
 pub mod profile;
+pub mod admin;
