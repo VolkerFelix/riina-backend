@@ -10,7 +10,6 @@ pub enum GameEvent {
     PlayerJoined {
         user_id: Uuid,
         username: String,
-        avatar_level: u32,
         position: Position,
         timestamp: DateTime<Utc>,
     },
@@ -27,7 +26,6 @@ pub enum GameEvent {
         user_id: Uuid,
         username: String,
         stats: AvatarStats,
-        level: u32,
         position: Position,
         timestamp: DateTime<Utc>,
     },
@@ -103,14 +101,12 @@ pub struct Position {
 pub struct AvatarStats {
     pub stamina: u32,
     pub strength: u32,
-    pub experience_points: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PlayerRanking {
     pub user_id: Uuid,
     pub username: String,
-    pub avatar_level: u32,
     pub total_stats: u32,
     pub rank: u32,
     pub score: u64,
@@ -128,7 +124,6 @@ pub struct BattleTeam {
 pub struct BattleMember {
     pub user_id: Uuid,
     pub username: String,
-    pub avatar_level: u32,
     pub stats: AvatarStats,
 }
 
@@ -145,7 +140,6 @@ pub struct BattleResults {
     pub loser_score: u32,
     pub mvp_user_id: Uuid,
     pub stat_contributions: Vec<StatContribution>,
-    pub experience_gained: Vec<ExperienceGain>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -156,19 +150,11 @@ pub struct StatContribution {
     pub strength_contribution: u32,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ExperienceGain {
-    pub user_id: Uuid,
-    pub experience_gained: u64,
-    pub level_up: bool,
-    pub new_level: Option<u32>,
-}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StatChanges {
     pub stamina_change: i32,
     pub strength_change: i32,
-    pub experience_change: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -176,7 +162,6 @@ pub enum NotificationType {
     BattleInvite,
     TeamInvite,
     Achievement,
-    LevelUp,
     DailyChallenge,
     TerritoryAlert,
     System,

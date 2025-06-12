@@ -79,7 +79,6 @@ impl GameConnection {
         let connection_event = GameEvent::PlayerJoined {
             user_id: self.user_id,
             username: self.username.clone(),
-            avatar_level: 1, // TODO: Get from database
             position: crate::models::game_events::Position { x: 0.0, y: 0.0 }, // TODO: Get from database
             timestamp: Utc::now(),
         };
@@ -344,9 +343,7 @@ impl GameConnection {
                         stats: crate::models::game_events::AvatarStats {
                             stamina: 50,
                             strength: 50,
-                            experience_points: 1000,
                         },
-                        level: 1,
                         position: crate::models::game_events::Position { x, y },
                         timestamp: Utc::now(),
                     };
@@ -376,7 +373,6 @@ impl GameConnection {
                 crate::models::game_events::PlayerRanking {
                     user_id: Uuid::new_v4(),
                     username: "GameMaster".to_string(),
-                    avatar_level: 15,
                     total_stats: 300,
                     rank: 1,
                     score: 5000,
@@ -384,7 +380,6 @@ impl GameConnection {
                 crate::models::game_events::PlayerRanking {
                     user_id: self.user_id,
                     username: self.username.clone(),
-                    avatar_level: 1,
                     total_stats: 200,
                     rank: 2,
                     score: 1000,

@@ -135,5 +135,4 @@ pub struct WeeklyStats {
 pub struct MonthlyTrend {
     pub stamina_gain: i32,
     pub strength_gain: i32,
-    pub level_ups: i32,
 }

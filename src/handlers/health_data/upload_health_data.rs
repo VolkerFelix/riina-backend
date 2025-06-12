@@ -53,13 +53,11 @@ pub async fn upload_health_data(
         r#"
         UPDATE user_avatars 
         SET stamina = stamina + $1, 
-            strength = strength + $2,
-            experience_points = experience_points + $3
-        WHERE user_id = $4
+            strength = strength + $2
+        WHERE user_id = $3
         "#,
         stat_changes.stamina_change,
         stat_changes.strength_change,
-        (stat_changes.stamina_change + stat_changes.strength_change) as i64, // Experience based on total stat gain
         user_id
     )
     .execute(&**pool)
