@@ -13,6 +13,7 @@ use secrecy::ExposeSecret;
 
 use crate::config::jwt::JwtSettings;
 use crate::middleware::auth::Claims;
+use crate::models::user::{UserRole, UserStatus};
 
 pub struct AdminMiddleware;
 
@@ -93,9 +94,25 @@ where
                 }
             };
 
-            // TODO: For now, we'll assume all authenticated users can access admin.
-            // In a production system, you'd check if the user has admin role.
-            // You could add a role field to your JWT claims or check user permissions in database.
+            // Check if user has admin privileges
+            let claims = &token_data.claims;
+            
+            // Only allow active users with admin or superadmin roles
+            match claims.status {
+                UserStatus::Active => {},
+                _ => {
+                    tracing::warn!("Inactive user attempted admin access: {}", claims.username);
+                    return Err(ErrorUnauthorized("Account is not active"));
+                }
+            }
+            
+            match claims.role {
+                UserRole::Admin | UserRole::SuperAdmin => {},
+                _ => {
+                    tracing::warn!("Non-admin user attempted admin access: {} (role: {:?})", claims.username, claims.role);
+                    return Err(ErrorUnauthorized("Insufficient privileges"));
+                }
+            }
             
             // Store the claims in the request extensions for handlers to access
             req.extensions_mut().insert(token_data.claims);

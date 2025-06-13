@@ -1,11 +1,12 @@
 use reqwest::{Client, Response};
 use serde_json::json;
 use uuid::Uuid;
+use sqlx::PgPool;
 
 mod common;
 use common::utils::spawn_app;
 
-/// Helper function to create a test user and get auth token
+/// Helper function to create an admin user and get auth token
 async fn create_test_user_and_login(app_address: &str) -> String {
     let client = Client::new();
     let username = format!("adminuser{}", Uuid::new_v4());
@@ -27,6 +28,21 @@ async fn create_test_user_and_login(app_address: &str) -> String {
         .expect("Failed to register user");
 
     assert_eq!(200, register_response.status().as_u16());
+
+    // Promote user to admin role using direct database access
+    let database_url = std::env::var("DATABASE_URL")
+        .expect("DATABASE_URL must be set");
+    let pool = PgPool::connect(&database_url)
+        .await
+        .expect("Failed to connect to database");
+    
+    sqlx::query!(
+        "UPDATE users SET role = 'admin' WHERE username = $1",
+        username
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to promote user to admin");
 
     // Login and get token
     let login_request = json!({
