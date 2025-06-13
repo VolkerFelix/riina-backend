@@ -6,15 +6,10 @@ use chrono::{Utc, Duration};
 use jsonwebtoken::{encode, EncodingKey, Header};
 
 use crate::models::auth::{LoginRequest, LoginResponse};
+use crate::models::user::{UserRole, UserStatus};
 use crate::utils::password::verify_password;
 use crate::config::jwt::JwtSettings;
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct Claims {
-    sub: String,  // Subject (user id)
-    username: String,
-    exp: usize,   // Expiration time (as UTC timestamp)
-}
+use crate::middleware::auth::Claims;
 
 #[tracing::instrument(
     name = "Login user attempt",
@@ -30,7 +25,7 @@ pub async fn login_user(
 ) -> HttpResponse {
     let user_result = sqlx::query!(
         r#"
-        SELECT id, username, password_hash
+        SELECT id, username, password_hash, role, status
         FROM users
         WHERE username = $1
         "#,
@@ -67,9 +62,25 @@ pub async fn login_user(
         .expect("Valid timestamp")
         .timestamp() as usize;
 
+    let role = match user.role.as_str() {
+        "superadmin" => UserRole::SuperAdmin,
+        "admin" => UserRole::Admin,
+        "moderator" => UserRole::Moderator,
+        _ => UserRole::User,
+    };
+    
+    let status = match user.status.as_str() {
+        "inactive" => UserStatus::Inactive,
+        "suspended" => UserStatus::Suspended,
+        "banned" => UserStatus::Banned,
+        _ => UserStatus::Active,
+    };
+    
     let claims = Claims {
         sub: user.id.to_string(),
         username: user.username,
+        role,
+        status,
         exp: expiration,
     };
 

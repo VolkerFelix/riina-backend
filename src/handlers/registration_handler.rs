@@ -4,7 +4,7 @@ use sqlx::PgPool;
 use chrono::Utc;
 use uuid::Uuid;
 
-use crate::models::user::RegistrationRequest;
+use crate::models::user::{RegistrationRequest, UserRole, UserStatus};
 use crate::utils::password::hash_password;
 
 #[tracing::instrument(
@@ -33,13 +33,15 @@ pub async fn insert_user(
 ) -> Result<(), sqlx::Error> {
     sqlx::query!(
         r#"
-        INSERT INTO users (id, username, password_hash, email, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO users (id, username, password_hash, email, role, status, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         "#,
         Uuid::new_v4(),
         &user_form.username,
         &hash_password(&user_form.password.expose_secret()),
         &user_form.email,
+        UserRole::User.to_string(),
+        UserStatus::Active.to_string(),
         Utc::now(),
         Utc::now()
     )

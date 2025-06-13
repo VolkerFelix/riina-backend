@@ -9,11 +9,14 @@ use serde::{Deserialize, Serialize};
 use secrecy::ExposeSecret;
 
 use crate::config::jwt::JwtSettings;
+use crate::models::user::{UserRole, UserStatus};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
     pub sub: String,  // Subject (user id)
     pub username: String,
+    pub role: UserRole,
+    pub status: UserStatus,
     pub exp: usize,   // Expiration time (as UTC timestamp)
 }
 

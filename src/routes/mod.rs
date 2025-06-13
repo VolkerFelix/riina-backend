@@ -9,6 +9,7 @@ pub mod websocket;
 pub mod league;
 pub mod profile;
 pub mod health_activity;
+pub mod admin;
 
 use crate::middleware::auth::AuthMiddleware;
 
@@ -67,4 +68,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
         web::resource("/game-ws")
             .route(web::get().to(websocket::game_ws_route))
     );
+    
+    // Admin routes (require admin authentication)
+    admin::init_admin_routes(cfg);
 }

@@ -3,6 +3,67 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use secrecy::SecretString;
+use sqlx::Type;
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[sqlx(type_name = "varchar", rename_all = "lowercase")]
+pub enum UserRole {
+    #[sqlx(rename = "superadmin")]
+    SuperAdmin,
+    #[sqlx(rename = "admin")]
+    Admin,
+    #[sqlx(rename = "moderator")]
+    Moderator,
+    #[sqlx(rename = "user")]
+    User,
+}
+
+impl Default for UserRole {
+    fn default() -> Self {
+        UserRole::User
+    }
+}
+
+impl fmt::Display for UserRole {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UserRole::SuperAdmin => write!(f, "superadmin"),
+            UserRole::Admin => write!(f, "admin"),
+            UserRole::Moderator => write!(f, "moderator"),
+            UserRole::User => write!(f, "user"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[sqlx(type_name = "varchar", rename_all = "lowercase")]
+pub enum UserStatus {
+    #[sqlx(rename = "active")]
+    Active,
+    #[sqlx(rename = "inactive")]
+    Inactive,
+    #[sqlx(rename = "suspended")]
+    Suspended,
+    #[sqlx(rename = "banned")]
+    Banned,
+}
+
+impl Default for UserStatus {
+    fn default() -> Self {
+        UserStatus::Active
+    }
+}
+
+impl fmt::Display for UserStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UserStatus::Active => write!(f, "active"),
+            UserStatus::Inactive => write!(f, "inactive"),
+            UserStatus::Suspended => write!(f, "suspended"),
+            UserStatus::Banned => write!(f, "banned"),
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize)]
 pub struct User {
@@ -11,6 +72,8 @@ pub struct User {
     pub username: String,
     #[serde(serialize_with = "serialize_secret_string", deserialize_with = "deserialize_secret_string")]
     pub password_hash: SecretString,
+    pub role: UserRole,
+    pub status: UserStatus,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
