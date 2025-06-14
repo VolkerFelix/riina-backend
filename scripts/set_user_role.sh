@@ -47,10 +47,25 @@ show_usage() {
     exit 1
 }
 
-# Check if correct number of arguments provided
-if [ $# -ne 2 ]; then
+# Check if correct number of arguments provided (allow --yes or -y flag)
+if [ $# -lt 2 ] || [ $# -gt 3 ]; then
     print_error "Invalid number of arguments"
     show_usage
+fi
+
+# Check if third argument is --yes or -y
+AUTO_CONFIRM=false
+if [ $# -eq 3 ]; then
+    case "$3" in
+        --yes|-y)
+            AUTO_CONFIRM=true
+            ;;
+        *)
+            print_error "Invalid flag: $3"
+            echo "Use --yes or -y to skip confirmation"
+            show_usage
+            ;;
+    esac
 fi
 
 USERNAME="$1"
@@ -136,25 +151,28 @@ CURRENT_INFO=$(psql -h "$DB_HOST" -U "$DB_USER" -p "$DB_PORT" -d "$DB_NAME" -t -
 print_info "Current user info: $CURRENT_INFO"
 
 # Ask for confirmation unless --yes flag is provided
-if [[ "$*" != *"--yes"* ]] && [[ "$*" != *"-y"* ]]; then
+if [ "$AUTO_CONFIRM" = false ]; then
     echo ""
     print_warning "Are you sure you want to change the role of '$USERNAME' to '$ROLE'? (y/N)"
     read -r response
     case "$response" in
         [yY][eE][sS]|[yY])
+            print_info "Proceeding with role change..."
             ;;
         *)
-            print_info "Operation cancelled"
+            print_info "Operation cancelled by user"
             exit 0
             ;;
     esac
+else
+    print_info "Auto-confirming role change (--yes flag provided)"
 fi
 
 # Update user role
 print_info "Updating user role..."
 
 UPDATE_RESULT=$(psql -h "$DB_HOST" -U "$DB_USER" -p "$DB_PORT" -d "$DB_NAME" -c \
-    "UPDATE users SET role = '$ROLE' WHERE username = '$USERNAME'; SELECT ROW_COUNT();" 2>&1)
+    "UPDATE users SET role = '$ROLE' WHERE username = '$USERNAME';" 2>&1)
 
 if [ $? -eq 0 ]; then
     print_success "Successfully updated user '$USERNAME' to role '$ROLE'"
@@ -165,8 +183,22 @@ if [ $? -eq 0 ]; then
     psql -h "$DB_HOST" -U "$DB_USER" -p "$DB_PORT" -d "$DB_NAME" -c \
         "SELECT username, role, status, created_at FROM users WHERE username = '$USERNAME';"
     
+    # Verify the role change by reading back from database
     echo ""
-    print_success "Role change completed!"
+    print_info "Verifying role change..."
+    VERIFIED_ROLE=$(psql -h "$DB_HOST" -U "$DB_USER" -p "$DB_PORT" -d "$DB_NAME" -t -c \
+        "SELECT role FROM users WHERE username = '$USERNAME';" | tr -d ' ')
+    
+    if [ "$VERIFIED_ROLE" = "$ROLE" ]; then
+        print_success "✅ VERIFIED: User '$USERNAME' now has role '$VERIFIED_ROLE'"
+        echo ""
+        print_success "Role change completed successfully!"
+    else
+        print_error "❌ VERIFICATION FAILED: Expected role '$ROLE' but found '$VERIFIED_ROLE'"
+        echo ""
+        print_error "Role change may have failed!"
+        exit 1
+    fi
     
     # Show additional info based on role
     case "$ROLE" in
