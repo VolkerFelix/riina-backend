@@ -2,7 +2,7 @@ use actix_web::{web, HttpResponse, Result};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc, Datelike, Timelike};
 
 use crate::handlers::admin::user_handler::ApiResponse;
 
@@ -44,6 +44,12 @@ pub struct AssignTeamRequest {
 #[derive(Deserialize)]
 pub struct RemoveTeamRequest {
     pub team_id: Uuid,
+}
+
+#[derive(Deserialize)]
+pub struct GenerateScheduleRequest {
+    pub season_id: Uuid,
+    pub start_date: DateTime<Utc>,
 }
 
 // GET /admin/leagues - Get all leagues
@@ -370,7 +376,7 @@ pub async fn assign_team_to_league(
 
     // Check if team is already assigned to this league
     let existing_assignment = sqlx::query!(
-        "SELECT id FROM league_standings WHERE season_id = $1 AND team_id = $2",
+        "SELECT id FROM league_teams WHERE season_id = $1 AND team_id = $2",
         league_id,
         team_id
     )
@@ -387,7 +393,30 @@ pub async fn assign_team_to_league(
         })));
     }
 
-    // Insert team into league standings
+    // Insert team into league_teams and league_standings tables
+    let mut tx = pool.begin().await.map_err(|e| {
+        eprintln!("Database error starting transaction: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    // Insert into league_teams
+    sqlx::query!(
+        r#"
+        INSERT INTO league_teams (id, season_id, team_id, joined_at)
+        VALUES ($1, $2, $3, NOW())
+        "#,
+        Uuid::new_v4(),
+        league_id,
+        team_id
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        eprintln!("Database error inserting into league_teams: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    // Insert into league_standings
     let result = sqlx::query!(
         r#"
         INSERT INTO league_standings (id, season_id, team_id, games_played, wins, draws, losses, position, last_updated)
@@ -397,11 +426,16 @@ pub async fn assign_team_to_league(
         league_id,
         team_id
     )
-    .execute(pool.get_ref())
+    .execute(&mut *tx)
     .await;
 
     match result {
         Ok(_) => {
+            tx.commit().await.map_err(|e| {
+                eprintln!("Database error committing transaction: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?;
+
             let response = ApiResponse {
                 data: serde_json::json!({
                     "league_id": league_id,
@@ -431,31 +465,62 @@ pub async fn remove_team_from_league(
     let league_id = path.into_inner();
     let team_id = body.team_id;
 
-    let result = sqlx::query!(
+    // Remove team from both league_teams and league_standings tables
+    let mut tx = pool.begin().await.map_err(|e| {
+        eprintln!("Database error starting transaction: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    // Remove from league_standings first (due to foreign key constraints)
+    let standings_result = sqlx::query!(
         "DELETE FROM league_standings WHERE season_id = $1 AND team_id = $2",
         league_id,
         team_id
     )
-    .execute(pool.get_ref())
+    .execute(&mut *tx)
     .await;
 
-    match result {
-        Ok(result) => {
-            if result.rows_affected() > 0 {
-                let response = ApiResponse {
-                    data: serde_json::json!({
-                        "league_id": league_id,
-                        "team_id": team_id
-                    }),
-                    success: true,
-                    message: Some("Team removed from league successfully".to_string()),
-                };
-                Ok(HttpResponse::Ok().json(response))
+    // Remove from league_teams
+    let teams_result = sqlx::query!(
+        "DELETE FROM league_teams WHERE season_id = $1 AND team_id = $2",
+        league_id,
+        team_id
+    )
+    .execute(&mut *tx)
+    .await;
+
+    let result = match (standings_result, teams_result) {
+        (Ok(standings), Ok(teams)) => {
+            let rows_affected = standings.rows_affected() + teams.rows_affected();
+            if rows_affected > 0 {
+                tx.commit().await.map_err(|e| {
+                    eprintln!("Database error committing transaction: {}", e);
+                    actix_web::error::ErrorInternalServerError("Database error")
+                })?;
+                Ok(sqlx::postgres::PgQueryResult::default())
             } else {
-                Ok(HttpResponse::NotFound().json(serde_json::json!({
-                    "error": "Team not found in this league"
-                })))
+                Err(sqlx::Error::RowNotFound)
             }
+        }
+        (Err(e), _) | (_, Err(e)) => Err(e),
+    };
+
+    match result {
+        Ok(_) => {
+            let response = ApiResponse {
+                data: serde_json::json!({
+                    "league_id": league_id,
+                    "team_id": team_id
+                }),
+                success: true,
+                message: Some("Team removed from league successfully".to_string()),
+            };
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(sqlx::Error::RowNotFound) => {
+            Ok(HttpResponse::NotFound().json(serde_json::json!({
+                "error": "Team not found in this league"
+            })))
         }
         Err(e) => {
             eprintln!("Database error removing team from league: {}", e);
@@ -537,4 +602,71 @@ pub async fn get_league_teams(
     };
 
     Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn generate_schedule(
+    pool: web::Data<PgPool>,
+    body: web::Json<GenerateScheduleRequest>,
+) -> Result<HttpResponse> {
+    let _league_service = crate::league::league::LeagueService::new(pool.get_ref().clone());
+    
+    // Validate that start date is a Saturday at 22:00 UTC
+    let start_date = body.start_date;
+    if start_date.weekday().num_days_from_monday() != 5 || start_date.hour() != 22 || start_date.minute() != 0 {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "success": false,
+            "message": "Start date must be a Saturday at 22:00 UTC"
+        })));
+    }
+    
+    // Get the teams for this season from league_teams
+    let teams = sqlx::query!(
+        r#"
+        SELECT t.id as team_id 
+        FROM teams t
+        JOIN league_teams lt ON t.id = lt.team_id
+        WHERE lt.season_id = $1
+        "#,
+        body.season_id
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(|e| {
+        eprintln!("Database error getting teams: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    let team_ids: Vec<Uuid> = teams.into_iter().map(|t| t.team_id).collect();
+
+    if team_ids.is_empty() {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "success": false,
+            "message": "No teams found in this league season"
+        })));
+    }
+
+    // Generate schedule for the existing season
+    let schedule_service = crate::league::schedule::ScheduleService::new(pool.get_ref().clone());
+    
+    match schedule_service.generate_schedule(body.season_id, &team_ids, body.start_date).await {
+        Ok(games_created) => {
+            let response = ApiResponse {
+                data: serde_json::json!({
+                    "games_created": games_created,
+                    "season_id": body.season_id,
+                    "start_date": body.start_date
+                }),
+                success: true,
+                message: Some(format!("Successfully generated schedule with {} games", games_created)),
+            };
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            tracing::error!("Failed to generate schedule: {}", e);
+            Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "success": false,
+                "message": format!("Failed to generate schedule: {}", e)
+            })))
+        }
+    }
 }

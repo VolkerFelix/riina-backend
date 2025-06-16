@@ -69,5 +69,9 @@ pub fn init_admin_routes(cfg: &mut web::ServiceConfig) {
                     .route(web::post().to(league_handler::assign_team_to_league))
                     .route(web::delete().to(league_handler::remove_team_from_league))
             )
+            .service(
+                web::resource("/leagues/{id}/schedule")
+                    .route(web::post().to(league_handler::generate_schedule))
+            )
     );
 }

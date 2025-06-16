@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id FROM league_standings WHERE season_id = $1 AND team_id = $2",
+  "query": "SELECT id FROM league_teams WHERE season_id = $1 AND team_id = $2",
   "describe": {
     "columns": [
       {
@@ -19,5 +19,5 @@
       false
     ]
   },
-  "hash": "8833524ae8d0a2968ab85585b7aa2101fbbf13283e383da56ec034ea11510807"
+  "hash": "841c093b343988f842d8b4ae015bf47e873fc1c17cde39b069455b3f541964ed"
 }
