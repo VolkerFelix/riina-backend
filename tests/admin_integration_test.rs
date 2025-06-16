@@ -67,6 +67,80 @@ async fn create_test_user_and_login(app_address: &str) -> String {
     login_body["token"].as_str().unwrap().to_string()
 }
 
+/// Helper function to create an admin user and get both auth token and user ID
+async fn create_test_user_and_login_with_id(app_address: &str) -> (String, String) {
+    let client = Client::new();
+    let username = format!("adminuser{}", Uuid::new_v4());
+    let password = "password123";
+    let email = format!("{}@example.com", username);
+
+    // Register user
+    let user_request = json!({
+        "username": username,
+        "password": password,
+        "email": email
+    });
+
+    let register_response = client
+        .post(&format!("{}/register_user", app_address))
+        .json(&user_request)
+        .send()
+        .await
+        .expect("Failed to register user");
+
+    assert_eq!(200, register_response.status().as_u16());
+
+    // Get user ID from database
+    let database_url = std::env::var("DATABASE_URL")
+        .expect("DATABASE_URL must be set");
+    let pool = PgPool::connect(&database_url)
+        .await
+        .expect("Failed to connect to database");
+    
+    let user_record = sqlx::query!(
+        "SELECT id FROM users WHERE username = $1",
+        username
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("Failed to get user ID");
+    
+    let user_id = user_record.id.to_string();
+
+    // Promote user to admin role
+    sqlx::query!(
+        "UPDATE users SET role = 'admin' WHERE username = $1",
+        username
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to promote user to admin");
+
+    // Login and get token
+    let login_request = json!({
+        "username": username,
+        "password": password
+    });
+
+    let login_response = client
+        .post(&format!("{}/login", app_address))
+        .json(&login_request)
+        .send()
+        .await
+        .expect("Failed to login");
+
+    assert_eq!(200, login_response.status().as_u16());
+
+    let login_body: serde_json::Value = login_response
+        .json()
+        .await
+        .expect("Failed to parse login response");
+
+    let token = login_body["token"].as_str().unwrap().to_string();
+    
+    (token, user_id)
+}
+
 /// Helper function to create test users
 async fn create_multiple_test_users(app_address: &str, count: usize) -> Vec<String> {
     let client = Client::new();
@@ -413,13 +487,14 @@ async fn admin_create_team_works() {
     // Arrange
     let test_app = spawn_app().await;
     let client = Client::new();
-    let token = create_test_user_and_login(&test_app.address).await;
+    let (token, user_id) = create_test_user_and_login_with_id(&test_app.address).await;
 
     // Act
     let team_request = json!({
         "name": format!("Team{}", Uuid::new_v4().to_string()[..8].to_string()),
         "color": "#FF0000",
-        "formation": "circle"
+        "formation": "circle",
+        "owner_id": user_id
     });
 
     let response = make_authenticated_request(
@@ -446,13 +521,14 @@ async fn admin_get_team_by_id_works() {
     // Arrange
     let test_app = spawn_app().await;
     let client = Client::new();
-    let token = create_test_user_and_login(&test_app.address).await;
+    let (token, user_id) = create_test_user_and_login_with_id(&test_app.address).await;
 
     // Create a team first
     let team_request = json!({
         "name": format!("Team{}", Uuid::new_v4().to_string()[..8].to_string()),
         "color": "#00FF00",
-        "formation": "line"
+        "formation": "line",
+        "owner_id": user_id
     });
 
     let create_response = make_authenticated_request(
@@ -489,13 +565,14 @@ async fn admin_update_team_works() {
     // Arrange
     let test_app = spawn_app().await;
     let client = Client::new();
-    let token = create_test_user_and_login(&test_app.address).await;
+    let (token, user_id) = create_test_user_and_login_with_id(&test_app.address).await;
 
     // Create a team first
     let team_request = json!({
         "name": format!("Team{}", Uuid::new_v4().to_string()[..8].to_string()),
         "color": "#0000FF",
-        "formation": "diamond"
+        "formation": "diamond",
+        "owner_id": user_id
     });
 
     let create_response = make_authenticated_request(
@@ -513,7 +590,8 @@ async fn admin_update_team_works() {
     let update_request = json!({
         "name": format!("Updated{}", Uuid::new_v4().to_string()[..8].to_string()),
         "color": "#FFFF00",
-        "formation": "square"
+        "formation": "square",
+        "owner_id": user_id
     });
 
     let response = make_authenticated_request(
@@ -539,13 +617,14 @@ async fn admin_delete_team_works() {
     // Arrange
     let test_app = spawn_app().await;
     let client = Client::new();
-    let token = create_test_user_and_login(&test_app.address).await;
+    let (token, user_id) = create_test_user_and_login_with_id(&test_app.address).await;
 
     // Create a team first
     let team_request = json!({
         "name": format!("Del{}", Uuid::new_v4().to_string()[..8].to_string()),
         "color": "#FF00FF",
-        "formation": "circle"
+        "formation": "circle",
+        "owner_id": user_id
     });
 
     let create_response = make_authenticated_request(
@@ -591,13 +670,14 @@ async fn admin_get_team_members_works() {
     // Arrange
     let test_app = spawn_app().await;
     let client = Client::new();
-    let token = create_test_user_and_login(&test_app.address).await;
+    let (token, user_id) = create_test_user_and_login_with_id(&test_app.address).await;
 
     // Create a team first
     let team_request = json!({
         "name": format!("Mem{}", Uuid::new_v4().to_string()[..8].to_string()),
         "color": "#00FFFF",
-        "formation": "line"
+        "formation": "line",
+        "owner_id": user_id
     });
 
     let create_response = make_authenticated_request(
@@ -636,13 +716,14 @@ async fn admin_add_team_member_works() {
     // Arrange
     let test_app = spawn_app().await;
     let client = Client::new();
-    let token = create_test_user_and_login(&test_app.address).await;
+    let (token, user_id) = create_test_user_and_login_with_id(&test_app.address).await;
 
     // Create a team
     let team_request = json!({
         "name": format!("Add{}", Uuid::new_v4().to_string()[..8].to_string()),
         "color": "#AABBCC",
-        "formation": "diamond"
+        "formation": "diamond",
+        "owner_id": user_id
     });
 
     let team_response = make_authenticated_request(

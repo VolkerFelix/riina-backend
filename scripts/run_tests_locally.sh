@@ -60,7 +60,14 @@ prepare_sqlx() {
 # Function to run tests
 run_tests() {
     echo -e "${YELLOW}Running tests...${NC}"
-    if [ -n "${TEST_NAME:-}" ]; then
+    if [ -n "${TEST_FILE:-}" ]; then
+        echo -e "${YELLOW}Running all tests in file: $TEST_FILE${NC}"
+        if [ "${SHOW_OUTPUT:-false}" = "true" ]; then
+            RUST_BACKTRACE=1 cargo test --test "$TEST_FILE" -- --nocapture
+        else
+            RUST_BACKTRACE=1 cargo test --test "$TEST_FILE"
+        fi
+    elif [ -n "${TEST_NAME:-}" ]; then
         echo -e "${YELLOW}Running test matching pattern: $TEST_NAME${NC}"
         if [ "${SHOW_OUTPUT:-false}" = "true" ]; then
             RUST_BACKTRACE=1 cargo test "$TEST_NAME" -- --nocapture
@@ -111,6 +118,7 @@ show_help() {
     echo "  -d, --database       Database name (default: evolveme_db)"
     echo "  --host               PostgreSQL host (default: localhost)"
     echo "  -t, --test           Run a specific test by name pattern"
+    echo "  -f, --file           Run all tests in a specific file (e.g., admin_integration_test)"
     echo "  -v, --verbose        Show test output (print statements, etc.)"
 }
 
@@ -140,6 +148,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -t|--test)
             TEST_NAME="$2"
+            shift 2
+            ;;
+        -f|--file)
+            TEST_FILE="$2"
             shift 2
             ;;
         -v|--verbose)
