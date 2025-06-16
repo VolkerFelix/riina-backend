@@ -3,7 +3,7 @@ use actix_web::{get, post, put, web, HttpResponse, Result};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::handlers::league::{team_handler, team_member_handler, game_handler, league_handler, season_handler};
+use crate::handlers::league::{team_handler, team_member_handler, game_handler, league_handler, season_handler, league_users_handler};
 use crate::middleware::auth::Claims;
 use crate::models::league::*;
 use crate::models::team::{TeamRegistrationRequest, TeamUpdateRequest, AddTeamMemberRequest, UpdateTeamMemberRequest};
@@ -205,4 +205,13 @@ async fn update_team_member(
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
     team_member_handler::update_team_member(path, request, pool, claims).await
+}
+
+/// Get all league users with their stats
+#[get("/users/stats")]
+async fn get_league_users_with_stats(
+    pool: web::Data<PgPool>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    league_users_handler::get_league_users_with_stats(pool, claims).await
 }

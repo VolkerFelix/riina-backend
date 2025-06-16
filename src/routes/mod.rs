@@ -62,6 +62,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .service(league::get_team_members)
             .service(league::remove_team_member)
             .service(league::update_team_member)
+            .service(league::get_league_users_with_stats)
     );
     // WebSocket routes (authentication handled in route)
     cfg.service(
