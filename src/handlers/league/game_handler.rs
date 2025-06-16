@@ -49,24 +49,41 @@ pub async fn update_league_game_result(
     }
 }
 
+/// Get upcoming games
 #[tracing::instrument(
     name = "Get upcoming games",
-    skip(query),
+    skip(query, pool),
     fields(
-        query = %query
+        season_id = ?query.season_id,
+        limit = ?query.limit
     )
 )]
-/// Get upcoming games
 pub async fn get_league_upcoming_games(
     query: web::Query<UpcomingGamesQuery>,
-    _pool: web::Data<PgPool>,
+    pool: web::Data<PgPool>,
 ) -> Result<HttpResponse> {
-    // Implementation for upcoming games
-    Ok(HttpResponse::Ok().json(json!({
-        "success": true,
-        "data": [],
-        "message": "Upcoming games endpoint - implementation needed"
-    })))
+    tracing::info!("Getting upcoming games for season: {:?}, limit: {:?}", 
+        query.season_id, query.limit);
+
+    let league_service = LeagueService::new(pool.get_ref().clone());
+    
+    match league_service.get_upcoming_games(query.season_id, query.limit).await {
+        Ok(games) => {
+            tracing::info!("Successfully retrieved {} upcoming games", games.len());
+            Ok(HttpResponse::Ok().json(json!({
+                "success": true,
+                "data": games,
+                "total_count": games.len()
+            })))
+        }
+        Err(e) => {
+            tracing::error!("Failed to get upcoming games: {}", e);
+            Ok(HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "message": "Failed to retrieve upcoming games"
+            })))
+        }
+    }
 }
 
 #[tracing::instrument(

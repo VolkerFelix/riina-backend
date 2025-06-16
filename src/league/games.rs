@@ -267,4 +267,63 @@ impl GameService {
             }
         }).collect())
     }
+
+    /// Get upcoming games for a season with optional limit
+    pub async fn get_upcoming_games(&self, season_id: Uuid, limit: Option<i64>) -> Result<Vec<GameWithTeams>, sqlx::Error> {
+        let now = chrono::Utc::now();
+        let limit = limit.unwrap_or(10); // Default to 10 games if no limit specified
+
+        let games_query = sqlx::query!(
+            r#"
+            SELECT 
+                lg.*,
+                'Team ' || SUBSTRING(lg.home_team_id::text, 1, 8) as home_team_name,
+                'Team ' || SUBSTRING(lg.away_team_id::text, 1, 8) as away_team_name,
+                '#E74C3C' as home_team_color,
+                '#3498DB' as away_team_color
+            FROM league_games lg
+            WHERE lg.season_id = $1 
+            AND lg.scheduled_time >= $2
+            AND lg.status IN ('scheduled', 'postponed')
+            ORDER BY lg.scheduled_time ASC
+            LIMIT $3
+            "#,
+            season_id,
+            now,
+            limit
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(games_query.into_iter().map(|row| {
+            let status = match row.status.as_str() {
+                "live" => GameStatus::Live,
+                "finished" => GameStatus::Finished,
+                "postponed" => GameStatus::Postponed,
+                _ => GameStatus::Scheduled,
+            };
+
+            GameWithTeams {
+                game: LeagueGame {
+                    id: row.id,
+                    season_id: row.season_id,
+                    home_team_id: row.home_team_id,
+                    away_team_id: row.away_team_id,
+                    scheduled_time: row.scheduled_time,
+                    week_number: row.week_number,
+                    is_first_leg: row.is_first_leg,
+                    status,
+                    home_score: row.home_score,
+                    away_score: row.away_score,
+                    winner_team_id: row.winner_team_id,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                },
+                home_team_name: row.home_team_name.unwrap_or_default(),
+                away_team_name: row.away_team_name.unwrap_or_default(),
+                home_team_color: row.home_team_color.unwrap_or_default(),
+                away_team_color: row.away_team_color.unwrap_or_default(),
+            }
+        }).collect())
+    }
 }
