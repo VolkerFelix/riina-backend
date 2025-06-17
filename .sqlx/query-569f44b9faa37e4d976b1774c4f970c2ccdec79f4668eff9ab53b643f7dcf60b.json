@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE league_seasons SET is_active = FALSE WHERE league_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "569f44b9faa37e4d976b1774c4f970c2ccdec79f4668eff9ab53b643f7dcf60b"
+}

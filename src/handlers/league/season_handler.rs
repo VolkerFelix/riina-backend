@@ -11,18 +11,18 @@ pub async fn get_active_league_season(
 ) -> Result<HttpResponse> {
     let league_service = LeagueService::new(pool.get_ref().clone());
     
-    match league_service.get_countdown_info(None).await {
-        Ok(countdown_info) => {
+    match league_service.get_active_seasons().await {
+        Ok(seasons) => {
             Ok(HttpResponse::Ok().json(json!({
                 "success": true,
-                "data": countdown_info
+                "data": seasons
             })))
         }
         Err(e) => {
-            tracing::error!("Failed to get active season: {}", e);
+            tracing::error!("Failed to get active seasons: {}", e);
             Ok(HttpResponse::NotFound().json(json!({
                 "success": false,
-                "message": "No active season found"
+                "message": "No active seasons found"
             })))
         }
     }
