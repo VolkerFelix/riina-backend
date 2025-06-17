@@ -32,10 +32,11 @@ impl SeasonService {
         let season = sqlx::query_as!(
             LeagueSeason,
             r#"
-            INSERT INTO league_seasons (name, start_date, end_date, is_active)
-            VALUES ($1, $2, $3, TRUE)
+            INSERT INTO league_seasons (league_id, name, start_date, end_date, is_active)
+            VALUES ($1, $2, $3, $4, TRUE)
             RETURNING *
             "#,
+            request.league_id,
             request.name,
             request.start_date,
             end_date

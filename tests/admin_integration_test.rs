@@ -2,9 +2,10 @@ use reqwest::{Client, Response};
 use serde_json::json;
 use uuid::Uuid;
 use sqlx::PgPool;
+use bcrypt;
 
 mod common;
-use common::utils::spawn_app;
+use common::utils::{spawn_app, TestApp};
 
 /// Helper function to create an admin user and get auth token
 async fn create_test_user_and_login(app_address: &str) -> String {
@@ -141,34 +142,80 @@ async fn create_test_user_and_login_with_id(app_address: &str) -> (String, Strin
     (token, user_id)
 }
 
-/// Helper function to create test users
-async fn create_multiple_test_users(app_address: &str, count: usize) -> Vec<String> {
+/// Helper function to create teams for testing
+async fn create_teams_for_test(test_app: &TestApp, admin_token: &str, count: usize) -> Vec<String> {
     let client = Client::new();
-    let mut user_ids = Vec::new();
+    let mut team_ids = Vec::new();
 
+    // Create regular users first
+    let mut usernames = Vec::new();
     for i in 0..count {
         let username = format!("testuser{}{}", i, Uuid::new_v4());
         let password = "password123";
         let email = format!("{}@example.com", username);
 
+        // Create user
         let user_request = json!({
             "username": username,
             "password": password,
             "email": email
         });
 
-        let response = client
-            .post(&format!("{}/register_user", app_address))
+        let user_response = client
+            .post(&format!("{}/register_user", test_app.address))
             .json(&user_request)
             .send()
             .await
             .expect("Failed to register user");
 
-        assert_eq!(200, response.status().as_u16());
-        user_ids.push(username);
+        assert_eq!(200, user_response.status().as_u16());
+        usernames.push(username);
     }
 
-    user_ids
+    // Get users without teams to find their IDs
+    let users_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/admin/users/without-team", test_app.address),
+        &admin_token,
+        None::<serde_json::Value>,
+    ).await;
+
+    assert_eq!(200, users_response.status().as_u16());
+
+    let users_body: serde_json::Value = users_response.json().await.expect("Failed to parse users response");
+    let users = users_body["data"].as_array().expect("Expected users array");
+
+    // Find our created users and create teams for them
+    for username in &usernames {
+        let user = users.iter().find(|u| u["username"].as_str() == Some(username))
+            .expect(&format!("User {} not found", username));
+        let user_id = user["id"].as_str().expect("Missing user ID").to_string();
+
+        // Create team for this user
+        let team_request = json!({
+            "name": format!("Team {}", username),
+            "color": "#FF0000",
+            "owner_id": user_id,
+            "formation": "circle"
+        });
+
+        let team_response = make_authenticated_request(
+            &client,
+            reqwest::Method::POST,
+            &format!("{}/admin/teams", test_app.address),
+            &admin_token,
+            Some(team_request),
+        ).await;
+
+        assert_eq!(201, team_response.status().as_u16());
+
+        let team_body: serde_json::Value = team_response.json().await.expect("Failed to parse team response");
+        let team_id = team_body["data"]["id"].as_str().expect("Missing team ID").to_string();
+        team_ids.push(team_id);
+    }
+
+    team_ids
 }
 
 /// Helper function to create authenticated request
@@ -188,6 +235,52 @@ async fn make_authenticated_request(
     }
 
     request.send().await.expect("Failed to send request")
+}
+
+/// Helper function to create a test admin user
+async fn create_test_admin(pool: &PgPool) -> (String, String, Uuid) {
+    let username = format!("adminuser{}", Uuid::new_v4());
+    let email = format!("{}@example.com", username);
+    let password = "password123";
+    let password_hash = bcrypt::hash(password, bcrypt::DEFAULT_COST).expect("Failed to hash password");
+
+    // Create user
+    let user = sqlx::query!(
+        "INSERT INTO users (username, email, password_hash, role) VALUES ($1, $2, $3, 'admin') RETURNING id",
+        username,
+        email,
+        password_hash
+    )
+    .fetch_one(pool)
+    .await
+    .expect("Failed to create test admin");
+
+    (username, email, user.id)
+}
+
+/// Helper function to login and get token
+async fn login_and_get_token(client: &Client, app_address: &str, email: &str, password: &str) -> String {
+    let username = email.split('@').next().unwrap();
+    let login_request = json!({
+        "username": username,
+        "password": password
+    });
+
+    let login_response = client
+        .post(&format!("{}/login", app_address))
+        .json(&login_request)
+        .send()
+        .await
+        .expect("Failed to login");
+
+    assert_eq!(200, login_response.status().as_u16());
+
+    let login_body: serde_json::Value = login_response
+        .json()
+        .await
+        .expect("Failed to parse login response");
+
+    login_body["token"].as_str().unwrap().to_string()
 }
 
 #[tokio::test]
@@ -228,7 +321,7 @@ async fn admin_get_users_returns_paginated_results() {
     let token = create_test_user_and_login(&test_app.address).await;
     
     // Create additional test users
-    create_multiple_test_users(&test_app.address, 5).await;
+    let _ = create_teams_for_test(&test_app, &token, 5).await;
 
     // Act
     let response = make_authenticated_request(
@@ -259,7 +352,7 @@ async fn admin_get_users_supports_pagination() {
     let token = create_test_user_and_login(&test_app.address).await;
     
     // Create test users
-    create_multiple_test_users(&test_app.address, 3).await;
+    let _ = create_teams_for_test(&test_app, &token, 3).await;
 
     // Act - Test with limit=2
     let response = make_authenticated_request(
@@ -334,7 +427,7 @@ async fn admin_get_users_without_team_works() {
     let token = create_test_user_and_login(&test_app.address).await;
     
     // Create some test users (they should all be without teams initially)
-    create_multiple_test_users(&test_app.address, 3).await;
+    let _ = create_teams_for_test(&test_app, &token, 3).await;
 
     // Act
     let response = make_authenticated_request(
@@ -998,4 +1091,223 @@ async fn admin_routes_return_proper_error_formats() {
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse response");
     assert!(body["error"].is_string());
+}
+
+#[actix_web::test]
+async fn admin_generate_schedule_works() {
+    // Setup
+    let app = spawn_app().await;
+    let client = reqwest::Client::new();
+    
+    // Create admin users and get tokens
+    let (username1, email1, user_id1) = create_test_admin(&app.db_pool).await;
+    let (username2, email2, user_id2) = create_test_admin(&app.db_pool).await;
+    let token = login_and_get_token(&client, &app.address, &email1, "password123").await;
+    let team1_name = format!("Team 1 {}", Uuid::new_v4());
+    let team2_name = format!("Team 2 {}", Uuid::new_v4());
+    // Create a league first
+    let league_response = client
+        .post(&format!("{}/admin/leagues", app.address))
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&serde_json::json!({
+            "name": format!("Test League {}", Uuid::new_v4()),
+            "description": "Test League Description",
+            "max_teams": 16,
+            "season_start_date": "2024-01-01T00:00:00Z",
+            "season_end_date": "2024-12-31T23:59:59Z"
+        }))
+        .send()
+        .await
+        .expect("Failed to create league");
+    
+    assert!(league_response.status().is_success());
+    let league: serde_json::Value = league_response.json().await.expect("Failed to parse league response");
+    let league_id = league["data"]["id"].as_str().expect("League ID not found");
+    
+    // Create two teams
+    let team1_response = client
+        .post(&format!("{}/admin/teams", app.address))
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&serde_json::json!({
+            "name": team1_name,
+            "description": "Test Team 1",
+            "color": "#FF0000",
+            "formation": "circle",
+            "owner_id": user_id1
+        }))
+        .send()
+        .await
+        .expect("Failed to create team 1");
+    
+    let team2_response = client
+        .post(&format!("{}/admin/teams", app.address))
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&serde_json::json!({
+            "name": team2_name,
+            "description": "Test Team 2",
+            "color": "#00FF00",
+            "formation": "line",
+            "owner_id": user_id2
+        }))
+        .send()
+        .await
+        .expect("Failed to create team 2");
+    
+    assert!(team1_response.status().is_success());
+    assert!(team2_response.status().is_success());
+    
+    let team1: serde_json::Value = team1_response.json().await.expect("Failed to parse team 1 response");
+    let team2: serde_json::Value = team2_response.json().await.expect("Failed to parse team 2 response");
+    let team1_id = team1["data"]["id"].as_str().expect("Team 1 ID not found");
+    let team2_id = team2["data"]["id"].as_str().expect("Team 2 ID not found");
+    
+    // Get the season_id from the league_seasons table
+    let season_record = sqlx::query!(
+        "SELECT id FROM league_seasons WHERE league_id = $1 AND is_active = true",
+        Uuid::parse_str(league_id).unwrap()
+    )
+    .fetch_one(&app.db_pool)
+    .await
+    .expect("Failed to get season ID");
+    
+    let season_id = season_record.id.to_string();
+    
+    // Assign teams to the league
+    let assign_team1_response = client
+        .post(&format!("{}/admin/leagues/{}/teams", app.address, league_id))
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&serde_json::json!({
+            "team_id": team1_id
+        }))
+        .send()
+        .await
+        .expect("Failed to assign team 1");
+    
+    let assign_team2_response = client
+        .post(&format!("{}/admin/leagues/{}/teams", app.address, league_id))
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&serde_json::json!({
+            "team_id": team2_id
+        }))
+        .send()
+        .await
+        .expect("Failed to assign team 2");
+    
+    assert!(assign_team1_response.status().is_success());
+    assert!(assign_team2_response.status().is_success());
+    
+    // Generate schedule
+    let response = client
+        .post(&format!("{}/admin/leagues/{}/schedule", app.address, league_id))
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&serde_json::json!({
+            "season_id": season_id,
+            "start_date": "2026-06-20T22:00:00Z"  // Saturday at 22:00 UTC (future date)
+        }))
+        .send()
+        .await
+        .expect("Failed to execute request");
+    
+    let status = response.status();
+    if !status.is_success() {
+        let text = response.text().await.expect("Failed to get response text");
+        panic!("Expected success, got {}: {}", status, text);
+    }
+    
+    let response_body: serde_json::Value = response.json().await.expect("Failed to parse response");
+    assert!(response_body["success"].as_bool().unwrap());
+    assert!(response_body["data"]["games_created"].as_i64().unwrap() > 0);
+    
+    // Verify games were created in the database
+    let games = sqlx::query!(
+        r#"
+        SELECT COUNT(*) as count
+        FROM league_games
+        WHERE season_id = $1
+        "#,
+        Uuid::parse_str(&season_id).unwrap()
+    )
+    .fetch_one(&app.db_pool)
+    .await
+    .expect("Failed to query games");
+    
+    assert!(games.count.unwrap() > 0);
+}
+
+#[tokio::test]
+async fn admin_generate_schedule_with_invalid_date_fails() {
+    // Arrange
+    let test_app = spawn_app().await;
+    let client = Client::new();
+    let token = create_test_user_and_login(&test_app.address).await;
+
+    // Create a league first
+    let league_request = json!({
+        "name": format!("Test League {}", Uuid::new_v4()),
+        "description": "A test league for schedule generation",
+        "max_teams": 4,
+        "season_start_date": "2024-03-23T22:00:00Z",
+        "season_end_date": "2024-12-31T23:59:59Z"
+    });
+
+    let create_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/leagues", test_app.address),
+        &token,
+        Some(league_request),
+    ).await;
+
+    let create_body: serde_json::Value = create_response.json().await.unwrap();
+    let league_id = create_body["data"]["id"].as_str().unwrap();
+    let season_id = league_id; // In the admin system, league and season are the same
+
+    // Create some teams and assign them to the league  
+    let team_ids = create_teams_for_test(&test_app, &token, 4).await;
+    
+    // Assign teams to league
+    for team_id in &team_ids {
+        let assign_request = json!({
+            "team_id": team_id
+        });
+
+        let assign_response = make_authenticated_request(
+            &client,
+            reqwest::Method::POST,
+            &format!("{}/admin/leagues/{}/teams", test_app.address, league_id),
+            &token,
+            Some(assign_request),
+        ).await;
+
+        let status = assign_response.status().as_u16();
+        if status != 201 {
+            let text = assign_response.text().await.expect("Failed to get response text");
+            panic!("Expected 201, got {}: {}", status, text);
+        }
+    }
+
+    // Act - Try to generate schedule with invalid date (not a Saturday)
+    let schedule_request = json!({
+        "season_id": season_id,
+        "start_date": "2024-03-24T22:00:00Z" // Sunday at 22:00 UTC
+    });
+
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/leagues/{}/schedule", test_app.address, league_id),
+        &token,
+        Some(schedule_request),
+    ).await;
+
+    // Assert
+    assert_eq!(400, response.status().as_u16());
+
+    let response_text = response.text().await.expect("Failed to get response text");
+    if response_text.trim().is_empty() {
+        panic!("Expected error response body, got empty body");
+    }
+    let body: serde_json::Value = serde_json::from_str(&response_text).expect("Failed to parse response");
+    assert!(!body["success"].as_bool().unwrap_or(false));
+    assert!(body["message"].as_str().unwrap_or("").contains("Start date must be a Saturday"));
 }

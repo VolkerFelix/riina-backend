@@ -2,7 +2,7 @@ use actix_web::{web, HttpResponse, Result};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc, Datelike, Timelike};
 
 use crate::handlers::admin::user_handler::ApiResponse;
 
@@ -46,25 +46,32 @@ pub struct RemoveTeamRequest {
     pub team_id: Uuid,
 }
 
+#[derive(Deserialize)]
+pub struct GenerateScheduleRequest {
+    pub season_id: Uuid,
+    pub start_date: DateTime<Utc>,
+}
+
 // GET /admin/leagues - Get all leagues
 pub async fn get_leagues(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse> {
-    // For now, we'll use the league_seasons table as our leagues
-    // In a production system, you might have a separate leagues table
     let rows = sqlx::query(r#"
         SELECT 
-            ls.id,
-            ls.name,
+            l.id,
+            l.name,
+            l.description,
+            l.max_teams,
+            l.is_active,
+            l.created_at,
             ls.start_date as season_start_date,
             ls.end_date as season_end_date,
-            ls.is_active,
-            ls.created_at,
-            COUNT(DISTINCT t.id) as current_team_count
-        FROM league_seasons ls
-        LEFT JOIN teams t ON 1=1  -- TODO: Add proper league-team relationship
-        GROUP BY ls.id, ls.name, ls.start_date, ls.end_date, ls.is_active, ls.created_at
-        ORDER BY ls.created_at DESC
+            COUNT(DISTINCT lm.team_id) as current_team_count
+        FROM leagues l
+        LEFT JOIN league_seasons ls ON l.id = ls.league_id AND ls.is_active = true
+        LEFT JOIN league_memberships lm ON l.id = lm.league_id AND lm.status = 'active'
+        GROUP BY l.id, l.name, l.description, l.max_teams, l.is_active, l.created_at, ls.start_date, ls.end_date
+        ORDER BY l.created_at DESC
     "#)
     .fetch_all(pool.get_ref())
     .await
@@ -78,12 +85,12 @@ pub async fn get_leagues(
         .map(|row| AdminLeagueResponse {
             id: row.get("id"),
             name: row.get("name"),
-            description: None, // TODO: Add description field to league_seasons table
+            description: row.get("description"),
             is_active: row.get("is_active"),
-            max_teams: 12, // Default max teams for now
+            max_teams: row.get("max_teams"),
             current_team_count: row.get::<i64, _>("current_team_count"),
-            season_start_date: row.get("season_start_date"),
-            season_end_date: row.get("season_end_date"),
+            season_start_date: row.get::<Option<DateTime<Utc>>, _>("season_start_date").unwrap_or_else(|| Utc::now()),
+            season_end_date: row.get::<Option<DateTime<Utc>>, _>("season_end_date").unwrap_or_else(|| Utc::now()),
             created_at: row.get("created_at"),
         })
         .collect();
@@ -106,17 +113,20 @@ pub async fn get_league_by_id(
 
     let row = sqlx::query(r#"
         SELECT 
-            ls.id,
-            ls.name,
+            l.id,
+            l.name,
+            l.description,
+            l.max_teams,
+            l.is_active,
+            l.created_at,
             ls.start_date as season_start_date,
             ls.end_date as season_end_date,
-            ls.is_active,
-            ls.created_at,
-            COUNT(DISTINCT t.id) as current_team_count
-        FROM league_seasons ls
-        LEFT JOIN teams t ON 1=1  -- TODO: Add proper league-team relationship
-        WHERE ls.id = $1
-        GROUP BY ls.id, ls.name, ls.start_date, ls.end_date, ls.is_active, ls.created_at
+            COUNT(DISTINCT lm.team_id) as current_team_count
+        FROM leagues l
+        LEFT JOIN league_seasons ls ON l.id = ls.league_id AND ls.is_active = true
+        LEFT JOIN league_memberships lm ON l.id = lm.league_id AND lm.status = 'active'
+        WHERE l.id = $1
+        GROUP BY l.id, l.name, l.description, l.max_teams, l.is_active, l.created_at, ls.start_date, ls.end_date
     "#)
     .bind(league_id)
     .fetch_optional(pool.get_ref())
@@ -130,12 +140,12 @@ pub async fn get_league_by_id(
         let league = AdminLeagueResponse {
             id: row.get("id"),
             name: row.get("name"),
-            description: None,
+            description: row.get("description"),
             is_active: row.get("is_active"),
-            max_teams: 12,
+            max_teams: row.get("max_teams"),
             current_team_count: row.get::<i64, _>("current_team_count"),
-            season_start_date: row.get("season_start_date"),
-            season_end_date: row.get("season_end_date"),
+            season_start_date: row.get::<Option<DateTime<Utc>>, _>("season_start_date").unwrap_or_else(|| Utc::now()),
+            season_end_date: row.get::<Option<DateTime<Utc>>, _>("season_end_date").unwrap_or_else(|| Utc::now()),
             created_at: row.get("created_at"),
         };
 
@@ -159,6 +169,7 @@ pub async fn create_league(
     body: web::Json<CreateLeagueRequest>,
 ) -> Result<HttpResponse> {
     let league_id = Uuid::new_v4();
+    let season_id = Uuid::new_v4();
     let now = chrono::Utc::now();
 
     // Validate dates
@@ -168,24 +179,61 @@ pub async fn create_league(
         })));
     }
 
-    let result = sqlx::query!(
+    // Create league and initial season in a transaction
+    let mut tx = pool.begin().await.map_err(|e| {
+        eprintln!("Database error starting transaction: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    // Insert into leagues table
+    let league_result = sqlx::query!(
         r#"
-        INSERT INTO league_seasons (id, name, start_date, end_date, is_active, created_at, updated_at)
+        INSERT INTO leagues (id, name, description, max_teams, is_active, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         "#,
         league_id,
         body.name,
-        body.season_start_date,
-        body.season_end_date,
-        true, // New leagues are active by default
+        body.description,
+        body.max_teams,
+        true,
         now,
         now
     )
-    .execute(pool.get_ref())
+    .execute(&mut *tx)
     .await;
 
-    match result {
+    if let Err(e) = league_result {
+        eprintln!("Database error creating league: {}", e);
+        return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": "Failed to create league"
+        })));
+    }
+
+    // Insert into league_seasons table
+    let season_result = sqlx::query!(
+        r#"
+        INSERT INTO league_seasons (id, league_id, name, start_date, end_date, is_active, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        "#,
+        season_id,
+        league_id,
+        format!("{} - Season 1", body.name),
+        body.season_start_date,
+        body.season_end_date,
+        true,
+        now,
+        now
+    )
+    .execute(&mut *tx)
+    .await;
+
+    match season_result {
         Ok(_) => {
+            tx.commit().await.map_err(|e| {
+                eprintln!("Database error committing transaction: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?;
+
             let league = AdminLeagueResponse {
                 id: league_id,
                 name: body.name.clone(),
@@ -207,9 +255,9 @@ pub async fn create_league(
             Ok(HttpResponse::Created().json(response))
         }
         Err(e) => {
-            eprintln!("Database error creating league: {}", e);
+            eprintln!("Database error creating league season: {}", e);
             Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": "Failed to create league"
+                "error": "Failed to create league season"
             })))
         }
     }
@@ -223,104 +271,90 @@ pub async fn update_league(
 ) -> Result<HttpResponse> {
     let league_id = path.into_inner();
 
-    let mut updates = Vec::new();
-    let mut params: Vec<Box<dyn std::any::Any + Send>> = Vec::new();
-    let mut param_count = 1;
-
-    if let Some(name) = &body.name {
-        updates.push(format!("name = ${}", param_count));
-        params.push(Box::new(name.clone()));
-        param_count += 1;
-    }
-
-    if let Some(start_date) = &body.season_start_date {
-        updates.push(format!("start_date = ${}", param_count));
-        params.push(Box::new(*start_date));
-        param_count += 1;
-    }
-
-    if let Some(end_date) = &body.season_end_date {
-        updates.push(format!("end_date = ${}", param_count));
-        params.push(Box::new(*end_date));
-        param_count += 1;
-    }
-
-    if let Some(is_active) = &body.is_active {
-        updates.push(format!("is_active = ${}", param_count));
-        params.push(Box::new(*is_active));
-        param_count += 1;
-    }
-
-    if updates.is_empty() {
+    if body.name.is_none() && body.season_start_date.is_none() && body.season_end_date.is_none() && body.is_active.is_none() {
         return Ok(HttpResponse::BadRequest().json(serde_json::json!({
             "error": "No fields to update"
         })));
     }
 
-    updates.push(format!("updated_at = ${}", param_count));
-    let now = chrono::Utc::now();
-    params.push(Box::new(now));
+    let mut tx = pool.begin().await.map_err(|e| {
+        eprintln!("Database error starting transaction: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
 
-    // For simplicity, let's use a direct query approach
-    let mut query_builder = sqlx::QueryBuilder::new("UPDATE league_seasons SET ");
-    let mut separator = "";
+    let now = chrono::Utc::now();
+
+    // Update leagues table
+    let mut league_query_builder = sqlx::QueryBuilder::new("UPDATE leagues SET updated_at = ");
+    league_query_builder.push_bind(now);
 
     if let Some(name) = &body.name {
-        query_builder.push(separator);
-        query_builder.push("name = ");
-        query_builder.push_bind(name);
-        separator = ", ";
-    }
-
-    if let Some(start_date) = &body.season_start_date {
-        query_builder.push(separator);
-        query_builder.push("start_date = ");
-        query_builder.push_bind(start_date);
-        separator = ", ";
-    }
-
-    if let Some(end_date) = &body.season_end_date {
-        query_builder.push(separator);
-        query_builder.push("end_date = ");
-        query_builder.push_bind(end_date);
-        separator = ", ";
+        league_query_builder.push(", name = ");
+        league_query_builder.push_bind(name);
     }
 
     if let Some(is_active) = &body.is_active {
-        query_builder.push(separator);
-        query_builder.push("is_active = ");
-        query_builder.push_bind(is_active);
-        separator = ", ";
+        league_query_builder.push(", is_active = ");
+        league_query_builder.push_bind(is_active);
     }
 
-    query_builder.push(separator);
-    query_builder.push("updated_at = ");
-    query_builder.push_bind(now);
+    league_query_builder.push(" WHERE id = ");
+    league_query_builder.push_bind(league_id);
 
-    query_builder.push(" WHERE id = ");
-    query_builder.push_bind(league_id);
+    let league_result = league_query_builder.build().execute(&mut *tx).await;
 
-    let result = query_builder.build().execute(pool.get_ref()).await;
-
-    match result {
+    match league_result {
         Ok(result) => {
-            if result.rows_affected() > 0 {
-                // Fetch updated league
-                let league = get_league_by_id(pool, web::Path::from(league_id)).await?;
-                Ok(league)
-            } else {
-                Ok(HttpResponse::NotFound().json(serde_json::json!({
+            if result.rows_affected() == 0 {
+                return Ok(HttpResponse::NotFound().json(serde_json::json!({
                     "error": "League not found"
-                })))
+                })));
             }
         }
         Err(e) => {
             eprintln!("Database error updating league: {}", e);
-            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+            return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": "Failed to update league"
-            })))
+            })));
         }
     }
+
+    // Update league_seasons table for season-specific fields
+    if body.season_start_date.is_some() || body.season_end_date.is_some() {
+        let mut season_query_builder = sqlx::QueryBuilder::new("UPDATE league_seasons SET updated_at = ");
+        season_query_builder.push_bind(now);
+
+        if let Some(start_date) = &body.season_start_date {
+            season_query_builder.push(", start_date = ");
+            season_query_builder.push_bind(start_date);
+        }
+
+        if let Some(end_date) = &body.season_end_date {
+            season_query_builder.push(", end_date = ");
+            season_query_builder.push_bind(end_date);
+        }
+
+        season_query_builder.push(" WHERE league_id = ");
+        season_query_builder.push_bind(league_id);
+        season_query_builder.push(" AND is_active = true");
+
+        let season_result = season_query_builder.build().execute(&mut *tx).await;
+
+        if let Err(e) = season_result {
+            eprintln!("Database error updating league season: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to update league season"
+            })));
+        }
+    }
+
+    tx.commit().await.map_err(|e| {
+        eprintln!("Database error committing transaction: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    // Fetch updated league
+    get_league_by_id(pool, web::Path::from(league_id)).await
 }
 
 // POST /admin/leagues/{id}/teams - Assign team to league
@@ -334,7 +368,7 @@ pub async fn assign_team_to_league(
 
     // Check if league exists
     let league_exists = sqlx::query!(
-        "SELECT id FROM league_seasons WHERE id = $1",
+        "SELECT id FROM leagues WHERE id = $1",
         league_id
     )
     .fetch_optional(pool.get_ref())
@@ -369,43 +403,110 @@ pub async fn assign_team_to_league(
     }
 
     // Check if team is already assigned to this league
-    let existing_assignment = sqlx::query!(
-        "SELECT id FROM league_standings WHERE season_id = $1 AND team_id = $2",
+    let existing_membership = sqlx::query!(
+        "SELECT id FROM league_memberships WHERE league_id = $1 AND team_id = $2",
         league_id,
         team_id
     )
     .fetch_optional(pool.get_ref())
     .await
     .map_err(|e| {
-        eprintln!("Database error checking existing assignment: {}", e);
+        eprintln!("Database error checking existing membership: {}", e);
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
-    if existing_assignment.is_some() {
+    if existing_membership.is_some() {
         return Ok(HttpResponse::Conflict().json(serde_json::json!({
             "error": "Team is already assigned to this league"
         })));
     }
 
-    // Insert team into league standings
+    // Get the active season for this league
+    let active_season = sqlx::query!(
+        "SELECT id FROM league_seasons WHERE league_id = $1 AND is_active = true LIMIT 1",
+        league_id
+    )
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(|e| {
+        eprintln!("Database error getting active season: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    let season_id = match active_season {
+        Some(season) => season.id,
+        None => {
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "error": "No active season found for this league"
+            })));
+        }
+    };
+
+    // Insert team into league_memberships, league_teams, and league_standings tables
+    let mut tx = pool.begin().await.map_err(|e| {
+        eprintln!("Database error starting transaction: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    // Insert into league_memberships
+    sqlx::query!(
+        r#"
+        INSERT INTO league_memberships (id, league_id, team_id, joined_at, status)
+        VALUES ($1, $2, $3, NOW(), 'active')
+        "#,
+        Uuid::new_v4(),
+        league_id,
+        team_id
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        eprintln!("Database error inserting into league_memberships: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    // Insert into league_teams
+    sqlx::query!(
+        r#"
+        INSERT INTO league_teams (id, season_id, team_id, joined_at)
+        VALUES ($1, $2, $3, NOW())
+        "#,
+        Uuid::new_v4(),
+        season_id,
+        team_id
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        eprintln!("Database error inserting into league_teams: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    // Insert into league_standings
     let result = sqlx::query!(
         r#"
         INSERT INTO league_standings (id, season_id, team_id, games_played, wins, draws, losses, position, last_updated)
         VALUES ($1, $2, $3, 0, 0, 0, 0, 1, NOW())
         "#,
         Uuid::new_v4(),
-        league_id,
+        season_id,
         team_id
     )
-    .execute(pool.get_ref())
+    .execute(&mut *tx)
     .await;
 
     match result {
         Ok(_) => {
+            tx.commit().await.map_err(|e| {
+                eprintln!("Database error committing transaction: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?;
+
             let response = ApiResponse {
                 data: serde_json::json!({
                     "league_id": league_id,
                     "team_id": team_id,
+                    "season_id": season_id,
                     "message": "Team assigned to league successfully"
                 }),
                 success: true,
@@ -431,38 +532,91 @@ pub async fn remove_team_from_league(
     let league_id = path.into_inner();
     let team_id = body.team_id;
 
-    let result = sqlx::query!(
-        "DELETE FROM league_standings WHERE season_id = $1 AND team_id = $2",
+    // Remove team from league_memberships, league_teams, and league_standings tables
+    let mut tx = pool.begin().await.map_err(|e| {
+        eprintln!("Database error starting transaction: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    // Get all seasons for this league to clean up all data
+    let seasons = sqlx::query!(
+        "SELECT id FROM league_seasons WHERE league_id = $1",
+        league_id
+    )
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|e| {
+        eprintln!("Database error getting seasons: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    let mut total_rows_affected = 0;
+
+    // Remove from league_standings for all seasons
+    for season in &seasons {
+        let standings_result = sqlx::query!(
+            "DELETE FROM league_standings WHERE season_id = $1 AND team_id = $2",
+            season.id,
+            team_id
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            eprintln!("Database error removing from league_standings: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?;
+        total_rows_affected += standings_result.rows_affected();
+    }
+
+    // Remove from league_teams for all seasons
+    for season in &seasons {
+        let teams_result = sqlx::query!(
+            "DELETE FROM league_teams WHERE season_id = $1 AND team_id = $2",
+            season.id,
+            team_id
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            eprintln!("Database error removing from league_teams: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?;
+        total_rows_affected += teams_result.rows_affected();
+    }
+
+    // Remove from league_memberships
+    let membership_result = sqlx::query!(
+        "DELETE FROM league_memberships WHERE league_id = $1 AND team_id = $2",
         league_id,
         team_id
     )
-    .execute(pool.get_ref())
-    .await;
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        eprintln!("Database error removing from league_memberships: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+    total_rows_affected += membership_result.rows_affected();
 
-    match result {
-        Ok(result) => {
-            if result.rows_affected() > 0 {
-                let response = ApiResponse {
-                    data: serde_json::json!({
-                        "league_id": league_id,
-                        "team_id": team_id
-                    }),
-                    success: true,
-                    message: Some("Team removed from league successfully".to_string()),
-                };
-                Ok(HttpResponse::Ok().json(response))
-            } else {
-                Ok(HttpResponse::NotFound().json(serde_json::json!({
-                    "error": "Team not found in this league"
-                })))
-            }
-        }
-        Err(e) => {
-            eprintln!("Database error removing team from league: {}", e);
-            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": "Failed to remove team from league"
-            })))
-        }
+    if total_rows_affected > 0 {
+        tx.commit().await.map_err(|e| {
+            eprintln!("Database error committing transaction: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?;
+
+        let response = ApiResponse {
+            data: serde_json::json!({
+                "league_id": league_id,
+                "team_id": team_id
+            }),
+            success: true,
+            message: Some("Team removed from league successfully".to_string()),
+        };
+        Ok(HttpResponse::Ok().json(response))
+    } else {
+        Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Team not found in this league"
+        })))
     }
 }
 
@@ -537,4 +691,71 @@ pub async fn get_league_teams(
     };
 
     Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn generate_schedule(
+    pool: web::Data<PgPool>,
+    body: web::Json<GenerateScheduleRequest>,
+) -> Result<HttpResponse> {
+    let _league_service = crate::league::league::LeagueService::new(pool.get_ref().clone());
+    
+    // Validate that start date is a Saturday at 22:00 UTC
+    let start_date = body.start_date;
+    if start_date.weekday().num_days_from_monday() != 5 || start_date.hour() != 22 || start_date.minute() != 0 {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "success": false,
+            "message": "Start date must be a Saturday at 22:00 UTC"
+        })));
+    }
+    
+    // Get the teams for this season from league_teams
+    let teams = sqlx::query!(
+        r#"
+        SELECT t.id as team_id 
+        FROM teams t
+        JOIN league_teams lt ON t.id = lt.team_id
+        WHERE lt.season_id = $1
+        "#,
+        body.season_id
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(|e| {
+        eprintln!("Database error getting teams: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    let team_ids: Vec<Uuid> = teams.into_iter().map(|t| t.team_id).collect();
+
+    if team_ids.is_empty() {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "success": false,
+            "message": "No teams found in this league season"
+        })));
+    }
+
+    // Generate schedule for the existing season
+    let schedule_service = crate::league::schedule::ScheduleService::new(pool.get_ref().clone());
+    
+    match schedule_service.generate_schedule(body.season_id, &team_ids, body.start_date).await {
+        Ok(games_created) => {
+            let response = ApiResponse {
+                data: serde_json::json!({
+                    "games_created": games_created,
+                    "season_id": body.season_id,
+                    "start_date": body.start_date
+                }),
+                success: true,
+                message: Some(format!("Successfully generated schedule with {} games", games_created)),
+            };
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            tracing::error!("Failed to generate schedule: {}", e);
+            Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "success": false,
+                "message": format!("Failed to generate schedule: {}", e)
+            })))
+        }
+    }
 }

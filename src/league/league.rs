@@ -133,6 +133,7 @@ impl LeagueService {
     /// Start new season with current teams
     pub async fn start_new_season_with_teams(
         &self,
+        league_id: Uuid,
         team_ids: Vec<Uuid>,
         season_name: Option<String>,
     ) -> Result<LeagueScheduleResponse, sqlx::Error> {
@@ -143,6 +144,7 @@ impl LeagueService {
         let start_date = self.countdown.get_next_game_time();
 
         let request = CreateSeasonRequest {
+            league_id,
             name: season_name,
             start_date,
             team_ids,

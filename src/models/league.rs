@@ -8,6 +8,7 @@ use std::fmt;
 #[derive(Debug, FromRow, Serialize, Deserialize, Clone)]
 pub struct LeagueSeason {
     pub id: Uuid,
+    pub league_id: Uuid,
     pub name: String,
     pub start_date: DateTime<Utc>,
     pub end_date: DateTime<Utc>,
@@ -71,6 +72,7 @@ pub struct LeagueStanding {
 // Request/Response DTOs
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CreateSeasonRequest {
+    pub league_id: Uuid,
     pub name: String,
     pub start_date: DateTime<Utc>,
     pub team_ids: Vec<Uuid>,
