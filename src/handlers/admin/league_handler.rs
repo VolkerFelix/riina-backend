@@ -14,8 +14,6 @@ pub struct AdminLeagueResponse {
     pub is_active: bool,
     pub max_teams: i32,
     pub current_team_count: i64,
-    pub season_start_date: DateTime<Utc>,
-    pub season_end_date: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -24,8 +22,6 @@ pub struct CreateLeagueRequest {
     pub name: String,
     pub description: Option<String>,
     pub max_teams: i32,
-    pub season_start_date: DateTime<Utc>,
-    pub season_end_date: DateTime<Utc>,
 }
 
 #[derive(Deserialize)]
@@ -91,13 +87,10 @@ pub async fn get_leagues(
             l.max_teams,
             l.is_active,
             l.created_at,
-            ls.start_date as season_start_date,
-            ls.end_date as season_end_date,
             COUNT(DISTINCT lm.team_id) as current_team_count
         FROM leagues l
-        LEFT JOIN league_seasons ls ON l.id = ls.league_id AND ls.is_active = true
         LEFT JOIN league_memberships lm ON l.id = lm.league_id AND lm.status = 'active'
-        GROUP BY l.id, l.name, l.description, l.max_teams, l.is_active, l.created_at, ls.start_date, ls.end_date
+        GROUP BY l.id, l.name, l.description, l.max_teams, l.is_active, l.created_at
         ORDER BY l.created_at DESC
     "#)
     .fetch_all(pool.get_ref())
@@ -116,8 +109,6 @@ pub async fn get_leagues(
             is_active: row.get("is_active"),
             max_teams: row.get("max_teams"),
             current_team_count: row.get::<i64, _>("current_team_count"),
-            season_start_date: row.get::<Option<DateTime<Utc>>, _>("season_start_date").unwrap_or_else(|| Utc::now()),
-            season_end_date: row.get::<Option<DateTime<Utc>>, _>("season_end_date").unwrap_or_else(|| Utc::now()),
             created_at: row.get("created_at"),
         })
         .collect();
@@ -171,8 +162,6 @@ pub async fn get_league_by_id(
             is_active: row.get("is_active"),
             max_teams: row.get("max_teams"),
             current_team_count: row.get::<i64, _>("current_team_count"),
-            season_start_date: row.get::<Option<DateTime<Utc>>, _>("season_start_date").unwrap_or_else(|| Utc::now()),
-            season_end_date: row.get::<Option<DateTime<Utc>>, _>("season_end_date").unwrap_or_else(|| Utc::now()),
             created_at: row.get("created_at"),
         };
 
@@ -196,23 +185,9 @@ pub async fn create_league(
     body: web::Json<CreateLeagueRequest>,
 ) -> Result<HttpResponse> {
     let league_id = Uuid::new_v4();
-    let season_id = Uuid::new_v4();
     let now = chrono::Utc::now();
 
-    // Validate dates
-    if body.season_start_date >= body.season_end_date {
-        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-            "error": "Season start date must be before end date"
-        })));
-    }
-
-    // Create league and initial season in a transaction
-    let mut tx = pool.begin().await.map_err(|e| {
-        eprintln!("Database error starting transaction: {}", e);
-        actix_web::error::ErrorInternalServerError("Database error")
-    })?;
-
-    // Insert into leagues table
+    // Create league only (seasons will be managed separately)
     let league_result = sqlx::query!(
         r#"
         INSERT INTO leagues (id, name, description, max_teams, is_active, created_at, updated_at)
@@ -226,41 +201,11 @@ pub async fn create_league(
         now,
         now
     )
-    .execute(&mut *tx)
+    .execute(pool.get_ref())
     .await;
 
-    if let Err(e) = league_result {
-        eprintln!("Database error creating league: {}", e);
-        return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": "Failed to create league"
-        })));
-    }
-
-    // Insert into league_seasons table
-    let season_result = sqlx::query!(
-        r#"
-        INSERT INTO league_seasons (id, league_id, name, start_date, end_date, is_active, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        "#,
-        season_id,
-        league_id,
-        format!("{} - Season 1", body.name),
-        body.season_start_date,
-        body.season_end_date,
-        true,
-        now,
-        now
-    )
-    .execute(&mut *tx)
-    .await;
-
-    match season_result {
+    match league_result {
         Ok(_) => {
-            tx.commit().await.map_err(|e| {
-                eprintln!("Database error committing transaction: {}", e);
-                actix_web::error::ErrorInternalServerError("Database error")
-            })?;
-
             let league = AdminLeagueResponse {
                 id: league_id,
                 name: body.name.clone(),
@@ -268,23 +213,21 @@ pub async fn create_league(
                 is_active: true,
                 max_teams: body.max_teams,
                 current_team_count: 0,
-                season_start_date: body.season_start_date,
-                season_end_date: body.season_end_date,
                 created_at: now,
             };
 
             let response = ApiResponse {
                 data: league,
                 success: true,
-                message: Some("League created successfully".to_string()),
+                message: Some("League created successfully. Create a season to get started.".to_string()),
             };
 
             Ok(HttpResponse::Created().json(response))
         }
         Err(e) => {
-            eprintln!("Database error creating league season: {}", e);
+            eprintln!("Database error creating league: {}", e);
             Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": "Failed to create league season"
+                "error": "Failed to create league"
             })))
         }
     }
@@ -448,35 +391,9 @@ pub async fn assign_team_to_league(
         })));
     }
 
-    // Get the active season for this league
-    let active_season = sqlx::query!(
-        "SELECT id FROM league_seasons WHERE league_id = $1 AND is_active = true LIMIT 1",
-        league_id
-    )
-    .fetch_optional(pool.get_ref())
-    .await
-    .map_err(|e| {
-        eprintln!("Database error getting active season: {}", e);
-        actix_web::error::ErrorInternalServerError("Database error")
-    })?;
-
-    let season_id = match active_season {
-        Some(season) => season.id,
-        None => {
-            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-                "error": "No active season found for this league"
-            })));
-        }
-    };
-
-    // Insert team into league_memberships, league_teams, and league_standings tables
-    let mut tx = pool.begin().await.map_err(|e| {
-        eprintln!("Database error starting transaction: {}", e);
-        actix_web::error::ErrorInternalServerError("Database error")
-    })?;
-
-    // Insert into league_memberships
-    sqlx::query!(
+    // Insert team into league_memberships only
+    // Teams will be added to specific seasons separately when seasons are created/activated
+    let result = sqlx::query!(
         r#"
         INSERT INTO league_memberships (id, league_id, team_id, joined_at, status)
         VALUES ($1, $2, $3, NOW(), 'active')
@@ -485,56 +402,17 @@ pub async fn assign_team_to_league(
         league_id,
         team_id
     )
-    .execute(&mut *tx)
-    .await
-    .map_err(|e| {
-        eprintln!("Database error inserting into league_memberships: {}", e);
-        actix_web::error::ErrorInternalServerError("Database error")
-    })?;
-
-    // Insert into league_teams
-    sqlx::query!(
-        r#"
-        INSERT INTO league_teams (id, season_id, team_id, joined_at)
-        VALUES ($1, $2, $3, NOW())
-        "#,
-        Uuid::new_v4(),
-        season_id,
-        team_id
-    )
-    .execute(&mut *tx)
-    .await
-    .map_err(|e| {
-        eprintln!("Database error inserting into league_teams: {}", e);
-        actix_web::error::ErrorInternalServerError("Database error")
-    })?;
-
-    // Insert into league_standings
-    let result = sqlx::query!(
-        r#"
-        INSERT INTO league_standings (id, season_id, team_id, games_played, wins, draws, losses, position, last_updated)
-        VALUES ($1, $2, $3, 0, 0, 0, 0, 1, NOW())
-        "#,
-        Uuid::new_v4(),
-        season_id,
-        team_id
-    )
-    .execute(&mut *tx)
+    .execute(pool.get_ref())
     .await;
 
     match result {
         Ok(_) => {
-            tx.commit().await.map_err(|e| {
-                eprintln!("Database error committing transaction: {}", e);
-                actix_web::error::ErrorInternalServerError("Database error")
-            })?;
 
             let response = ApiResponse {
                 data: serde_json::json!({
                     "league_id": league_id,
                     "team_id": team_id,
-                    "season_id": season_id,
-                    "message": "Team assigned to league successfully"
+                    "message": "Team assigned to league successfully. Team will be added to seasons when they are created/activated."
                 }),
                 success: true,
                 message: Some("Team assigned to league successfully".to_string()),
@@ -663,20 +541,14 @@ pub async fn get_league_teams(
             t.created_at,
             t.user_id as owner_id,
             COUNT(tm.user_id) as member_count,
-            COALESCE(SUM(ua.stamina + ua.strength), 0) as total_power,
-            ls.games_played,
-            ls.wins,
-            ls.draws,
-            ls.losses,
-            ls.points,
-            ls.position
-        FROM league_standings ls
-        JOIN teams t ON ls.team_id = t.id
+            COALESCE(SUM(ua.stamina + ua.strength), 0) as total_power
+        FROM league_memberships lm
+        JOIN teams t ON lm.team_id = t.id
         LEFT JOIN team_members tm ON t.id = tm.team_id AND tm.status = 'active'
         LEFT JOIN user_avatars ua ON tm.user_id = ua.user_id
-        WHERE ls.season_id = $1
-        GROUP BY t.id, t.team_name, t.team_color, t.created_at, t.user_id, ls.games_played, ls.wins, ls.draws, ls.losses, ls.points, ls.position
-        ORDER BY ls.position ASC
+        WHERE lm.league_id = $1 AND lm.status = 'active'
+        GROUP BY t.id, t.team_name, t.team_color, t.created_at, t.user_id
+        ORDER BY t.team_name ASC
         "#,
         league_id
     )
@@ -699,15 +571,7 @@ pub async fn get_league_teams(
             "formation": "circle",
             "is_active": true,
             "created_at": row.created_at,
-            "owner_id": row.owner_id,
-            "league_stats": {
-                "games_played": row.games_played,
-                "wins": row.wins,
-                "draws": row.draws,
-                "losses": row.losses,
-                "points": row.points,
-                "position": row.position
-            }
+            "owner_id": row.owner_id
         }))
         .collect();
 
@@ -788,12 +652,17 @@ pub async fn generate_schedule(
 }
 
 // GET /admin/leagues/{league_id}/seasons - Get all seasons for a league
+#[tracing::instrument(
+    name = "Get league seasons",
+    skip(pool),
+    fields(league_id = %path.as_ref())
+)]
 pub async fn get_league_seasons(
     pool: web::Data<PgPool>,
     path: web::Path<Uuid>,
 ) -> Result<HttpResponse> {
     let league_id = path.into_inner();
-
+    
     let rows = sqlx::query!(
         r#"
         SELECT 
@@ -881,7 +750,12 @@ pub async fn create_league_season(
         })));
     }
 
-    // Create the season
+    // Create the season in a transaction so we can add teams
+    let mut tx = pool.begin().await.map_err(|e| {
+        eprintln!("Database error starting transaction: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
     let result = sqlx::query!(
         r#"
         INSERT INTO league_seasons (id, league_id, name, start_date, end_date, is_active, created_at, updated_at)
@@ -895,11 +769,53 @@ pub async fn create_league_season(
         now,
         now
     )
-    .execute(pool.get_ref())
+    .execute(&mut *tx)
     .await;
 
     match result {
         Ok(_) => {
+            // Add all existing league teams to this season
+            let teams_added = sqlx::query!(
+                r#"
+                INSERT INTO league_teams (id, season_id, team_id, joined_at)
+                SELECT gen_random_uuid(), $1, lm.team_id, NOW()
+                FROM league_memberships lm 
+                WHERE lm.league_id = $2 AND lm.status = 'active'
+                "#,
+                season_id,
+                league_id
+            )
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                eprintln!("Database error adding teams to season: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?;
+
+            // Add initial standings for all teams
+            sqlx::query!(
+                r#"
+                INSERT INTO league_standings (id, season_id, team_id, games_played, wins, draws, losses, position, last_updated)
+                SELECT gen_random_uuid(), $1, lm.team_id, 0, 0, 0, 0, 1, NOW()
+                FROM league_memberships lm 
+                WHERE lm.league_id = $2 AND lm.status = 'active'
+                "#,
+                season_id,
+                league_id
+            )
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                eprintln!("Database error adding team standings: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?;
+
+            // Commit the transaction
+            tx.commit().await.map_err(|e| {
+                eprintln!("Database error committing transaction: {}", e);
+                actix_web::error::ErrorInternalServerError("Database error")
+            })?;
+
             let season = AdminSeasonResponse {
                 id: season_id,
                 league_id,
@@ -907,7 +823,7 @@ pub async fn create_league_season(
                 start_date: body.start_date,
                 end_date: body.end_date,
                 is_active: false,
-                total_teams: 0,
+                total_teams: teams_added.rows_affected() as i64,
                 games_count: 0,
                 created_at: now,
             };
@@ -1053,7 +969,6 @@ pub async fn update_league_season(
     }
 }
 
-// POST /admin/leagues/{league_id}/seasons/{season_id}/activate - Activate a season
 pub async fn activate_league_season(
     pool: web::Data<PgPool>,
     path: web::Path<(Uuid, Uuid)>,
