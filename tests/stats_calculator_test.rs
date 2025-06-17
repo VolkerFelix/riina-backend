@@ -12,8 +12,8 @@ async fn test_zone_1_active_recovery() {
     
     // Create a test user with health profile
     let user_id = Uuid::new_v4();
-    let username = "testuser";
-    let email = "test@test.com";
+    let username = format!("testuser_{}", &user_id.to_string()[..4]);
+    let email = format!("test_{}@test.com", &user_id.to_string()[..4]);
     
     // Insert user and health profile for testing
     sqlx::query(
@@ -74,8 +74,8 @@ async fn test_zone_2_aerobic_base() {
     
     // Create a test user with health profile
     let user_id = Uuid::new_v4();
-    let username = "testuser2";
-    let email = "test2@test.com";
+    let username = format!("testuser2_{}", &user_id.to_string()[..4]);
+    let email = format!("test2_{}@test.com", &user_id.to_string()[..4]);
     
     sqlx::query(
         "INSERT INTO users (id, username, email, password_hash, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW())"
@@ -135,8 +135,8 @@ async fn test_zone_4_lactate_threshold() {
     
     // Create a test user with health profile
     let user_id = Uuid::new_v4();
-    let username = "testuser4";
-    let email = "test4@test.com";
+    let username = format!("testuser4_{}", &user_id.to_string()[..4]);
+    let email = format!("test4_{}@test.com", &user_id.to_string()[..4]);
     
     sqlx::query(
         "INSERT INTO users (id, username, email, password_hash, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW())"
@@ -196,8 +196,8 @@ async fn test_zone_5_neuromuscular_power() {
     
     // Create a test user with health profile
     let user_id = Uuid::new_v4();
-    let username = "testuser5";
-    let email = "test5@test.com";
+    let username = format!("testuser5_{}", &user_id.to_string()[..4]);
+    let email = format!("test5_{}@test.com", &user_id.to_string()[..4]);
     
     sqlx::query(
         "INSERT INTO users (id, username, email, password_hash, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW())"
@@ -257,8 +257,8 @@ async fn test_no_heart_rate_no_gains() {
     
     // Create a test user with health profile
     let user_id = Uuid::new_v4();
-    let username = "testuser_no_hr";
-    let email = "test_no_hr@test.com";
+    let username = format!("testuser_no_hr_{}", &user_id.to_string()[..4]);
+    let email = format!("test_no_hr_{}@test.com", &user_id.to_string()[..4]);
     
     sqlx::query(
         "INSERT INTO users (id, username, email, password_hash, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW())"

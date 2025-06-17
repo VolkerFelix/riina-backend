@@ -1161,8 +1161,16 @@ async fn admin_generate_schedule_works() {
     let team1_id = team1["data"]["id"].as_str().expect("Team 1 ID not found");
     let team2_id = team2["data"]["id"].as_str().expect("Team 2 ID not found");
     
-    // In the admin system, league and season are the same
-    let season_id = league_id;
+    // Get the season_id from the league_seasons table
+    let season_record = sqlx::query!(
+        "SELECT id FROM league_seasons WHERE league_id = $1 AND is_active = true",
+        Uuid::parse_str(league_id).unwrap()
+    )
+    .fetch_one(&app.db_pool)
+    .await
+    .expect("Failed to get season ID");
+    
+    let season_id = season_record.id.to_string();
     
     // Assign teams to the league
     let assign_team1_response = client
@@ -1217,7 +1225,7 @@ async fn admin_generate_schedule_works() {
         FROM league_games
         WHERE season_id = $1
         "#,
-        Uuid::parse_str(season_id).unwrap()
+        Uuid::parse_str(&season_id).unwrap()
     )
     .fetch_one(&app.db_pool)
     .await

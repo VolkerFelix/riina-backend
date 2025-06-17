@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id FROM league_teams WHERE season_id = $1 AND team_id = $2",
+  "query": "SELECT id FROM league_seasons WHERE league_id = $1",
   "describe": {
     "columns": [
       {
@@ -11,7 +11,6 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid",
         "Uuid"
       ]
     },
@@ -19,5 +18,5 @@
       false
     ]
   },
-  "hash": "841c093b343988f842d8b4ae015bf47e873fc1c17cde39b069455b3f541964ed"
+  "hash": "26cb63b768e93f805426fa863121fdf7154ae5c5ed5ab713013b19c7be4a83b5"
 }

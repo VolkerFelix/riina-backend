@@ -1,12 +1,35 @@
--- League seasons
+-- Leagues (the main league entity)
+CREATE TABLE IF NOT EXISTS leagues (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    max_teams INTEGER NOT NULL DEFAULT 16,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- League seasons (multiple seasons per league)
 CREATE TABLE IF NOT EXISTS league_seasons (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    league_id UUID NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     start_date TIMESTAMPTZ NOT NULL,
     end_date TIMESTAMPTZ NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- League memberships (which teams belong to which leagues)
+CREATE TABLE IF NOT EXISTS league_memberships (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    league_id UUID NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
+    team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    status VARCHAR(50) NOT NULL DEFAULT 'active', -- active, inactive, banned
+    
+    UNIQUE(league_id, team_id)
 );
 
 -- League teams (which teams are in which season)
