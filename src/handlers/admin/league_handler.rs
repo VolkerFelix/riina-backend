@@ -182,6 +182,13 @@ pub async fn create_league(
     pool: web::Data<PgPool>,
     body: web::Json<CreateLeagueRequest>,
 ) -> Result<HttpResponse> {
+    // Validate max_teams
+    if body.max_teams <= 0 {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "max_teams must be greater than 0"
+        })));
+    }
+
     let league_id = Uuid::new_v4();
     let now = chrono::Utc::now();
 
