@@ -88,6 +88,60 @@ impl LeagueService {
         self.standings.get_league_standings(season_id).await
     }
 
+    /// Get active seasons with enhanced data for frontend
+    pub async fn get_active_seasons(&self) -> Result<Vec<EnhancedLeagueSeason>, sqlx::Error> {
+        match self.seasons.get_active_season().await? {
+            Some(season) => {
+                // Get additional data for the season
+                let enhanced_season = self.enhance_season_data(season).await?;
+                Ok(vec![enhanced_season])
+            },
+            None => Ok(vec![])
+        }
+    }
+
+    /// Enhance season data with calculated fields
+    async fn enhance_season_data(&self, season: LeagueSeason) -> Result<EnhancedLeagueSeason, sqlx::Error> {
+        // Get total teams in this season
+        let total_teams = sqlx::query!(
+            "SELECT COUNT(*) as count FROM league_teams WHERE season_id = $1",
+            season.id
+        )
+        .fetch_one(&self._pool)
+        .await?
+        .count
+        .unwrap_or(0) as i32;
+
+        // Calculate current week based on current date and season start
+        let now = chrono::Utc::now();
+        let weeks_elapsed = if now >= season.start_date {
+            let duration = now - season.start_date;
+            (duration.num_weeks() as i32) + 1
+        } else {
+            0
+        };
+
+        // Calculate total weeks (each team plays every other team twice)
+        let total_weeks = if total_teams > 1 {
+            (total_teams - 1) * 2
+        } else {
+            0
+        };
+
+        let current_week = weeks_elapsed.min(total_weeks).max(1);
+
+        Ok(EnhancedLeagueSeason {
+            id: season.id.to_string(),
+            name: season.name,
+            start_date: season.start_date.to_rfc3339(),
+            end_date: season.end_date.to_rfc3339(),
+            is_active: season.is_active,
+            total_teams,
+            current_week,
+            total_weeks,
+        })
+    }
+
     /// Get upcoming games for a season
     pub async fn get_upcoming_games(&self, season_id: Option<Uuid>, limit: Option<i64>) -> Result<Vec<GameWithTeams>, sqlx::Error> {
         let active_season = match season_id {

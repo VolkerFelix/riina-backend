@@ -929,19 +929,17 @@ async fn admin_create_league_works() {
 }
 
 #[tokio::test]
-async fn admin_create_league_with_invalid_dates_fails() {
+async fn admin_create_league_with_invalid_max_teams_fails() {
     // Arrange
     let test_app = spawn_app().await;
     let client = Client::new();
     let token = create_test_user_and_login(&test_app.address).await;
 
-    // Act - Create league with end date before start date
+    // Act - Create league with invalid max_teams (0 or negative)
     let league_request = json!({
         "name": format!("Invalid League {}", Uuid::new_v4()),
-        "description": "A league with invalid dates",
-        "max_teams": 8,
-        "season_start_date": "2024-12-31T23:59:59Z",
-        "season_end_date": "2024-01-01T00:00:00Z"
+        "description": "A league with invalid max teams",
+        "max_teams": 0
     });
 
     let response = make_authenticated_request(
@@ -1112,9 +1110,7 @@ async fn admin_generate_schedule_works() {
         .json(&serde_json::json!({
             "name": format!("Test League {}", Uuid::new_v4()),
             "description": "Test League Description",
-            "max_teams": 16,
-            "season_start_date": "2024-01-01T00:00:00Z",
-            "season_end_date": "2024-12-31T23:59:59Z"
+            "max_teams": 16
         }))
         .send()
         .await
@@ -1161,18 +1157,7 @@ async fn admin_generate_schedule_works() {
     let team1_id = team1["data"]["id"].as_str().expect("Team 1 ID not found");
     let team2_id = team2["data"]["id"].as_str().expect("Team 2 ID not found");
     
-    // Get the season_id from the league_seasons table
-    let season_record = sqlx::query!(
-        "SELECT id FROM league_seasons WHERE league_id = $1 AND is_active = true",
-        Uuid::parse_str(league_id).unwrap()
-    )
-    .fetch_one(&app.db_pool)
-    .await
-    .expect("Failed to get season ID");
-    
-    let season_id = season_record.id.to_string();
-    
-    // Assign teams to the league
+    // Assign teams to the league first
     let assign_team1_response = client
         .post(&format!("{}/admin/leagues/{}/teams", app.address, league_id))
         .header("Authorization", format!("Bearer {}", token))
@@ -1195,6 +1180,22 @@ async fn admin_generate_schedule_works() {
     
     assert!(assign_team1_response.status().is_success());
     assert!(assign_team2_response.status().is_success());
+    
+    // Create a season for the league
+    let season_response = client
+        .post(&format!("{}/admin/leagues/{}/seasons", app.address, league_id))
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&serde_json::json!({
+            "name": "Test Season 2026",
+            "start_date": "2026-06-20T22:00:00Z"
+        }))
+        .send()
+        .await
+        .expect("Failed to create season");
+    
+    assert!(season_response.status().is_success());
+    let season: serde_json::Value = season_response.json().await.expect("Failed to parse season response");
+    let season_id = season["data"]["id"].as_str().expect("Season ID not found");
     
     // Generate schedule
     let response = client

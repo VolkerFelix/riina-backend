@@ -17,6 +17,18 @@ pub struct LeagueSeason {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct EnhancedLeagueSeason {
+    pub id: String,
+    pub name: String,
+    pub start_date: String,
+    pub end_date: String,
+    pub is_active: bool,
+    pub total_teams: i32,
+    pub current_week: i32,
+    pub total_weeks: i32,
+}
+
 #[derive(Debug, FromRow, Serialize, Deserialize, Clone)]
 pub struct LeagueGame {
     pub id: Uuid,

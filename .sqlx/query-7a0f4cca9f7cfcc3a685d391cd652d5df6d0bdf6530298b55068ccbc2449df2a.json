@@ -1,0 +1,71 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT \n            ls.id,\n            ls.league_id,\n            ls.name,\n            ls.start_date,\n            ls.end_date,\n            ls.is_active,\n            ls.created_at,\n            COUNT(DISTINCT lt.team_id) as total_teams,\n            COUNT(DISTINCT lg.id) as games_count\n        FROM league_seasons ls\n        LEFT JOIN league_teams lt ON ls.id = lt.season_id\n        LEFT JOIN league_games lg ON ls.id = lg.season_id\n        WHERE ls.league_id = $1 AND ls.id = $2\n        GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.is_active, ls.created_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "league_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "start_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "end_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "is_active",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "total_teams",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 8,
+        "name": "games_count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "7a0f4cca9f7cfcc3a685d391cd652d5df6d0bdf6530298b55068ccbc2449df2a"
+}

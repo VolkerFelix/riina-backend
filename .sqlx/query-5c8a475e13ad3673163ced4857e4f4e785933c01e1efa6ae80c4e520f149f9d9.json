@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                INSERT INTO league_teams (id, season_id, team_id, joined_at)\n                SELECT gen_random_uuid(), $1, lm.team_id, NOW()\n                FROM league_memberships lm \n                WHERE lm.league_id = $2 AND lm.status = 'active'\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5c8a475e13ad3673163ced4857e4f4e785933c01e1efa6ae80c4e520f149f9d9"
+}
