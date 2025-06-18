@@ -121,9 +121,10 @@ impl LeagueService {
             0
         };
 
-        // Calculate total weeks (each team plays every other team twice)
+        // Calculate total weeks: N/2 games per week, so total weeks = 2*(N-1)
+        // Teams are guaranteed to be even due to validation
         let total_weeks = if total_teams > 1 {
-            (total_teams - 1) * 2
+            2 * (total_teams - 1)
         } else {
             0
         };

@@ -756,12 +756,20 @@ pub async fn create_league_season(
         })));
     }
 
+    if team_count % 2 != 0 {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "League must have an even number of teams to create a season"
+        })));
+    }
+
     // Calculate total games: each team plays every other team twice (home & away)
     // Formula: n * (n-1) where n = number of teams
-    let total_games = team_count * (team_count - 1);
-    
-    // Calculate end date: start_date + (total_games * 7 days) since games are weekly
-    let calculated_end_date = body.start_date + chrono::Duration::weeks(total_games as i64);
+    // Calculate end date: N/2 games per week, so total weeks = 2*(N-1)
+    // Formula: total_games ÷ games_per_week = N*(N-1) ÷ (N/2) = 2*(N-1)
+
+    // Teams are guaranteed to be even due to validation
+    let total_weeks = 2 * (team_count - 1);
+    let calculated_end_date = body.start_date + chrono::Duration::weeks(total_weeks as i64);
 
     // Use calculated end date instead of user input
     let end_date = calculated_end_date;
