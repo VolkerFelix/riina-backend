@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT t.id as team_id \n                FROM teams t\n                JOIN league_teams lt ON t.id = lt.team_id\n                WHERE lt.season_id = $1\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "team_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2fe7e43892ebd8e6f4891049e35e21c38e5fb02cc286f4e5c11c8cdde1ed6263"
+}

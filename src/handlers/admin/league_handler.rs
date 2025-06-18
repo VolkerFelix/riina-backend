@@ -52,14 +52,12 @@ pub struct GenerateScheduleRequest {
 pub struct CreateSeasonRequest {
     pub name: String,
     pub start_date: DateTime<Utc>,
-    pub end_date: DateTime<Utc>,
 }
 
 #[derive(Deserialize)]
 pub struct UpdateSeasonRequest {
     pub name: Option<String>,
     pub start_date: Option<DateTime<Utc>>,
-    pub end_date: Option<DateTime<Utc>>,
 }
 
 #[derive(Serialize)]
@@ -725,12 +723,41 @@ pub async fn create_league_season(
     let season_id = Uuid::new_v4();
     let now = chrono::Utc::now();
 
-    // Validate dates
-    if body.start_date >= body.end_date {
+    // Validate start date is in the future
+    if body.start_date <= now {
         return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-            "error": "Season start date must be before end date"
+            "error": "Season start date must be in the future"
         })));
     }
+
+    // Calculate end date automatically based on league size
+    let team_count = sqlx::query!(
+        "SELECT COUNT(*) as count FROM league_memberships WHERE league_id = $1 AND status = 'active'",
+        league_id
+    )
+    .fetch_one(pool.get_ref())
+    .await
+    .map_err(|e| {
+        eprintln!("Database error counting teams: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?
+    .count.unwrap_or(0);
+
+    if team_count < 2 {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "League must have at least 2 teams to create a season"
+        })));
+    }
+
+    // Calculate total games: each team plays every other team twice (home & away)
+    // Formula: n * (n-1) where n = number of teams
+    let total_games = team_count * (team_count - 1);
+    
+    // Calculate end date: start_date + (total_games * 7 days) since games are weekly
+    let calculated_end_date = body.start_date + chrono::Duration::weeks(total_games as i64);
+
+    // Use calculated end date instead of user input
+    let end_date = calculated_end_date;
 
     // Check if league exists
     let league_exists = sqlx::query!(
@@ -765,7 +792,7 @@ pub async fn create_league_season(
         league_id,
         body.name,
         body.start_date,
-        body.end_date,
+        end_date,
         now,
         now
     )
@@ -810,28 +837,61 @@ pub async fn create_league_season(
                 actix_web::error::ErrorInternalServerError("Database error")
             })?;
 
-            // Commit the transaction
+            // Commit the transaction first to ensure season and teams are created
             tx.commit().await.map_err(|e| {
                 eprintln!("Database error committing transaction: {}", e);
                 actix_web::error::ErrorInternalServerError("Database error")
             })?;
+
+            // Generate games automatically after season creation
+            let team_ids_result = sqlx::query!(
+                r#"
+                SELECT t.id as team_id 
+                FROM teams t
+                JOIN league_teams lt ON t.id = lt.team_id
+                WHERE lt.season_id = $1
+                "#,
+                season_id
+            )
+            .fetch_all(pool.get_ref())
+            .await;
+
+            let mut games_created = 0;
+            if let Ok(teams) = team_ids_result {
+                let team_ids: Vec<Uuid> = teams.into_iter().map(|t| t.team_id).collect();
+                
+                if team_ids.len() >= 2 {
+                    let schedule_service = crate::league::schedule::ScheduleService::new(pool.get_ref().clone());
+                    
+                    match schedule_service.generate_schedule(season_id, &team_ids, body.start_date).await {
+                        Ok(created) => {
+                            games_created = created;
+                            tracing::info!("Automatically generated {} games for new season {}", created, season_id);
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to automatically generate schedule for season {}: {}", season_id, e);
+                            // Don't fail the season creation if schedule generation fails
+                        }
+                    }
+                }
+            }
 
             let season = AdminSeasonResponse {
                 id: season_id,
                 league_id,
                 name: body.name.clone(),
                 start_date: body.start_date,
-                end_date: body.end_date,
+                end_date: end_date,
                 is_active: false,
                 total_teams: teams_added.rows_affected() as i64,
-                games_count: 0,
+                games_count: games_created as i64,
                 created_at: now,
             };
 
             let response = ApiResponse {
                 data: season,
                 success: true,
-                message: Some("Season created successfully".to_string()),
+                message: Some(format!("Season created successfully with {} games automatically generated", games_created)),
             };
 
             Ok(HttpResponse::Created().json(response))
@@ -915,7 +975,7 @@ pub async fn update_league_season(
 ) -> Result<HttpResponse> {
     let (league_id, season_id) = path.into_inner();
 
-    if body.name.is_none() && body.start_date.is_none() && body.end_date.is_none() {
+    if body.name.is_none() && body.start_date.is_none() {
         return Ok(HttpResponse::BadRequest().json(serde_json::json!({
             "error": "No fields to update"
         })));
@@ -935,11 +995,6 @@ pub async fn update_league_season(
     if let Some(start_date) = &body.start_date {
         query_builder.push(", start_date = ");
         query_builder.push_bind(start_date);
-    }
-
-    if let Some(end_date) = &body.end_date {
-        query_builder.push(", end_date = ");
-        query_builder.push_bind(end_date);
     }
 
     query_builder.push(" WHERE league_id = ");
@@ -969,32 +1024,79 @@ pub async fn update_league_season(
     }
 }
 
-pub async fn activate_league_season(
+// DELETE /admin/leagues/{league_id}/seasons/{season_id} - Delete season
+pub async fn delete_league_season(
     pool: web::Data<PgPool>,
     path: web::Path<(Uuid, Uuid)>,
 ) -> Result<HttpResponse> {
     let (league_id, season_id) = path.into_inner();
 
+    // Check if season exists and belongs to the league
+    let season_exists = sqlx::query!(
+        "SELECT id FROM league_seasons WHERE league_id = $1 AND id = $2",
+        league_id,
+        season_id
+    )
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(|e| {
+        eprintln!("Database error checking season: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    if season_exists.is_none() {
+        return Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Season not found"
+        })));
+    }
+
+    // Start transaction to delete all related data
     let mut tx = pool.begin().await.map_err(|e| {
         eprintln!("Database error starting transaction: {}", e);
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
-    // First, deactivate all other seasons for this league
+    // Delete in the correct order to maintain referential integrity
+    
+    // 1. Delete league games
     sqlx::query!(
-        "UPDATE league_seasons SET is_active = FALSE WHERE league_id = $1",
-        league_id
+        "DELETE FROM league_games WHERE season_id = $1",
+        season_id
     )
     .execute(&mut *tx)
     .await
     .map_err(|e| {
-        eprintln!("Database error deactivating seasons: {}", e);
+        eprintln!("Database error deleting games: {}", e);
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
-    // Then activate the specified season
+    // 2. Delete league standings
+    sqlx::query!(
+        "DELETE FROM league_standings WHERE season_id = $1",
+        season_id
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        eprintln!("Database error deleting standings: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    // 3. Delete league teams
+    sqlx::query!(
+        "DELETE FROM league_teams WHERE season_id = $1",
+        season_id
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        eprintln!("Database error deleting league teams: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    // 4. Finally delete the season itself
     let result = sqlx::query!(
-        "UPDATE league_seasons SET is_active = TRUE WHERE league_id = $1 AND id = $2",
+        "DELETE FROM league_seasons WHERE league_id = $1 AND id = $2",
         league_id,
         season_id
     )
@@ -1018,18 +1120,18 @@ pub async fn activate_league_season(
                 data: serde_json::json!({
                     "league_id": league_id,
                     "season_id": season_id,
-                    "message": "Season activated successfully"
+                    "message": "Season deleted successfully"
                 }),
                 success: true,
-                message: Some("Season activated successfully".to_string()),
+                message: Some("Season and all related data deleted successfully".to_string()),
             };
 
             Ok(HttpResponse::Ok().json(response))
         }
         Err(e) => {
-            eprintln!("Database error activating season: {}", e);
+            eprintln!("Database error deleting season: {}", e);
             Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": "Failed to activate season"
+                "error": "Failed to delete season"
             })))
         }
     }

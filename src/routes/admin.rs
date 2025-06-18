@@ -84,10 +84,7 @@ pub fn init_admin_routes(cfg: &mut web::ServiceConfig) {
                 web::resource("/leagues/{id}/seasons/{season_id}")
                     .route(web::get().to(league_handler::get_league_season_by_id))
                     .route(web::patch().to(league_handler::update_league_season))
-            )
-            .service(
-                web::resource("/leagues/{id}/seasons/{season_id}/activate")
-                    .route(web::post().to(league_handler::activate_league_season))
+                    .route(web::delete().to(league_handler::delete_league_season))
             )
     );
 }
