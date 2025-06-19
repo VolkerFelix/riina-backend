@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT \n                ls.*,\n                'Team ' || SUBSTRING(ls.team_id::text, 1, 8) as team_name,\n                '#4F46E5' as team_color\n            FROM league_standings ls\n            WHERE ls.season_id = $1\n            ORDER BY ls.points DESC, (ls.wins * 3 + ls.draws) DESC, ls.wins DESC\n            ",
+  "query": "\n            SELECT \n                ls.*,\n                t.team_name,\n                t.team_color\n            FROM league_standings ls\n            JOIN teams t ON ls.team_id = t.id\n            WHERE ls.season_id = $1\n            ORDER BY ls.points DESC, (ls.wins * 3 + ls.draws) DESC, ls.wins DESC\n            ",
   "describe": {
     "columns": [
       {
@@ -56,12 +56,12 @@
       {
         "ordinal": 10,
         "name": "team_name",
-        "type_info": "Text"
+        "type_info": "Varchar"
       },
       {
         "ordinal": 11,
         "name": "team_color",
-        "type_info": "Text"
+        "type_info": "Varchar"
       }
     ],
     "parameters": {
@@ -80,9 +80,9 @@
       true,
       false,
       false,
-      null,
-      null
+      false,
+      false
     ]
   },
-  "hash": "c0912422f11428b2d2e37fcc2117b1f61a8c9aaffc2946af5edd5187a16baefb"
+  "hash": "785682cca5be7b2d5020d98d9c69d48a60d40a647957045bf775a51ab960b385"
 }

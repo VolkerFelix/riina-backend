@@ -122,9 +122,10 @@ impl StandingsService {
             r#"
             SELECT 
                 ls.*,
-                'Team ' || SUBSTRING(ls.team_id::text, 1, 8) as team_name,
-                '#4F46E5' as team_color
+                t.team_name,
+                t.team_color
             FROM league_standings ls
+            JOIN teams t ON ls.team_id = t.id
             WHERE ls.season_id = $1
             ORDER BY ls.points DESC, (ls.wins * 3 + ls.draws) DESC, ls.wins DESC
             "#,
@@ -149,8 +150,8 @@ impl StandingsService {
                         position: row.position,
                         last_updated: row.last_updated,
                     },
-                    team_name: row.team_name.unwrap_or_default(),
-                    team_color: row.team_color.unwrap_or_default(),
+                    team_name: row.team_name,
+                    team_color: row.team_color,
                     recent_form: vec!['W', 'L', 'D'], // TODO: Calculate actual form
                 }
             })
