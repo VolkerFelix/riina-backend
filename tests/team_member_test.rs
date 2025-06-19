@@ -69,8 +69,7 @@ async fn test_add_user_to_team_success() {
     let team_data = json!({
         "team_name": team_name,
         "team_description": "A test team",
-        "team_color": "#FF0000",
-        "team_icon": "⚽"
+        "team_color": "#FF0000"
     });
     
     let response = client

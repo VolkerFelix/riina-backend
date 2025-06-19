@@ -58,8 +58,7 @@ async fn test_team_registration_flow() {
     let team_request = json!({
         "team_name": team_name,
         "team_description": "A fantastic test team ready for action!",
-        "team_color": "#FF6B35",
-        "team_icon": "🚀"
+        "team_color": "#FF6B35"
     });
 
     let team_response = client
@@ -83,7 +82,7 @@ async fn test_team_registration_flow() {
 
     // Step 4: Verify team was created in database
     let saved_team = sqlx::query!(
-        "SELECT team_name, team_description, team_color, team_icon FROM teams WHERE id = $1",
+        "SELECT team_name, team_description, team_color FROM teams WHERE id = $1",
         Uuid::parse_str(team_id).unwrap()
     )
     .fetch_one(&test_app.db_pool)
@@ -93,7 +92,6 @@ async fn test_team_registration_flow() {
     assert_eq!(saved_team.team_name, team_name);
     assert_eq!(saved_team.team_description, Some("A fantastic test team ready for action!".to_string()));
     assert_eq!(saved_team.team_color, "#FF6B35");
-    assert_eq!(saved_team.team_icon, "🚀");
 
     println!("✅ Team data verified in database");
 
@@ -150,8 +148,7 @@ async fn test_team_registration_flow() {
     let duplicate_team_request = json!({
         "team_name": "Another Team",
         "team_description": "This should not work",
-        "team_color": "#0000FF",
-        "team_icon": "❌"
+        "team_color": "#0000FF"
     });
 
     let duplicate_response = client
@@ -316,8 +313,7 @@ async fn test_team_registration_validation() {
     let valid_request = json!({
         "team_name": unique_team_name,
         "team_description": "A team for testing validation",
-        "team_color": "#32CD32",
-        "team_icon": "✅"
+        "team_color": "#32CD32"
     });
 
     let response = client
@@ -409,8 +405,7 @@ async fn test_team_name_uniqueness() {
     let team_request = json!({
         "team_name": unique_team_name.clone(),
         "team_description": "First team with this name",
-        "team_color": "#FF0000",
-        "team_icon": "🥇"
+        "team_color": "#FF0000"
     });
 
     let response1 = client
@@ -427,8 +422,7 @@ async fn test_team_name_uniqueness() {
     let duplicate_team_request = json!({
         "team_name": unique_team_name,
         "team_description": "Second team with same name",
-        "team_color": "#0000FF",
-        "team_icon": "🥈"
+        "team_color": "#0000FF"
     });
 
     let response2 = client
@@ -446,8 +440,7 @@ async fn test_team_name_uniqueness() {
     let different_team_request = json!({
         "team_name": different_team_name,
         "team_description": "Team with unique name",
-        "team_color": "#00FF00",
-        "team_icon": "🏆"
+        "team_color": "#00FF00"
     });
 
     let response3 = client

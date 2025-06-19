@@ -104,8 +104,7 @@ async fn test_get_league_users_with_stats_success() {
     let team1_request = json!({
         "team_name": team1_name,
         "team_description": "First test team for stats endpoint",
-        "team_color": "#FF0000",
-        "team_icon": "🔥"
+        "team_color": "#FF0000"
     });
 
     let team1_response = client
@@ -126,8 +125,7 @@ async fn test_get_league_users_with_stats_success() {
     let team2_request = json!({
         "team_name": team2_name,
         "team_description": "Second test team for stats endpoint",
-        "team_color": "#0000FF",
-        "team_icon": "⚡"
+        "team_color": "#0000FF"
     });
 
     let team2_response = client
@@ -500,8 +498,7 @@ async fn test_league_users_stats_performance() {
         let team_request = json!({
             "team_name": team_name,
             "team_description": format!("Performance test team {}", team_idx + 1),
-            "team_color": format!("#FF{:02X}{:02X}", (team_idx * 50) % 256, (team_idx * 30) % 256),
-            "team_icon": "🎯"
+            "team_color": format!("#FF{:02X}{:02X}", (team_idx * 50) % 256, (team_idx * 30) % 256)
         });
 
         let team_response = client
