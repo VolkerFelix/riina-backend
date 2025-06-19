@@ -1,8 +1,10 @@
 use secrecy::ExposeSecret;
+use serde_json::json;
 use sqlx::{PgPool, PgConnection, Connection, Executor};
 use std::net::TcpListener;
 use uuid::Uuid;
 use once_cell::sync::Lazy;
+use reqwest::Client;
 
 use evolveme_backend::run;
 use evolveme_backend::config::settings::{get_config, DatabaseSettings, get_jwt_settings, get_redis_url};
@@ -92,4 +94,41 @@ pub async fn configure_db(config: &DatabaseSettings) -> PgPool {
         .expect("Failed to migrate the database");
 
     connection_pool
+}
+
+pub async fn create_test_user_and_login(app_address: &str) -> (String, String) {
+    let client = Client::new();
+    let username = format!("adminuser{}", Uuid::new_v4());
+    let password = "password123";
+    let email = format!("{}@example.com", username);
+
+    let user_request = json!({
+        "username": username,
+        "password": password,
+        "email": email
+    });
+
+    let _register_response = client
+        .post(&format!("{}/register_user", app_address))
+        .json(&user_request)
+        .send()
+        .await
+        .expect("Failed to register user.");
+
+        let login_request = json!({
+            "username": username,
+            "password": password
+        });
+    
+        let login_response = client
+            .post(&format!("{}/login", app_address))
+            .json(&login_request)
+            .send()
+            .await
+            .expect("Failed to execute login request.");
+
+        let login_response: serde_json::Value = login_response.json().await.expect("Failed to parse login response");
+        let token = login_response["token"].as_str().expect("No token in response");
+
+        (username, token.to_string())
 }

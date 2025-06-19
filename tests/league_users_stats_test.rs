@@ -3,53 +3,18 @@ use serde_json::json;
 use uuid::Uuid;
 
 mod common;
-use common::utils::spawn_app;
+use common::utils::{spawn_app, create_test_user_and_login};
 
 #[tokio::test]
 async fn test_get_league_users_with_stats_success() {
     let test_app = spawn_app().await;
     let client = Client::new();
 
-    // Step 1: Create multiple users with different stats
+    // Create multiple users with different stats
     let mut users = Vec::new();
-    let password = "password123";
 
     for i in 1..=6 {
-        let username = format!("user_{}_{}_{}", i, Uuid::new_v4().to_string()[..8].to_string(), chrono::Utc::now().timestamp_millis());
-        let email = format!("{}@example.com", username);
-
-        let user_request = json!({
-            "username": username,
-            "password": password,
-            "email": email
-        });
-
-        let response = client
-            .post(&format!("{}/register_user", &test_app.address))
-            .json(&user_request)
-            .send()
-            .await
-            .expect("Failed to register user");
-
-        assert!(response.status().is_success(), "User registration should succeed");
-
-        // Login to get token
-        let login_request = json!({
-            "username": username,
-            "password": password
-        });
-
-        let login_response = client
-            .post(&format!("{}/login", &test_app.address))
-            .json(&login_request)
-            .send()
-            .await
-            .expect("Failed to login");
-
-        let login_json = login_response.json::<serde_json::Value>().await
-            .expect("Failed to parse login response");
-        let token = login_json["token"].as_str().expect("Token not found").to_string();
-
+        let (username, token) = create_test_user_and_login(&test_app.address).await;
         users.push((username, token));
     }
 
@@ -354,39 +319,7 @@ async fn test_league_users_stats_empty_response() {
     let client = Client::new();
 
     // Create a user but don't add them to any team
-    let username = format!("solo_user_{}", Uuid::new_v4());
-    let password = "password123";
-    let email = format!("{}@example.com", username);
-
-    let user_request = json!({
-        "username": username,
-        "password": password,
-        "email": email
-    });
-
-    client
-        .post(&format!("{}/register_user", &test_app.address))
-        .json(&user_request)
-        .send()
-        .await
-        .expect("Failed to register user");
-
-    // Login to get token
-    let login_request = json!({
-        "username": username,
-        "password": password
-    });
-
-    let login_response = client
-        .post(&format!("{}/login", &test_app.address))
-        .json(&login_request)
-        .send()
-        .await
-        .expect("Failed to login");
-
-    let login_json = login_response.json::<serde_json::Value>().await
-        .expect("Failed to parse login response");
-    let token = login_json["token"].as_str().expect("Token not found");
+    let (username, token) = create_test_user_and_login(&test_app.address).await;
 
     // Test the endpoint with a user who is not in any team
     let stats_response = client
@@ -428,41 +361,7 @@ async fn test_league_users_stats_performance() {
 
     // Create users
     for i in 1..=(num_teams * users_per_team) {
-        let username = format!("perf_user_{}_{}", i, Uuid::new_v4().to_string()[..8].to_string());
-        let email = format!("{}@example.com", username);
-
-        let user_request = json!({
-            "username": username,
-            "password": password,
-            "email": email
-        });
-
-        let response = client
-            .post(&format!("{}/register_user", &test_app.address))
-            .json(&user_request)
-            .send()
-            .await
-            .expect("Failed to register user");
-
-        assert!(response.status().is_success());
-
-        // Login to get token
-        let login_request = json!({
-            "username": username,
-            "password": password
-        });
-
-        let login_response = client
-            .post(&format!("{}/login", &test_app.address))
-            .json(&login_request)
-            .send()
-            .await
-            .expect("Failed to login");
-
-        let login_json = login_response.json::<serde_json::Value>().await
-            .expect("Failed to parse login response");
-        let token = login_json["token"].as_str().expect("Token not found").to_string();
-
+        let (username, token) = create_test_user_and_login(&test_app.address).await;
         all_users.push((username, token));
 
         // Create user avatar with random stats

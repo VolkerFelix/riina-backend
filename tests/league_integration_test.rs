@@ -4,7 +4,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 mod common;
-use common::utils::spawn_app;
+use common::utils::{spawn_app, create_test_user_and_login};
 
 #[tokio::test]
 async fn test_team_registration_flow() {
@@ -12,48 +12,8 @@ async fn test_team_registration_flow() {
     let test_app = spawn_app().await;
     let client = Client::new();
 
-    // Step 1: Register a user
-    let username = format!("teamowner{}", Uuid::new_v4());
-    let password = "password123";
-    let email = format!("{}@example.com", username);
+    let (username, token) = create_test_user_and_login(&test_app.address).await;
 
-    let user_request = json!({
-        "username": username,
-        "password": password,
-        "email": email
-    });
-
-    let response = client
-        .post(&format!("{}/register_user", &test_app.address))
-        .json(&user_request)
-        .send()
-        .await
-        .expect("Failed to register user");
-
-    assert!(response.status().is_success(), "User registration should succeed");
-
-    // Step 2: Login to get JWT token
-    let login_request = json!({
-        "username": username,
-        "password": password
-    });
-
-    let login_response = client
-        .post(&format!("{}/login", &test_app.address))
-        .json(&login_request)
-        .send()
-        .await
-        .expect("Failed to login");
-
-    assert!(login_response.status().is_success(), "Login should succeed");
-    
-    let login_json = login_response.json::<serde_json::Value>().await
-        .expect("Failed to parse login response");
-    let token = login_json["token"].as_str().expect("Token not found");
-
-    println!("✅ User registered and authenticated");
-
-    // Step 3: Register a team
     let team_name = format!("Test Team {}", Uuid::new_v4().to_string()[..8].to_string());
     let team_request = json!({
         "team_name": team_name,
@@ -80,7 +40,7 @@ async fn test_team_registration_flow() {
     
     println!("✅ Team registered with ID: {}", team_id);
 
-    // Step 4: Verify team was created in database
+    // Verify team was created in database
     let saved_team = sqlx::query!(
         "SELECT team_name, team_description, team_color FROM teams WHERE id = $1",
         Uuid::parse_str(team_id).unwrap()
@@ -95,7 +55,7 @@ async fn test_team_registration_flow() {
 
     println!("✅ Team data verified in database");
 
-    // Step 5: Get team information via API
+    // Get team information via API
     let get_team_response = client
         .get(&format!("{}/league/teams/{}", &test_app.address, team_id))
         .header("Authorization", format!("Bearer {}", token))
@@ -114,7 +74,7 @@ async fn test_team_registration_flow() {
 
     println!("✅ Team information retrieved successfully");
 
-    // Step 6: Update team information
+    // Update team information
     let update_request = json!({
         "team_description": "An even more fantastic test team!",
         "team_color": "#00FF00"
@@ -144,7 +104,7 @@ async fn test_team_registration_flow() {
 
     println!("✅ Team updated successfully");
 
-    // Step 7: Try to register another team with same user (should fail)
+    // Try to register another team with same user (should fail)
     let duplicate_team_request = json!({
         "team_name": "Another Team",
         "team_description": "This should not work",
@@ -163,7 +123,7 @@ async fn test_team_registration_flow() {
 
     println!("✅ Duplicate team registration properly rejected");
 
-    // Step 8: Get all teams
+    // Get all teams
     let all_teams_response = client
         .get(&format!("{}/league/teams?limit=10", &test_app.address))
         .header("Authorization", format!("Bearer {}", token))
@@ -208,42 +168,9 @@ async fn test_team_registration_validation() {
     let test_app = spawn_app().await;
     let client = Client::new();
 
-    // Create and authenticate a user
-    let username = format!("validator{}", Uuid::new_v4());
-    let password = "password123";
-    let email = format!("{}@example.com", username);
-
-    let user_request = json!({
-        "username": username,
-        "password": password,
-        "email": email
-    });
-
-    client
-        .post(&format!("{}/register_user", &test_app.address))
-        .json(&user_request)
-        .send()
-        .await
-        .expect("Failed to register user");
-
-    let login_request = json!({
-        "username": username,
-        "password": password
-    });
-
-    let login_response = client
-        .post(&format!("{}/login", &test_app.address))
-        .json(&login_request)
-        .send()
-        .await
-        .expect("Failed to login");
-
-    let login_json = login_response.json::<serde_json::Value>().await
-        .expect("Failed to parse login response");
-    let token = login_json["token"].as_str().expect("Token not found");
+    let (_username, token) = create_test_user_and_login(&test_app.address).await;
 
     // Test various validation scenarios
-    
     // Test 1: Empty team name
     let empty_name_request = json!({
         "team_name": "",
@@ -335,70 +262,8 @@ async fn test_team_name_uniqueness() {
     let client = Client::new();
 
     // Create two users
-    let user1_name = format!("user1_{}", Uuid::new_v4());
-    let user2_name = format!("user2_{}", Uuid::new_v4());
-    let password = "password123";
-
-    // Register user 1
-    let user1_request = json!({
-        "username": user1_name,
-        "password": password,
-        "email": format!("{}@example.com", user1_name)
-    });
-
-    client
-        .post(&format!("{}/register_user", &test_app.address))
-        .json(&user1_request)
-        .send()
-        .await
-        .expect("Failed to register user 1");
-
-    // Register user 2
-    let user2_request = json!({
-        "username": user2_name,
-        "password": password,
-        "email": format!("{}@example.com", user2_name)
-    });
-
-    client
-        .post(&format!("{}/register_user", &test_app.address))
-        .json(&user2_request)
-        .send()
-        .await
-        .expect("Failed to register user 2");
-
-    // Login both users
-    let login_request1 = json!({
-        "username": user1_name,
-        "password": password
-    });
-
-    let login_response1 = client
-        .post(&format!("{}/login", &test_app.address))
-        .json(&login_request1)
-        .send()
-        .await
-        .expect("Failed to login user 1");
-
-    let token1 = login_response1.json::<serde_json::Value>().await
-        .expect("Failed to parse login response 1")["token"]
-        .as_str().expect("Token not found").to_string();
-
-    let login_request2 = json!({
-        "username": user2_name,
-        "password": password
-    });
-
-    let login_response2 = client
-        .post(&format!("{}/login", &test_app.address))
-        .json(&login_request2)
-        .send()
-        .await
-        .expect("Failed to login user 2");
-
-    let token2 = login_response2.json::<serde_json::Value>().await
-        .expect("Failed to parse login response 2")["token"]
-        .as_str().expect("Token not found").to_string();
+    let (_username1, token1) = create_test_user_and_login(&test_app.address).await;
+    let (_username2, token2) = create_test_user_and_login(&test_app.address).await;
 
     // User 1 registers a team
     let unique_team_name = format!("Team_{}", Uuid::new_v4().to_string()[..8].to_string());

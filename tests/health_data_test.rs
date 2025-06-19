@@ -5,49 +5,14 @@ use uuid::Uuid;
 use sqlx::Row;
 
 mod common;
-use common::utils::spawn_app;
+use common::utils::{spawn_app, create_test_user_and_login};
 
 #[tokio::test]
 async fn upload_health_data_working() {
     let test_app = spawn_app().await;
     let client = Client::new();
 
-    // Register a new user first
-    let username = format!("healthuser{}", Uuid::new_v4());
-    let password = "password123";
-    let email = format!("{}@example.com", username);
-
-    let user_request = json!({
-        "username": username,
-        "password": password,
-        "email": email
-    });
-
-    let response = client
-        .post(&format!("{}/register_user", &test_app.address))
-        .json(&user_request)
-        .send()
-        .await
-        .expect("Failed to execute request.");
-
-    assert!(response.status().is_success());
-
-    // Login to get JWT token
-    let login_request = json!({
-        "username": username,
-        "password": password
-    });
-
-    let response = client
-        .post(&format!("{}/login", &test_app.address))
-        .json(&login_request)
-        .send()
-        .await
-        .expect("Failed to execute request.");
-
-    assert!(response.status().is_success());
-    let login_response: serde_json::Value = response.json().await.expect("Failed to parse login response");
-    let token = login_response["token"].as_str().expect("No token in response");
+    let (_username, token) = create_test_user_and_login(&test_app.address).await;
 
     // Prepare health data with multiple heart rate readings simulating a workout
     let base_time = Utc::now();
