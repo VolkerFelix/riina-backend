@@ -1,4 +1,4 @@
-use chrono::{TimeZone, Utc, Datelike, Timelike, Weekday, DateTime};
+use chrono::{TimeZone, Utc, Datelike, Timelike, Weekday};
 use evolveme_backend::league::countdown::{CountdownService, UrgencyLevel};
 
 #[test]

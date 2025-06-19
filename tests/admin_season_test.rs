@@ -7,8 +7,8 @@ use std::collections::{HashMap, HashSet};
 use chrono::{Datelike, Timelike};
 
 mod common;
-use common::utils::{spawn_app, TestApp};
-use common::admin_helpers::{create_test_user_and_login, create_test_user_and_login_with_id, make_authenticated_request, create_teams_for_test};
+use common::utils::spawn_app;
+use common::admin_helpers::{create_test_user_and_login, make_authenticated_request, create_teams_for_test};
 
 /// Helper function to create a test admin user
 async fn create_test_admin(pool: &PgPool) -> (String, String, Uuid) {
@@ -63,8 +63,8 @@ async fn admin_generate_schedule_works() {
     let client = reqwest::Client::new();
     
     // Create admin users and get tokens
-    let (username1, email1, user_id1) = create_test_admin(&app.db_pool).await;
-    let (username2, email2, user_id2) = create_test_admin(&app.db_pool).await;
+    let (_username1, email1, user_id1) = create_test_admin(&app.db_pool).await;
+    let (_username2, _email2, user_id2) = create_test_admin(&app.db_pool).await;
     let token = login_and_get_token(&client, &app.address, &email1, "password123").await;
     let team1_name = format!("Team 1 {}", Uuid::new_v4());
     let team2_name = format!("Team 2 {}", Uuid::new_v4());

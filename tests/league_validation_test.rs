@@ -1,5 +1,5 @@
 use evolveme_backend::league::validation::LeagueValidator;
-use chrono::{DateTime, Utc, Duration};
+use chrono::{Utc, Duration};
 use uuid::Uuid;
 
 #[test]

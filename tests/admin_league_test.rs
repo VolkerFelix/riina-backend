@@ -3,8 +3,8 @@ use serde_json::json;
 use uuid::Uuid;
 
 mod common;
-use common::utils::{spawn_app, TestApp};
-use common::admin_helpers::{create_test_user_and_login, create_test_user_and_login_with_id, make_authenticated_request, create_teams_for_test};
+use common::utils::spawn_app;
+use common::admin_helpers::{create_test_user_and_login, make_authenticated_request, create_teams_for_test};
 
 #[tokio::test]
 async fn admin_get_leagues_returns_list_of_leagues() {
