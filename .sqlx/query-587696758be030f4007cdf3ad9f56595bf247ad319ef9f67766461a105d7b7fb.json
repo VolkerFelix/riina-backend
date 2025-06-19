@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT \n                lg.*,\n                'Team ' || SUBSTRING(lg.home_team_id::text, 1, 8) as home_team_name,\n                'Team ' || SUBSTRING(lg.away_team_id::text, 1, 8) as away_team_name,\n                '#E74C3C' as home_team_color,\n                '#3498DB' as away_team_color\n            FROM league_games lg\n            WHERE lg.season_id = $1 \n            AND lg.scheduled_time >= $2\n            AND lg.status IN ('scheduled', 'postponed')\n            ORDER BY lg.scheduled_time ASC\n            LIMIT $3\n            ",
+  "query": "\n            SELECT \n                lg.*,\n                ht.team_name as home_team_name,\n                ht.team_color as home_team_color,\n                at.team_name as away_team_name,\n                at.team_color as away_team_color\n            FROM league_games lg\n            JOIN teams ht ON lg.home_team_id = ht.id\n            JOIN teams at ON lg.away_team_id = at.id\n            WHERE lg.season_id = $1 \n            AND lg.scheduled_time >= $2\n            AND lg.scheduled_time < $3\n            ORDER BY lg.scheduled_time ASC\n            ",
   "describe": {
     "columns": [
       {
@@ -71,29 +71,29 @@
       {
         "ordinal": 13,
         "name": "home_team_name",
-        "type_info": "Text"
+        "type_info": "Varchar"
       },
       {
         "ordinal": 14,
-        "name": "away_team_name",
-        "type_info": "Text"
+        "name": "home_team_color",
+        "type_info": "Varchar"
       },
       {
         "ordinal": 15,
-        "name": "home_team_color",
-        "type_info": "Text"
+        "name": "away_team_name",
+        "type_info": "Varchar"
       },
       {
         "ordinal": 16,
         "name": "away_team_color",
-        "type_info": "Text"
+        "type_info": "Varchar"
       }
     ],
     "parameters": {
       "Left": [
         "Uuid",
         "Timestamptz",
-        "Int8"
+        "Timestamptz"
       ]
     },
     "nullable": [
@@ -110,11 +110,11 @@
       true,
       false,
       false,
-      null,
-      null,
-      null,
-      null
+      false,
+      false,
+      false,
+      false
     ]
   },
-  "hash": "e4fc1597a8565c74e0a3d6b7a20240858f4f1b3ede4331d277481d3101b70a77"
+  "hash": "587696758be030f4007cdf3ad9f56595bf247ad319ef9f67766461a105d7b7fb"
 }

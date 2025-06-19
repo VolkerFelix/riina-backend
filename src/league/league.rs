@@ -136,7 +136,6 @@ impl LeagueService {
             name: season.name,
             start_date: season.start_date.to_rfc3339(),
             end_date: season.end_date.to_rfc3339(),
-            is_active: season.is_active,
             total_teams,
             current_week,
             total_weeks,

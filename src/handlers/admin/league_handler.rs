@@ -11,7 +11,6 @@ pub struct AdminLeagueResponse {
     pub id: Uuid,
     pub name: String,
     pub description: Option<String>,
-    pub is_active: bool,
     pub max_teams: i32,
     pub current_team_count: i64,
     pub created_at: DateTime<Utc>,
@@ -29,7 +28,6 @@ pub struct UpdateLeagueRequest {
     pub name: Option<String>,
     pub season_start_date: Option<DateTime<Utc>>,
     pub season_end_date: Option<DateTime<Utc>>,
-    pub is_active: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -67,7 +65,6 @@ pub struct AdminSeasonResponse {
     pub name: String,
     pub start_date: DateTime<Utc>,
     pub end_date: DateTime<Utc>,
-    pub is_active: bool,
     pub total_teams: i64,
     pub games_count: i64,
     pub created_at: DateTime<Utc>,
@@ -83,12 +80,11 @@ pub async fn get_leagues(
             l.name,
             l.description,
             l.max_teams,
-            l.is_active,
             l.created_at,
             COUNT(DISTINCT lm.team_id) as current_team_count
         FROM leagues l
         LEFT JOIN league_memberships lm ON l.id = lm.league_id AND lm.status = 'active'
-        GROUP BY l.id, l.name, l.description, l.max_teams, l.is_active, l.created_at
+        GROUP BY l.id, l.name, l.description, l.max_teams, l.created_at
         ORDER BY l.created_at DESC
     "#)
     .fetch_all(pool.get_ref())
@@ -104,7 +100,6 @@ pub async fn get_leagues(
             id: row.get("id"),
             name: row.get("name"),
             description: row.get("description"),
-            is_active: row.get("is_active"),
             max_teams: row.get("max_teams"),
             current_team_count: row.get::<i64, _>("current_team_count"),
             created_at: row.get("created_at"),
@@ -133,16 +128,15 @@ pub async fn get_league_by_id(
             l.name,
             l.description,
             l.max_teams,
-            l.is_active,
             l.created_at,
             ls.start_date as season_start_date,
             ls.end_date as season_end_date,
             COUNT(DISTINCT lm.team_id) as current_team_count
         FROM leagues l
-        LEFT JOIN league_seasons ls ON l.id = ls.league_id AND ls.is_active = true
+        LEFT JOIN league_seasons ls ON l.id = ls.league_id
         LEFT JOIN league_memberships lm ON l.id = lm.league_id AND lm.status = 'active'
         WHERE l.id = $1
-        GROUP BY l.id, l.name, l.description, l.max_teams, l.is_active, l.created_at, ls.start_date, ls.end_date
+        GROUP BY l.id, l.name, l.description, l.max_teams, l.created_at, ls.start_date, ls.end_date
     "#)
     .bind(league_id)
     .fetch_optional(pool.get_ref())
@@ -157,7 +151,6 @@ pub async fn get_league_by_id(
             id: row.get("id"),
             name: row.get("name"),
             description: row.get("description"),
-            is_active: row.get("is_active"),
             max_teams: row.get("max_teams"),
             current_team_count: row.get::<i64, _>("current_team_count"),
             created_at: row.get("created_at"),
@@ -195,14 +188,13 @@ pub async fn create_league(
     // Create league only (seasons will be managed separately)
     let league_result = sqlx::query!(
         r#"
-        INSERT INTO leagues (id, name, description, max_teams, is_active, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO leagues (id, name, description, max_teams, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
         "#,
         league_id,
         body.name,
         body.description,
         body.max_teams,
-        true,
         now,
         now
     )
@@ -215,7 +207,6 @@ pub async fn create_league(
                 id: league_id,
                 name: body.name.clone(),
                 description: body.description.clone(),
-                is_active: true,
                 max_teams: body.max_teams,
                 current_team_count: 0,
                 created_at: now,
@@ -246,7 +237,7 @@ pub async fn update_league(
 ) -> Result<HttpResponse> {
     let league_id = path.into_inner();
 
-    if body.name.is_none() && body.season_start_date.is_none() && body.season_end_date.is_none() && body.is_active.is_none() {
+    if body.name.is_none() && body.season_start_date.is_none() && body.season_end_date.is_none() {
         return Ok(HttpResponse::BadRequest().json(serde_json::json!({
             "error": "No fields to update"
         })));
@@ -266,11 +257,6 @@ pub async fn update_league(
     if let Some(name) = &body.name {
         league_query_builder.push(", name = ");
         league_query_builder.push_bind(name);
-    }
-
-    if let Some(is_active) = &body.is_active {
-        league_query_builder.push(", is_active = ");
-        league_query_builder.push_bind(is_active);
     }
 
     league_query_builder.push(" WHERE id = ");
@@ -311,7 +297,6 @@ pub async fn update_league(
 
         season_query_builder.push(" WHERE league_id = ");
         season_query_builder.push_bind(league_id);
-        season_query_builder.push(" AND is_active = true");
 
         let season_result = season_query_builder.build().execute(&mut *tx).await;
 
@@ -573,8 +558,6 @@ pub async fn get_league_teams(
             "member_count": row.member_count,
             "max_members": 5,
             "total_power": row.total_power,
-            "formation": "circle",
-            "is_active": true,
             "created_at": row.created_at,
             "owner_id": row.owner_id
         }))
@@ -676,7 +659,6 @@ pub async fn get_league_seasons(
             ls.name,
             ls.start_date,
             ls.end_date,
-            ls.is_active,
             ls.created_at,
             COUNT(DISTINCT lt.team_id) as total_teams,
             COUNT(DISTINCT lg.id) as games_count
@@ -684,7 +666,7 @@ pub async fn get_league_seasons(
         LEFT JOIN league_teams lt ON ls.id = lt.season_id
         LEFT JOIN league_games lg ON ls.id = lg.season_id
         WHERE ls.league_id = $1
-        GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.is_active, ls.created_at
+        GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.created_at
         ORDER BY ls.created_at DESC
         "#,
         league_id
@@ -704,7 +686,6 @@ pub async fn get_league_seasons(
             name: row.name,
             start_date: row.start_date,
             end_date: row.end_date,
-            is_active: row.is_active,
             total_teams: row.total_teams.unwrap_or(0),
             games_count: row.games_count.unwrap_or(0),
             created_at: row.created_at,
@@ -800,8 +781,8 @@ pub async fn create_league_season(
 
     let result = sqlx::query!(
         r#"
-        INSERT INTO league_seasons (id, league_id, name, start_date, end_date, is_active, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, FALSE, $6, $7)
+        INSERT INTO league_seasons (id, league_id, name, start_date, end_date, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         "#,
         season_id,
         league_id,
@@ -897,7 +878,6 @@ pub async fn create_league_season(
                 name: body.name.clone(),
                 start_date: body.start_date,
                 end_date: end_date,
-                is_active: false,
                 total_teams: teams_added.rows_affected() as i64,
                 games_count: games_created as i64,
                 created_at: now,
@@ -935,7 +915,6 @@ pub async fn get_league_season_by_id(
             ls.name,
             ls.start_date,
             ls.end_date,
-            ls.is_active,
             ls.created_at,
             COUNT(DISTINCT lt.team_id) as total_teams,
             COUNT(DISTINCT lg.id) as games_count
@@ -943,7 +922,7 @@ pub async fn get_league_season_by_id(
         LEFT JOIN league_teams lt ON ls.id = lt.season_id
         LEFT JOIN league_games lg ON ls.id = lg.season_id
         WHERE ls.league_id = $1 AND ls.id = $2
-        GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.is_active, ls.created_at
+        GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.created_at
         "#,
         league_id,
         season_id
@@ -962,7 +941,6 @@ pub async fn get_league_season_by_id(
             name: row.name,
             start_date: row.start_date,
             end_date: row.end_date,
-            is_active: row.is_active,
             total_teams: row.total_teams.unwrap_or(0),
             games_count: row.games_count.unwrap_or(0),
             created_at: row.created_at,

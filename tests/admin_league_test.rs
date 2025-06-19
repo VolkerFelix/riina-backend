@@ -166,8 +166,7 @@ async fn admin_update_league_modifies_league_data() {
 
     // Act - Update the league
     let update_request = json!({
-        "name": format!("Updated League {}", Uuid::new_v4()),
-        "is_active": false
+        "name": format!("Updated League {}", Uuid::new_v4())
     });
 
     let response = make_authenticated_request(

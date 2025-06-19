@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT \n            ls.id,\n            ls.league_id,\n            ls.name,\n            ls.start_date,\n            ls.end_date,\n            ls.is_active,\n            ls.created_at,\n            COUNT(DISTINCT lt.team_id) as total_teams,\n            COUNT(DISTINCT lg.id) as games_count\n        FROM league_seasons ls\n        LEFT JOIN league_teams lt ON ls.id = lt.season_id\n        LEFT JOIN league_games lg ON ls.id = lg.season_id\n        WHERE ls.league_id = $1\n        GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.is_active, ls.created_at\n        ORDER BY ls.created_at DESC\n        ",
+  "query": "\n        SELECT \n            ls.id,\n            ls.league_id,\n            ls.name,\n            ls.start_date,\n            ls.end_date,\n            ls.created_at,\n            COUNT(DISTINCT lt.team_id) as total_teams,\n            COUNT(DISTINCT lg.id) as games_count\n        FROM league_seasons ls\n        LEFT JOIN league_teams lt ON ls.id = lt.season_id\n        LEFT JOIN league_games lg ON ls.id = lg.season_id\n        WHERE ls.league_id = $1 AND ls.id = $2\n        GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.created_at\n        ",
   "describe": {
     "columns": [
       {
@@ -30,27 +30,23 @@
       },
       {
         "ordinal": 5,
-        "name": "is_active",
-        "type_info": "Bool"
-      },
-      {
-        "ordinal": 6,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 7,
+        "ordinal": 6,
         "name": "total_teams",
         "type_info": "Int8"
       },
       {
-        "ordinal": 8,
+        "ordinal": 7,
         "name": "games_count",
         "type_info": "Int8"
       }
     ],
     "parameters": {
       "Left": [
+        "Uuid",
         "Uuid"
       ]
     },
@@ -61,10 +57,9 @@
       false,
       false,
       false,
-      false,
       null,
       null
     ]
   },
-  "hash": "15a51dd5500abb0c1fe988c5c0357e777fd029db74e5a157d9eb29ccab465124"
+  "hash": "79c162ec05c5a277d9c667e71c6a7550d704f8eeb763505424b47ed989c1cb3a"
 }

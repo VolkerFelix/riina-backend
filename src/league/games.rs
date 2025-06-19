@@ -160,11 +160,13 @@ impl GameService {
             r#"
             SELECT 
                 lg.*,
-                'Team ' || SUBSTRING(lg.home_team_id::text, 1, 8) as home_team_name,
-                'Team ' || SUBSTRING(lg.away_team_id::text, 1, 8) as away_team_name,
-                '#E74C3C' as home_team_color,
-                '#3498DB' as away_team_color
+                ht.team_name as home_team_name,
+                ht.team_color as home_team_color,
+                at.team_name as away_team_name,
+                at.team_color as away_team_color
             FROM league_games lg
+            JOIN teams ht ON lg.home_team_id = ht.id
+            JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.season_id = $1 
             AND lg.status = 'scheduled'
             AND lg.scheduled_time >= $2
@@ -201,10 +203,10 @@ impl GameService {
                     created_at: row.created_at,
                     updated_at: row.updated_at,
                 },
-                home_team_name: row.home_team_name.unwrap_or_default(),
-                away_team_name: row.away_team_name.unwrap_or_default(),
-                home_team_color: row.home_team_color.unwrap_or_default(),
-                away_team_color: row.away_team_color.unwrap_or_default(),
+                home_team_name: row.home_team_name,
+                away_team_name: row.away_team_name,
+                home_team_color: row.home_team_color,
+                away_team_color: row.away_team_color,
             }
         }))
     }
@@ -219,11 +221,13 @@ impl GameService {
             r#"
             SELECT 
                 lg.*,
-                'Team ' || SUBSTRING(lg.home_team_id::text, 1, 8) as home_team_name,
-                'Team ' || SUBSTRING(lg.away_team_id::text, 1, 8) as away_team_name,
-                '#E74C3C' as home_team_color,
-                '#3498DB' as away_team_color
+                ht.team_name as home_team_name,
+                ht.team_color as home_team_color,
+                at.team_name as away_team_name,
+                at.team_color as away_team_color
             FROM league_games lg
+            JOIN teams ht ON lg.home_team_id = ht.id
+            JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.season_id = $1 
             AND lg.scheduled_time >= $2
             AND lg.scheduled_time < $3
@@ -260,10 +264,10 @@ impl GameService {
                     created_at: row.created_at,
                     updated_at: row.updated_at,
                 },
-                home_team_name: row.home_team_name.unwrap_or_default(),
-                away_team_name: row.away_team_name.unwrap_or_default(),
-                home_team_color: row.home_team_color.unwrap_or_default(),
-                away_team_color: row.away_team_color.unwrap_or_default(),
+                home_team_name: row.home_team_name,
+                away_team_name: row.away_team_name,
+                home_team_color: row.home_team_color,
+                away_team_color: row.away_team_color,
             }
         }).collect())
     }
@@ -277,11 +281,13 @@ impl GameService {
             r#"
             SELECT 
                 lg.*,
-                'Team ' || SUBSTRING(lg.home_team_id::text, 1, 8) as home_team_name,
-                'Team ' || SUBSTRING(lg.away_team_id::text, 1, 8) as away_team_name,
-                '#E74C3C' as home_team_color,
-                '#3498DB' as away_team_color
+                ht.team_name as home_team_name,
+                ht.team_color as home_team_color,
+                at.team_name as away_team_name,
+                at.team_color as away_team_color
             FROM league_games lg
+            JOIN teams ht ON lg.home_team_id = ht.id
+            JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.season_id = $1 
             AND lg.scheduled_time >= $2
             AND lg.status IN ('scheduled', 'postponed')
@@ -319,10 +325,10 @@ impl GameService {
                     created_at: row.created_at,
                     updated_at: row.updated_at,
                 },
-                home_team_name: row.home_team_name.unwrap_or_default(),
-                away_team_name: row.away_team_name.unwrap_or_default(),
-                home_team_color: row.home_team_color.unwrap_or_default(),
-                away_team_color: row.away_team_color.unwrap_or_default(),
+                home_team_name: row.home_team_name,
+                away_team_name: row.away_team_name,
+                home_team_color: row.home_team_color,
+                away_team_color: row.away_team_color,
             }
         }).collect())
     }

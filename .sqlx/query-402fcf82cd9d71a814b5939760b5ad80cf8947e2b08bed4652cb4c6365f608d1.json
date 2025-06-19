@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            INSERT INTO league_seasons (league_id, name, start_date, end_date, is_active)\n            VALUES ($1, $2, $3, $4, TRUE)\n            RETURNING *\n            ",
+  "query": "SELECT * FROM league_seasons ORDER BY created_at DESC LIMIT 1",
   "describe": {
     "columns": [
       {
@@ -30,30 +30,19 @@
       },
       {
         "ordinal": 5,
-        "name": "is_active",
-        "type_info": "Bool"
-      },
-      {
-        "ordinal": 6,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 7,
+        "ordinal": 6,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
-      "Left": [
-        "Uuid",
-        "Varchar",
-        "Timestamptz",
-        "Timestamptz"
-      ]
+      "Left": []
     },
     "nullable": [
-      false,
       false,
       false,
       false,
@@ -63,5 +52,5 @@
       false
     ]
   },
-  "hash": "667eb356bce54ccd8a7fdb3f41bf3ba44bcffecc1bd34b601aaf0dc1979043e1"
+  "hash": "402fcf82cd9d71a814b5939760b5ad80cf8947e2b08bed4652cb4c6365f608d1"
 }
