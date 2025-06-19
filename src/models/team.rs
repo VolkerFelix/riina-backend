@@ -11,7 +11,6 @@ pub struct Team {
     pub team_name: String,
     pub team_description: Option<String>,
     pub team_color: String,
-    pub team_icon: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -23,7 +22,6 @@ pub struct TeamInfo {
     pub team_name: String,
     pub team_description: Option<String>,
     pub team_color: String,
-    pub team_icon: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub owner_username: String,
@@ -35,7 +33,6 @@ pub struct TeamRegistrationRequest {
     pub team_name: String,
     pub team_description: Option<String>,
     pub team_color: Option<String>,
-    pub team_icon: Option<String>,
 }
 
 /// Request to update team information
@@ -44,7 +41,6 @@ pub struct TeamUpdateRequest {
     pub team_name: Option<String>,
     pub team_description: Option<String>,
     pub team_color: Option<String>,
-    pub team_icon: Option<String>,
 }
 
 /// Response for team registration
@@ -284,13 +280,6 @@ impl TeamRegistrationRequest {
             }
         }
 
-        // Validate team icon if provided
-        if let Some(icon) = &self.team_icon {
-            if icon.len() > 10 {
-                return Err("Team icon must be 10 characters or less".to_string());
-            }
-        }
-
         Ok(())
     }
 
@@ -312,8 +301,7 @@ impl TeamUpdateRequest {
         // Check if at least one field is being updated
         if self.team_name.is_none() 
             && self.team_description.is_none() 
-            && self.team_color.is_none() 
-            && self.team_icon.is_none() {
+            && self.team_color.is_none() {
             return Err("At least one field must be provided for update".to_string());
         }
 
@@ -352,13 +340,6 @@ impl TeamUpdateRequest {
             
             if !color[1..].chars().all(|c| c.is_ascii_hexdigit()) {
                 return Err("Team color must be a valid hex color".to_string());
-            }
-        }
-
-        // Validate team icon if provided
-        if let Some(icon) = &self.team_icon {
-            if icon.len() > 10 {
-                return Err("Team icon must be 10 characters or less".to_string());
             }
         }
 

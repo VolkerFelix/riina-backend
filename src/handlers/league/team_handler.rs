@@ -118,15 +118,14 @@ pub async fn register_new_team(
     // Create the team
     match sqlx::query!(
         r#"
-        INSERT INTO teams (id, user_id, team_name, team_description, team_color, team_icon, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO teams (id, user_id, team_name, team_description, team_color, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         "#,
         team_id,
         user_id,
         sanitized_team_name,
         team_request.team_description,
         team_request.team_color.as_deref().unwrap_or("#4F46E5"),
-        team_request.team_icon.as_deref().unwrap_or("⚽"),
         now,
         now
     )
@@ -217,7 +216,6 @@ pub async fn get_team_information(
             t.team_name,
             t.team_description,
             t.team_color,
-            t.team_icon,
             t.created_at,
             t.updated_at,
             u.username as owner_username
@@ -268,7 +266,6 @@ pub async fn get_all_registered_teams(
             t.team_name,
             t.team_description,
             t.team_color,
-            t.team_icon,
             t.created_at,
             t.updated_at,
             u.username as owner_username
@@ -367,14 +364,12 @@ pub async fn update_team_information(
         SET team_name = COALESCE($1, team_name),
             team_description = COALESCE($2, team_description),
             team_color = COALESCE($3, team_color),
-            team_icon = COALESCE($4, team_icon),
             updated_at = NOW()
-        WHERE id = $5
+        WHERE id = $4
         "#,
         team_update.team_name.as_deref(),
         team_update.team_description.as_deref(),
         team_update.team_color.as_deref(),
-        team_update.team_icon.as_deref(),
         team_id
     )
     .execute(pool.get_ref())

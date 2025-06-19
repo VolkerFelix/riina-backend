@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT \n            t.id,\n            t.user_id,\n            t.team_name,\n            t.team_description,\n            t.team_color,\n            t.team_icon,\n            t.created_at,\n            t.updated_at,\n            u.username as owner_username\n        FROM teams t\n        JOIN users u ON t.user_id = u.id\n        ORDER BY t.created_at DESC\n        LIMIT $1\n        ",
+  "query": "\n        SELECT \n            t.id,\n            t.user_id,\n            t.team_name,\n            t.team_description,\n            t.team_color,\n            t.created_at,\n            t.updated_at,\n            u.username as owner_username\n        FROM teams t\n        JOIN users u ON t.user_id = u.id\n        WHERE t.id = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -30,28 +30,23 @@
       },
       {
         "ordinal": 5,
-        "name": "team_icon",
-        "type_info": "Varchar"
-      },
-      {
-        "ordinal": 6,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 7,
+        "ordinal": 6,
         "name": "updated_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 8,
+        "ordinal": 7,
         "name": "owner_username",
         "type_info": "Varchar"
       }
     ],
     "parameters": {
       "Left": [
-        "Int8"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -62,9 +57,8 @@
       false,
       false,
       false,
-      false,
       false
     ]
   },
-  "hash": "7f96002cab4735491f801a119b33b81603cf368ad7cf449eeb3414983d3ab1b2"
+  "hash": "4d33b80e654cb959cbe468f854c36d29580432e86bb09143f59aee0cfab8fa56"
 }

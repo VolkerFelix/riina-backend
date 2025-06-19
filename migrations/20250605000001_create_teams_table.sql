@@ -5,7 +5,6 @@ CREATE TABLE IF NOT EXISTS teams (
     team_name VARCHAR(50) NOT NULL,
     team_description TEXT,
     team_color VARCHAR(7) NOT NULL DEFAULT '#4F46E5', -- Hex color code
-    team_icon VARCHAR(10) NOT NULL DEFAULT '⚽', -- Emoji or icon
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     
@@ -23,9 +22,8 @@ CREATE INDEX IF NOT EXISTS idx_teams_user_id ON teams(user_id);
 CREATE INDEX IF NOT EXISTS idx_teams_team_name ON teams(team_name);
 CREATE INDEX IF NOT EXISTS idx_teams_created_at ON teams(created_at);
 
--- Add some sample team colors and icons as reference (commented out)
+-- Add some sample team colors as reference (commented out)
 -- Common team colors: #FF0000 (red), #00FF00 (green), #0000FF (blue), #FFFF00 (yellow)
--- Common team icons: ⚽ 🏆 🎯 ⭐ 🔥 ⚡ 🛡️ 🦅 🦁 🐺
 
 -- Insert trigger to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_teams_updated_at()

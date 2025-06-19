@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT \n                ls.*,\n                'Team ' || SUBSTRING(ls.team_id::text, 1, 8) as team_name,\n                '#4F46E5' as team_color,\n                '⚽' as team_icon\n            FROM league_standings ls\n            WHERE ls.season_id = $1\n            ORDER BY ls.points DESC, (ls.wins * 3 + ls.draws) DESC, ls.wins DESC\n            ",
+  "query": "\n            SELECT \n                ls.*,\n                'Team ' || SUBSTRING(ls.team_id::text, 1, 8) as team_name,\n                '#4F46E5' as team_color\n            FROM league_standings ls\n            WHERE ls.season_id = $1\n            ORDER BY ls.points DESC, ls.wins DESC\n            LIMIT $2\n            ",
   "describe": {
     "columns": [
       {
@@ -62,16 +62,12 @@
         "ordinal": 11,
         "name": "team_color",
         "type_info": "Text"
-      },
-      {
-        "ordinal": 12,
-        "name": "team_icon",
-        "type_info": "Text"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid"
+        "Uuid",
+        "Int8"
       ]
     },
     "nullable": [
@@ -86,9 +82,8 @@
       false,
       false,
       null,
-      null,
       null
     ]
   },
-  "hash": "6f46e2a5b539d57f302ee1be07a5262727ae9935d81dc8beb5e254010ce76f14"
+  "hash": "30af8c7651805f8b19e2d412cc7826dece898131fd5b99e8a77138ead58e0cf2"
 }

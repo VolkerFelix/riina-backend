@@ -250,15 +250,14 @@ pub async fn create_team(
 
     let result = sqlx::query!(
         r#"
-        INSERT INTO teams (id, user_id, team_name, team_description, team_color, team_icon, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO teams (id, user_id, team_name, team_description, team_color, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         "#,
         team_id,
         owner_id,
         body.name,
         None::<String>,
         body.color,
-        "⚔️",
         now,
         now
     )

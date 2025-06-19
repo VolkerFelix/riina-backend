@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE teams \n        SET team_name = COALESCE($1, team_name),\n            team_description = COALESCE($2, team_description),\n            team_color = COALESCE($3, team_color),\n            updated_at = NOW()\n        WHERE id = $4\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Text",
+        "Varchar",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bfe220ec46985b2998ab5f16d533c945910d015c38948266a00f00eb5f34ff1e"
+}

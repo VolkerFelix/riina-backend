@@ -119,7 +119,6 @@ pub struct StandingWithTeam {
     pub standing: LeagueStanding,
     pub team_name: String,
     pub team_color: String,
-    pub team_icon: String,
     pub recent_form: Vec<char>, // W, D, L for last 5 games
 }
 
