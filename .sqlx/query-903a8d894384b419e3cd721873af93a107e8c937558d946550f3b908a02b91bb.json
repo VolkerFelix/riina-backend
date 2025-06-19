@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        INSERT INTO league_seasons (id, league_id, name, start_date, end_date, is_active, created_at, updated_at)\n        VALUES ($1, $2, $3, $4, $5, FALSE, $6, $7)\n        ",
+  "query": "\n        INSERT INTO league_seasons (id, league_id, name, start_date, end_date, created_at, updated_at)\n        VALUES ($1, $2, $3, $4, $5, $6, $7)\n        ",
   "describe": {
     "columns": [],
     "parameters": {
@@ -16,5 +16,5 @@
     },
     "nullable": []
   },
-  "hash": "777da97be4cf1fac8eee4c6c0922137d6d27224fa171bb00b140df4fd4908151"
+  "hash": "903a8d894384b419e3cd721873af93a107e8c937558d946550f3b908a02b91bb"
 }

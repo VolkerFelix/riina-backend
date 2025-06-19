@@ -4,7 +4,6 @@ CREATE TABLE IF NOT EXISTS leagues (
     name VARCHAR(255) NOT NULL,
     description TEXT,
     max_teams INTEGER NOT NULL DEFAULT 16,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -16,7 +15,6 @@ CREATE TABLE IF NOT EXISTS league_seasons (
     name VARCHAR(255) NOT NULL,
     start_date TIMESTAMPTZ NOT NULL,
     end_date TIMESTAMPTZ NOT NULL,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

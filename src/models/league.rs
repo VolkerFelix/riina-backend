@@ -12,7 +12,6 @@ pub struct LeagueSeason {
     pub name: String,
     pub start_date: DateTime<Utc>,
     pub end_date: DateTime<Utc>,
-    pub is_active: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -23,7 +22,6 @@ pub struct EnhancedLeagueSeason {
     pub name: String,
     pub start_date: String,
     pub end_date: String,
-    pub is_active: bool,
     pub total_teams: i32,
     pub current_week: i32,
     pub total_weeks: i32,

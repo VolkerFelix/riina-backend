@@ -14,8 +14,6 @@ pub struct AdminTeamResponse {
     pub member_count: i64,
     pub max_members: i32,
     pub total_power: i64,
-    pub formation: String,
-    pub is_active: bool,
     pub created_at: DateTime<Utc>,
     pub owner_id: Uuid,
     pub league_id: Option<Uuid>,
@@ -60,7 +58,6 @@ pub struct TeamQueryParams {
 pub struct CreateTeamRequest {
     pub name: String,
     pub color: String,
-    pub formation: Option<String>,
     pub league_id: Option<Uuid>,
     pub owner_id: Uuid,
 }
@@ -154,8 +151,6 @@ pub async fn get_teams(
             member_count: row.get("member_count"),
             max_members: 5, // Default max members
             total_power: row.get("total_power"),
-            formation: "circle".to_string(), // Default formation
-            is_active: true, // Default active
             created_at: row.get("created_at"),
             owner_id: row.get("owner_id"),
             league_id: None, // TODO: Add league association
@@ -215,8 +210,6 @@ pub async fn get_team_by_id(
             member_count: row.get("member_count"),
             max_members: 5,
             total_power: row.get("total_power"),
-            formation: "circle".to_string(),
-            is_active: true,
             created_at: row.get("created_at"),
             owner_id: row.get("owner_id"),
             league_id: None,
@@ -273,8 +266,6 @@ pub async fn create_team(
                 member_count: 0,
                 max_members: 5,
                 total_power: 0,
-                formation: body.formation.clone().unwrap_or_else(|| "circle".to_string()),
-                is_active: true,
                 created_at: now,
                 owner_id,
                 league_id: body.league_id,

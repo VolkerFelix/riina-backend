@@ -21,19 +21,14 @@ impl SeasonService {
         let total_weeks = (team_count - 1) * 2; // Each team plays every other team twice
         let end_date = request.start_date + Duration::weeks(total_weeks as i64);
 
-        // Mark any existing active seasons as inactive
-        sqlx::query!(
-            "UPDATE league_seasons SET is_active = FALSE WHERE is_active = TRUE"
-        )
-        .execute(&self.pool)
-        .await?;
+        // No longer need to manage active/inactive status
 
         // Create new season
         let season = sqlx::query_as!(
             LeagueSeason,
             r#"
-            INSERT INTO league_seasons (league_id, name, start_date, end_date, is_active)
-            VALUES ($1, $2, $3, $4, TRUE)
+            INSERT INTO league_seasons (league_id, name, start_date, end_date)
+            VALUES ($1, $2, $3, $4)
             RETURNING *
             "#,
             request.league_id,
@@ -66,11 +61,11 @@ impl SeasonService {
         .await
     }
 
-    /// Get the currently active season
+    /// Get the most recent season (replaces active season concept)
     pub async fn get_active_season(&self) -> Result<Option<LeagueSeason>, sqlx::Error> {
         sqlx::query_as!(
             LeagueSeason,
-            "SELECT * FROM league_seasons WHERE is_active = TRUE ORDER BY created_at DESC LIMIT 1"
+            "SELECT * FROM league_seasons ORDER BY created_at DESC LIMIT 1"
         )
         .fetch_optional(&self.pool)
         .await
@@ -96,7 +91,6 @@ impl SeasonService {
         name: Option<String>,
         start_date: Option<DateTime<Utc>>,
         end_date: Option<DateTime<Utc>>,
-        is_active: Option<bool>,
     ) -> Result<LeagueSeason, sqlx::Error> {
         // Build dynamic update query
         let mut query = "UPDATE league_seasons SET updated_at = NOW()".to_string();
@@ -121,23 +115,11 @@ impl SeasonService {
             param_count += 1;
         }
 
-        if let Some(is_active) = is_active {
-            // If setting this season to active, deactivate others first
-            if is_active {
-                sqlx::query!("UPDATE league_seasons SET is_active = FALSE WHERE is_active = TRUE")
-                    .execute(&self.pool)
-                    .await?;
-            }
-            
-            query.push_str(&format!(", is_active = ${}", param_count));
-            params.push(Box::new(is_active));
-            param_count += 1;
-        }
 
         query.push_str(&format!(" WHERE id = ${} RETURNING *", param_count));
 
         // For now, let's use a simpler approach with individual field updates
-        let updated_season = if name.is_some() || start_date.is_some() || end_date.is_some() || is_active.is_some() {
+        let updated_season = if name.is_some() || start_date.is_some() || end_date.is_some() {
             sqlx::query_as!(
                 LeagueSeason,
                 r#"
@@ -145,15 +127,13 @@ impl SeasonService {
                 SET name = COALESCE($1, name),
                     start_date = COALESCE($2, start_date),
                     end_date = COALESCE($3, end_date),
-                    is_active = COALESCE($4, is_active),
                     updated_at = NOW()
-                WHERE id = $5
+                WHERE id = $4
                 RETURNING *
                 "#,
                 name,
                 start_date,
                 end_date,
-                is_active,
                 season_id
             )
             .fetch_one(&self.pool)
@@ -258,24 +238,6 @@ impl SeasonService {
         .await?;
 
         Ok(count.unwrap_or(0) > 0)
-    }
-
-    /// Archive old seasons (mark as inactive and cleanup)
-    pub async fn archive_old_seasons(&self, cutoff_date: DateTime<Utc>) -> Result<i32, sqlx::Error> {
-        let updated_count = sqlx::query!(
-            r#"
-            UPDATE league_seasons 
-            SET is_active = FALSE, updated_at = NOW()
-            WHERE end_date < $1 AND is_active = TRUE
-            "#,
-            cutoff_date
-        )
-        .execute(&self.pool)
-        .await?
-        .rows_affected();
-
-        tracing::info!("Archived {} old seasons", updated_count);
-        Ok(updated_count as i32)
     }
 }
 

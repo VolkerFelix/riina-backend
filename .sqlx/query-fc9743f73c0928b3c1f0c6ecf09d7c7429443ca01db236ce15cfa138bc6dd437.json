@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT \n                lg.*,\n                'Team ' || SUBSTRING(lg.home_team_id::text, 1, 8) as home_team_name,\n                'Team ' || SUBSTRING(lg.away_team_id::text, 1, 8) as away_team_name,\n                '#E74C3C' as home_team_color,\n                '#3498DB' as away_team_color\n            FROM league_games lg\n            WHERE lg.season_id = $1 \n            AND lg.status = 'scheduled'\n            AND lg.scheduled_time >= $2\n            ORDER BY lg.scheduled_time ASC\n            LIMIT 1\n            ",
+  "query": "\n            SELECT \n                lg.*,\n                ht.team_name as home_team_name,\n                ht.team_color as home_team_color,\n                at.team_name as away_team_name,\n                at.team_color as away_team_color\n            FROM league_games lg\n            JOIN teams ht ON lg.home_team_id = ht.id\n            JOIN teams at ON lg.away_team_id = at.id\n            WHERE lg.season_id = $1 \n            AND lg.status = 'scheduled'\n            AND lg.scheduled_time >= $2\n            ORDER BY lg.scheduled_time ASC\n            LIMIT 1\n            ",
   "describe": {
     "columns": [
       {
@@ -71,22 +71,22 @@
       {
         "ordinal": 13,
         "name": "home_team_name",
-        "type_info": "Text"
+        "type_info": "Varchar"
       },
       {
         "ordinal": 14,
-        "name": "away_team_name",
-        "type_info": "Text"
+        "name": "home_team_color",
+        "type_info": "Varchar"
       },
       {
         "ordinal": 15,
-        "name": "home_team_color",
-        "type_info": "Text"
+        "name": "away_team_name",
+        "type_info": "Varchar"
       },
       {
         "ordinal": 16,
         "name": "away_team_color",
-        "type_info": "Text"
+        "type_info": "Varchar"
       }
     ],
     "parameters": {
@@ -109,11 +109,11 @@
       true,
       false,
       false,
-      null,
-      null,
-      null,
-      null
+      false,
+      false,
+      false,
+      false
     ]
   },
-  "hash": "632d43e1fb8e5fee49f9cbb98d5cf2ad955bf355b8e3e5868c0e73cb4839a154"
+  "hash": "fc9743f73c0928b3c1f0c6ecf09d7c7429443ca01db236ce15cfa138bc6dd437"
 }
