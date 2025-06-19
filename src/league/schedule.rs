@@ -20,6 +20,7 @@ impl ScheduleService {
 
     /// Generate complete league schedule using round-robin algorithm
     /// Each team plays every other team twice (home and away)
+    /// N/2 games happen simultaneously each week
     pub async fn generate_schedule(
         &self,
         season_id: Uuid,
@@ -28,27 +29,46 @@ impl ScheduleService {
     ) -> Result<i32, sqlx::Error> {
         let team_count = team_ids.len();
         if team_count < 2 {
-            tracing::warn!("Cannot create schedule with less than 2 teams");
-            return Ok(0);
+            tracing::error!("Cannot create schedule with less than 2 teams");
+            return Err(sqlx::Error::RowNotFound);
         }
 
-        tracing::info!("Generating round-robin schedule for {} teams", team_count);
+
+        let games_per_week = team_count / 2;
+        tracing::info!("Generating round-robin schedule for {} teams, {} games per week", team_count, games_per_week);
 
         let mut tx = self.pool.begin().await?;
         let mut games_created = 0;
-        let mut week_num = 1;
 
-        // FIRST LEG: Each team plays every other team once
-        for i in 0..team_count {
-            for j in (i + 1)..team_count {
-                let game_time = self.countdown.calculate_game_time_for_week(start_date, week_num);
+        // Use the circle method for round-robin scheduling
+        // This guarantees perfect scheduling with no conflicts
+        let mut teams: Vec<usize> = (0..team_count).collect();
+        
+        // For the circle method to work with home/away balance,
+        // we'll generate all rounds twice (once normal, once with home/away swapped)
+        
+        // FIRST LEG: Generate N-1 rounds
+        for round in 0..(team_count - 1) {
+            let week_num = round + 1;
+            let game_time = self.countdown.calculate_game_time_for_week(start_date, week_num as i32);
+            
+            // Generate pairings for this round
+            for i in 0..games_per_week {
+                let home_idx = if i == 0 {
+                    // First team stays fixed
+                    0
+                } else {
+                    teams[i]
+                };
+                
+                let away_idx = teams[team_count - 1 - i];
+                
+                let home_team = team_ids[home_idx];
+                let away_team = team_ids[away_idx];
                 
                 tracing::debug!(
-                    "Creating first leg: Week {} - Team {} (home) vs Team {} (away) at {}",
-                    week_num, 
-                    team_ids[i], 
-                    team_ids[j], 
-                    game_time
+                    "First leg - Week {}: {} (home) vs {} (away)",
+                    week_num, home_team, away_team
                 );
 
                 sqlx::query!(
@@ -59,32 +79,53 @@ impl ScheduleService {
                     ) VALUES ($1, $2, $3, $4, $5, TRUE, 'scheduled')
                     "#,
                     season_id,
-                    team_ids[i],    // Home team
-                    team_ids[j],    // Away team
+                    home_team,
+                    away_team,
                     game_time,
-                    week_num
+                    week_num as i32
                 )
                 .execute(&mut *tx)
                 .await?;
                 
                 games_created += 1;
-                week_num += 1;
             }
+            
+            // Rotate teams for next round (except first team which stays fixed)
+            let last = teams.pop().unwrap();
+            teams.insert(1, last);
         }
-
-        tracing::info!("Created {} first-leg games", games_created);
-
-        // SECOND LEG: Return fixtures (swap home and away)
-        for i in 0..team_count {
-            for j in (i + 1)..team_count {
-                let game_time = self.countdown.calculate_game_time_for_week(start_date, week_num);
+        
+        tracing::info!("Completed first leg: {} games in {} weeks", games_created, team_count - 1);
+        
+        // Reset teams array for second leg
+        teams = (0..team_count).collect();
+        
+        // SECOND LEG: Generate N-1 rounds with home/away swapped
+        for round in 0..(team_count - 1) {
+            let week_num = (team_count - 1) + round + 1;
+            let game_time = self.countdown.calculate_game_time_for_week(start_date, week_num as i32);
+            
+            // Generate pairings for this round (with home/away swapped)
+            for i in 0..games_per_week {
+                let home_idx = if i == 0 {
+                    // First team stays fixed but now plays away
+                    teams[team_count - 1 - i]
+                } else {
+                    teams[team_count - 1 - i]
+                };
+                
+                let away_idx = if i == 0 {
+                    0
+                } else {
+                    teams[i]
+                };
+                
+                let home_team = team_ids[home_idx];
+                let away_team = team_ids[away_idx];
                 
                 tracing::debug!(
-                    "Creating return fixture: Week {} - Team {} (home) vs Team {} (away) at {}",
-                    week_num, 
-                    team_ids[j], 
-                    team_ids[i], 
-                    game_time
+                    "Second leg - Week {}: {} (home) vs {} (away)",
+                    week_num, home_team, away_team
                 );
 
                 sqlx::query!(
@@ -95,25 +136,32 @@ impl ScheduleService {
                     ) VALUES ($1, $2, $3, $4, $5, FALSE, 'scheduled')
                     "#,
                     season_id,
-                    team_ids[j],    // Home team (swapped)
-                    team_ids[i],    // Away team (swapped)
+                    home_team,
+                    away_team,
                     game_time,
-                    week_num
+                    week_num as i32
                 )
                 .execute(&mut *tx)
                 .await?;
                 
                 games_created += 1;
-                week_num += 1;
             }
+            
+            // Rotate teams for next round (except first team which stays fixed)
+            let last = teams.pop().unwrap();
+            teams.insert(1, last);
         }
+        
+        tracing::info!("Completed second leg: {} total games in {} weeks", games_created, 2 * (team_count - 1));
 
         tx.commit().await?;
 
+        let total_weeks = 2 * (team_count - 1);
         tracing::info!(
-            "Schedule generation complete: {} total games over {} weeks",
+            "Schedule generation complete: {} total games over {} weeks ({} games per week)",
             games_created,
-            week_num - 1
+            total_weeks,
+            games_per_week
         );
 
         Ok(games_created)
@@ -159,11 +207,13 @@ impl ScheduleService {
             r#"
             SELECT 
                 lg.*,
-                'Team ' || SUBSTRING(lg.home_team_id::text, 1, 8) as home_team_name,
-                'Team ' || SUBSTRING(lg.away_team_id::text, 1, 8) as away_team_name,
-                '#E74C3C' as home_team_color,
-                '#3498DB' as away_team_color
+                ht.team_name as home_team_name,
+                at.team_name as away_team_name,
+                ht.team_color as home_team_color,
+                at.team_color as away_team_color
             FROM league_games lg
+            JOIN teams ht ON lg.home_team_id = ht.id
+            JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.season_id = $1 AND lg.week_number = $2
             ORDER BY lg.scheduled_time ASC
             "#,
@@ -213,10 +263,10 @@ impl ScheduleService {
                     created_at: row.created_at,
                     updated_at: row.updated_at,
                 },
-                home_team_name: row.home_team_name.unwrap_or_default(),
-                away_team_name: row.away_team_name.unwrap_or_default(),
-                home_team_color: row.home_team_color.unwrap_or_default(),
-                away_team_color: row.away_team_color.unwrap_or_default(),
+                home_team_name: row.home_team_name,
+                away_team_name: row.away_team_name,
+                home_team_color: row.home_team_color,
+                away_team_color: row.away_team_color,
             }
         }).collect();
 
@@ -242,11 +292,13 @@ impl ScheduleService {
             r#"
             SELECT 
                 lg.*,
-                'Team ' || SUBSTRING(lg.home_team_id::text, 1, 8) as home_team_name,
-                'Team ' || SUBSTRING(lg.away_team_id::text, 1, 8) as away_team_name,
-                '#E74C3C' as home_team_color,
-                '#3498DB' as away_team_color
+                ht.team_name as home_team_name,
+                at.team_name as away_team_name,
+                ht.team_color as home_team_color,
+                at.team_color as away_team_color
             FROM league_games lg
+            JOIN teams ht ON lg.home_team_id = ht.id
+            JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.season_id = $1 
             AND lg.status = 'scheduled'
             AND lg.scheduled_time >= $2
@@ -284,10 +336,10 @@ impl ScheduleService {
                     created_at: row.created_at,
                     updated_at: row.updated_at,
                 },
-                home_team_name: row.home_team_name.unwrap_or_default(),
-                away_team_name: row.away_team_name.unwrap_or_default(),
-                home_team_color: row.home_team_color.unwrap_or_default(),
-                away_team_color: row.away_team_color.unwrap_or_default(),
+                home_team_name: row.home_team_name,
+                away_team_name: row.away_team_name,
+                home_team_color: row.home_team_color,
+                away_team_color: row.away_team_color,
             }
         }).collect())
     }
@@ -304,11 +356,13 @@ impl ScheduleService {
             r#"
             SELECT 
                 lg.*,
-                'Team ' || SUBSTRING(lg.home_team_id::text, 1, 8) as home_team_name,
-                'Team ' || SUBSTRING(lg.away_team_id::text, 1, 8) as away_team_name,
-                '#E74C3C' as home_team_color,
-                '#3498DB' as away_team_color
+                ht.team_name as home_team_name,
+                at.team_name as away_team_name,
+                ht.team_color as home_team_color,
+                at.team_color as away_team_color
             FROM league_games lg
+            JOIN teams ht ON lg.home_team_id = ht.id
+            JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.season_id = $1 
             AND lg.status = 'finished'
             ORDER BY lg.scheduled_time DESC
@@ -344,21 +398,22 @@ impl ScheduleService {
                     created_at: row.created_at,
                     updated_at: row.updated_at,
                 },
-                home_team_name: row.home_team_name.unwrap_or_default(),
-                away_team_name: row.away_team_name.unwrap_or_default(),
-                home_team_color: row.home_team_color.unwrap_or_default(),
-                away_team_color: row.away_team_color.unwrap_or_default(),
+                home_team_name: row.home_team_name,
+                away_team_name: row.away_team_name,
+                home_team_color: row.home_team_color,
+                away_team_color: row.away_team_color,
             }
         }).collect())
     }
 
     /// Calculate total number of weeks needed for a league with N teams
+    /// Formula: Total games ÷ Games per week = N*(N-1) ÷ (N/2) = 2*(N-1)
     pub fn calculate_total_weeks(&self, team_count: usize) -> i32 {
         if team_count < 2 {
             return 0;
         }
-        // Each team plays every other team twice: (n-1) * 2 weeks
-        ((team_count - 1) * 2) as i32
+        // Teams are guaranteed to be even due to validation
+        (2 * (team_count - 1)) as i32
     }
 
     /// Calculate total number of games in a complete season
@@ -406,11 +461,13 @@ impl ScheduleService {
             r#"
             SELECT 
                 lg.*,
-                'Team ' || SUBSTRING(lg.home_team_id::text, 1, 8) as home_team_name,
-                'Team ' || SUBSTRING(lg.away_team_id::text, 1, 8) as away_team_name,
-                '#E74C3C' as home_team_color,
-                '#3498DB' as away_team_color
+                ht.team_name as home_team_name,
+                at.team_name as away_team_name,
+                ht.team_color as home_team_color,
+                at.team_color as away_team_color
             FROM league_games lg
+            JOIN teams ht ON lg.home_team_id = ht.id
+            JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.season_id = $1
             ORDER BY lg.scheduled_time, lg.week_number
             "#,
@@ -443,10 +500,10 @@ impl ScheduleService {
                     created_at: row.created_at,
                     updated_at: row.updated_at,
                 },
-                home_team_name: row.home_team_name.unwrap_or_default(),
-                away_team_name: row.away_team_name.unwrap_or_default(),
-                home_team_color: row.home_team_color.unwrap_or_default(),
-                away_team_color: row.away_team_color.unwrap_or_default(),
+                home_team_name: row.home_team_name,
+                away_team_name: row.away_team_name,
+                home_team_color: row.home_team_color,
+                away_team_color: row.away_team_color,
             }
         }).collect())
     }
@@ -507,11 +564,13 @@ impl ScheduleService {
             r#"
             SELECT 
                 lg.*,
-                'Team ' || SUBSTRING(lg.home_team_id::text, 1, 8) as home_team_name,
-                'Team ' || SUBSTRING(lg.away_team_id::text, 1, 8) as away_team_name,
-                '#E74C3C' as home_team_color,
-                '#3498DB' as away_team_color
+                ht.team_name as home_team_name,
+                at.team_name as away_team_name,
+                ht.team_color as home_team_color,
+                at.team_color as away_team_color
             FROM league_games lg
+            JOIN teams ht ON lg.home_team_id = ht.id
+            JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.season_id = $1 
             AND lg.scheduled_time >= $2
             AND lg.scheduled_time <= $3
@@ -548,10 +607,10 @@ impl ScheduleService {
                     created_at: row.created_at,
                     updated_at: row.updated_at,
                 },
-                home_team_name: row.home_team_name.unwrap_or_default(),
-                away_team_name: row.away_team_name.unwrap_or_default(),
-                home_team_color: row.home_team_color.unwrap_or_default(),
-                away_team_color: row.away_team_color.unwrap_or_default(),
+                home_team_name: row.home_team_name,
+                away_team_name: row.away_team_name,
+                home_team_color: row.home_team_color,
+                away_team_color: row.away_team_color,
             }
         }).collect())
     }

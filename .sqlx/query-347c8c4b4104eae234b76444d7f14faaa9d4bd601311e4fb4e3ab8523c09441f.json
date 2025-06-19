@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT \n                lg.*,\n                'Team ' || SUBSTRING(lg.home_team_id::text, 1, 8) as home_team_name,\n                'Team ' || SUBSTRING(lg.away_team_id::text, 1, 8) as away_team_name,\n                '#E74C3C' as home_team_color,\n                '#3498DB' as away_team_color\n            FROM league_games lg\n            WHERE lg.season_id = $1 AND lg.week_number = $2\n            ORDER BY lg.scheduled_time ASC\n            ",
+  "query": "\n            SELECT \n                lg.*,\n                ht.team_name as home_team_name,\n                at.team_name as away_team_name,\n                ht.team_color as home_team_color,\n                at.team_color as away_team_color\n            FROM league_games lg\n            JOIN teams ht ON lg.home_team_id = ht.id\n            JOIN teams at ON lg.away_team_id = at.id\n            WHERE lg.season_id = $1 \n            AND lg.status = 'scheduled'\n            AND lg.scheduled_time >= $2\n            ORDER BY lg.scheduled_time ASC\n            LIMIT $3\n            ",
   "describe": {
     "columns": [
       {
@@ -71,28 +71,29 @@
       {
         "ordinal": 13,
         "name": "home_team_name",
-        "type_info": "Text"
+        "type_info": "Varchar"
       },
       {
         "ordinal": 14,
         "name": "away_team_name",
-        "type_info": "Text"
+        "type_info": "Varchar"
       },
       {
         "ordinal": 15,
         "name": "home_team_color",
-        "type_info": "Text"
+        "type_info": "Varchar"
       },
       {
         "ordinal": 16,
         "name": "away_team_color",
-        "type_info": "Text"
+        "type_info": "Varchar"
       }
     ],
     "parameters": {
       "Left": [
         "Uuid",
-        "Int4"
+        "Timestamptz",
+        "Int8"
       ]
     },
     "nullable": [
@@ -109,11 +110,11 @@
       true,
       false,
       false,
-      null,
-      null,
-      null,
-      null
+      false,
+      false,
+      false,
+      false
     ]
   },
-  "hash": "b8a20538a2a519866f8bc5ba35568f7338c477e96e0ad49e21b8c8f8ddf1a5c2"
+  "hash": "347c8c4b4104eae234b76444d7f14faaa9d4bd601311e4fb4e3ab8523c09441f"
 }

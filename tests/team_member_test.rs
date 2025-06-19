@@ -28,7 +28,7 @@ async fn test_add_user_to_team_success() {
     
     // Create 4 more users(to be added as members)
     let mut member_usernames = Vec::new();
-    for i in 1..5 {
+    for _ in 1..5 {
         let member_username = format!("team_member_{}", Uuid::new_v4());
         let member_user = json!({
             "username": member_username,
