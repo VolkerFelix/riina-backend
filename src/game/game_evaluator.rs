@@ -74,9 +74,9 @@ impl GameEvaluator {
 
         match team_stats {
             Some(team_stats) => {
-                let total_power = team_stats.total_power.unwrap_or(0);
-                let member_count = team_stats.member_count.unwrap_or(0);
-                let average_power = if member_count > 0 { total_power / member_count } else { 0 };
+                let total_power = team_stats.total_power.unwrap_or(0) as u32;
+                let member_count = team_stats.member_count.unwrap_or(0) as u32;
+                let average_power = if member_count > 0 { (total_power / member_count) as u32 } else { 0 };
                 Ok(TeamPower {
                     team_id: team_stats.team_id,
                     member_count,
@@ -98,8 +98,8 @@ impl GameEvaluator {
     fn calc_game_outcome(home_team_power: &TeamPower, away_team_power: &TeamPower) -> GameStats {
         let home_team_score = home_team_power.average_power;
         let away_team_score = away_team_power.average_power;
-        let mut home_team_result = GameResult::Draw;
-        let mut away_team_result = GameResult::Draw;
+        let home_team_result;
+        let away_team_result;
         let mut winner_team_id = None;
 
         if home_team_score > away_team_score {
@@ -132,11 +132,11 @@ impl GameEvaluator {
                 lg.id as game_id,
                 lg.home_team_id,
                 lg.away_team_id,
-                lg.game_date
+                lg.scheduled_time
             FROM league_games lg
-            WHERE lg.game_date = CURRENT_DATE
+            WHERE DATE(lg.scheduled_time) = CURRENT_DATE
             AND lg.status = 'scheduled'
-            ORDER BY lg.game_date
+            ORDER BY lg.scheduled_time
             "#
         )
         .fetch_all(pool)

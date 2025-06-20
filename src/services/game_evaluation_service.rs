@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use sqlx::PgPool;
 use uuid::Uuid;
 use chrono::Utc;
@@ -157,9 +156,9 @@ impl GameEvaluationService {
                 COUNT(*) as total_games,
                 COUNT(CASE WHEN status = 'scheduled' THEN 1 END) as scheduled_games,
                 COUNT(CASE WHEN status = 'finished' THEN 1 END) as finished_games,
-                COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled_games
+                COUNT(CASE WHEN status = 'postponed' THEN 1 END) as postponed_games
             FROM league_games 
-            WHERE DATE(game_date) = CURRENT_DATE
+            WHERE DATE(scheduled_time) = CURRENT_DATE
             "#
         )
         .fetch_one(&self.pool)
@@ -169,7 +168,7 @@ impl GameEvaluationService {
             total_games: summary.total_games.unwrap_or(0) as usize,
             scheduled_games: summary.scheduled_games.unwrap_or(0) as usize,
             finished_games: summary.finished_games.unwrap_or(0) as usize,
-            cancelled_games: summary.cancelled_games.unwrap_or(0) as usize,
+            postponed_games: summary.postponed_games.unwrap_or(0) as usize,
         })
     }
 }
@@ -179,13 +178,13 @@ pub struct GameSummary {
     pub total_games: usize,
     pub scheduled_games: usize,
     pub finished_games: usize,
-    pub cancelled_games: usize,
+    pub postponed_games: usize,
 }
 
 impl std::fmt::Display for GameSummary {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Today's Games: {} total ({} scheduled, {} finished, {} cancelled)", 
-            self.total_games, self.scheduled_games, self.finished_games, self.cancelled_games)
+        write!(f, "Today's Games: {} total ({} scheduled, {} finished, {} postponed)", 
+            self.total_games, self.scheduled_games, self.finished_games, self.postponed_games)
     }
 }
 
