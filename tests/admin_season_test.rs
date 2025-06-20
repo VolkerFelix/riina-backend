@@ -2,59 +2,12 @@ use reqwest::Client;
 use serde_json::json;
 use uuid::Uuid;
 use sqlx::PgPool;
-use bcrypt;
 use std::collections::{HashMap, HashSet};
-use chrono::{Datelike, Timelike};
+use chrono::{Datelike, Weekday, NaiveTime};
 
 mod common;
-use common::utils::spawn_app;
-use common::admin_helpers::{create_test_user_and_login, make_authenticated_request, create_teams_for_test};
-
-/// Helper function to create a test admin user
-async fn create_test_admin(pool: &PgPool) -> (String, String, Uuid) {
-    let username = format!("adminuser{}", Uuid::new_v4());
-    let email = format!("{}@example.com", username);
-    let password = "password123";
-    let password_hash = bcrypt::hash(password, bcrypt::DEFAULT_COST).expect("Failed to hash password");
-
-    // Create user
-    let user = sqlx::query!(
-        "INSERT INTO users (username, email, password_hash, role) VALUES ($1, $2, $3, 'admin') RETURNING id",
-        username,
-        email,
-        password_hash
-    )
-    .fetch_one(pool)
-    .await
-    .expect("Failed to create test admin");
-
-    (username, email, user.id)
-}
-
-/// Helper function to login and get token
-async fn login_and_get_token(client: &Client, app_address: &str, email: &str, password: &str) -> String {
-    let username = email.split('@').next().unwrap();
-    let login_request = json!({
-        "username": username,
-        "password": password
-    });
-
-    let login_response = client
-        .post(&format!("{}/login", app_address))
-        .json(&login_request)
-        .send()
-        .await
-        .expect("Failed to login");
-
-    assert_eq!(200, login_response.status().as_u16());
-
-    let login_body: serde_json::Value = login_response
-        .json()
-        .await
-        .expect("Failed to parse login response");
-
-    login_body["token"].as_str().unwrap().to_string()
-}
+use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, get_next_date};
+use common::admin_helpers::{create_admin_user_and_login, create_teams_for_test};
 
 #[actix_web::test]
 async fn admin_generate_schedule_works() {
@@ -62,127 +15,132 @@ async fn admin_generate_schedule_works() {
     let app = spawn_app().await;
     let client = reqwest::Client::new();
     
-    // Create admin users and get tokens
-    let (_username1, email1, user_id1) = create_test_admin(&app.db_pool).await;
-    let (_username2, _email2, user_id2) = create_test_admin(&app.db_pool).await;
-    let token = login_and_get_token(&client, &app.address, &email1, "password123").await;
-    let team1_name = format!("Team 1 {}", Uuid::new_v4());
-    let team2_name = format!("Team 2 {}", Uuid::new_v4());
-    // Create a league first
-    let league_response = client
-        .post(&format!("{}/admin/leagues", app.address))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&serde_json::json!({
-            "name": format!("Test League {}", Uuid::new_v4()),
-            "description": "Test League Description",
-            "max_teams": 16
-        }))
-        .send()
-        .await
-        .expect("Failed to create league");
-    
-    assert!(league_response.status().is_success());
+    // Create admin user and get token
+    let admin = create_admin_user_and_login(&app.address).await;
+
+    let league_name = format!("Test League {}", Uuid::new_v4());
+    let league_description = "Test League Description";
+    let max_teams = 16;
+
+    let league_request = json!({
+        "name": league_name,
+        "description": league_description,
+        "max_teams": max_teams
+    });
+
+    let league_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/leagues", app.address),
+        &admin.token,
+        Some(league_request),
+    ).await;
+
+    let status = league_response.status().as_u16();
+    if status != 201 {
+        let text = league_response.text().await.expect("Failed to get response text");
+        panic!("Expected 201, got {}: {}", status, text);
+    }
+
     let league: serde_json::Value = league_response.json().await.expect("Failed to parse league response");
     let league_id = league["data"]["id"].as_str().expect("League ID not found");
     
+    
     // Create two teams
-    let team1_response = client
-        .post(&format!("{}/admin/teams", app.address))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&serde_json::json!({
-            "name": team1_name,
-            "description": "Test Team 1",
-            "color": "#FF0000",
-            "formation": "circle",
-            "owner_id": user_id1
-        }))
-        .send()
-        .await
-        .expect("Failed to create team 1");
-    
-    let team2_response = client
-        .post(&format!("{}/admin/teams", app.address))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&serde_json::json!({
-            "name": team2_name,
-            "description": "Test Team 2",
-            "color": "#00FF00",
-            "formation": "line",
-            "owner_id": user_id2
-        }))
-        .send()
-        .await
-        .expect("Failed to create team 2");
-    
-    assert!(team1_response.status().is_success());
-    assert!(team2_response.status().is_success());
-    
+    let team1_name = format!("Team 1 {}", &Uuid::new_v4().to_string()[..8]);
+    let team2_name = format!("Team 2 {}", &Uuid::new_v4().to_string()[..8]);
+    let user1 = create_test_user_and_login(&app.address).await;
+    let user2 = create_test_user_and_login(&app.address).await;
+
+    let team1_request = json!({
+        "name": team1_name,
+        "description": "Test Team 1",
+        "color": "#FF0000",
+        "owner_id": user1.user_id
+    });
+
+    let team2_request = json!({
+        "name": team2_name,
+        "description": "Test Team 2",
+        "color": "#00FF00",
+        "owner_id": user2.user_id
+    });
+
+    let team1_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/teams", app.address),
+        &admin.token,
+        Some(team1_request),
+    ).await;
+
+    let team2_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/teams", app.address),
+        &admin.token,
+        Some(team2_request),
+    ).await;
+
+    assert_eq!(201, team1_response.status().as_u16());
+    assert_eq!(201, team2_response.status().as_u16());
+
     let team1: serde_json::Value = team1_response.json().await.expect("Failed to parse team 1 response");
     let team2: serde_json::Value = team2_response.json().await.expect("Failed to parse team 2 response");
     let team1_id = team1["data"]["id"].as_str().expect("Team 1 ID not found");
     let team2_id = team2["data"]["id"].as_str().expect("Team 2 ID not found");
+
+    let assign_team1_request = json!({
+        "team_id": team1_id
+    });
+
+    let assign_team2_request = json!({
+        "team_id": team2_id
+    });
     
     // Assign teams to the league first
-    let assign_team1_response = client
-        .post(&format!("{}/admin/leagues/{}/teams", app.address, league_id))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&serde_json::json!({
-            "team_id": team1_id
-        }))
-        .send()
-        .await
-        .expect("Failed to assign team 1");
-    
-    let assign_team2_response = client
-        .post(&format!("{}/admin/leagues/{}/teams", app.address, league_id))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&serde_json::json!({
-            "team_id": team2_id
-        }))
-        .send()
-        .await
-        .expect("Failed to assign team 2");
+    let assign_team1_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/leagues/{}/teams", app.address, league_id),
+        &admin.token,
+        Some(assign_team1_request),
+    ).await;
+
+    let assign_team2_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/leagues/{}/teams", app.address, league_id),
+        &admin.token,
+        Some(assign_team2_request),
+    ).await;
     
     assert!(assign_team1_response.status().is_success());
     assert!(assign_team2_response.status().is_success());
     
     // Create a season for the league
-    let season_response = client
-        .post(&format!("{}/admin/leagues/{}/seasons", app.address, league_id))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&serde_json::json!({
-            "name": "Test Season 2026",
-            "start_date": "2026-06-20T22:00:00Z"
-        }))
-        .send()
-        .await
-        .expect("Failed to create season");
+    let start_date = get_next_date(Weekday::Sat, NaiveTime::from_hms_opt(22, 0, 0).unwrap());
+
+    let season_request = json!({
+        "name": "Test Season",
+        "start_date": start_date.to_rfc3339()
+    });
+
+    let season_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/leagues/{}/seasons", app.address, league_id),
+        &admin.token,
+        Some(season_request),
+    ).await;
     
-    assert!(season_response.status().is_success());
+    if !season_response.status().is_success() {
+        let status = season_response.status();
+        let error_text = season_response.text().await.expect("Failed to get response text");
+        panic!("Expected success, got {}: {}", status, error_text);
+    }
     let season: serde_json::Value = season_response.json().await.expect("Failed to parse season response");
     let season_id = season["data"]["id"].as_str().expect("Season ID not found");
-    
-    // Generate schedule
-    let response = client
-        .post(&format!("{}/admin/leagues/{}/schedule", app.address, league_id))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&serde_json::json!({
-            "season_id": season_id,
-            "start_date": "2026-06-20T22:00:00Z"  // Saturday at 22:00 UTC (future date)
-        }))
-        .send()
-        .await
-        .expect("Failed to execute request");
-    
-    let status = response.status();
-    if !status.is_success() {
-        let text = response.text().await.expect("Failed to get response text");
-        panic!("Expected success, got {}: {}", status, text);
-    }
-    
-    let response_body: serde_json::Value = response.json().await.expect("Failed to parse response");
-    assert!(response_body["success"].as_bool().unwrap());
-    assert!(response_body["data"]["games_created"].as_i64().unwrap() > 0);
     
     // Verify games were created in the database
     let games = sqlx::query!(
@@ -205,22 +163,20 @@ async fn admin_generate_schedule_with_invalid_date_fails() {
     // Arrange
     let test_app = spawn_app().await;
     let client = Client::new();
-    let token = create_test_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address).await;
 
     // Create a league first
     let league_request = json!({
         "name": format!("Test League {}", Uuid::new_v4()),
         "description": "A test league for schedule generation",
-        "max_teams": 4,
-        "season_start_date": "2024-03-23T22:00:00Z",
-        "season_end_date": "2024-12-31T23:59:59Z"
+        "max_teams": 4
     });
 
     let create_response = make_authenticated_request(
         &client,
         reqwest::Method::POST,
         &format!("{}/admin/leagues", test_app.address),
-        &token,
+        &admin.token,
         Some(league_request),
     ).await;
 
@@ -229,7 +185,7 @@ async fn admin_generate_schedule_with_invalid_date_fails() {
     let season_id = league_id; // In the admin system, league and season are the same
 
     // Create some teams and assign them to the league  
-    let team_ids = create_teams_for_test(&test_app.address, &token, 4).await;
+    let team_ids = create_teams_for_test(&test_app.address, &admin.token, 4).await;
     
     // Assign teams to league
     for team_id in &team_ids {
@@ -241,7 +197,7 @@ async fn admin_generate_schedule_with_invalid_date_fails() {
             &client,
             reqwest::Method::POST,
             &format!("{}/admin/leagues/{}/teams", test_app.address, league_id),
-            &token,
+            &admin.token,
             Some(assign_request),
         ).await;
 
@@ -252,18 +208,21 @@ async fn admin_generate_schedule_with_invalid_date_fails() {
         }
     }
 
-    // Act - Try to generate schedule with invalid date (not a Saturday)
-    let schedule_request = json!({
-        "season_id": season_id,
-        "start_date": "2024-03-24T22:00:00Z" // Sunday at 22:00 UTC
+    // Act - Try to create season with invalid date (not a Saturday)  
+    // Find next Monday (definitely not a Saturday) at 22:00 UTC
+    let date = get_next_date(Weekday::Mon, NaiveTime::from_hms_opt(22, 0, 0).unwrap());
+    
+    let season_request = json!({
+        "name": "Test Season with Invalid Date",
+        "start_date": date.to_rfc3339()
     });
 
     let response = make_authenticated_request(
         &client,
         reqwest::Method::POST,
-        &format!("{}/admin/leagues/{}/schedule", test_app.address, league_id),
-        &token,
-        Some(schedule_request),
+        &format!("{}/admin/leagues/{}/seasons", test_app.address, league_id),
+        &admin.token,
+        Some(season_request),
     ).await;
 
     // Assert
@@ -274,8 +233,11 @@ async fn admin_generate_schedule_with_invalid_date_fails() {
         panic!("Expected error response body, got empty body");
     }
     let body: serde_json::Value = serde_json::from_str(&response_text).expect("Failed to parse response");
-    assert!(!body["success"].as_bool().unwrap_or(false));
-    assert!(body["message"].as_str().unwrap_or("").contains("Start date must be a Saturday"));
+    
+    // Check that the error message indicates Saturday validation failure
+    let error_msg = body["error"].as_str().unwrap_or("");
+    assert!(error_msg.contains("Saturday"), "Expected Saturday validation error, got: {}", error_msg);
+    assert!(error_msg.contains("22:00 UTC"), "Expected time validation error, got: {}", error_msg);
 }
 
 #[tokio::test]
@@ -283,7 +245,7 @@ async fn test_season_creation_with_proper_round_robin_schedule() {
     // Arrange
     let test_app = spawn_app().await;
     let client = Client::new();
-    let token = create_test_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address).await;
 
     // Create a league
     let league_request = json!({
@@ -296,7 +258,7 @@ async fn test_season_creation_with_proper_round_robin_schedule() {
         &client,
         reqwest::Method::POST,
         &format!("{}/admin/leagues", test_app.address),
-        &token,
+        &admin.token,
         Some(league_request),
     ).await;
 
@@ -305,7 +267,7 @@ async fn test_season_creation_with_proper_round_robin_schedule() {
     let league_id = league_body["data"]["id"].as_str().expect("League ID not found").to_string();
 
     // Create exactly 6 teams (even number)
-    let team_ids = create_teams_for_test(&test_app.address, &token, 6).await;
+    let team_ids = create_teams_for_test(&test_app.address, &admin.token, 6).await;
     
     // Assign teams to league
     for team_id in &team_ids {
@@ -317,7 +279,7 @@ async fn test_season_creation_with_proper_round_robin_schedule() {
             &client,
             reqwest::Method::POST,
             &format!("{}/admin/leagues/{}/teams", test_app.address, league_id),
-            &token,
+            &admin.token,
             Some(assign_request),
         ).await;
 
@@ -325,34 +287,18 @@ async fn test_season_creation_with_proper_round_robin_schedule() {
     }
 
     // Create season with proper schedule generation
-    let now = chrono::Utc::now();
-    let days_until_saturday = (6 - now.weekday().num_days_from_monday()) % 7;
-    let next_saturday = if days_until_saturday == 0 && now.hour() >= 22 {
-        now + chrono::Duration::days(7) // If it's Saturday after 22:00, get next Saturday
-    } else if days_until_saturday == 0 {
-        now // If it's Saturday before 22:00, use today
-    } else {
-        now + chrono::Duration::days(days_until_saturday as i64)
-    };
-    let start_date = next_saturday
-        .with_hour(22)
-        .unwrap()
-        .with_minute(0)
-        .unwrap()
-        .with_second(0)
-        .unwrap()
-        .format("%Y-%m-%dT%H:%M:%SZ");
+    let start_date = get_next_date(Weekday::Sat, NaiveTime::from_hms_opt(22, 0, 0).unwrap());
     
     let season_request = json!({
         "name": "Test Season",
-        "start_date": start_date.to_string()
+        "start_date": start_date.to_rfc3339()
     });
 
     let season_response = make_authenticated_request(
         &client,
         reqwest::Method::POST,
         &format!("{}/admin/leagues/{}/seasons", test_app.address, league_id),
-        &token,
+        &admin.token,
         Some(season_request),
     ).await;
 
@@ -365,7 +311,7 @@ async fn test_season_creation_with_proper_round_robin_schedule() {
         &client,
         reqwest::Method::GET,
         &format!("{}/league/seasons/{}/schedule", test_app.address, season_id),
-        &token,
+        &admin.token,
         None,
     ).await;
 

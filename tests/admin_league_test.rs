@@ -3,22 +3,22 @@ use serde_json::json;
 use uuid::Uuid;
 
 mod common;
-use common::utils::spawn_app;
-use common::admin_helpers::{create_test_user_and_login, make_authenticated_request, create_teams_for_test};
+use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request};
+use common::admin_helpers::{create_admin_user_and_login, create_teams_for_test};
 
 #[tokio::test]
 async fn admin_get_leagues_returns_list_of_leagues() {
     // Arrange
     let test_app = spawn_app().await;
     let client = Client::new();
-    let token = create_test_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address).await;
 
     // Act
     let response = make_authenticated_request(
         &client,
         reqwest::Method::GET,
         &format!("{}/admin/leagues", test_app.address),
-        &token,
+        &admin.token,
         None,
     ).await;
 
@@ -36,22 +36,20 @@ async fn admin_create_league_succeeds_with_valid_data() {
     // Arrange
     let test_app = spawn_app().await;
     let client = Client::new();
-    let token = create_test_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address).await;
 
     // Act
     let league_request = json!({
-        "name": format!("Test League {}", Uuid::new_v4()),
+        "name": format!("Test League {}", &Uuid::new_v4().to_string()[..8]),
         "description": "A test league for integration testing",
-        "max_teams": 16,
-        "season_start_date": "2024-01-01T00:00:00Z",
-        "season_end_date": "2024-12-31T23:59:59Z"
+        "max_teams": 16
     });
 
     let response = make_authenticated_request(
         &client,
         reqwest::Method::POST,
         &format!("{}/admin/leagues", test_app.address),
-        &token,
+        &admin.token,
         Some(league_request.clone()),
     ).await;
 
@@ -71,11 +69,11 @@ async fn admin_create_league_with_invalid_max_teams_fails() {
     // Arrange
     let test_app = spawn_app().await;
     let client = Client::new();
-    let token = create_test_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address).await;
 
     // Act - Create league with invalid max_teams (0 or negative)
     let league_request = json!({
-        "name": format!("Invalid League {}", Uuid::new_v4()),
+        "name": format!("Invalid League {}", &Uuid::new_v4().to_string()[..8]),
         "description": "A league with invalid max teams",
         "max_teams": 0
     });
@@ -84,7 +82,7 @@ async fn admin_create_league_with_invalid_max_teams_fails() {
         &client,
         reqwest::Method::POST,
         &format!("{}/admin/leagues", test_app.address),
-        &token,
+        &admin.token,
         Some(league_request),
     ).await;
 
@@ -97,22 +95,20 @@ async fn admin_get_league_by_id_returns_league_details() {
     // Arrange
     let test_app = spawn_app().await;
     let client = Client::new();
-    let token = create_test_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address).await;
 
     // Create a league first
     let league_request = json!({
-        "name": format!("League for ID Test {}", Uuid::new_v4()),
+        "name": format!("League for ID Test {}", &Uuid::new_v4().to_string()[..8]),
         "description": "Test league",
-        "max_teams": 12,
-        "season_start_date": "2024-03-01T00:00:00Z",
-        "season_end_date": "2024-11-30T23:59:59Z"
+        "max_teams": 12
     });
 
     let create_response = make_authenticated_request(
         &client,
         reqwest::Method::POST,
         &format!("{}/admin/leagues", test_app.address),
-        &token,
+        &admin.token,
         Some(league_request),
     ).await;
 
@@ -124,7 +120,7 @@ async fn admin_get_league_by_id_returns_league_details() {
         &client,
         reqwest::Method::GET,
         &format!("{}/admin/leagues/{}", test_app.address, league_id),
-        &token,
+        &admin.token,
         None,
     ).await;
 
@@ -142,22 +138,20 @@ async fn admin_update_league_modifies_league_data() {
     // Arrange
     let test_app = spawn_app().await;
     let client = Client::new();
-    let token = create_test_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address).await;
 
     // Create a league first
     let league_request = json!({
-        "name": format!("Original League {}", Uuid::new_v4()),
+        "name": format!("Original League {}", &Uuid::new_v4().to_string()[..8]),
         "description": "Original description",
-        "max_teams": 8,
-        "season_start_date": "2024-04-01T00:00:00Z",
-        "season_end_date": "2024-10-31T23:59:59Z"
+        "max_teams": 8
     });
 
     let create_response = make_authenticated_request(
         &client,
         reqwest::Method::POST,
         &format!("{}/admin/leagues", test_app.address),
-        &token,
+        &admin.token,
         Some(league_request),
     ).await;
 
@@ -166,14 +160,14 @@ async fn admin_update_league_modifies_league_data() {
 
     // Act - Update the league
     let update_request = json!({
-        "name": format!("Updated League {}", Uuid::new_v4())
+        "name": format!("Updated League {}", &Uuid::new_v4().to_string()[..8])
     });
 
     let response = make_authenticated_request(
         &client,
         reqwest::Method::PATCH,
         &format!("{}/admin/leagues/{}", test_app.address, league_id),
-        &token,
+        &admin.token,
         Some(update_request.clone()),
     ).await;
 
@@ -191,11 +185,11 @@ async fn admin_assign_teams_to_league_works() {
     // Arrange
     let test_app = spawn_app().await;
     let client = Client::new();
-    let token = create_test_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address).await;
 
     // Create a league
     let league_request = json!({
-        "name": format!("Team Assignment League {}", Uuid::new_v4()),
+        "name": format!("Team Assignment League {}", &Uuid::new_v4().to_string()[..8]),
         "description": "Testing team assignment",
         "max_teams": 4
     });
@@ -204,7 +198,7 @@ async fn admin_assign_teams_to_league_works() {
         &client,
         reqwest::Method::POST,
         &format!("{}/admin/leagues", test_app.address),
-        &token,
+        &admin.token,
         Some(league_request),
     ).await;
 
@@ -213,7 +207,7 @@ async fn admin_assign_teams_to_league_works() {
     let league_id = league_body["data"]["id"].as_str().expect("League ID not found");
 
     // Create teams
-    let team_ids = create_teams_for_test(&test_app.address, &token, 2).await;
+    let team_ids = create_teams_for_test(&test_app.address, &admin.token, 2).await;
 
     // Act - Assign teams to league
     for team_id in &team_ids {
@@ -225,7 +219,7 @@ async fn admin_assign_teams_to_league_works() {
             &client,
             reqwest::Method::POST,
             &format!("{}/admin/leagues/{}/teams", test_app.address, league_id),
-            &token,
+            &admin.token,
             Some(assign_request),
         ).await;
 

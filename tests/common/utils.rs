@@ -5,6 +5,9 @@ use std::net::TcpListener;
 use uuid::Uuid;
 use once_cell::sync::Lazy;
 use reqwest::Client;
+use base64;
+use chrono::{DateTime, Datelike, Duration, Utc, Weekday, NaiveTime};
+use reqwest::Response;
 
 use evolveme_backend::run;
 use evolveme_backend::config::settings::{get_config, DatabaseSettings, get_jwt_settings, get_redis_url};
@@ -31,6 +34,12 @@ static TRACING: Lazy<()> = Lazy::new(|| {
         init_subscriber(subscriber);
     }
 });
+
+pub struct UserRegLoginResponse {
+    pub token: String,
+    pub user_id: Uuid,
+    pub username: String,
+}
 
 pub struct TestApp{
     pub address: String,
@@ -96,9 +105,27 @@ pub async fn configure_db(config: &DatabaseSettings) -> PgPool {
     connection_pool
 }
 
-pub async fn create_test_user_and_login(app_address: &str) -> (String, String) {
+pub fn parse_user_id_from_jwt_token(token: &str) -> Uuid {
+    // Decode JWT to get user_id from the 'sub' claim
+    let token_parts: Vec<&str> = token.split('.').collect();
+    if token_parts.len() != 3 {
+        panic!("Invalid JWT token format");
+    }
+    // Decode the payload (second part)
+    let payload = base64::decode(token_parts[1])
+        .expect("Failed to decode JWT payload");
+
+    let payload_str = String::from_utf8(payload).expect("Failed to convert payload to string");
+    let payload_json: serde_json::Value = serde_json::from_str(&payload_str)
+        .expect("Failed to parse JWT payload");
+
+    Uuid::parse_str(payload_json["sub"].as_str().expect("No 'sub' claim in JWT"))
+        .expect("Failed to parse user ID from JWT")
+}
+
+pub async fn create_test_user_and_login(app_address: &str) -> UserRegLoginResponse {
     let client = Client::new();
-    let username = format!("adminuser{}", Uuid::new_v4());
+    let username = format!("test_user_{}", &Uuid::new_v4().to_string()[..8]);
     let password = "password123";
     let email = format!("{}@example.com", username);
 
@@ -129,6 +156,60 @@ pub async fn create_test_user_and_login(app_address: &str) -> (String, String) {
 
         let login_response: serde_json::Value = login_response.json().await.expect("Failed to parse login response");
         let token = login_response["token"].as_str().expect("No token in response");
+        let user_id = parse_user_id_from_jwt_token(token);
 
-        (username, token.to_string())
+        UserRegLoginResponse {
+            token: token.to_string(),
+            user_id: user_id,
+            username: username
+        }
+}
+
+/// Get the next occurrence of a specific weekday and time from now
+pub fn get_next_date(day_of_week: Weekday, time: NaiveTime) -> DateTime<Utc> {
+    let now = Utc::now();
+    
+    // Calculate days until the target weekday
+    let current_weekday = now.weekday();
+    let current_days = current_weekday.num_days_from_monday();
+    let target_days = day_of_week.num_days_from_monday();
+    
+    let days_until_target = if current_days <= target_days {
+        target_days - current_days
+    } else {
+        7 - (current_days - target_days)
+    };
+    
+    // Get target date
+    let target_date = now.date_naive() + Duration::days(days_until_target as i64);
+    let target_datetime = target_date.and_time(time);
+    let target_datetime_utc = DateTime::from_naive_utc_and_offset(target_datetime, Utc);
+    
+    // If it's already past this occurrence, get next week's occurrence
+    if now >= target_datetime_utc {
+        target_datetime_utc + Duration::weeks(1)
+    } else {
+        target_datetime_utc
+    }
+}
+
+/// Helper function to make authenticated requests
+pub async fn make_authenticated_request(
+    client: &Client,
+    method: reqwest::Method,
+    url: &str,
+    token: &str,
+    body: Option<serde_json::Value>,
+) -> Response {
+    let mut request = client.request(method, url)
+        .header("Authorization", format!("Bearer {}", token));
+
+    if let Some(json_body) = body {
+        request = request.json(&json_body);
+    }
+
+    request
+        .send()
+        .await
+        .expect("Failed to execute request")
 }

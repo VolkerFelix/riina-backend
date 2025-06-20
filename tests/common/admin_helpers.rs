@@ -1,10 +1,16 @@
-use reqwest::{Client, Response};
+use reqwest::Client;
 use serde_json::json;
 use uuid::Uuid;
 use sqlx::PgPool;
 
+use crate::common::utils::{
+    UserRegLoginResponse,
+    parse_user_id_from_jwt_token,
+    make_authenticated_request
+};
+
 /// Helper function to create an admin user and get auth token
-pub async fn create_test_user_and_login(app_address: &str) -> String {
+pub async fn create_admin_user_and_login(app_address: &str) -> UserRegLoginResponse {
     let client = Client::new();
     let username = format!("adminuser{}", Uuid::new_v4());
     let password = "password123";
@@ -61,101 +67,42 @@ pub async fn create_test_user_and_login(app_address: &str) -> String {
         .await
         .expect("Failed to parse login response");
 
-    login_body["token"].as_str().unwrap().to_string()
-}
-
-/// Helper function to create an admin user and get both auth token and user ID
-pub async fn create_test_user_and_login_with_id(app_address: &str) -> (String, String) {
-    let client = Client::new();
-    let username = format!("adminuser{}", Uuid::new_v4());
-    let password = "password123";
-    let email = format!("{}@example.com", username);
-
-    // Register user
-    let user_request = json!({
-        "username": username,
-        "password": password,
-        "email": email
-    });
-
-    let register_response = client
-        .post(&format!("{}/register_user", app_address))
-        .json(&user_request)
-        .send()
-        .await
-        .expect("Failed to register user");
-
-    assert_eq!(200, register_response.status().as_u16());
-
-    // Get user ID from database
-    let database_url = std::env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set");
-    let pool = PgPool::connect(&database_url)
-        .await
-        .expect("Failed to connect to database");
-    
-    let user_record = sqlx::query!(
-        "SELECT id FROM users WHERE username = $1",
-        username
-    )
-    .fetch_one(&pool)
-    .await
-    .expect("Failed to get user ID");
-    
-    let user_id = user_record.id.to_string();
-
-    // Promote user to admin role
-    sqlx::query!(
-        "UPDATE users SET role = 'admin' WHERE username = $1",
-        username
-    )
-    .execute(&pool)
-    .await
-    .expect("Failed to promote user to admin");
-
-    // Login and get token
-    let login_request = json!({
-        "username": username,
-        "password": password
-    });
-
-    let login_response = client
-        .post(&format!("{}/login", app_address))
-        .json(&login_request)
-        .send()
-        .await
-        .expect("Failed to login");
-
-    assert_eq!(200, login_response.status().as_u16());
-
-    let login_body: serde_json::Value = login_response
-        .json()
-        .await
-        .expect("Failed to parse login response");
-
     let token = login_body["token"].as_str().unwrap().to_string();
-    (token, user_id)
+    let user_id = parse_user_id_from_jwt_token(&token);
+
+    UserRegLoginResponse {
+        token,
+        user_id,
+        username
+    }
 }
 
-/// Helper function to make authenticated requests
-pub async fn make_authenticated_request(
-    client: &Client,
-    method: reqwest::Method,
-    url: &str,
+/// Helper function to create a league season
+pub async fn create_league_season(
+    app_address: &str,
     token: &str,
-    body: Option<serde_json::Value>,
-) -> Response {
-    let mut request = client.request(method, url)
-        .header("Authorization", format!("Bearer {}", token));
+    league_id: &str,
+    season_name: &str,
+    start_date: &str,
+) -> String {
+    let client = Client::new();
+    
+    let season_request = json!({
+        "name": season_name,
+        "start_date": start_date
+    });
 
-    if let Some(json_body) = body {
-        request = request.json(&json_body);
-    }
+    let season_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/leagues/{}/seasons", app_address, league_id),
+        token,
+        Some(season_request),
+    ).await;
 
-    request
-        .send()
-        .await
-        .expect("Failed to execute request")
+    assert_eq!(season_response.status(), 201, "Failed to create season");
+    let season_data: serde_json::Value = season_response.json().await.expect("Failed to parse season response");
+    season_data["data"]["id"].as_str().expect("Season ID not found").to_string()
 }
 
 /// Helper function to create teams for testing
@@ -217,7 +164,7 @@ pub async fn create_teams_for_test(app_address: &str, token: &str, count: usize)
             reqwest::Method::POST,
             &format!("{}/admin/teams", app_address),
             token,
-            Some(team_request),
+            Some(team_request)
         ).await;
 
         assert_eq!(201, response.status().as_u16());

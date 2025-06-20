@@ -6,13 +6,15 @@ use uuid::Uuid;
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login};
 
+use crate::common::utils::make_authenticated_request;
+
 #[tokio::test]
 async fn test_team_registration_flow() {
     // Set up the test app
     let test_app = spawn_app().await;
     let client = Client::new();
 
-    let (username, token) = create_test_user_and_login(&test_app.address).await;
+    let user = create_test_user_and_login(&test_app.address).await;
 
     let team_name = format!("Test Team {}", Uuid::new_v4().to_string()[..8].to_string());
     let team_request = json!({
@@ -21,13 +23,13 @@ async fn test_team_registration_flow() {
         "team_color": "#FF6B35"
     });
 
-    let team_response = client
-        .post(&format!("{}/league/teams/register", &test_app.address))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&team_request)
-        .send()
-        .await
-        .expect("Failed to register team");
+    let team_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/league/teams/register", &test_app.address),
+        &user.token,
+        Some(team_request),
+    ).await;
 
     assert!(team_response.status().is_success(), "Team registration should succeed");
     
@@ -56,12 +58,13 @@ async fn test_team_registration_flow() {
     println!("✅ Team data verified in database");
 
     // Get team information via API
-    let get_team_response = client
-        .get(&format!("{}/league/teams/{}", &test_app.address, team_id))
-        .header("Authorization", format!("Bearer {}", token))
-        .send()
-        .await
-        .expect("Failed to get team info");
+    let get_team_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/teams/{}", &test_app.address, team_id),
+        &user.token,
+        None,
+    ).await;
 
     assert!(get_team_response.status().is_success(), "Get team info should succeed");
     
@@ -70,7 +73,7 @@ async fn test_team_registration_flow() {
 
     assert_eq!(team_info_json["success"], true);
     assert_eq!(team_info_json["data"]["team_name"], team_name);
-    assert_eq!(team_info_json["data"]["owner_username"], username);
+    assert_eq!(team_info_json["data"]["owner_username"], user.username);
 
     println!("✅ Team information retrieved successfully");
 
@@ -80,13 +83,13 @@ async fn test_team_registration_flow() {
         "team_color": "#00FF00"
     });
 
-    let update_response = client
-        .put(&format!("{}/league/teams/{}", &test_app.address, team_id))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&update_request)
-        .send()
-        .await
-        .expect("Failed to update team");
+    let update_response = make_authenticated_request(
+        &client,
+        reqwest::Method::PUT,
+        &format!("{}/league/teams/{}", &test_app.address, team_id),
+        &user.token,
+        Some(update_request),
+    ).await;
 
     assert!(update_response.status().is_success(), "Team update should succeed");
 
@@ -111,25 +114,26 @@ async fn test_team_registration_flow() {
         "team_color": "#0000FF"
     });
 
-    let duplicate_response = client
-        .post(&format!("{}/league/teams/register", &test_app.address))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&duplicate_team_request)
-        .send()
-        .await
-        .expect("Failed to attempt duplicate team registration");
+    let duplicate_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/league/teams/register", &test_app.address),
+        &user.token,
+        Some(duplicate_team_request),
+    ).await;
 
     assert_eq!(duplicate_response.status(), 409, "Duplicate team registration should fail with 409 Conflict");
 
     println!("✅ Duplicate team registration properly rejected");
 
     // Get all teams
-    let all_teams_response = client
-        .get(&format!("{}/league/teams?limit=10", &test_app.address))
-        .header("Authorization", format!("Bearer {}", token))
-        .send()
-        .await
-        .expect("Failed to get all teams");
+    let all_teams_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/teams?limit=10", &test_app.address),
+        &user.token,
+        None,
+    ).await;
 
     assert!(all_teams_response.status().is_success(), "Get all teams should succeed");
     
@@ -148,7 +152,7 @@ async fn test_team_registration_flow() {
         .find(|team| team["team_name"] == team_name)
         .expect("Our team should be in the list");
 
-    assert_eq!(our_team["owner_username"], username);
+    assert_eq!(our_team["owner_username"], user.username);
 
     println!("✅ All teams retrieved successfully");
 
@@ -168,7 +172,7 @@ async fn test_team_registration_validation() {
     let test_app = spawn_app().await;
     let client = Client::new();
 
-    let (_username, token) = create_test_user_and_login(&test_app.address).await;
+    let user = create_test_user_and_login(&test_app.address).await;
 
     // Test various validation scenarios
     // Test 1: Empty team name
@@ -177,13 +181,13 @@ async fn test_team_registration_validation() {
         "team_description": "Valid description"
     });
 
-    let response = client
-        .post(&format!("{}/league/teams/register", &test_app.address))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&empty_name_request)
-        .send()
-        .await
-        .expect("Failed to send empty name request");
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/league/teams/register", &test_app.address),
+        &user.token,
+        Some(empty_name_request),
+    ).await;
 
     assert_eq!(response.status(), 400, "Empty team name should be rejected");
 
@@ -193,13 +197,13 @@ async fn test_team_registration_validation() {
         "team_description": "Valid description"
     });
 
-    let response = client
-        .post(&format!("{}/league/teams/register", &test_app.address))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&short_name_request)
-        .send()
-        .await
-        .expect("Failed to send short name request");
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/league/teams/register", &test_app.address),
+        &user.token,
+        Some(short_name_request),
+    ).await;
 
     assert_eq!(response.status(), 400, "Short team name should be rejected");
 
@@ -209,13 +213,13 @@ async fn test_team_registration_validation() {
         "team_description": "Valid description"
     });
 
-    let response = client
-        .post(&format!("{}/league/teams/register", &test_app.address))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&long_name_request)
-        .send()
-        .await
-        .expect("Failed to send long name request");
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/league/teams/register", &test_app.address),
+        &user.token,
+        Some(long_name_request),
+    ).await;
 
     assert_eq!(response.status(), 400, "Long team name should be rejected");
 
@@ -225,13 +229,13 @@ async fn test_team_registration_validation() {
         "team_color": "not-a-color"
     });
 
-    let response = client
-        .post(&format!("{}/league/teams/register", &test_app.address))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&invalid_color_request)
-        .send()
-        .await
-        .expect("Failed to send invalid color request");
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/league/teams/register", &test_app.address),
+        &user.token,
+        Some(invalid_color_request),
+    ).await;
 
     assert_eq!(response.status(), 400, "Invalid team color should be rejected");
 
@@ -243,13 +247,13 @@ async fn test_team_registration_validation() {
         "team_color": "#32CD32"
     });
 
-    let response = client
-        .post(&format!("{}/league/teams/register", &test_app.address))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&valid_request)
-        .send()
-        .await
-        .expect("Failed to send valid request");
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/league/teams/register", &test_app.address),
+        &user.token,
+        Some(valid_request),
+    ).await;
 
     assert!(response.status().is_success(), "Valid team registration should succeed");
 
@@ -262,8 +266,8 @@ async fn test_team_name_uniqueness() {
     let client = Client::new();
 
     // Create two users
-    let (_username1, token1) = create_test_user_and_login(&test_app.address).await;
-    let (_username2, token2) = create_test_user_and_login(&test_app.address).await;
+    let user1 = create_test_user_and_login(&test_app.address).await;
+    let user2 = create_test_user_and_login(&test_app.address).await;
 
     // User 1 registers a team
     let unique_team_name = format!("Team_{}", Uuid::new_v4().to_string()[..8].to_string());
@@ -273,13 +277,13 @@ async fn test_team_name_uniqueness() {
         "team_color": "#FF0000"
     });
 
-    let response1 = client
-        .post(&format!("{}/league/teams/register", &test_app.address))
-        .header("Authorization", format!("Bearer {}", token1))
-        .json(&team_request)
-        .send()
-        .await
-        .expect("Failed to register team for user 1");
+    let response1 = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/league/teams/register", &test_app.address),
+        &user1.token,
+        Some(team_request),
+    ).await;
 
     assert!(response1.status().is_success(), "First team registration should succeed");
 
@@ -290,13 +294,13 @@ async fn test_team_name_uniqueness() {
         "team_color": "#0000FF"
     });
 
-    let response2 = client
-        .post(&format!("{}/league/teams/register", &test_app.address))
-        .header("Authorization", format!("Bearer {}", token2))
-        .json(&duplicate_team_request)
-        .send()
-        .await
-        .expect("Failed to attempt duplicate team registration");
+    let response2 = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/league/teams/register", &test_app.address),
+        &user2.token,
+        Some(duplicate_team_request),
+    ).await;
 
     assert_eq!(response2.status(), 409, "Duplicate team name should be rejected with 409 Conflict");
 
@@ -308,13 +312,13 @@ async fn test_team_name_uniqueness() {
         "team_color": "#00FF00"
     });
 
-    let response3 = client
-        .post(&format!("{}/league/teams/register", &test_app.address))
-        .header("Authorization", format!("Bearer {}", token2))
-        .json(&different_team_request)
-        .send()
-        .await
-        .expect("Failed to register different team");
+    let response3 = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/league/teams/register", &test_app.address),
+        &user2.token,
+        Some(different_team_request),
+    ).await;
 
     assert!(response3.status().is_success(), "Different team name should succeed");
 

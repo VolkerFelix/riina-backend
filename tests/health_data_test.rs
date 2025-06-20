@@ -1,18 +1,19 @@
 use reqwest::Client;
 use serde_json::json;
 use chrono::{Utc, Duration};
-use uuid::Uuid;
 use sqlx::Row;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login};
+
+use crate::common::utils::make_authenticated_request;
 
 #[tokio::test]
 async fn upload_health_data_working() {
     let test_app = spawn_app().await;
     let client = Client::new();
 
-    let (_username, token) = create_test_user_and_login(&test_app.address).await;
+    let test_user = create_test_user_and_login(&test_app.address).await;
 
     // Prepare health data with multiple heart rate readings simulating a workout
     let base_time = Utc::now();
@@ -63,13 +64,13 @@ async fn upload_health_data_working() {
     });
 
     // Upload health data
-    let response = client
-        .post(&format!("{}/health/upload_health", &test_app.address))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&health_data)
-        .send()
-        .await
-        .expect("Failed to execute request.");
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/upload_health", &test_app.address),
+        &test_user.token,
+        Some(health_data),
+    ).await;
 
     let status = response.status();
     if !status.is_success() {
