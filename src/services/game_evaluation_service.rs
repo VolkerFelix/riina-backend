@@ -1,6 +1,7 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 use chrono::Utc;
+use std::collections::HashMap;
 
 use crate::game::game_evaluator::{GameEvaluator, GameStats};
 
@@ -13,6 +14,7 @@ pub struct EvaluationResult {
     pub games_evaluated: usize,
     pub games_updated: usize,
     pub errors: Vec<String>,
+    pub game_results: HashMap<Uuid, GameStats>,
 }
 
 impl GameEvaluationService {
@@ -28,6 +30,7 @@ impl GameEvaluationService {
             games_evaluated: 0,
             games_updated: 0,
             errors: Vec::new(),
+            game_results: HashMap::new(),
         };
 
         // Get all game results
@@ -54,6 +57,7 @@ impl GameEvaluationService {
                 Ok(_) => {
                     result.games_updated += 1;
                     tracing::info!("✅ Successfully updated game {} result", game_id);
+                    result.game_results.insert(game_id, game_stats.clone());
                 }
                 Err(e) => {
                     let error_msg = format!("Failed to save game {} in database: {}", game_id, e);

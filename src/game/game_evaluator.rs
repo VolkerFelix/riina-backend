@@ -2,7 +2,7 @@ use std::fmt::Display;
 use uuid::Uuid;
 use sqlx::PgPool;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum GameResult {
     Win,
     Loss,
@@ -15,6 +15,7 @@ impl Display for GameResult {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct GameStats {
     pub home_team_score: u32,
     pub away_team_score: u32,
