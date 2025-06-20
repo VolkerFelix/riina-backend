@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO user_avatars (user_id, stamina, strength, avatar_style)\n        VALUES ($1, 0, 0, 'warrior')\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d1711296f5cf3ca29280c4f4034caa7a98a082901ae68fc49bd4dae134aa62f6"
+}
