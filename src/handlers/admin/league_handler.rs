@@ -2,7 +2,7 @@ use actix_web::{web, HttpResponse, Result};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc, Datelike, Timelike};
+use chrono::{DateTime, Utc};
 
 use crate::handlers::admin::user_handler::ApiResponse;
 
@@ -572,73 +572,6 @@ pub async fn get_league_teams(
     Ok(HttpResponse::Ok().json(response))
 }
 
-pub async fn generate_schedule(
-    pool: web::Data<PgPool>,
-    body: web::Json<GenerateScheduleRequest>,
-) -> Result<HttpResponse> {
-    let _league_service = crate::league::league::LeagueService::new(pool.get_ref().clone());
-    
-    // Validate that start date is a Saturday at 22:00 UTC
-    let start_date = body.start_date;
-    if start_date.weekday().num_days_from_monday() != 5 || start_date.hour() != 22 || start_date.minute() != 0 {
-        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-            "success": false,
-            "message": "Start date must be a Saturday at 22:00 UTC"
-        })));
-    }
-    
-    // Get the teams for this season from league_teams
-    let teams = sqlx::query!(
-        r#"
-        SELECT t.id as team_id 
-        FROM teams t
-        JOIN league_teams lt ON t.id = lt.team_id
-        WHERE lt.season_id = $1
-        "#,
-        body.season_id
-    )
-    .fetch_all(pool.get_ref())
-    .await
-    .map_err(|e| {
-        eprintln!("Database error getting teams: {}", e);
-        actix_web::error::ErrorInternalServerError("Database error")
-    })?;
-
-    let team_ids: Vec<Uuid> = teams.into_iter().map(|t| t.team_id).collect();
-
-    if team_ids.is_empty() {
-        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-            "success": false,
-            "message": "No teams found in this league season"
-        })));
-    }
-
-    // Generate schedule for the existing season
-    let schedule_service = crate::league::schedule::ScheduleService::new(pool.get_ref().clone());
-    
-    match schedule_service.generate_schedule(body.season_id, &team_ids, body.start_date).await {
-        Ok(games_created) => {
-            let response = ApiResponse {
-                data: serde_json::json!({
-                    "games_created": games_created,
-                    "season_id": body.season_id,
-                    "start_date": body.start_date
-                }),
-                success: true,
-                message: Some(format!("Successfully generated schedule with {} games", games_created)),
-            };
-            Ok(HttpResponse::Ok().json(response))
-        }
-        Err(e) => {
-            tracing::error!("Failed to generate schedule: {}", e);
-            Ok(HttpResponse::BadRequest().json(serde_json::json!({
-                "success": false,
-                "message": format!("Failed to generate schedule: {}", e)
-            })))
-        }
-    }
-}
-
 // GET /admin/leagues/{league_id}/seasons - Get all seasons for a league
 #[tracing::instrument(
     name = "Get league seasons",
@@ -715,6 +648,14 @@ pub async fn create_league_season(
     if body.start_date <= now {
         return Ok(HttpResponse::BadRequest().json(serde_json::json!({
             "error": "Season start date must be in the future"
+        })));
+    }
+
+    // Validate start date is a Saturday at 22:00 UTC (schedule requirement)
+    let countdown_service = crate::league::countdown::CountdownService::new();
+    if !countdown_service.is_valid_game_time(body.start_date) {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Start date must be a Saturday at 22:00 UTC"
         })));
     }
 
@@ -839,7 +780,7 @@ pub async fn create_league_season(
                 actix_web::error::ErrorInternalServerError("Database error")
             })?;
 
-            // Generate games automatically after season creation
+            // Generate games automatically after season creation (date already validated)
             let team_ids_result = sqlx::query!(
                 r#"
                 SELECT t.id as team_id 
@@ -866,7 +807,8 @@ pub async fn create_league_season(
                         }
                         Err(e) => {
                             tracing::error!("Failed to automatically generate schedule for season {}: {}", season_id, e);
-                            // Don't fail the season creation if schedule generation fails
+                            // Schedule generation should not fail since we pre-validated the date
+                            // If it does fail, log but don't fail the season creation
                         }
                     }
                 }

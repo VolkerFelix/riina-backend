@@ -2,8 +2,9 @@ use reqwest::Client;
 use uuid::Uuid;
 
 mod common;
-use common::utils::spawn_app;
-use common::admin_helpers::{create_test_user_and_login, make_authenticated_request};
+use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request};
+
+use crate::common::admin_helpers::create_admin_user_and_login;
 
 #[tokio::test]
 async fn admin_routes_require_authentication() {
@@ -59,14 +60,14 @@ async fn admin_routes_return_proper_error_formats() {
     // Arrange
     let test_app = spawn_app().await;
     let client = Client::new();
-    let token = create_test_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address).await;
 
     // Act - Try to get non-existent team
     let response = make_authenticated_request(
         &client,
         reqwest::Method::GET,
         &format!("{}/admin/teams/{}", test_app.address, Uuid::new_v4()),
-        &token,
+        &admin.token,
         None,
     ).await;
 

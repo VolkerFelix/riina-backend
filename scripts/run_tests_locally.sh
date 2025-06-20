@@ -16,7 +16,7 @@ else
     exit 1
 fi
 
-export APP_ENVIRONMENT=${APP_ENVIRONMENT:-test}
+export APP_ENVIRONMENT="test"
 # PostgreSQL Configuration
 export POSTGRES__DATABASE__USER=${POSTGRES__DATABASE__USER:-postgres}
 export POSTGRES__DATABASE__PASSWORD=${POSTGRES__DATABASE__PASSWORD:-postgres}
@@ -30,18 +30,77 @@ export REDIS__REDIS__PASSWORD=${REDIS__REDIS__PASSWORD:-redis}
 DB_HOST="localhost"
 DB_PORT=5432
 DB_USER=${POSTGRES__DATABASE__USER}
-DB_NAME="evolveme_db"
+DB_NAME="evolveme_db_test"
 DB_PASSWORD=${POSTGRES__DATABASE__PASSWORD}
 
 # Explicitly set DATABASE_URL for SQLx
 export DATABASE_URL="postgres://$DB_USER:$DB_PASSWORD@$DB_HOST:$DB_PORT/$DB_NAME"
 
-# Function to check if PostgreSQL is running
+# Check if PostgreSQL container is already running
 check_postgres() {
-    if ! pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" > /dev/null 2>&1; then
-        echo -e "${RED}Error: PostgreSQL is not running or not accessible.${NC}"
-        echo -e "${YELLOW}Please ensure PostgreSQL is running on $DB_HOST:$DB_PORT${NC}"
-        exit 1
+    if [ "$(docker ps -q -f name=evolveme-postgres-test)" ]; then
+        echo -e "${GREEN}PostgreSQL container is already running.${NC}"
+    else
+        echo -e "${RED}PostgreSQL container is not running.${NC}"
+        spin_up_postgres
+    fi
+}
+
+# Check if Redis container is already running
+check_redis() {
+    if [ "$(docker ps -q -f name=evolveme-redis-test)" ]; then
+        echo -e "${GREEN}Redis container is already running.${NC}"
+    else
+        echo -e "${RED}Redis container is not running.${NC}"
+        spin_up_redis
+    fi
+}
+
+# Spin up postgres container
+spin_up_postgres() {
+    echo -e "${YELLOW}Spinning up PostgreSQL container for tests...${NC}"
+    docker run --name evolveme-postgres-test \
+        -e POSTGRES_USER=${POSTGRES__DATABASE__USER} \
+        -e POSTGRES_PASSWORD=${POSTGRES__DATABASE__PASSWORD} \
+        -e POSTGRES_DB=${DB_NAME} \
+        -v evolveme-postgres-test-data:/var/lib/postgresql/data \
+        -p ${DB_PORT}:5432 \
+        -d postgres
+}
+
+# Spin up redis container
+spin_up_redis() {
+    echo -e "${YELLOW}Spinning up Redis container for tests...${NC}"
+    docker run --name evolveme-redis-test \
+        -e REDIS_PASSWORD=${REDIS__REDIS__PASSWORD} \
+        -v evolveme-redis-test-data:/data \
+        -p 6379:6379 \
+        -d redis \
+        redis-server --requirepass ${REDIS__REDIS__PASSWORD}
+}
+
+# Clean up postgres and redis containers
+clean_up_postgres_and_redis() {
+    echo -e "${YELLOW}Cleaning up PostgreSQL and Redis containers...${NC}"
+    
+    # Stop and remove containers if they exist
+    if [ "$(docker ps -aq -f name=evolveme-postgres-test)" ]; then
+        docker stop evolveme-postgres-test 2>/dev/null || true
+        docker rm evolveme-postgres-test 2>/dev/null || true
+    fi
+    
+    if [ "$(docker ps -aq -f name=evolveme-redis-test)" ]; then
+        docker stop evolveme-redis-test 2>/dev/null || true
+        docker rm evolveme-redis-test 2>/dev/null || true
+    fi
+    
+    # Remove volumes if they exist
+    if [ "$(docker volume ls -q -f name=evolveme-postgres-test-data)" ]; then
+        docker volume rm evolveme-postgres-test-data 2>/dev/null || true
+    fi
+    
+    if [ "$(docker volume ls -q -f name=evolveme-redis-test-data)" ]; then
+        docker volume rm evolveme-redis-test-data 2>/dev/null || true
     fi
 }
 
@@ -101,11 +160,13 @@ main() {
 
     # Execute steps
     check_postgres
+    check_redis
     run_migrations
     prepare_sqlx
     run_tests
+    clean_up_postgres_and_redis
 
-    echo -e "${GREEN}Test run completed successfully!${NC}"
+    echo -e "${GREEN}Test run and cleanup completed successfully!${NC}"
 }
 
 # Help function

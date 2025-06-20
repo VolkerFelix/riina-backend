@@ -3,63 +3,30 @@ use serde_json::json;
 use uuid::Uuid;
 
 mod common;
-use common::utils::spawn_app;
+use common::utils::{spawn_app, create_test_user_and_login};
+
+use crate::common::utils::make_authenticated_request;
 
 #[tokio::test]
 async fn test_get_league_users_with_stats_success() {
     let test_app = spawn_app().await;
     let client = Client::new();
 
-    // Step 1: Create multiple users with different stats
+    // Create multiple users with different stats
     let mut users = Vec::new();
-    let password = "password123";
 
-    for i in 1..=6 {
-        let username = format!("user_{}_{}_{}", i, Uuid::new_v4().to_string()[..8].to_string(), chrono::Utc::now().timestamp_millis());
-        let email = format!("{}@example.com", username);
-
-        let user_request = json!({
-            "username": username,
-            "password": password,
-            "email": email
-        });
-
-        let response = client
-            .post(&format!("{}/register_user", &test_app.address))
-            .json(&user_request)
-            .send()
-            .await
-            .expect("Failed to register user");
-
-        assert!(response.status().is_success(), "User registration should succeed");
-
-        // Login to get token
-        let login_request = json!({
-            "username": username,
-            "password": password
-        });
-
-        let login_response = client
-            .post(&format!("{}/login", &test_app.address))
-            .json(&login_request)
-            .send()
-            .await
-            .expect("Failed to login");
-
-        let login_json = login_response.json::<serde_json::Value>().await
-            .expect("Failed to parse login response");
-        let token = login_json["token"].as_str().expect("Token not found").to_string();
-
-        users.push((username, token));
+    for _ in 1..=6 {
+        let user = create_test_user_and_login(&test_app.address).await;
+        users.push(user);
     }
 
     println!("✅ Created {} users", users.len());
 
     // Step 2: Create user avatars with different stats directly in database
-    for (i, (username, _)) in users.iter().enumerate() {
+    for (i, user) in users.iter().enumerate() {
         let user_record = sqlx::query!(
             "SELECT id FROM users WHERE username = $1",
-            username
+            user.username
         )
         .fetch_one(&test_app.db_pool)
         .await
@@ -107,13 +74,13 @@ async fn test_get_league_users_with_stats_success() {
         "team_color": "#FF0000"
     });
 
-    let team1_response = client
-        .post(&format!("{}/league/teams/register", &test_app.address))
-        .header("Authorization", format!("Bearer {}", team1_owner.1))
-        .json(&team1_request)
-        .send()
-        .await
-        .expect("Failed to register team 1");
+    let team1_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/league/teams/register", &test_app.address),
+        &team1_owner.token,
+        Some(team1_request),
+    ).await;
 
     assert!(team1_response.status().is_success(), "Team 1 registration should succeed");
     let team1_json = team1_response.json::<serde_json::Value>().await
@@ -128,13 +95,13 @@ async fn test_get_league_users_with_stats_success() {
         "team_color": "#0000FF"
     });
 
-    let team2_response = client
-        .post(&format!("{}/league/teams/register", &test_app.address))
-        .header("Authorization", format!("Bearer {}", team2_owner.1))
-        .json(&team2_request)
-        .send()
-        .await
-        .expect("Failed to register team 2");
+    let team2_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/league/teams/register", &test_app.address),
+        &team2_owner.token,
+        Some(team2_request),
+    ).await;
 
     assert!(team2_response.status().is_success(), "Team 2 registration should succeed");
     let team2_json = team2_response.json::<serde_json::Value>().await
@@ -148,23 +115,23 @@ async fn test_get_league_users_with_stats_success() {
     let add_members_team1 = json!({
         "member_request": [
             {
-                "username": users[1].0,
+                "username": users[1].username,
                 "role": "member"
             },
             {
-                "username": users[2].0,
+                "username": users[2].username,
                 "role": "admin"
             }
         ]
     });
 
-    let add_response1 = client
-        .post(&format!("{}/league/teams/{}/members", &test_app.address, team1_id))
-        .header("Authorization", format!("Bearer {}", team1_owner.1))
-        .json(&add_members_team1)
-        .send()
-        .await
-        .expect("Failed to add members to team 1");
+    let add_response1 = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/league/teams/{}/members", &test_app.address, team1_id),
+        &team1_owner.token,
+        Some(add_members_team1),
+    ).await;
 
     assert!(add_response1.status().is_success(), "Adding members to team 1 should succeed");
 
@@ -172,35 +139,36 @@ async fn test_get_league_users_with_stats_success() {
     let add_members_team2 = json!({
         "member_request": [
             {
-                "username": users[4].0,
+                "username": users[4].username,
                 "role": "member"
             },
             {
-                "username": users[5].0,
+                "username": users[5].username,
                 "role": "member"
             }
         ]
     });
 
-    let add_response2 = client
-        .post(&format!("{}/league/teams/{}/members", &test_app.address, team2_id))
-        .header("Authorization", format!("Bearer {}", team2_owner.1))
-        .json(&add_members_team2)
-        .send()
-        .await
-        .expect("Failed to add members to team 2");
+    let add_response2 = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/league/teams/{}/members", &test_app.address, team2_id),
+        &team2_owner.token,
+        Some(add_members_team2),
+    ).await;
 
     assert!(add_response2.status().is_success(), "Adding members to team 2 should succeed");
 
     println!("✅ Added members to both teams");
 
     // Step 5: Test the league users stats endpoint
-    let stats_response = client
-        .get(&format!("{}/league/users/stats", &test_app.address))
-        .header("Authorization", format!("Bearer {}", team1_owner.1))
-        .send()
-        .await
-        .expect("Failed to get league users stats");
+    let stats_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/users/stats", &test_app.address),
+        &team1_owner.token,
+        None,
+    ).await;
 
     assert!(stats_response.status().is_success(), "League users stats request should succeed");
 
@@ -220,7 +188,7 @@ async fn test_get_league_users_with_stats_success() {
     assert!(league_users.len() >= 6, "Data array should include at least our 6 team members, got {}", league_users.len());
 
     // Step 7: Validate data content for our specific test users
-    let our_test_usernames: Vec<&String> = users.iter().map(|(username, _)| username).collect();
+    let our_test_usernames: Vec<&String> = users.iter().map(|user| &user.username).collect();
     let our_test_users: Vec<&serde_json::Value> = league_users.iter()
         .filter(|user| {
             if let Some(username) = user["username"].as_str() {
@@ -282,25 +250,25 @@ async fn test_get_league_users_with_stats_success() {
 
     // Check if owner is properly identified
     let team1_owner_data = team1_members.iter()
-        .find(|user| user["username"] == users[0].0)
+        .find(|user| user["username"] == users[0].username)
         .expect("Team 1 owner should be present");
     assert_eq!(team1_owner_data["team_role"], "owner", "First user should be team 1 owner");
 
     let team2_owner_data = team2_members.iter()
-        .find(|user| user["username"] == users[3].0)
+        .find(|user| user["username"] == users[3].username)
         .expect("Team 2 owner should be present");
     assert_eq!(team2_owner_data["team_role"], "owner", "Fourth user should be team 2 owner");
 
     // Check admin role
     let team1_admin = team1_members.iter()
-        .find(|user| user["username"] == users[2].0)
+        .find(|user| user["username"] == users[2].username)
         .expect("Team 1 admin should be present");
     assert_eq!(team1_admin["team_role"], "admin", "Third user should be team 1 admin");
 
     // Step 9: Validate stats progression (higher index should have higher stats)
     let mut total_stats_by_index = Vec::new();
-    for (i, (username, _)) in users.iter().enumerate() {
-        if let Some(user_data) = league_users.iter().find(|u| u["username"] == *username) {
+    for (i, user) in users.iter().enumerate() {
+        if let Some(user_data) = league_users.iter().find(|u| u["username"] == user.username) {
             total_stats_by_index.push((i, user_data["total_stats"].as_i64().unwrap()));
         }
     }
@@ -354,44 +322,12 @@ async fn test_league_users_stats_empty_response() {
     let client = Client::new();
 
     // Create a user but don't add them to any team
-    let username = format!("solo_user_{}", Uuid::new_v4());
-    let password = "password123";
-    let email = format!("{}@example.com", username);
-
-    let user_request = json!({
-        "username": username,
-        "password": password,
-        "email": email
-    });
-
-    client
-        .post(&format!("{}/register_user", &test_app.address))
-        .json(&user_request)
-        .send()
-        .await
-        .expect("Failed to register user");
-
-    // Login to get token
-    let login_request = json!({
-        "username": username,
-        "password": password
-    });
-
-    let login_response = client
-        .post(&format!("{}/login", &test_app.address))
-        .json(&login_request)
-        .send()
-        .await
-        .expect("Failed to login");
-
-    let login_json = login_response.json::<serde_json::Value>().await
-        .expect("Failed to parse login response");
-    let token = login_json["token"].as_str().expect("Token not found");
+    let solo_user = create_test_user_and_login(&test_app.address).await;
 
     // Test the endpoint with a user who is not in any team
     let stats_response = client
         .get(&format!("{}/league/users/stats", &test_app.address))
-        .header("Authorization", format!("Bearer {}", token))
+        .header("Authorization", format!("Bearer {}", solo_user.token))
         .send()
         .await
         .expect("Failed to get league users stats");
@@ -408,7 +344,7 @@ async fn test_league_users_stats_empty_response() {
     // since they are not part of any team
     let league_users = stats_json["data"].as_array().unwrap();
     let solo_user_found = league_users.iter()
-        .any(|user| user["username"].as_str() == Some(&username));
+        .any(|user| user["username"].as_str() == Some(&solo_user.username));
     
     assert!(!solo_user_found, "Solo user (not in any team) should not appear in league users stats");
 
@@ -424,51 +360,16 @@ async fn test_league_users_stats_performance() {
     let num_teams = 5;
     let users_per_team = 4;
     let mut all_users = Vec::new();
-    let password = "password123";
 
     // Create users
     for i in 1..=(num_teams * users_per_team) {
-        let username = format!("perf_user_{}_{}", i, Uuid::new_v4().to_string()[..8].to_string());
-        let email = format!("{}@example.com", username);
-
-        let user_request = json!({
-            "username": username,
-            "password": password,
-            "email": email
-        });
-
-        let response = client
-            .post(&format!("{}/register_user", &test_app.address))
-            .json(&user_request)
-            .send()
-            .await
-            .expect("Failed to register user");
-
-        assert!(response.status().is_success());
-
-        // Login to get token
-        let login_request = json!({
-            "username": username,
-            "password": password
-        });
-
-        let login_response = client
-            .post(&format!("{}/login", &test_app.address))
-            .json(&login_request)
-            .send()
-            .await
-            .expect("Failed to login");
-
-        let login_json = login_response.json::<serde_json::Value>().await
-            .expect("Failed to parse login response");
-        let token = login_json["token"].as_str().expect("Token not found").to_string();
-
-        all_users.push((username, token));
+        let user = create_test_user_and_login(&test_app.address).await;
+        all_users.push(user);
 
         // Create user avatar with random stats
         let user_record = sqlx::query!(
             "SELECT id FROM users WHERE username = $1",
-            all_users[i-1].0
+            all_users[i-1].username
         )
         .fetch_one(&test_app.db_pool)
         .await
@@ -501,13 +402,13 @@ async fn test_league_users_stats_performance() {
             "team_color": format!("#FF{:02X}{:02X}", (team_idx * 50) % 256, (team_idx * 30) % 256)
         });
 
-        let team_response = client
-            .post(&format!("{}/league/teams/register", &test_app.address))
-            .header("Authorization", format!("Bearer {}", team_owner.1))
-            .json(&team_request)
-            .send()
-            .await
-            .expect("Failed to register team");
+        let team_response = make_authenticated_request(
+            &client,
+            reqwest::Method::POST,
+            &format!("{}/league/teams/register", &test_app.address),
+            &team_owner.token,
+            Some(team_request),
+        ).await;
 
         assert!(team_response.status().is_success());
         let team_json = team_response.json::<serde_json::Value>().await
@@ -520,7 +421,7 @@ async fn test_league_users_stats_performance() {
                 .map(|i| {
                     let member_idx = team_owner_idx + i;
                     json!({
-                        "username": all_users[member_idx].0,
+                        "username": all_users[member_idx].username,
                         "role": if i == 1 { "admin" } else { "member" }
                     })
                 })
@@ -530,13 +431,13 @@ async fn test_league_users_stats_performance() {
                 "member_request": members_to_add
             });
 
-            let add_response = client
-                .post(&format!("{}/league/teams/{}/members", &test_app.address, team_id))
-                .header("Authorization", format!("Bearer {}", team_owner.1))
-                .json(&add_members_request)
-                .send()
-                .await
-                .expect("Failed to add members to team");
+            let add_response = make_authenticated_request(
+                &client,
+                reqwest::Method::POST,
+                &format!("{}/league/teams/{}/members", &test_app.address, team_id),
+                &team_owner.token,
+                Some(add_members_request),
+            ).await;
 
             assert!(add_response.status().is_success());
         }
@@ -545,12 +446,13 @@ async fn test_league_users_stats_performance() {
     // Measure response time
     let start_time = std::time::Instant::now();
 
-    let stats_response = client
-        .get(&format!("{}/league/users/stats", &test_app.address))
-        .header("Authorization", format!("Bearer {}", all_users[0].1))
-        .send()
-        .await
-        .expect("Failed to get league users stats");
+    let stats_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/users/stats", &test_app.address),
+        &all_users[0].token,
+        None,
+    ).await;
 
     let response_time = start_time.elapsed();
 
