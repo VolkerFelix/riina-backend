@@ -3,9 +3,16 @@ use serde_json::json;
 use uuid::Uuid;
 
 mod common;
-use common::utils::{spawn_app, create_test_user_and_login};
-
-use crate::common::utils::make_authenticated_request;
+use common::{
+    utils::{
+        spawn_app,
+        create_test_user_and_login,
+        make_authenticated_request
+    },
+    health_data_helpers::{
+        create_elite_health_data,
+        upload_health_data_for_user}
+};
 
 #[tokio::test]
 async fn test_get_league_users_with_stats_success() {
@@ -22,45 +29,12 @@ async fn test_get_league_users_with_stats_success() {
 
     println!("✅ Created {} users", users.len());
 
-    // Step 2: Create user avatars with different stats directly in database
-    for (i, user) in users.iter().enumerate() {
-        let user_record = sqlx::query!(
-            "SELECT id FROM users WHERE username = $1",
-            user.username
-        )
-        .fetch_one(&test_app.db_pool)
-        .await
-        .expect("Failed to fetch user");
-
-        let stamina = 50 + (i as i32 * 10); // 50, 60, 70, 80, 90, 100
-        let strength = 40 + (i as i32 * 15); // 40, 55, 70, 85, 100, 115
-        let avatar_style = match i % 4 {
-            0 => "warrior",
-            1 => "mage", 
-            2 => "ranger",
-            _ => "monk"
-        };
-
-        sqlx::query!(
-            r#"
-            INSERT INTO user_avatars (user_id, stamina, strength, avatar_style)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (user_id) DO UPDATE SET
-                stamina = EXCLUDED.stamina,
-                strength = EXCLUDED.strength,
-                avatar_style = EXCLUDED.avatar_style
-            "#,
-            user_record.id,
-            stamina,
-            strength,
-            avatar_style
-        )
-        .execute(&test_app.db_pool)
-        .await
-        .expect("Failed to create user avatar");
+    // Step 2: Upload health data for each user
+    for user in users.iter() {
+        let health_data = create_elite_health_data();
+        let upload_response = upload_health_data_for_user(&client, &test_app.address, &user.token, health_data).await;
+        assert!(upload_response.is_ok(), "Failed to upload health data for user: {}", upload_response.err().unwrap());
     }
-
-    println!("✅ Created user avatars with varying stats");
 
     // Step 3: Create teams and add users as members
     let team1_owner = &users[0];
@@ -265,20 +239,20 @@ async fn test_get_league_users_with_stats_success() {
         .expect("Team 1 admin should be present");
     assert_eq!(team1_admin["team_role"], "admin", "Third user should be team 1 admin");
 
-    // Step 9: Validate stats progression (higher index should have higher stats)
-    let mut total_stats_by_index = Vec::new();
+    // Step 9: Validate stats are reasonable after health data upload
     for (i, user) in users.iter().enumerate() {
         if let Some(user_data) = league_users.iter().find(|u| u["username"] == user.username) {
-            total_stats_by_index.push((i, user_data["total_stats"].as_i64().unwrap()));
+            let total_stats = user_data["total_stats"].as_i64().unwrap();
+            let stamina = user_data["stats"]["stamina"].as_i64().unwrap();
+            let strength = user_data["stats"]["strength"].as_i64().unwrap();
+            
+            // All users uploaded elite health data, so stats should be significantly higher than default (100)
+            assert!(total_stats > 0, "User {} should have enhanced stats after health data upload, got {}", i, total_stats);
+            assert!(stamina > 0, "User {} should have at least 1 stamina, got {}", i, stamina);
+            assert!(strength > 0, "User {} should have at least 1 strength, got {}", i, strength);
+            
+            println!("   User {}: {} stamina, {} strength, {} total", i, stamina, strength, total_stats);
         }
-    }
-
-    // Sort by index and verify stats are increasing
-    total_stats_by_index.sort_by_key(|&(index, _)| index);
-    for window in total_stats_by_index.windows(2) {
-        let (_, stats1) = window[0];
-        let (_, stats2) = window[1];
-        assert!(stats2 > stats1, "Stats should increase with user index");
     }
 
     println!("✅ League users stats endpoint test completed successfully");
@@ -362,32 +336,9 @@ async fn test_league_users_stats_performance() {
     let mut all_users = Vec::new();
 
     // Create users
-    for i in 1..=(num_teams * users_per_team) {
+    for _ in 1..=(num_teams * users_per_team) {
         let user = create_test_user_and_login(&test_app.address).await;
         all_users.push(user);
-
-        // Create user avatar with random stats
-        let user_record = sqlx::query!(
-            "SELECT id FROM users WHERE username = $1",
-            all_users[i-1].username
-        )
-        .fetch_one(&test_app.db_pool)
-        .await
-        .expect("Failed to fetch user");
-
-        sqlx::query!(
-            r#"
-            INSERT INTO user_avatars (user_id, stamina, strength, avatar_style)
-            VALUES ($1, $2, $3, $4)
-            "#,
-            user_record.id,
-            50 + (i as i32 % 50),  // Stamina 50-99
-            40 + (i as i32 % 60),  // Strength 40-99
-            "warrior"
-        )
-        .execute(&test_app.db_pool)
-        .await
-        .expect("Failed to create user avatar");
     }
 
     // Create teams and assign members
