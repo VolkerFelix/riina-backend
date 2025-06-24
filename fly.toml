@@ -1,0 +1,52 @@
+# Fly.io configuration for EvolveMe Backend
+app = "evolveme-backend"
+primary_region = "ams"
+kill_signal = "SIGTERM"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # Application settings
+  APP__APPLICATION__PORT = "8080"
+  APP__APPLICATION__HOST = "0.0.0.0"
+  
+  # Frontend URL for CORS
+  APP__FRONTEND_URL = "https://evolveme-fantasy.fly.dev"
+  
+  # Redis connection (you'll need to set up Redis separately)
+  REDIS__REDIS__HOST = "evolveme-redis.internal"
+  REDIS__REDIS__PORT = "6379"
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 8080
+  
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+  
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+  
+  [[services.tcp_checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "5s"
+    restart_limit = 0
+  
+  [[services.http_checks]]
+    interval = "10s"
+    timeout = "2s"
+    grace_period = "5s"
+    restart_limit = 0
+    method = "get"
+    path = "/backend_health"
+    protocol = "http"
+
+[mounts]
+  # For SQLite or local file storage if needed
+  source = "evolveme_data"
+  destination = "/data"

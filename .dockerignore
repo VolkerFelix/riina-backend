@@ -1,0 +1,82 @@
+# Rust build artifacts
+target/
+**/*.rs.bk
+*.pdb
+
+# Development dependencies
+.cargo-ok
+.git/
+.gitignore
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Environment files (secrets)
+.env
+.env.*
+!.env.example
+
+# Test and documentation
+tests/
+docs/
+*.md
+!README.md
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.log
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup files
+*.bak
+*.backup
+
+# Node modules (if any frontend assets)
+node_modules/
+
+# Python virtual environments (if any scripts)
+venv/
+__pycache__/
+*.pyc
+
+# Coverage reports
+coverage/
+*.lcov
+
+# Benchmarking
+benches/
+
+# Examples
+examples/
+
+# Any local scripts not needed in production
+local-scripts/
+dev-scripts/
+
+# Large data files
+*.csv
+*.xlsx
+*.xls
+data/
+
+# Fly.io specific (not needed in build)
+fly.toml
