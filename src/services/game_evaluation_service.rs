@@ -175,6 +175,88 @@ impl GameEvaluationService {
             postponed_games: summary.postponed_games.unwrap_or(0) as usize,
         })
     }
+
+    pub async fn get_games_summary_for_date(&self, date: chrono::NaiveDate) -> Result<GameSummary, sqlx::Error> {
+        let summary = sqlx::query!(
+            r#"
+            SELECT 
+                COUNT(*) as total_games,
+                COUNT(CASE WHEN status = 'scheduled' THEN 1 END) as scheduled_games,
+                COUNT(CASE WHEN status = 'finished' THEN 1 END) as finished_games,
+                COUNT(CASE WHEN status = 'postponed' THEN 1 END) as postponed_games
+            FROM league_games 
+            WHERE DATE(scheduled_time) = $1
+            "#,
+            date
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(GameSummary {
+            total_games: summary.total_games.unwrap_or(0) as usize,
+            scheduled_games: summary.scheduled_games.unwrap_or(0) as usize,
+            finished_games: summary.finished_games.unwrap_or(0) as usize,
+            postponed_games: summary.postponed_games.unwrap_or(0) as usize,
+        })
+    }
+
+    pub async fn evaluate_and_update_games_for_date(&self, date: chrono::NaiveDate) -> Result<EvaluationResult, sqlx::Error> {
+        tracing::info!("🎯 Starting game evaluation process for date: {}", date);
+        
+        let mut result = EvaluationResult {
+            games_evaluated: 0,
+            games_updated: 0,
+            errors: Vec::new(),
+            game_results: HashMap::new(),
+        };
+
+        // Get all game results for the specific date
+        let game_evaluations = match GameEvaluator::evaluate_games_for_date(&self.pool, date).await {
+            Ok(evaluations) => evaluations,
+            Err(e) => {
+                let error_msg = format!("Failed to evaluate games for date {}: {}", date, e);
+                tracing::error!("{}", error_msg);
+                result.errors.push(error_msg);
+                return Ok(result);
+            }
+        };
+
+        if game_evaluations.is_empty() {
+            tracing::info!("No scheduled games found for date: {}", date);
+            return Ok(result);
+        }
+
+        tracing::info!("📊 Found {} scheduled games for evaluation on {}", game_evaluations.len(), date);
+
+        // Process each game evaluation
+        for game_eval in game_evaluations {
+            result.games_evaluated += 1;
+            
+            match self.update_game_result(game_eval.game_id, &game_eval).await {
+                Ok(_) => {
+                    result.games_updated += 1;
+                    result.game_results.insert(game_eval.game_id, game_eval.clone());
+                    tracing::info!("✅ Updated game {} result: {} vs {} = {}-{}", 
+                        game_eval.game_id, 
+                        game_eval.home_team_name, 
+                        game_eval.away_team_name,
+                        game_eval.home_score, 
+                        game_eval.away_score
+                    );
+                }
+                Err(e) => {
+                    let error_msg = format!("Failed to update game {}: {}", game_eval.game_id, e);
+                    tracing::error!("{}", error_msg);
+                    result.errors.push(error_msg);
+                }
+            }
+        }
+
+        tracing::info!("🏁 Game evaluation completed: {}/{} games updated successfully", 
+            result.games_updated, result.games_evaluated);
+
+        Ok(result)
+    }
 }
 
 #[derive(Debug)]

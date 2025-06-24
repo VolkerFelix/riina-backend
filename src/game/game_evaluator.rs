@@ -17,11 +17,16 @@ impl Display for GameResult {
 
 #[derive(Debug, Clone)]
 pub struct GameStats {
+    pub game_id: Uuid,
+    pub home_team_name: String,
+    pub away_team_name: String,
     pub home_team_score: u32,
     pub away_team_score: u32,
     pub home_team_result: GameResult,
     pub away_team_result: GameResult,
     pub winner_team_id: Option<Uuid>,
+    pub home_score: u32,  // Alias for compatibility
+    pub away_score: u32,  // Alias for compatibility
 }
 
 struct TeamPower {
@@ -117,11 +122,16 @@ impl GameEvaluator {
         }
 
         GameStats {
+            game_id: Uuid::nil(), // Will be set by caller if needed
+            home_team_name: String::new(), // Will be set by caller if needed
+            away_team_name: String::new(), // Will be set by caller if needed
             home_team_score,
             away_team_score,
             home_team_result,
             away_team_result,
             winner_team_id,
+            home_score: home_team_score,  // Alias for compatibility
+            away_score: away_team_score,  // Alias for compatibility
         }
     }
 
@@ -149,6 +159,46 @@ impl GameEvaluator {
             tracing::info!("🎯 Evaluating game {} for today", game.game_id);
             let game_stats = Self::evaluate_game(pool, &game.home_team_id, &game.away_team_id).await?;
             results.push((game.game_id, game_stats));
+        }
+
+        Ok(results)
+    }
+
+    pub async fn evaluate_games_for_date(pool: &PgPool, date: chrono::NaiveDate) -> Result<Vec<GameStats>, sqlx::Error> {
+        // Get all games for the specified date
+        let pending_games = sqlx::query!(
+            r#"
+            SELECT
+                lg.id as game_id,
+                lg.home_team_id,
+                lg.away_team_id,
+                lg.scheduled_time,
+                ht.team_name as home_team_name,
+                at.team_name as away_team_name
+            FROM league_games lg
+            JOIN teams ht ON lg.home_team_id = ht.id
+            JOIN teams at ON lg.away_team_id = at.id
+            WHERE DATE(lg.scheduled_time) = $1
+            AND lg.status = 'scheduled'
+            ORDER BY lg.scheduled_time
+            "#,
+            date
+        )
+        .fetch_all(pool)
+        .await?;
+
+        let mut results = Vec::new();
+
+        for game in pending_games {
+            tracing::info!("🎯 Evaluating game {} for date {}", game.game_id, date);
+            let mut game_stats = Self::evaluate_game(pool, &game.home_team_id, &game.away_team_id).await?;
+            
+            // Add game ID and team names to the stats
+            game_stats.game_id = game.game_id;
+            game_stats.home_team_name = game.home_team_name;
+            game_stats.away_team_name = game.away_team_name;
+            
+            results.push(game_stats);
         }
 
         Ok(results)

@@ -1,10 +1,10 @@
 use reqwest::Client;
 use serde_json::json;
 use uuid::Uuid;
-use chrono::{Utc, Duration};
+use chrono::{Weekday, NaiveTime};
 
 mod common;
-use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request};
+use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, get_next_date};
 use common::admin_helpers::{create_admin_user_and_login, create_league_season};
 use common::health_data_helpers::{create_elite_health_data, create_advanced_health_data, upload_health_data_for_user};
 
@@ -53,9 +53,10 @@ async fn test_game_evaluation_service_integration() {
     let league_data: serde_json::Value = league_response.json().await.unwrap();
     let league_id = league_data["data"]["id"].as_str().unwrap();
     
-    // Create teams
+    // Create teams with unique names
+    let unique_suffix = Uuid::new_v4().to_string().chars().take(8).collect::<String>();
     let team1_request = json!({
-        "name": "Power Team",
+        "name": format!("Power Team {}", unique_suffix),
         "color": "#FF0000",
         "owner_id": user1.user_id
     });
@@ -73,7 +74,7 @@ async fn test_game_evaluation_service_integration() {
     let team1_id = team1_data["data"]["id"].as_str().unwrap();
     
     let team2_request = json!({
-        "name": "Weaker Team",
+        "name": format!("Weaker Team {}", unique_suffix),
         "color": "#0000FF",
         "owner_id": user3.user_id
     });
@@ -143,15 +144,14 @@ async fn test_game_evaluation_service_integration() {
     println!("✅ Created teams and assigned to league");
 
     // Step 4: Create a season with games for today
-    let today = Utc::now().format("%Y-%m-%d").to_string();
-    let start_date = format!("{}T22:00:00Z", today);
+    let start_date = get_next_date(Weekday::Sat, NaiveTime::from_hms_opt(22, 0, 0).unwrap());
     
-    let season_id = create_league_season(
+    let _season_id = create_league_season(
         &app.address,
         &admin_user.token,
         league_id,
         "Game Evaluation Test Season",
-        &start_date
+        &start_date.to_rfc3339()
     ).await;
     
     println!("✅ Created season with games for today");
@@ -159,13 +159,13 @@ async fn test_game_evaluation_service_integration() {
     // Step 5: Test the GameEvaluationService
     let evaluation_service = GameEvaluationService::new(app.db_pool.clone());
     
-    // Get today's game summary before evaluation
-    let summary_before = evaluation_service.get_todays_game_summary().await.unwrap();
+    // Get game summary for the season start date before evaluation
+    let summary_before = evaluation_service.get_games_summary_for_date(start_date.date_naive()).await.unwrap();
     println!("📊 Before evaluation: {}", summary_before);
-    assert!(summary_before.scheduled_games > 0, "Should have scheduled games for today");
+    assert!(summary_before.scheduled_games > 0, "Should have scheduled games for season start date");
     
-    // Evaluate today's games
-    let evaluation_result = evaluation_service.evaluate_and_update_todays_games().await.unwrap();
+    // Evaluate games for the season start date
+    let evaluation_result = evaluation_service.evaluate_and_update_games_for_date(start_date.date_naive()).await.unwrap();
     println!("🎮 Evaluation result: {}", evaluation_result);
     
     // Verify evaluation results
@@ -173,8 +173,8 @@ async fn test_game_evaluation_service_integration() {
     assert_eq!(evaluation_result.games_updated, evaluation_result.games_evaluated, "All games should be updated successfully");
     assert!(evaluation_result.errors.is_empty(), "Should have no errors");
     
-    // Get today's game summary after evaluation
-    let summary_after = evaluation_service.get_todays_game_summary().await.unwrap();
+    // Get game summary for the season start date after evaluation
+    let summary_after = evaluation_service.get_games_summary_for_date(start_date.date_naive()).await.unwrap();
     println!("📊 After evaluation: {}", summary_after);
     assert_eq!(summary_after.scheduled_games, 0, "Should have no scheduled games left");
     assert!(summary_after.finished_games > 0, "Should have finished games");
