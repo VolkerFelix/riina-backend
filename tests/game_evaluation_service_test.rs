@@ -143,7 +143,7 @@ async fn test_game_evaluation_service_integration() {
     
     println!("✅ Created teams and assigned to league");
 
-    // Step 4: Create a season with games for today
+    // Step 4: Create a season with games for nexxt Saturday at 10pm
     let start_date = get_next_date(Weekday::Sat, NaiveTime::from_hms_opt(22, 0, 0).unwrap());
     
     let _season_id = create_league_season(
@@ -154,7 +154,7 @@ async fn test_game_evaluation_service_integration() {
         &start_date.to_rfc3339()
     ).await;
     
-    println!("✅ Created season with games for today");
+    println!("✅ Created season with games for next Saturday at 10pm");
 
     // Step 5: Test the GameEvaluationService
     let evaluation_service = GameEvaluationService::new(app.db_pool.clone());
