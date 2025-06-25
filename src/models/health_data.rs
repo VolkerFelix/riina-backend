@@ -31,9 +31,7 @@ pub struct HealthDataSyncRequest {
 }
 
 #[derive(Debug, Serialize)]
-pub struct HealthDataSyncResponse {
-    pub success: bool,
-    pub message: String,
+pub struct HealthDataSyncData {
     pub sync_id: Uuid,
     pub timestamp: DateTime<Utc>,
 }

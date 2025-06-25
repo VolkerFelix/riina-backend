@@ -340,7 +340,7 @@ impl GameConnection {
                     let update_event = GameEvent::AvatarUpdated {
                         user_id,
                         username,
-                        stats: crate::models::game_events::AvatarStats {
+                        stats: crate::models::common::PlayerStats {
                             stamina: 50,
                             strength: 50,
                         },

@@ -5,6 +5,7 @@ use sqlx::PgPool;
 
 use crate::middleware::auth::Claims;
 use crate::models::profile::{UserProfileResponse, GameStats};
+use crate::models::common::ApiResponse;
 
 #[tracing::instrument(
     name = "Get user profile",
@@ -19,9 +20,9 @@ pub async fn get_user_profile(
         Ok(id) => id,
         Err(e) => {
             tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::BadRequest().json(json!({
-                "error": "Invalid user ID"
-            }));
+            return HttpResponse::BadRequest().json(
+                ApiResponse::<()>::error("Invalid user ID")
+            );
         }
     };
 
@@ -47,9 +48,9 @@ pub async fn get_user_profile(
         }
         Err(e) => {
             tracing::error!("Database error fetching user: {}", e);
-            return HttpResponse::InternalServerError().json(json!({
-                "error": "Failed to fetch user profile"
-            }));
+            return HttpResponse::InternalServerError().json(
+                ApiResponse::<()>::error("Failed to fetch user profile")
+            );
         }
     };
 

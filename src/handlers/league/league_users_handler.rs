@@ -7,6 +7,7 @@ use chrono::{DateTime, Utc};
 
 use crate::middleware::auth::Claims;
 use crate::models::team::TeamRole;
+use crate::models::common::PlayerStats;
 
 /// Enhanced team member with user stats
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -19,18 +20,14 @@ pub struct LeagueUserWithStats {
     pub team_role: TeamRole,
     pub team_status: String,
     pub joined_at: DateTime<Utc>,
-    pub stats: UserStats,
+    pub stats: PlayerStats,
     pub total_stats: i32,
     pub rank: i32,
     pub avatar_style: String,
     pub is_online: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct UserStats {
-    pub stamina: i32,
-    pub strength: i32,
-}
+// Using PlayerStats from common module instead of duplicate PlayerStats
 
 /// Response for league users with stats
 #[derive(Debug, Serialize, Deserialize)]
@@ -148,7 +145,7 @@ pub async fn get_league_users_with_stats(
                     },
                     team_status: row.team_status,
                     joined_at: row.joined_at,
-                    stats: UserStats {
+                    stats: PlayerStats {
                         stamina: row.stamina.unwrap_or(50),
                         strength: row.strength.unwrap_or(50),
                     },

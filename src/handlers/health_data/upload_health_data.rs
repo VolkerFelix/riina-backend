@@ -7,6 +7,7 @@ use uuid::Uuid;
 use crate::middleware::auth::Claims;
 use crate::db::health_data::insert_health_data;
 use crate::models::health_data::HealthDataSyncRequest;
+use crate::models::common::ApiResponse;
 use crate::game::stats_calculator::StatCalculator;
 use redis::AsyncCommands;
 
@@ -33,10 +34,9 @@ pub async fn upload_health_data(
         },
         Err(e) => {
             tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::InternalServerError().json(json!({
-                "status": "error",
-                "message": "Invalid user ID"
-            }));
+            return HttpResponse::InternalServerError().json(
+                ApiResponse::<()>::error("Invalid user ID")
+            );
         }
     };
 
@@ -69,10 +69,9 @@ pub async fn upload_health_data(
         }
         Err(e) => {
             tracing::error!("❌ Failed to update avatar stats for {}: {}", claims.username, e);
-            return HttpResponse::InternalServerError().json(json!({
-                "status": "error",
-                "message": "Failed to update avatar stats"
-            }));
+            return HttpResponse::InternalServerError().json(
+                ApiResponse::<()>::error("Failed to update avatar stats")
+            );
         }
     }
 
@@ -140,9 +139,7 @@ pub async fn upload_health_data(
             }
 
             // 🎉 ENHANCED RESPONSE WITH GAME STATS
-            let response = json!({
-                "success": true,
-                "message": "Health data synced and game stats calculated!",
+            let sync_data = json!({
                 "sync_id": sync_id,
                 "timestamp": Utc::now(),
                 "game_stats": {
@@ -159,17 +156,15 @@ pub async fn upload_health_data(
 
             tracing::info!("✅ Health data processed successfully with game mechanics for {}: {}", 
                 claims.username, sync_id);
-            HttpResponse::Ok().json(response)
+            HttpResponse::Ok().json(
+                ApiResponse::success("Health data synced and game stats calculated!", sync_data)
+            )
         }
         Err(e) => {
-            let response = json!({
-                "success": false,
-                "message": format!("Failed to sync health data: {}", e),
-                "sync_id": null,
-                "timestamp": Utc::now()
-            });
             tracing::error!("❌ Failed to sync health data for {}: {}", claims.username, e);
-            HttpResponse::InternalServerError().json(response)
+            HttpResponse::InternalServerError().json(
+                ApiResponse::<()>::error(format!("Failed to sync health data: {}", e))
+            )
         }
     }
 }
