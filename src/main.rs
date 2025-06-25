@@ -1,4 +1,5 @@
 use std::net::TcpListener;
+use std::sync::Arc;
 use secrecy::ExposeSecret;
 use sqlx::postgres::PgPoolOptions;
 use std::time::Duration;
@@ -6,6 +7,7 @@ use std::time::Duration;
 use evolveme_backend::run;
 use evolveme_backend::config::settings::{get_config, get_jwt_settings, get_redis_url};
 use evolveme_backend::telemetry::{get_subscriber, init_subscriber};
+use evolveme_backend::services::SchedulerService;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
@@ -22,7 +24,7 @@ async fn main() -> std::io::Result<()> {
     // JWT
     let jwt_settings = get_jwt_settings(&config);
     // Redis
-    let redis_client = match redis::Client::open(get_redis_url(&config).expose_secret()) {
+    let redis_client_raw = match redis::Client::open(get_redis_url(&config).expose_secret()) {
         Ok(client) => {
             tracing::info!("Redis client created successfully");
             Some(client)
@@ -34,6 +36,9 @@ async fn main() -> std::io::Result<()> {
             std::process::exit(1);
         }
     };
+    
+    // Create Arc version for scheduler
+    let redis_client_arc = redis_client_raw.as_ref().map(|client| Arc::new(client.clone()));
     // Only try to establish connection when actually used
     let conection_pool = PgPoolOptions::new()
         .acquire_timeout(Duration::from_secs(2))
@@ -44,10 +49,27 @@ async fn main() -> std::io::Result<()> {
     let address = format!("{}:{}", config.application.host, config.application.port);
     let listener = TcpListener::bind(&address)?;
     
+    // Initialize the scheduler service
+    match SchedulerService::new_with_redis(conection_pool.clone(), redis_client_arc.clone()).await {
+        Ok(scheduler) => {
+            match scheduler.start().await {
+                Ok(_) => {
+                    tracing::info!("✅ Scheduler service started successfully");
+                }
+                Err(e) => {
+                    tracing::error!("❌ Failed to start scheduler: {}", e);
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("❌ Failed to create scheduler service: {}", e);
+        }
+    }
+    
     run(
         listener,
         conection_pool,
         jwt_settings,
-        redis_client
+        redis_client_raw
     )?.await
 }

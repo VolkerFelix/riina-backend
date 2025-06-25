@@ -89,6 +89,24 @@ pub enum GameEvent {
         action_url: Option<String>,
         created_at: DateTime<Utc>,
     },
+
+    #[serde(rename = "games_evaluated")]
+    GamesEvaluated {
+        evaluation_id: Uuid,
+        date: String, // ISO date string
+        total_games: usize,
+        game_results: Vec<GameResult>,
+        standings_updated: bool,
+        evaluated_at: DateTime<Utc>,
+    },
+
+    #[serde(rename = "team_standings_updated")]
+    TeamStandingsUpdated {
+        league_id: Uuid,
+        league_name: String,
+        standings: Vec<TeamStanding>,
+        updated_at: DateTime<Utc>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -165,4 +183,40 @@ pub enum NotificationType {
     DailyChallenge,
     TerritoryAlert,
     System,
+    GameResult,
+    StandingsUpdate,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GameResult {
+    pub game_id: Uuid,
+    pub home_team_id: Uuid,
+    pub home_team_name: String,
+    pub away_team_id: Uuid,
+    pub away_team_name: String,
+    pub home_score: u32,
+    pub away_score: u32,
+    pub winner_team_id: Option<Uuid>,
+    pub match_result: MatchResult,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum MatchResult {
+    Win,
+    Loss,
+    Draw,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TeamStanding {
+    pub team_id: Uuid,
+    pub team_name: String,
+    pub team_color: String,
+    pub position: u32,
+    pub games_played: u32,
+    pub wins: u32,
+    pub draws: u32,
+    pub losses: u32,
+    pub points: u32,
+    pub position_change: i32, // +1 = moved up, -1 = moved down, 0 = no change
 }
