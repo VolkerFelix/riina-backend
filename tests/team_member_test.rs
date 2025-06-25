@@ -105,7 +105,7 @@ async fn test_add_user_to_team_success() {
     assert!(member_body["success"].as_bool().unwrap());
     
     // Verify all members were added
-    let members = member_body["members"].as_array().unwrap();
+    let members = member_body["data"]["members"].as_array().unwrap();
     assert_eq!(members.len(), 4);
     for (i, member) in members.iter().enumerate() {
         assert_eq!(member["username"].as_str().unwrap(), member_usernames[i]);

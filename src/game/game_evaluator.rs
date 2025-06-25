@@ -1,19 +1,8 @@
-use std::fmt::Display;
 use uuid::Uuid;
 use sqlx::PgPool;
+use crate::models::common::MatchResult;
 
-#[derive(Debug, Clone)]
-pub enum GameResult {
-    Win,
-    Loss,
-    Draw,
-}
-
-impl Display for GameResult {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
+// Using MatchResult from common module instead of duplicate GameResult enum
 
 #[derive(Debug, Clone)]
 pub struct GameStats {
@@ -22,8 +11,8 @@ pub struct GameStats {
     pub away_team_name: String,
     pub home_team_score: u32,
     pub away_team_score: u32,
-    pub home_team_result: GameResult,
-    pub away_team_result: GameResult,
+    pub home_team_result: MatchResult,
+    pub away_team_result: MatchResult,
     pub winner_team_id: Option<Uuid>,
     pub home_score: u32,  // Alias for compatibility
     pub away_score: u32,  // Alias for compatibility
@@ -109,16 +98,16 @@ impl GameEvaluator {
         let mut winner_team_id = None;
 
         if home_team_score > away_team_score {
-            home_team_result = GameResult::Win;
-            away_team_result = GameResult::Loss;
+            home_team_result = MatchResult::Win;
+            away_team_result = MatchResult::Loss;
             winner_team_id = Some(home_team_power.team_id);
         } else if home_team_score < away_team_score {
-            home_team_result = GameResult::Loss;
-            away_team_result = GameResult::Win;
+            home_team_result = MatchResult::Loss;
+            away_team_result = MatchResult::Win;
             winner_team_id = Some(away_team_power.team_id);
         } else {
-            home_team_result = GameResult::Draw;
-            away_team_result = GameResult::Draw;
+            home_team_result = MatchResult::Draw;
+            away_team_result = MatchResult::Draw;
         }
 
         GameStats {

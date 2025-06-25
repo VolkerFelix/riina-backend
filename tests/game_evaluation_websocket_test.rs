@@ -61,9 +61,10 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     let league_data = league_response.json::<serde_json::Value>().await.unwrap();
     let league_id = league_data["data"]["id"].as_str().unwrap();
     
-    // Create Team A
+    // Create Team A with unique name
+    let unique_suffix = Uuid::new_v4().to_string().chars().take(8).collect::<String>();
     let team_a_request = json!({
-        "name": "Elite Warriors",
+        "name": format!("Elite Warriors {}", unique_suffix),
         "color": "#FF0000",
         "description": "Team with strong power",
         "owner_id": user1.user_id
@@ -83,7 +84,7 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     
     // Create Team B
     let team_b_request = json!({
-        "name": "Advanced Fighters",
+        "name": format!("Advanced Fighters {}", unique_suffix),
         "color": "#0000FF", 
         "description": "Team with moderate power",
         "owner_id": user3.user_id

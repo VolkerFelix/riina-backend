@@ -6,7 +6,8 @@ use std::sync::Arc;
 use redis::AsyncCommands;
 
 use crate::game::game_evaluator::{GameEvaluator, GameStats};
-use crate::models::game_events::{GameEvent, GameResult, MatchResult, NotificationType};
+use crate::models::game_events::{GameEvent, GameResult, NotificationType};
+use crate::models::common::MatchResult;
 
 pub struct GameEvaluationService {
     pool: PgPool,

@@ -49,9 +49,10 @@ async fn test_redis_game_evaluation_notifications() {
     upload_health_data_for_user(&client, &app.address, &user1.token, create_elite_health_data()).await.unwrap();
     upload_health_data_for_user(&client, &app.address, &user2.token, create_advanced_health_data()).await.unwrap();
     
+    let unique_suffix = &Uuid::new_v4().to_string()[..8];
     // Create league
     let league_request = json!({
-        "name": "Redis Test League",
+        "name": format!("Redis Test League {}", unique_suffix),
         "description": "Testing Redis notifications",
         "max_teams": 2
     });
@@ -70,7 +71,7 @@ async fn test_redis_game_evaluation_notifications() {
     
     // Create teams
     let team_a_request = json!({
-        "name": "Redis Team A",
+        "name": format!("Redis Team A {}", unique_suffix),
         "color": "#FF0000",
         "description": "Team A for Redis testing",
         "owner_id": user1.user_id
@@ -89,7 +90,7 @@ async fn test_redis_game_evaluation_notifications() {
     let team_a_id = team_a_data["data"]["id"].as_str().unwrap();
     
     let team_b_request = json!({
-        "name": "Redis Team B",
+        "name": format!("Redis Team B {}", unique_suffix),
         "color": "#0000FF",
         "description": "Team B for Redis testing",
         "owner_id": user2.user_id
@@ -147,11 +148,12 @@ async fn test_redis_game_evaluation_notifications() {
     // Create season
     let start_date = get_next_date(Weekday::Sat, NaiveTime::from_hms_opt(22, 0, 0).unwrap());
     
+    let season_name = format!("Redis Test Season {}", unique_suffix);
     let _season_id = create_league_season(
         &app.address,
         &admin_user.token,
         league_id,
-        "Redis Test Season",
+        &season_name,
         &start_date.to_rfc3339()
     ).await;
     

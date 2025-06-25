@@ -6,3 +6,4 @@ pub mod league;
 pub mod team;
 pub mod game;
 pub mod profile;
+pub mod common;

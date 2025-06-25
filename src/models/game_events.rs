@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use crate::models::common::{MatchResult, PlayerStats, TeamStandings};
 
 /// Game-specific WebSocket message types
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -25,7 +26,7 @@ pub enum GameEvent {
     AvatarUpdated {
         user_id: Uuid,
         username: String,
-        stats: AvatarStats,
+        stats: PlayerStats,
         position: Position,
         timestamp: DateTime<Utc>,
     },
@@ -104,7 +105,7 @@ pub enum GameEvent {
     TeamStandingsUpdated {
         league_id: Uuid,
         league_name: String,
-        standings: Vec<TeamStanding>,
+        standings: Vec<TeamStandings>,
         updated_at: DateTime<Utc>,
     },
 }
@@ -115,11 +116,7 @@ pub struct Position {
     pub y: f64,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AvatarStats {
-    pub stamina: u32,
-    pub strength: u32,
-}
+// Using PlayerStats from common module instead of duplicate AvatarStats
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PlayerRanking {
@@ -142,7 +139,7 @@ pub struct BattleTeam {
 pub struct BattleMember {
     pub user_id: Uuid,
     pub username: String,
-    pub stats: AvatarStats,
+    pub stats: PlayerStats,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -200,23 +197,5 @@ pub struct GameResult {
     pub match_result: MatchResult,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum MatchResult {
-    Win,
-    Loss,
-    Draw,
-}
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct TeamStanding {
-    pub team_id: Uuid,
-    pub team_name: String,
-    pub team_color: String,
-    pub position: u32,
-    pub games_played: u32,
-    pub wins: u32,
-    pub draws: u32,
-    pub losses: u32,
-    pub points: u32,
-    pub position_change: i32, // +1 = moved up, -1 = moved down, 0 = no change
-}
+// Using TeamStandings from common module instead of duplicate TeamStanding
