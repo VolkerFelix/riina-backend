@@ -24,7 +24,7 @@ echo "📋 Migration tracking ready"
 
 # Process migrations
 migration_count=0
-for migration_file in $(ls /migrations/*.sql 2>/dev/null | sort); do
+for migration_file in $(ls ${MIGRATIONS_DIR:-/app/migrations}/*.sql 2>/dev/null | sort); do
     filename=$(basename "$migration_file")
     
     # Skip if already executed
@@ -35,12 +35,13 @@ for migration_file in $(ls /migrations/*.sql 2>/dev/null | sort); do
     echo "▶️  $filename"
     
     # Run migration
-    if psql -v ON_ERROR_STOP=1 -f "$migration_file" >/dev/null 2>&1; then
-        psql -c "INSERT INTO _migrations (filename) VALUES ('$filename') ON CONFLICT DO NOTHING" >/dev/null 2>&1
+    if psql -v ON_ERROR_STOP=1 -f "$migration_file"; then
+        psql -c "INSERT INTO _migrations (filename) VALUES ('$filename') ON CONFLICT DO NOTHING"
         echo "✅ $filename"
         migration_count=$((migration_count + 1))
     else
         echo "❌ $filename failed"
+        exit 1
     fi
 done
 

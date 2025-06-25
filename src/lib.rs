@@ -37,6 +37,8 @@ pub fn run(
         let cors = Cors::default()
             .allowed_origin("http://localhost:3000")
             .allowed_origin("http://localhost:3001")
+            .allowed_origin("https://evolveme-fantasy.fly.dev")
+            .allowed_origin("https://evolveme-admin.fly.dev")
             .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "PATCH"])
             .allowed_headers(vec![
                 http::header::AUTHORIZATION,
