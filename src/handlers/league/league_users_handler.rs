@@ -35,6 +35,16 @@ pub struct LeagueUsersResponse {
     pub success: bool,
     pub data: Vec<LeagueUserWithStats>,
     pub total_count: usize,
+    pub page: usize,
+    pub page_size: usize,
+    pub total_pages: usize,
+}
+
+/// Query parameters for pagination
+#[derive(Debug, Deserialize)]
+pub struct PaginationParams {
+    pub page: Option<usize>,
+    pub page_size: Option<usize>,
 }
 
 /// Get all users in the same league with their stats
@@ -49,6 +59,7 @@ pub struct LeagueUsersResponse {
 pub async fn get_league_users_with_stats(
     pool: web::Data<PgPool>,
     claims: web::ReqData<Claims>,
+    query: web::Query<PaginationParams>,
 ) -> Result<HttpResponse> {
     let requester_id = match Uuid::parse_str(&claims.sub) {
         Ok(id) => id,
@@ -85,6 +96,33 @@ pub async fn get_league_users_with_stats(
         }
     };
 
+    // Set pagination defaults
+    let page = query.page.unwrap_or(1).max(1);
+    let page_size = query.page_size.unwrap_or(20).min(100).max(1); // Default 20, max 100
+    let offset = (page - 1) * page_size;
+
+    // First, get the total count of league users
+    let total_count = match sqlx::query!(
+        r#"
+        SELECT COUNT(*) as count
+        FROM users u
+        INNER JOIN team_members tm ON u.id = tm.user_id AND tm.status = 'active'
+        INNER JOIN teams t ON tm.team_id = t.id
+        "#
+    )
+    .fetch_one(pool.get_ref())
+    .await
+    {
+        Ok(result) => result.count.unwrap_or(0) as usize,
+        Err(e) => {
+            tracing::error!("Failed to count league users: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "message": "Failed to count league users"
+            })));
+        }
+    };
+
     // For now, we'll return all users who are in teams (league participants)
     // In the future, this could be filtered by specific leagues or seasons
     let league_users: Vec<LeagueUserWithStats> = match sqlx::query!(
@@ -117,6 +155,7 @@ pub async fn get_league_users_with_stats(
         LEFT JOIN user_avatars ua ON u.id = ua.user_id
         LEFT JOIN user_rankings ur ON u.id = ur.user_id
         ORDER BY 
+            COALESCE(ur.rank, 999) ASC,
             t.team_name ASC,
             CASE tm.role 
                 WHEN 'owner' THEN 1
@@ -124,7 +163,10 @@ pub async fn get_league_users_with_stats(
                 WHEN 'member' THEN 3
             END,
             tm.joined_at ASC
-        "#
+        LIMIT $1 OFFSET $2
+        "#,
+        page_size as i64,
+        offset as i64
     )
     .fetch_all(pool.get_ref())
     .await
@@ -165,13 +207,22 @@ pub async fn get_league_users_with_stats(
         }
     };
 
-    let total_count = league_users.len();
+    let total_pages = (total_count + page_size - 1) / page_size;
 
-    tracing::info!("Successfully fetched {} league users with stats", total_count);
+    tracing::info!(
+        "Successfully fetched {} league users with stats (page {} of {}, {} per page)",
+        league_users.len(),
+        page,
+        total_pages,
+        page_size
+    );
 
     Ok(HttpResponse::Ok().json(LeagueUsersResponse {
         success: true,
         data: league_users,
         total_count,
+        page,
+        page_size,
+        total_pages,
     }))
 }
