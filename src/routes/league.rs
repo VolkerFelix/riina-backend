@@ -4,6 +4,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::handlers::league::{team_handler, team_member_handler, game_handler, league_handler, season_handler, league_users_handler};
+use crate::handlers::league::league_users_handler::PaginationParams;
 use crate::middleware::auth::Claims;
 use crate::models::league::*;
 use crate::models::team::{TeamRegistrationRequest, TeamUpdateRequest, AddTeamMemberRequest, UpdateTeamMemberRequest};
@@ -212,6 +213,7 @@ async fn update_team_member(
 async fn get_league_users_with_stats(
     pool: web::Data<PgPool>,
     claims: web::ReqData<Claims>,
+    query: web::Query<PaginationParams>
 ) -> Result<HttpResponse> {
-    league_users_handler::get_league_users_with_stats(pool, claims).await
+    league_users_handler::get_league_users_with_stats(pool, claims, query).await
 }
