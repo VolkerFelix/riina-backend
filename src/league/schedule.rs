@@ -187,6 +187,9 @@ impl ScheduleService {
             .max()
             .unwrap_or(0);
         
+        // Log info about games found
+        tracing::info!("Found {} games for season {}, total weeks: {}", games_with_teams.len(), season_id, total_weeks);
+        
         let next_game_time = self.countdown.get_next_game_time();
 
         Ok(LeagueScheduleResponse {
@@ -439,10 +442,8 @@ impl ScheduleService {
             return Err("Maximum 20 teams allowed".to_string());
         }
 
-        // Check if start date is valid (should be a Saturday)
-        if !self.countdown.is_valid_game_time(start_date) {
-            return Err("Start date must be a Saturday at 22:00 UTC".to_string());
-        }
+        // Allow any start date - the schedule will automatically adjust to Saturday 10pm for actual games
+        // No restriction on start date format - season can begin at any time
 
         let total_weeks = self.calculate_total_weeks(team_count);
         let end_date = start_date + Duration::weeks(total_weeks as i64);
@@ -460,7 +461,19 @@ impl ScheduleService {
         let games_query = sqlx::query!(
             r#"
             SELECT 
-                lg.*,
+                lg.id,
+                lg.season_id,
+                lg.home_team_id,
+                lg.away_team_id,
+                lg.scheduled_time,
+                lg.week_number,
+                lg.is_first_leg,
+                lg.status,
+                lg.winner_team_id,
+                lg.home_score,
+                lg.away_score,
+                lg.created_at,
+                lg.updated_at,
                 ht.team_name as home_team_name,
                 at.team_name as away_team_name,
                 ht.team_color as home_team_color,

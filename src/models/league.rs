@@ -14,6 +14,9 @@ pub struct LeagueSeason {
     pub end_date: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub evaluation_cron: Option<String>, // Cron expression for when to evaluate games
+    pub evaluation_timezone: Option<String>, // Timezone for evaluation (e.g., "UTC", "America/New_York")
+    pub auto_evaluation_enabled: Option<bool>, // Whether automatic evaluation is enabled
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

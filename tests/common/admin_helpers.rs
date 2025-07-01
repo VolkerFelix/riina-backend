@@ -89,7 +89,8 @@ pub async fn create_league_season(
     
     let season_request = json!({
         "name": season_name,
-        "start_date": start_date
+        "start_date": start_date,
+        "evaluation_cron": "0 0 22 * * SAT" // Default: Saturday 10 PM UTC
     });
 
     let season_response = make_authenticated_request(
@@ -101,6 +102,44 @@ pub async fn create_league_season(
     ).await;
 
     assert_eq!(season_response.status(), 201, "Failed to create season");
+    let season_data: serde_json::Value = season_response.json().await.expect("Failed to parse season response");
+    season_data["data"]["id"].as_str().expect("Season ID not found").to_string()
+}
+
+/// Helper function to create a league season with evaluation schedule
+pub async fn create_league_season_with_schedule(
+    app_address: &str,
+    token: &str,
+    league_id: &str,
+    season_name: &str,
+    start_date: &str,
+    evaluation_cron: &str,
+    evaluation_timezone: Option<&str>,
+    auto_evaluation_enabled: Option<bool>,
+) -> String {
+    let client = Client::new();
+    
+    let mut season_request = json!({
+        "name": season_name,
+        "start_date": start_date,
+        "evaluation_cron": evaluation_cron
+    });
+    if let Some(tz) = evaluation_timezone {
+        season_request["evaluation_timezone"] = json!(tz);
+    }
+    if let Some(enabled) = auto_evaluation_enabled {
+        season_request["auto_evaluation_enabled"] = json!(enabled);
+    }
+
+    let season_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/leagues/{}/seasons", app_address, league_id),
+        token,
+        Some(season_request),
+    ).await;
+
+    assert_eq!(season_response.status(), 201, "Failed to create season with schedule");
     let season_data: serde_json::Value = season_response.json().await.expect("Failed to parse season response");
     season_data["data"]["id"].as_str().expect("Season ID not found").to_string()
 }

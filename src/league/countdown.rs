@@ -41,34 +41,17 @@ impl CountdownService {
     }
 
     /// Calculate game time for a specific week number
-    /// Each week's game is on Saturday at 10pm UTC
+    /// Games are scheduled at weekly intervals from the start date
     pub fn calculate_game_time_for_week(&self, start_date: DateTime<Utc>, week_number: i32) -> DateTime<Utc> {
         // Validate inputs
         if week_number < 1 {
             tracing::warn!("Invalid week number: {}, defaulting to week 1", week_number);
-            return self.get_next_game_time();
+            return start_date;
         }
 
-        // Calculate target date
+        // Calculate target date - simply add weeks to the start date
         let weeks_to_add = (week_number - 1) as i64;
-        let target_date = start_date + Duration::weeks(weeks_to_add);
-        
-        // Ensure it's on a Saturday
-        let target_weekday = target_date.weekday().num_days_from_monday(); // 0=Mon, 5=Sat
-        let days_to_saturday = if target_weekday <= 5 {
-            5 - target_weekday
-        } else {
-            6 // If Sunday, go to next Saturday
-        };
-        
-        let saturday_date = target_date.date_naive() + Duration::days(days_to_saturday as i64);
-        let saturday_10pm = saturday_date.and_hms_opt(22, 0, 0)
-            .unwrap_or_else(|| {
-                tracing::error!("Failed to create Saturday 10pm time, using fallback");
-                saturday_date.and_hms_opt(22, 0, 0).unwrap()
-            });
-        
-        let result = DateTime::from_naive_utc_and_offset(saturday_10pm, Utc);
+        let result = start_date + Duration::weeks(weeks_to_add);
         
         tracing::debug!(
             "Calculated game time for week {}: {} ({})",
@@ -172,10 +155,6 @@ impl CountdownService {
             .collect()
     }
 
-    /// Validate that a given time is a valid game time (Saturday 10pm)
-    pub fn is_valid_game_time(&self, time: DateTime<Utc>) -> bool {
-        time.weekday() == Weekday::Sat && time.hour() == 22 && time.minute() == 0 && time.second() == 0
-    }
 }
 
 /// Detailed breakdown of countdown information

@@ -109,9 +109,8 @@ impl LeagueValidator {
             ));
         }
 
-        // Validate that start date is reasonable for a game time
-        // Should be a Saturday at 10pm, but we'll be flexible here
-        // The schedule service will adjust to the correct game time
+        // Start date validation complete - any future date within 1 year is allowed
+        // Games will be scheduled at weekly intervals from the start date
         
         Ok(())
     }

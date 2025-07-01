@@ -2,7 +2,8 @@ use actix_web::{web, HttpResponse, Result};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc, Timelike, Datelike};
+use std::sync::Arc;
 
 use crate::handlers::admin::user_handler::ApiResponse;
 
@@ -50,6 +51,9 @@ pub struct GenerateScheduleRequest {
 pub struct CreateSeasonRequest {
     pub name: String,
     pub start_date: DateTime<Utc>,
+    pub evaluation_cron: String,    // Cron expression for game evaluation (e.g., "0 0 10 * * TUE")
+    pub evaluation_timezone: Option<String>, // Timezone (defaults to "UTC")
+    pub auto_evaluation_enabled: Option<bool>, // Whether to enable automatic evaluation (defaults to true)
 }
 
 #[derive(Deserialize)]
@@ -67,6 +71,9 @@ pub struct AdminSeasonResponse {
     pub end_date: DateTime<Utc>,
     pub total_teams: i64,
     pub games_count: i64,
+    pub evaluation_cron: Option<String>,
+    pub evaluation_timezone: Option<String>,
+    pub auto_evaluation_enabled: Option<bool>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -592,6 +599,9 @@ pub async fn get_league_seasons(
             ls.name,
             ls.start_date,
             ls.end_date,
+            ls.evaluation_cron,
+            ls.evaluation_timezone,
+            ls.auto_evaluation_enabled,
             ls.created_at,
             COUNT(DISTINCT lt.team_id) as total_teams,
             COUNT(DISTINCT lg.id) as games_count
@@ -599,7 +609,7 @@ pub async fn get_league_seasons(
         LEFT JOIN league_teams lt ON ls.id = lt.season_id
         LEFT JOIN league_games lg ON ls.id = lg.season_id
         WHERE ls.league_id = $1
-        GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.created_at
+        GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.evaluation_cron, ls.evaluation_timezone, ls.auto_evaluation_enabled, ls.created_at
         ORDER BY ls.created_at DESC
         "#,
         league_id
@@ -621,6 +631,9 @@ pub async fn get_league_seasons(
             end_date: row.end_date,
             total_teams: row.total_teams.unwrap_or(0),
             games_count: row.games_count.unwrap_or(0),
+            evaluation_cron: row.evaluation_cron,
+            evaluation_timezone: row.evaluation_timezone,
+            auto_evaluation_enabled: row.auto_evaluation_enabled,
             created_at: row.created_at,
         })
         .collect();
@@ -637,6 +650,7 @@ pub async fn get_league_seasons(
 // POST /admin/leagues/{league_id}/seasons - Create new season for a league
 pub async fn create_league_season(
     pool: web::Data<PgPool>,
+    scheduler: web::Data<Arc<crate::services::SchedulerService>>,
     path: web::Path<Uuid>,
     body: web::Json<CreateSeasonRequest>,
 ) -> Result<HttpResponse> {
@@ -651,13 +665,7 @@ pub async fn create_league_season(
         })));
     }
 
-    // Validate start date is a Saturday at 22:00 UTC (schedule requirement)
-    let countdown_service = crate::league::countdown::CountdownService::new();
-    if !countdown_service.is_valid_game_time(body.start_date) {
-        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-            "error": "Start date must be a Saturday at 22:00 UTC"
-        })));
-    }
+    // Allow any start date/time - games will be scheduled at weekly intervals from this date
 
     // Calculate end date automatically based on league size
     let team_count = sqlx::query!(
@@ -720,16 +728,25 @@ pub async fn create_league_season(
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
+    // Use the evaluation schedule provided by the admin
+    let evaluation_cron = body.evaluation_cron.clone();
+    
+    let evaluation_timezone = body.evaluation_timezone.as_deref().unwrap_or("UTC");
+    let auto_evaluation_enabled = body.auto_evaluation_enabled.unwrap_or(true);
+
     let result = sqlx::query!(
         r#"
-        INSERT INTO league_seasons (id, league_id, name, start_date, end_date, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO league_seasons (id, league_id, name, start_date, end_date, evaluation_cron, evaluation_timezone, auto_evaluation_enabled, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         "#,
         season_id,
         league_id,
         body.name,
         body.start_date,
         end_date,
+        evaluation_cron,
+        evaluation_timezone,
+        auto_evaluation_enabled,
         now,
         now
     )
@@ -814,6 +831,25 @@ pub async fn create_league_season(
                 }
             }
 
+            // Schedule automatic game evaluation if enabled
+            if auto_evaluation_enabled {
+                tracing::info!("🕐 Scheduling automatic game evaluation for season '{}' with cron '{}'", body.name, evaluation_cron);
+                
+                match scheduler.schedule_season(
+                    season_id,
+                    body.name.clone(),
+                    evaluation_cron.to_string()
+                ).await {
+                    Ok(_) => {
+                        tracing::info!("✅ Successfully scheduled evaluation for season '{}'", body.name);
+                    }
+                    Err(e) => {
+                        tracing::error!("❌ Failed to schedule evaluation for season '{}': {}", body.name, e);
+                        // Don't fail season creation if scheduling fails
+                    }
+                }
+            }
+
             let season = AdminSeasonResponse {
                 id: season_id,
                 league_id,
@@ -822,6 +858,9 @@ pub async fn create_league_season(
                 end_date: end_date,
                 total_teams: teams_added.rows_affected() as i64,
                 games_count: games_created as i64,
+                evaluation_cron: Some(evaluation_cron.to_string()),
+                evaluation_timezone: Some(evaluation_timezone.to_string()),
+                auto_evaluation_enabled: Some(auto_evaluation_enabled),
                 created_at: now,
             };
 
@@ -857,6 +896,9 @@ pub async fn get_league_season_by_id(
             ls.name,
             ls.start_date,
             ls.end_date,
+            ls.evaluation_cron,
+            ls.evaluation_timezone,
+            ls.auto_evaluation_enabled,
             ls.created_at,
             COUNT(DISTINCT lt.team_id) as total_teams,
             COUNT(DISTINCT lg.id) as games_count
@@ -864,7 +906,7 @@ pub async fn get_league_season_by_id(
         LEFT JOIN league_teams lt ON ls.id = lt.season_id
         LEFT JOIN league_games lg ON ls.id = lg.season_id
         WHERE ls.league_id = $1 AND ls.id = $2
-        GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.created_at
+        GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.evaluation_cron, ls.evaluation_timezone, ls.auto_evaluation_enabled, ls.created_at
         "#,
         league_id,
         season_id
@@ -885,6 +927,9 @@ pub async fn get_league_season_by_id(
             end_date: row.end_date,
             total_teams: row.total_teams.unwrap_or(0),
             games_count: row.games_count.unwrap_or(0),
+            evaluation_cron: row.evaluation_cron,
+            evaluation_timezone: row.evaluation_timezone,
+            auto_evaluation_enabled: row.auto_evaluation_enabled,
             created_at: row.created_at,
         };
 
@@ -962,6 +1007,7 @@ pub async fn update_league_season(
 // DELETE /admin/leagues/{league_id}/seasons/{season_id} - Delete season
 pub async fn delete_league_season(
     pool: web::Data<PgPool>,
+    scheduler: web::Data<Arc<crate::services::SchedulerService>>,
     path: web::Path<(Uuid, Uuid)>,
 ) -> Result<HttpResponse> {
     let (league_id, season_id) = path.into_inner();
@@ -1051,6 +1097,14 @@ pub async fn delete_league_season(
                 actix_web::error::ErrorInternalServerError("Database error")
             })?;
 
+            // Unschedule the season's evaluation job
+            if let Err(e) = scheduler.unschedule_season(season_id).await {
+                tracing::error!("❌ Failed to unschedule season {}: {}", season_id, e);
+                // Don't fail deletion if unscheduling fails
+            } else {
+                tracing::info!("✅ Unscheduled evaluation for deleted season {}", season_id);
+            }
+
             let response = ApiResponse {
                 data: serde_json::json!({
                     "league_id": league_id,
@@ -1061,7 +1115,7 @@ pub async fn delete_league_season(
                 message: Some("Season and all related data deleted successfully".to_string()),
             };
 
-            Ok(HttpResponse::Ok().json(response))
+            Ok(HttpResponse::NoContent().finish())
         }
         Err(e) => {
             eprintln!("Database error deleting season: {}", e);

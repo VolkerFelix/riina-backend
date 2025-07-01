@@ -101,11 +101,18 @@ pub async fn get_league_schedule(
                 "data": schedule
             })))
         }
-        Err(e) => {
-            tracing::error!("Failed to get schedule for season {}: {}", season_id, e);
+        Err(sqlx::Error::RowNotFound) => {
+            tracing::warn!("Season {} not found", season_id);
             Ok(HttpResponse::NotFound().json(json!({
                 "success": false,
-                "message": "Schedule not found"
+                "message": "Season not found"
+            })))
+        }
+        Err(e) => {
+            tracing::error!("Failed to get schedule for season {}: {}", season_id, e);
+            Ok(HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "message": "Failed to retrieve schedule"
             })))
         }
     }
