@@ -89,7 +89,8 @@ pub async fn create_league_season(
     
     let season_request = json!({
         "name": season_name,
-        "start_date": start_date
+        "start_date": start_date,
+        "evaluation_cron": "0 0 22 * * SAT" // Default: Saturday 10 PM UTC
     });
 
     let season_response = make_authenticated_request(
@@ -112,7 +113,7 @@ pub async fn create_league_season_with_schedule(
     league_id: &str,
     season_name: &str,
     start_date: &str,
-    evaluation_cron: Option<&str>,
+    evaluation_cron: &str,
     evaluation_timezone: Option<&str>,
     auto_evaluation_enabled: Option<bool>,
 ) -> String {
@@ -120,12 +121,9 @@ pub async fn create_league_season_with_schedule(
     
     let mut season_request = json!({
         "name": season_name,
-        "start_date": start_date
+        "start_date": start_date,
+        "evaluation_cron": evaluation_cron
     });
-
-    if let Some(cron) = evaluation_cron {
-        season_request["evaluation_cron"] = json!(cron);
-    }
     if let Some(tz) = evaluation_timezone {
         season_request["evaluation_timezone"] = json!(tz);
     }

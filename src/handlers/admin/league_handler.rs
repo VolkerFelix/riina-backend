@@ -51,7 +51,7 @@ pub struct GenerateScheduleRequest {
 pub struct CreateSeasonRequest {
     pub name: String,
     pub start_date: DateTime<Utc>,
-    pub evaluation_cron: Option<String>,    // Cron expression for game evaluation (e.g., "0 0 10 * * TUE")
+    pub evaluation_cron: String,    // Cron expression for game evaluation (e.g., "0 0 10 * * TUE")
     pub evaluation_timezone: Option<String>, // Timezone (defaults to "UTC")
     pub auto_evaluation_enabled: Option<bool>, // Whether to enable automatic evaluation (defaults to true)
 }
@@ -728,27 +728,8 @@ pub async fn create_league_season(
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
-    // Generate evaluation schedule based on season start time
-    let evaluation_cron = body.evaluation_cron.as_deref().map(|c| c.to_string()).unwrap_or_else(|| {
-        // Extract day of week and time from start_date to create weekly cron
-        let weekday = body.start_date.weekday();
-        let hour = body.start_date.hour();
-        let minute = body.start_date.minute();
-        
-        // Convert weekday to cron format (0=Sunday, 1=Monday, etc.)
-        let cron_weekday = match weekday {
-            chrono::Weekday::Mon => "MON",
-            chrono::Weekday::Tue => "TUE", 
-            chrono::Weekday::Wed => "WED",
-            chrono::Weekday::Thu => "THU",
-            chrono::Weekday::Fri => "FRI",
-            chrono::Weekday::Sat => "SAT",
-            chrono::Weekday::Sun => "SUN",
-        };
-        
-        // Create cron expression: "second minute hour day month dayOfWeek"
-        format!("0 {} {} * * {}", minute, hour, cron_weekday)
-    });
+    // Use the evaluation schedule provided by the admin
+    let evaluation_cron = body.evaluation_cron.clone();
     
     let evaluation_timezone = body.evaluation_timezone.as_deref().unwrap_or("UTC");
     let auto_evaluation_enabled = body.auto_evaluation_enabled.unwrap_or(true);

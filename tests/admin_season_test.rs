@@ -123,7 +123,8 @@ async fn admin_generate_schedule_works() {
 
     let season_request = json!({
         "name": "Test Season",
-        "start_date": start_date.to_rfc3339()
+        "start_date": start_date.to_rfc3339(),
+        "evaluation_cron": "0 0 22 * * SAT"
     });
 
     let season_response = make_authenticated_request(
@@ -216,7 +217,8 @@ async fn admin_generate_schedule_with_invalid_date_fails() {
     
     let season_request = json!({
         "name": "Test Season with Invalid Date",
-        "start_date": date.to_rfc3339()
+        "start_date": date.to_rfc3339(),
+        "evaluation_cron": "0 0 22 * * SAT"
     });
 
     let response = make_authenticated_request(
@@ -292,7 +294,8 @@ async fn test_season_creation_with_proper_round_robin_schedule() {
     
     let season_request = json!({
         "name": "Test Season",
-        "start_date": start_date.to_rfc3339()
+        "start_date": start_date.to_rfc3339(),
+        "evaluation_cron": "0 0 22 * * SAT"
     });
 
     let season_response = make_authenticated_request(

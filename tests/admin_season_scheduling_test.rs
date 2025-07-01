@@ -63,7 +63,7 @@ async fn test_season_creation_with_dynamic_scheduling() {
         league_id,
         "Default Schedule Season",
         &start_date.to_rfc3339(),
-        None, // Use default cron
+        "0 0 22 * * SAT", // Saturday 10 PM UTC
         None, // Use default timezone
         None, // Use default auto_evaluation_enabled
     ).await;
@@ -94,7 +94,7 @@ async fn test_season_creation_with_dynamic_scheduling() {
         league_id,
         "Custom Schedule Season",
         &(start_date + Duration::days(30)).to_rfc3339(),
-        Some("0 0 8 * * TUE"), // Tuesday 8 AM
+        "0 0 8 * * TUE", // Tuesday 8 AM
         Some("UTC"),
         Some(true),
     ).await;
@@ -125,7 +125,7 @@ async fn test_season_creation_with_dynamic_scheduling() {
         league_id,
         "Disabled Auto-Evaluation Season",
         &(start_date + Duration::days(60)).to_rfc3339(),
-        Some("0 0 15 * * WED"), // Wednesday 3 PM
+        "0 0 15 * * WED", // Wednesday 3 PM
         Some("Europe/London"),
         Some(false), // Disable auto-evaluation
     ).await;
@@ -265,7 +265,7 @@ async fn test_season_scheduling_edge_cases() {
         league_id,
         "Hourly Evaluation Season",
         &get_next_date(Weekday::Wed, NaiveTime::from_hms_opt(10, 0, 0).unwrap()).to_rfc3339(),
-        Some(hourly_cron),
+        hourly_cron,
         Some("UTC"),
         Some(true),
     ).await;
@@ -279,7 +279,7 @@ async fn test_season_scheduling_edge_cases() {
         league_id,
         "Tokyo Timezone Season",
         &get_next_date(Weekday::Thu, NaiveTime::from_hms_opt(12, 0, 0).unwrap()).to_rfc3339(),
-        Some("0 0 21 * * MON"), // Monday 9 PM
+        "0 0 21 * * MON", // Monday 9 PM
         Some("Asia/Tokyo"),
         Some(true),
     ).await;
@@ -294,7 +294,7 @@ async fn test_season_scheduling_edge_cases() {
         league_id,
         "Monthly Evaluation Season",
         &get_next_date(Weekday::Fri, NaiveTime::from_hms_opt(15, 0, 0).unwrap()).to_rfc3339(),
-        Some(complex_cron),
+        complex_cron,
         Some("UTC"),
         Some(true),
     ).await;
