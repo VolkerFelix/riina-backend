@@ -201,6 +201,64 @@ async fn test_game_evaluation_service_integration() {
             );
         }
     }
+
+    // Step 6: Verify standings have been updated after game evaluation
+    println!("🏅 Checking standings updates after game evaluation...");
+    
+    let standings_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/seasons/{}/standings", &app.address, _season_id),
+        &admin_user.token,
+        None,
+    ).await;
+    
+    assert_eq!(standings_response.status(), 200, "Should be able to fetch standings");
+    let standings_data: serde_json::Value = standings_response.json().await.unwrap();
+    let standings = standings_data["data"]["standings"].as_array().unwrap();
+    
+    println!("📊 Standings after game evaluation:");
+    let mut total_games_played = 0;
+    let mut total_wins = 0;
+    let mut total_draws = 0;
+    let mut total_losses = 0;
+    let mut total_points = 0;
+    
+    for standing in standings {
+        let team_name = standing["team_name"].as_str().unwrap();
+        let games_played = standing["standing"]["games_played"].as_i64().unwrap();
+        let wins = standing["standing"]["wins"].as_i64().unwrap();
+        let draws = standing["standing"]["draws"].as_i64().unwrap();
+        let losses = standing["standing"]["losses"].as_i64().unwrap();
+        let points = standing["standing"]["points"].as_i64().unwrap_or(0);
+        
+        println!("   {} - GP: {}, W: {}, D: {}, L: {}, Pts: {}", 
+            team_name, games_played, wins, draws, losses, points);
+        
+        // Verify standings logic
+        assert!(games_played > 0, "Each team should have played at least one game after evaluation");
+        assert_eq!(wins + draws + losses, games_played, "W+D+L should equal games played");
+        assert_eq!(points, wins * 3 + draws, "Points should equal 3*wins + draws");
+        
+        // Accumulate totals for overall verification
+        total_games_played += games_played;
+        total_wins += wins;
+        total_draws += draws;
+        total_losses += losses;
+        total_points += points;
+    }
+    
+    // Verify overall standings consistency
+    assert!(total_games_played > 0, "Total games played should be greater than 0");
+    assert_eq!(total_wins, total_losses, "Total wins should equal total losses (in 2-team league)");
+    assert_eq!(total_draws % 2, 0, "Total draws should be even (each draw counts for both teams)");
+    assert_eq!(total_points, total_wins * 3 + total_draws, "Total points calculation should be correct");
+    
+    println!("✅ Standings verification completed:");
+    println!("   📈 Total games played: {}", total_games_played);
+    println!("   🏆 Total wins: {}, Total losses: {}", total_wins, total_losses);
+    println!("   🤝 Total draws: {}", total_draws);
+    println!("   ⭐ Total points distributed: {}", total_points);
     
     println!("✅ Game Evaluation Service integration test completed successfully");
 }

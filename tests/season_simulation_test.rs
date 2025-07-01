@@ -175,7 +175,7 @@ async fn simulate_complete_season_with_4_players_2_teams() {
     println!("✅ Assigned both teams to league");
     
     // Step 6: Create a season
-    let start_date = get_next_date(Weekday::Sat, NaiveTime::from_hms_opt(22, 0, 0).unwrap());
+    let start_date = get_next_date(Weekday::Sun, NaiveTime::from_hms_opt(10, 0, 0).unwrap());
     let season_id = create_league_season(
         &app.address,
         &admin_user.token,

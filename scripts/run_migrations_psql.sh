@@ -24,7 +24,7 @@ echo "📋 Migration tracking ready"
 
 # Process migrations
 migration_count=0
-for migration_file in $(ls ${MIGRATIONS_DIR:-/app/migrations}/*.sql 2>/dev/null | sort); do
+for migration_file in $(ls ${MIGRATIONS_DIR:-/migrations}/*.sql 2>/dev/null | sort); do
     filename=$(basename "$migration_file")
     
     # Skip if already executed

@@ -3,7 +3,7 @@ use serde_json::json;
 use uuid::Uuid;
 use sqlx::PgPool;
 use std::collections::{HashMap, HashSet};
-use chrono::{Datelike, Weekday, NaiveTime};
+use chrono::{Datelike, Days, NaiveTime, Utc, Weekday};
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, get_next_date};
@@ -208,9 +208,11 @@ async fn admin_generate_schedule_with_invalid_date_fails() {
         }
     }
 
-    // Act - Try to create season with invalid date (not a Saturday)  
-    // Find next Monday (definitely not a Saturday) at 22:00 UTC
-    let date = get_next_date(Weekday::Mon, NaiveTime::from_hms_opt(22, 0, 0).unwrap());
+    // Act - Try to create season with invalid date
+    // Create a date that's in the past
+    let days = Days::new(2);
+    let date = Utc::now().checked_sub_days(days).unwrap();
+    //let date = get_next_date(Weekday::Mon, NaiveTime::from_hms_opt(22, 0, 0).unwrap());
     
     let season_request = json!({
         "name": "Test Season with Invalid Date",
@@ -236,8 +238,7 @@ async fn admin_generate_schedule_with_invalid_date_fails() {
     
     // Check that the error message indicates Saturday validation failure
     let error_msg = body["error"].as_str().unwrap_or("");
-    assert!(error_msg.contains("Saturday"), "Expected Saturday validation error, got: {}", error_msg);
-    assert!(error_msg.contains("22:00 UTC"), "Expected time validation error, got: {}", error_msg);
+    assert!(error_msg.contains("future"), "Expected future validation error, got: {}", error_msg);
 }
 
 #[tokio::test]

@@ -21,16 +21,6 @@ fn test_countdown_formatting() {
 }
 
 #[test]
-fn test_valid_game_time() {
-    let service = CountdownService::new();
-    let valid_time = Utc.with_ymd_and_hms(2024, 1, 6, 22, 0, 0).unwrap(); // Saturday 10pm
-    let invalid_time = Utc.with_ymd_and_hms(2024, 1, 6, 21, 0, 0).unwrap(); // Saturday 9pm
-    
-    assert!(service.is_valid_game_time(valid_time));
-    assert!(!service.is_valid_game_time(invalid_time));
-}
-
-#[test]
 fn test_urgency_levels() {
     let service = CountdownService::new();
     assert_eq!(service.get_urgency_level(0), UrgencyLevel::GameTime);

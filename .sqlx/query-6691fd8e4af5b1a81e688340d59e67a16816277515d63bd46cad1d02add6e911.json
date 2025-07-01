@@ -37,6 +37,21 @@
         "ordinal": 6,
         "name": "updated_at",
         "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "evaluation_cron",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "evaluation_timezone",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 9,
+        "name": "auto_evaluation_enabled",
+        "type_info": "Bool"
       }
     ],
     "parameters": {
@@ -51,7 +66,10 @@
       false,
       false,
       false,
-      false
+      false,
+      true,
+      true,
+      true
     ]
   },
   "hash": "6691fd8e4af5b1a81e688340d59e67a16816277515d63bd46cad1d02add6e911"

@@ -8,10 +8,13 @@ use redis::AsyncCommands;
 use crate::game::game_evaluator::{GameEvaluator, GameStats};
 use crate::models::game_events::{GameEvent, GameResult, NotificationType};
 use crate::models::common::MatchResult;
+use crate::league::standings::StandingsService;
+use crate::models::league::{LeagueGame, GameStatus};
 
 pub struct GameEvaluationService {
     pool: PgPool,
     redis_client: Option<Arc<redis::Client>>,
+    standings: StandingsService,
 }
 
 #[derive(Debug)]
@@ -25,6 +28,7 @@ pub struct EvaluationResult {
 impl GameEvaluationService {
     pub fn new(pool: PgPool) -> Self {
         Self { 
+            standings: StandingsService::new(pool.clone()),
             pool,
             redis_client: None,
         }
@@ -32,6 +36,7 @@ impl GameEvaluationService {
 
     pub fn new_with_redis(pool: PgPool, redis_client: Option<Arc<redis::Client>>) -> Self {
         Self { 
+            standings: StandingsService::new(pool.clone()),
             pool,
             redis_client,
         }
@@ -103,8 +108,24 @@ impl GameEvaluationService {
         Ok(result)
     }
 
-    /// Update a specific game's result in the database
+    /// Update a specific game's result in the database and update standings
     async fn update_game_result(&self, game_id: Uuid, game_stats: &GameStats) -> Result<(), sqlx::Error> {
+        // First, get the game details before updating
+        let game_record = sqlx::query_as!(
+            LeagueGame,
+            r#"
+            SELECT 
+                id, season_id, home_team_id, away_team_id, scheduled_time, 
+                week_number, is_first_leg, status as "status: GameStatus", 
+                home_score, away_score, winner_team_id, created_at, updated_at
+            FROM league_games 
+            WHERE id = $1
+            "#,
+            game_id
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
         // Start a transaction to ensure atomic updates
         let mut tx = self.pool.begin().await?;
 
@@ -129,8 +150,25 @@ impl GameEvaluationService {
         .execute(&mut *tx)
         .await?;
 
-        // Commit the transaction
+        // Commit the game update transaction
         tx.commit().await?;
+
+        // Update standings with the updated game record
+        let mut updated_game = game_record;
+        updated_game.home_score = Some(game_stats.home_team_score as i32);
+        updated_game.away_score = Some(game_stats.away_team_score as i32);
+        updated_game.winner_team_id = game_stats.winner_team_id;
+        updated_game.status = GameStatus::Finished;
+
+        // Update standings
+        self.standings.update_after_game_result(
+            &updated_game,
+            game_stats.home_team_score as i32,
+            game_stats.away_team_score as i32
+        ).await?;
+
+        tracing::info!("✅ Updated game {} and standings: {} - {}", 
+            game_id, game_stats.home_team_score, game_stats.away_team_score);
 
         Ok(())
     }

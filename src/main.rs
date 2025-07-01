@@ -50,26 +50,30 @@ async fn main() -> std::io::Result<()> {
     let listener = TcpListener::bind(&address)?;
     
     // Initialize the scheduler service
-    match SchedulerService::new_with_redis(conection_pool.clone(), redis_client_arc.clone()).await {
+    let scheduler_service = match SchedulerService::new_with_redis(conection_pool.clone(), redis_client_arc.clone()).await {
         Ok(scheduler) => {
             match scheduler.start().await {
                 Ok(_) => {
                     tracing::info!("✅ Scheduler service started successfully");
+                    Arc::new(scheduler)
                 }
                 Err(e) => {
                     tracing::error!("❌ Failed to start scheduler: {}", e);
+                    std::process::exit(1);
                 }
             }
         }
         Err(e) => {
             tracing::error!("❌ Failed to create scheduler service: {}", e);
+            std::process::exit(1);
         }
-    }
+    };
     
     run(
         listener,
         conection_pool,
         jwt_settings,
-        redis_client_raw
+        redis_client_raw,
+        scheduler_service
     )?.await
 }

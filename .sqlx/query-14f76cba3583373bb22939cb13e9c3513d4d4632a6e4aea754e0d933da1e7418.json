@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT \n                lg.*,\n                ht.team_name as home_team_name,\n                at.team_name as away_team_name,\n                ht.team_color as home_team_color,\n                at.team_color as away_team_color\n            FROM league_games lg\n            JOIN teams ht ON lg.home_team_id = ht.id\n            JOIN teams at ON lg.away_team_id = at.id\n            WHERE lg.season_id = $1\n            ORDER BY lg.scheduled_time, lg.week_number\n            ",
+  "query": "\n            SELECT \n                id, season_id, home_team_id, away_team_id, scheduled_time, \n                week_number, is_first_leg, status as \"status: GameStatus\", \n                home_score, away_score, winner_team_id, created_at, updated_at\n            FROM league_games \n            WHERE id = $1\n            ",
   "describe": {
     "columns": [
       {
@@ -40,23 +40,23 @@
       },
       {
         "ordinal": 7,
-        "name": "status",
+        "name": "status: GameStatus",
         "type_info": "Varchar"
       },
       {
         "ordinal": 8,
-        "name": "winner_team_id",
-        "type_info": "Uuid"
-      },
-      {
-        "ordinal": 9,
         "name": "home_score",
         "type_info": "Int4"
       },
       {
-        "ordinal": 10,
+        "ordinal": 9,
         "name": "away_score",
         "type_info": "Int4"
+      },
+      {
+        "ordinal": 10,
+        "name": "winner_team_id",
+        "type_info": "Uuid"
       },
       {
         "ordinal": 11,
@@ -67,26 +67,6 @@
         "ordinal": 12,
         "name": "updated_at",
         "type_info": "Timestamptz"
-      },
-      {
-        "ordinal": 13,
-        "name": "home_team_name",
-        "type_info": "Varchar"
-      },
-      {
-        "ordinal": 14,
-        "name": "away_team_name",
-        "type_info": "Varchar"
-      },
-      {
-        "ordinal": 15,
-        "name": "home_team_color",
-        "type_info": "Varchar"
-      },
-      {
-        "ordinal": 16,
-        "name": "away_team_color",
-        "type_info": "Varchar"
       }
     ],
     "parameters": {
@@ -107,12 +87,8 @@
       true,
       true,
       false,
-      false,
-      false,
-      false,
-      false,
       false
     ]
   },
-  "hash": "d2ac2a498120beddf4633fcf729751a4fcaee9ed8549fee474cb5f93fa0ef523"
+  "hash": "14f76cba3583373bb22939cb13e9c3513d4d4632a6e4aea754e0d933da1e7418"
 }

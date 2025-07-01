@@ -12,6 +12,8 @@ use reqwest::Response;
 use evolveme_backend::run;
 use evolveme_backend::config::settings::{get_config, DatabaseSettings, get_jwt_settings, get_redis_url};
 use evolveme_backend::telemetry::{get_subscriber, init_subscriber};
+use evolveme_backend::services::SchedulerService;
+use std::sync::Arc;
 
 // Ensure that the `tracing` stack is only initialised once using `once_cell`
 static TRACING: Lazy<()> = Lazy::new(|| {
@@ -63,12 +65,21 @@ pub async fn spawn_app() -> TestApp {
     let jwt_settings = get_jwt_settings(&configuration);
     let redis_client = redis::Client::open(get_redis_url(&configuration).expose_secret())
         .ok();
+    
+    // Create scheduler service for tests
+    let redis_client_arc = redis_client.as_ref().map(|client| Arc::new(client.clone()));
+    let scheduler_service = Arc::new(
+        SchedulerService::new_with_redis(connection_pool.clone(), redis_client_arc)
+            .await
+            .expect("Failed to create scheduler service for tests")
+    );
+    
     let server = run(
         listener, 
         connection_pool.clone(), 
         jwt_settings,
         redis_client,
-
+        scheduler_service,
     )
         .expect("Failed to bind address");
     // Launch the server as a background task
