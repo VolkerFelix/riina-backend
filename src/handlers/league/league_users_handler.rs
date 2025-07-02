@@ -143,9 +143,9 @@ pub async fn get_league_users_with_stats(
             tm.role as team_role,
             tm.status as team_status,
             tm.joined_at as joined_at,
-            COALESCE(ua.stamina, 50) as stamina,
-            COALESCE(ua.strength, 50) as strength,
-            COALESCE(ua.stamina + ua.strength, 100) as total_stats,
+            COALESCE(ua.stamina, 0) as stamina,
+            COALESCE(ua.strength, 0) as strength,
+            COALESCE(ua.stamina + ua.strength, 0) as total_stats,
             COALESCE(ur.rank, 999) as rank,
             COALESCE(ua.avatar_style, 'warrior') as avatar_style,
             false as is_online -- TODO: Implement real online status from websocket connections

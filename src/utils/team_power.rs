@@ -13,11 +13,10 @@ pub struct TeamMemberStats {
 }
 
 /// Calculate team power based on member stats
-/// Team power is the sum of all active members' (stamina + strength)
+/// Team power is the sum of all members' (stamina + strength)
 pub fn calculate_team_power_from_members(members: &[TeamMemberStats]) -> i32 {
     members
         .iter()
-        .filter(|member| member.status == "active")
         .map(|member| member.stats.stamina + member.stats.strength)
         .sum()
 }

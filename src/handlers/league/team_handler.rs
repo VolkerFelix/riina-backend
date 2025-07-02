@@ -208,7 +208,8 @@ pub async fn get_team_information(
     team_id: Uuid,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse> {
-    match sqlx::query_as!(
+    // First get the basic team info
+    let team = match sqlx::query_as!(
         TeamInfo,
         r#"
         SELECT 
@@ -229,26 +230,48 @@ pub async fn get_team_information(
     .fetch_optional(pool.get_ref())
     .await
     {
-        Ok(Some(team)) => {
-            Ok(HttpResponse::Ok().json(json!({
-                "success": true,
-                "data": team
-            })))
-        }
+        Ok(Some(team)) => team,
         Ok(None) => {
-            Ok(HttpResponse::NotFound().json(json!({
+            return Ok(HttpResponse::NotFound().json(json!({
                 "success": false,
                 "message": "Team not found"
-            })))
+            })));
         }
         Err(e) => {
             tracing::error!("Failed to get team {}: {}", team_id, e);
-            Ok(HttpResponse::InternalServerError().json(json!({
+            return Ok(HttpResponse::InternalServerError().json(json!({
                 "success": false,
                 "message": "Failed to retrieve team information"
-            })))
+            })));
         }
-    }
+    };
+
+    // Calculate team power
+    let team_power = match team_power::calculate_team_power(team_id, pool.get_ref()).await {
+        Ok(power) => power,
+        Err(e) => {
+            tracing::error!("Failed to calculate team power for {}: {}", team_id, e);
+            0 // Default to 0 if calculation fails
+        }
+    };
+
+    // Create TeamInfoWithPower
+    let team_with_power = TeamInfoWithPower {
+        id: team.id,
+        user_id: team.user_id,
+        team_name: team.team_name,
+        team_description: team.team_description,
+        team_color: team.team_color,
+        created_at: team.created_at,
+        updated_at: team.updated_at,
+        owner_username: team.owner_username,
+        total_power: team_power,
+    };
+
+    Ok(HttpResponse::Ok().json(json!({
+        "success": true,
+        "data": team_with_power
+    })))
 }
 
 /// Get all registered teams
