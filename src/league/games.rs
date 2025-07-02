@@ -2,6 +2,7 @@ use chrono::Datelike;
 use sqlx::PgPool;
 use uuid::Uuid;
 use crate::models::league::*;
+use crate::utils::team_power;
 
 /// Service responsible for individual game operations
 pub struct GameService {
@@ -107,11 +108,13 @@ impl GameService {
             r#"
             SELECT 
                 lg.*,
-                'Team ' || SUBSTRING(lg.home_team_id::text, 1, 8) as home_team_name,
-                'Team ' || SUBSTRING(lg.away_team_id::text, 1, 8) as away_team_name,
-                '#E74C3C' as home_team_color,
-                '#3498DB' as away_team_color
+                ht.team_name as home_team_name,
+                ht.team_color as home_team_color,
+                at.team_name as away_team_name,
+                at.team_color as away_team_color
             FROM league_games lg
+            JOIN teams ht ON lg.home_team_id = ht.id
+            JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.id = $1
             "#,
             game_id
@@ -119,36 +122,45 @@ impl GameService {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(result.map(|row| {
-            let status = match row.status.as_str() {
-                "live" => GameStatus::Live,
-                "finished" => GameStatus::Finished,
-                "postponed" => GameStatus::Postponed,
-                _ => GameStatus::Scheduled,
-            };
+        match result {
+            Some(row) => {
+                let status = match row.status.as_str() {
+                    "live" => GameStatus::Live,
+                    "finished" => GameStatus::Finished,
+                    "postponed" => GameStatus::Postponed,
+                    _ => GameStatus::Scheduled,
+                };
 
-            GameWithTeams {
-                game: LeagueGame {
-                    id: row.id,
-                    season_id: row.season_id,
-                    home_team_id: row.home_team_id,
-                    away_team_id: row.away_team_id,
-                    scheduled_time: row.scheduled_time,
-                    week_number: row.week_number,
-                    is_first_leg: row.is_first_leg,
-                    status,
-                    home_score: row.home_score,
-                    away_score: row.away_score,
-                    winner_team_id: row.winner_team_id,
-                    created_at: row.created_at,
-                    updated_at: row.updated_at,
-                },
-                home_team_name: row.home_team_name.unwrap_or_default(),
-                away_team_name: row.away_team_name.unwrap_or_default(),
-                home_team_color: row.home_team_color.unwrap_or_default(),
-                away_team_color: row.away_team_color.unwrap_or_default(),
+                // Calculate team powers
+                let team_ids = vec![row.home_team_id, row.away_team_id];
+                let team_powers = team_power::calculate_multiple_team_powers(&team_ids, &self.pool).await?;
+
+                Ok(Some(GameWithTeams {
+                    game: LeagueGame {
+                        id: row.id,
+                        season_id: row.season_id,
+                        home_team_id: row.home_team_id,
+                        away_team_id: row.away_team_id,
+                        scheduled_time: row.scheduled_time,
+                        week_number: row.week_number,
+                        is_first_leg: row.is_first_leg,
+                        status,
+                        home_score: row.home_score,
+                        away_score: row.away_score,
+                        winner_team_id: row.winner_team_id,
+                        created_at: row.created_at,
+                        updated_at: row.updated_at,
+                    },
+                    home_team_name: row.home_team_name,
+                    away_team_name: row.away_team_name,
+                    home_team_color: row.home_team_color,
+                    away_team_color: row.away_team_color,
+                    home_team_power: team_powers.get(&row.home_team_id).copied(),
+                    away_team_power: team_powers.get(&row.away_team_id).copied(),
+                }))
             }
-        }))
+            None => Ok(None),
+        }
     }
 
 
@@ -179,36 +191,45 @@ impl GameService {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(game_query.map(|row| {
-            let status = match row.status.as_str() {
-                "live" => GameStatus::Live,
-                "finished" => GameStatus::Finished,
-                "postponed" => GameStatus::Postponed,
-                _ => GameStatus::Scheduled,
-            };
+        match game_query {
+            Some(row) => {
+                let status = match row.status.as_str() {
+                    "live" => GameStatus::Live,
+                    "finished" => GameStatus::Finished,
+                    "postponed" => GameStatus::Postponed,
+                    _ => GameStatus::Scheduled,
+                };
 
-            GameWithTeams {
-                game: LeagueGame {
-                    id: row.id,
-                    season_id: row.season_id,
-                    home_team_id: row.home_team_id,
-                    away_team_id: row.away_team_id,
-                    scheduled_time: row.scheduled_time,
-                    week_number: row.week_number,
-                    is_first_leg: row.is_first_leg,
-                    status,
-                    home_score: row.home_score,
-                    away_score: row.away_score,
-                    winner_team_id: row.winner_team_id,
-                    created_at: row.created_at,
-                    updated_at: row.updated_at,
-                },
-                home_team_name: row.home_team_name,
-                away_team_name: row.away_team_name,
-                home_team_color: row.home_team_color,
-                away_team_color: row.away_team_color,
+                // Calculate team powers
+                let team_ids = vec![row.home_team_id, row.away_team_id];
+                let team_powers = team_power::calculate_multiple_team_powers(&team_ids, &self.pool).await?;
+
+                Ok(Some(GameWithTeams {
+                    game: LeagueGame {
+                        id: row.id,
+                        season_id: row.season_id,
+                        home_team_id: row.home_team_id,
+                        away_team_id: row.away_team_id,
+                        scheduled_time: row.scheduled_time,
+                        week_number: row.week_number,
+                        is_first_leg: row.is_first_leg,
+                        status,
+                        home_score: row.home_score,
+                        away_score: row.away_score,
+                        winner_team_id: row.winner_team_id,
+                        created_at: row.created_at,
+                        updated_at: row.updated_at,
+                    },
+                    home_team_name: row.home_team_name,
+                    away_team_name: row.away_team_name,
+                    home_team_color: row.home_team_color,
+                    away_team_color: row.away_team_color,
+                    home_team_power: team_powers.get(&row.home_team_id).copied(),
+                    away_team_power: team_powers.get(&row.away_team_id).copied(),
+                }))
             }
-        }))
+            None => Ok(None),
+        }
     }
 
     /// Get games scheduled for this week
@@ -240,6 +261,18 @@ impl GameService {
         .fetch_all(&self.pool)
         .await?;
 
+        // Collect all unique team IDs for power calculation
+        let mut team_ids = Vec::new();
+        for row in &games_query {
+            team_ids.push(row.home_team_id);
+            team_ids.push(row.away_team_id);
+        }
+        team_ids.sort();
+        team_ids.dedup();
+
+        // Calculate team powers for all teams
+        let team_powers = team_power::calculate_multiple_team_powers(&team_ids, &self.pool).await?;
+
         Ok(games_query.into_iter().map(|row| {
             let status = match row.status.as_str() {
                 "live" => GameStatus::Live,
@@ -268,6 +301,8 @@ impl GameService {
                 away_team_name: row.away_team_name,
                 home_team_color: row.home_team_color,
                 away_team_color: row.away_team_color,
+                home_team_power: team_powers.get(&row.home_team_id).copied(),
+                away_team_power: team_powers.get(&row.away_team_id).copied(),
             }
         }).collect())
     }
@@ -301,6 +336,18 @@ impl GameService {
         .fetch_all(&self.pool)
         .await?;
 
+        // Collect all unique team IDs for power calculation
+        let mut team_ids = Vec::new();
+        for row in &games_query {
+            team_ids.push(row.home_team_id);
+            team_ids.push(row.away_team_id);
+        }
+        team_ids.sort();
+        team_ids.dedup();
+
+        // Calculate team powers for all teams
+        let team_powers = team_power::calculate_multiple_team_powers(&team_ids, &self.pool).await?;
+
         Ok(games_query.into_iter().map(|row| {
             let status = match row.status.as_str() {
                 "live" => GameStatus::Live,
@@ -329,6 +376,8 @@ impl GameService {
                 away_team_name: row.away_team_name,
                 home_team_color: row.home_team_color,
                 away_team_color: row.away_team_color,
+                home_team_power: team_powers.get(&row.home_team_id).copied(),
+                away_team_power: team_powers.get(&row.away_team_id).copied(),
             }
         }).collect())
     }

@@ -6,7 +6,8 @@ use chrono::Utc;
 
 use crate::middleware::auth::Claims;
 use crate::models::league::*;
-use crate::models::team::{TeamRegistrationRequest, TeamUpdateRequest, TeamInfo};
+use crate::models::team::{TeamRegistrationRequest, TeamUpdateRequest, TeamInfo, TeamInfoWithPower};
+use crate::utils::team_power;
 
 /// Register a new team
 #[tracing::instrument(
@@ -257,7 +258,8 @@ pub async fn get_all_registered_teams(
 ) -> Result<HttpResponse> {
     let limit = query.limit.unwrap_or(20).min(100);
     
-    match sqlx::query_as!(
+    // First get the basic team info
+    let teams = match sqlx::query_as!(
         TeamInfo,
         r#"
         SELECT 
@@ -279,24 +281,53 @@ pub async fn get_all_registered_teams(
     .fetch_all(pool.get_ref())
     .await
     {
-        Ok(teams) => {
-            Ok(HttpResponse::Ok().json(json!({
-                "success": true,
-                "data": teams,
-                "pagination": {
-                    "limit": limit,
-                    "total": teams.len()
-                }
-            })))
-        }
+        Ok(teams) => teams,
         Err(e) => {
             tracing::error!("Failed to get teams: {}", e);
-            Ok(HttpResponse::InternalServerError().json(json!({
+            return Ok(HttpResponse::InternalServerError().json(json!({
                 "success": false,
                 "message": "Failed to retrieve teams"
-            })))
+            })));
         }
-    }
+    };
+
+    // Calculate power for all teams
+    let team_ids: Vec<Uuid> = teams.iter().map(|t| t.id).collect();
+    let team_powers = match team_power::calculate_multiple_team_powers(&team_ids, pool.get_ref()).await {
+        Ok(powers) => powers,
+        Err(e) => {
+            tracing::error!("Failed to calculate team powers: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "message": "Failed to calculate team powers"
+            })));
+        }
+    };
+
+    // Convert to TeamInfoWithPower
+    let teams_with_power: Vec<TeamInfoWithPower> = teams
+        .into_iter()
+        .map(|team| TeamInfoWithPower {
+            total_power: team_powers.get(&team.id).copied().unwrap_or(0),
+            id: team.id,
+            user_id: team.user_id,
+            team_name: team.team_name,
+            team_description: team.team_description,
+            team_color: team.team_color,
+            created_at: team.created_at,
+            updated_at: team.updated_at,
+            owner_username: team.owner_username,
+        })
+        .collect();
+
+    Ok(HttpResponse::Ok().json(json!({
+        "success": true,
+        "data": teams_with_power,
+        "pagination": {
+            "limit": limit,
+            "total": teams_with_power.len()
+        }
+    })))
 }
 
 /// Update team information

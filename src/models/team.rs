@@ -230,6 +230,20 @@ pub struct TeamWithMembers {
     pub member_count: usize,
 }
 
+/// Team info with calculated power
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TeamInfoWithPower {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub team_name: String,
+    pub team_description: Option<String>,
+    pub team_color: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub owner_username: String,
+    pub total_power: i32,
+}
+
 impl TeamRegistrationRequest {
     /// Validate team registration request
     pub fn validate(&self) -> Result<(), String> {
