@@ -32,10 +32,10 @@ pub async fn get_team_members_with_stats(
         SELECT 
             tm.user_id,
             tm.status,
-            COALESCE(hp.stamina, 0) as stamina,
-            COALESCE(hp.strength, 0) as strength
+            COALESCE(ua.stamina, 0) as stamina,
+            COALESCE(ua.strength, 0) as strength
         FROM team_members tm
-        LEFT JOIN health_profiles hp ON tm.user_id = hp.user_id
+        LEFT JOIN user_avatars ua ON tm.user_id = ua.user_id
         WHERE tm.team_id = $1
         "#,
         team_id
@@ -48,8 +48,8 @@ pub async fn get_team_members_with_stats(
         .map(|row| TeamMemberStats {
             user_id: row.user_id,
             stats: PlayerStats {
-                stamina: row.stamina,
-                strength: row.strength,
+                stamina: row.stamina.unwrap_or(0),
+                strength: row.strength.unwrap_or(0),
             },
             status: row.status,
         })
@@ -78,10 +78,10 @@ pub async fn calculate_multiple_team_powers(
             tm.team_id,
             tm.user_id,
             tm.status,
-            COALESCE(hp.stamina, 0) as stamina,
-            COALESCE(hp.strength, 0) as strength
+            COALESCE(ua.stamina, 0) as stamina,
+            COALESCE(ua.strength, 0) as strength
         FROM team_members tm
-        LEFT JOIN health_profiles hp ON tm.user_id = hp.user_id
+        LEFT JOIN user_avatars ua ON tm.user_id = ua.user_id
         WHERE tm.team_id = ANY($1)
         "#,
         &team_ids
@@ -102,8 +102,8 @@ pub async fn calculate_multiple_team_powers(
         let member = TeamMemberStats {
             user_id: row.user_id,
             stats: PlayerStats {
-                stamina: row.stamina,
-                strength: row.strength,
+                stamina: row.stamina.unwrap_or(0),
+                strength: row.strength.unwrap_or(0),
             },
             status: row.status,
         };

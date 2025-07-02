@@ -242,7 +242,19 @@ impl ScheduleService {
             None
         };
 
-        // Convert query results to GameWithTeams directly
+        // Collect all unique team IDs for power calculation
+        let mut team_ids = Vec::new();
+        for row in &games_query {
+            team_ids.push(row.home_team_id);
+            team_ids.push(row.away_team_id);
+        }
+        team_ids.sort();
+        team_ids.dedup();
+
+        // Calculate team powers for all teams
+        let team_powers = team_power::calculate_multiple_team_powers(&team_ids, &self.pool).await?;
+
+        // Convert query results to GameWithTeams with team powers
         let games_with_teams = games_query.into_iter().map(|row| {
             let status = match row.status.as_str() {
                 "live" => GameStatus::Live,
@@ -271,6 +283,8 @@ impl ScheduleService {
                 away_team_name: row.away_team_name,
                 home_team_color: row.home_team_color,
                 away_team_color: row.away_team_color,
+                home_team_power: team_powers.get(&row.home_team_id).copied(),
+                away_team_power: team_powers.get(&row.away_team_id).copied(),
             }
         }).collect();
 
@@ -316,6 +330,18 @@ impl ScheduleService {
         .fetch_all(&self.pool)
         .await?;
 
+        // Collect all unique team IDs for power calculation
+        let mut team_ids = Vec::new();
+        for row in &games_query {
+            team_ids.push(row.home_team_id);
+            team_ids.push(row.away_team_id);
+        }
+        team_ids.sort();
+        team_ids.dedup();
+
+        // Calculate team powers for all teams
+        let team_powers = team_power::calculate_multiple_team_powers(&team_ids, &self.pool).await?;
+
         Ok(games_query.into_iter().map(|row| {
             let status = match row.status.as_str() {
                 "live" => GameStatus::Live,
@@ -344,6 +370,8 @@ impl ScheduleService {
                 away_team_name: row.away_team_name,
                 home_team_color: row.home_team_color,
                 away_team_color: row.away_team_color,
+                home_team_power: team_powers.get(&row.home_team_id).copied(),
+                away_team_power: team_powers.get(&row.away_team_id).copied(),
             }
         }).collect())
     }
@@ -378,6 +406,18 @@ impl ScheduleService {
         .fetch_all(&self.pool)
         .await?;
 
+        // Collect all unique team IDs for power calculation
+        let mut team_ids = Vec::new();
+        for row in &games_query {
+            team_ids.push(row.home_team_id);
+            team_ids.push(row.away_team_id);
+        }
+        team_ids.sort();
+        team_ids.dedup();
+
+        // Calculate team powers for all teams
+        let team_powers = team_power::calculate_multiple_team_powers(&team_ids, &self.pool).await?;
+
         Ok(games_query.into_iter().map(|row| {
             let status = match row.status.as_str() {
                 "live" => GameStatus::Live,
@@ -406,6 +446,8 @@ impl ScheduleService {
                 away_team_name: row.away_team_name,
                 home_team_color: row.home_team_color,
                 away_team_color: row.away_team_color,
+                home_team_power: team_powers.get(&row.home_team_id).copied(),
+                away_team_power: team_powers.get(&row.away_team_id).copied(),
             }
         }).collect())
     }
@@ -611,6 +653,18 @@ impl ScheduleService {
         .fetch_all(&self.pool)
         .await?;
 
+        // Collect all unique team IDs for power calculation
+        let mut team_ids = Vec::new();
+        for row in &games_query {
+            team_ids.push(row.home_team_id);
+            team_ids.push(row.away_team_id);
+        }
+        team_ids.sort();
+        team_ids.dedup();
+
+        // Calculate team powers for all teams
+        let team_powers = team_power::calculate_multiple_team_powers(&team_ids, &self.pool).await?;
+
         Ok(games_query.into_iter().map(|row| {
             let status = match row.status.as_str() {
                 "live" => GameStatus::Live,
@@ -639,6 +693,8 @@ impl ScheduleService {
                 away_team_name: row.away_team_name,
                 home_team_color: row.home_team_color,
                 away_team_color: row.away_team_color,
+                home_team_power: team_powers.get(&row.home_team_id).copied(),
+                away_team_power: team_powers.get(&row.away_team_id).copied(),
             }
         }).collect())
     }
