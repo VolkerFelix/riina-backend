@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT \n            tm.team_id as \"team_id!\",\n            tm.user_id as \"user_id!\",\n            tm.status as \"status!\",\n            COALESCE(ua.stamina, 0) as \"stamina!\",\n            COALESCE(ua.strength, 0) as \"strength!\"\n        FROM team_members tm\n        LEFT JOIN user_avatars ua ON tm.user_id = ua.user_id\n        WHERE tm.team_id = ANY($1)\n        ",
+  "query": "\n        SELECT \n            tm.team_id as \"team_id!\",\n            tm.user_id as \"user_id!\",\n            tm.status as \"status!\",\n            COALESCE(ua.stamina, 0)::INT4 as \"stamina!\",\n            COALESCE(ua.strength, 0)::INT4 as \"strength!\"\n        FROM team_members tm\n        LEFT JOIN user_avatars ua ON tm.user_id = ua.user_id\n        WHERE tm.team_id = ANY($1)\n        ",
   "describe": {
     "columns": [
       {
@@ -42,5 +42,5 @@
       null
     ]
   },
-  "hash": "8bdbfdea9a56c7c3b21efee72711d9baf5b28dc9376264441391c57e94e09f13"
+  "hash": "fdb8fb854b85ab86b4210c924d40ab2ba042e85766df716afbef016f7cc1bc97"
 }

@@ -77,8 +77,8 @@ pub async fn calculate_multiple_team_powers(
             tm.team_id as "team_id!",
             tm.user_id as "user_id!",
             tm.status as "status!",
-            COALESCE(ua.stamina, 0) as "stamina!",
-            COALESCE(ua.strength, 0) as "strength!"
+            COALESCE(ua.stamina, 0)::INT4 as "stamina!",
+            COALESCE(ua.strength, 0)::INT4 as "strength!"
         FROM team_members tm
         LEFT JOIN user_avatars ua ON tm.user_id = ua.user_id
         WHERE tm.team_id = ANY($1)
