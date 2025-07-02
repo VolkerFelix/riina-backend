@@ -74,11 +74,11 @@ pub async fn calculate_multiple_team_powers(
     let results = sqlx::query!(
         r#"
         SELECT 
-            tm.team_id as "team_id!",
-            tm.user_id as "user_id!",
-            tm.status as "status!",
-            COALESCE(ua.stamina, 0)::INT4 as "stamina!",
-            COALESCE(ua.strength, 0)::INT4 as "strength!"
+            tm.team_id,
+            tm.user_id,
+            tm.status,
+            COALESCE(ua.stamina, 0) as stamina,
+            COALESCE(ua.strength, 0) as strength
         FROM team_members tm
         LEFT JOIN user_avatars ua ON tm.user_id = ua.user_id
         WHERE tm.team_id = ANY($1)
@@ -101,8 +101,8 @@ pub async fn calculate_multiple_team_powers(
         let member = TeamMemberStats {
             user_id: row.user_id,
             stats: PlayerStats {
-                stamina: row.stamina,
-                strength: row.strength,
+                stamina: row.stamina.unwrap_or(0),
+                strength: row.strength.unwrap_or(0),
             },
             status: row.status,
         };
