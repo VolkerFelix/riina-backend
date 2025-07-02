@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, user_id, age, gender, resting_heart_rate, weight, height, last_updated\n        FROM user_health_profiles \n        WHERE user_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "age",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "gender",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "resting_heart_rate",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "weight",
+        "type_info": "Float4"
+      },
+      {
+        "ordinal": 6,
+        "name": "height",
+        "type_info": "Float4"
+      },
+      {
+        "ordinal": 7,
+        "name": "last_updated",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "d48f3710c12ccce43f448f28f8046d175e836b97af3e5b733649f6848aaa4679"
+}

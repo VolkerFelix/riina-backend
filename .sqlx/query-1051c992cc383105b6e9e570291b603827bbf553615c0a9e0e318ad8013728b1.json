@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT age, gender, resting_heart_rate\n        FROM user_health_profiles \n        WHERE user_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "age",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "gender",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "resting_heart_rate",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "1051c992cc383105b6e9e570291b603827bbf553615c0a9e0e318ad8013728b1"
+}
