@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                INSERT INTO league_standings (\n                    season_id, team_id, position\n                ) VALUES ($1, $2, $3)\n                ON CONFLICT (season_id, team_id) DO NOTHING\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0e0e5442a12ad3208a3dc051ddb4bbf5ec284f6811e94a6f472ed57f830d5357"
+}

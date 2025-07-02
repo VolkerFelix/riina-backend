@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT \n                COUNT(*) as total_games,\n                SUM(CASE WHEN status = 'finished' THEN 1 ELSE 0 END) as completed_games,\n                SUM(CASE WHEN status = 'scheduled' THEN 1 ELSE 0 END) as upcoming_games,\n                SUM(CASE WHEN status = 'live' THEN 1 ELSE 0 END) as live_games,\n                SUM(CASE WHEN status = 'postponed' THEN 1 ELSE 0 END) as postponed_games,\n                MIN(scheduled_time) as first_game_time,\n                MAX(scheduled_time) as last_game_time,\n                MIN(week_number) as first_week,\n                MAX(week_number) as last_week\n            FROM league_games\n            WHERE season_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "total_games",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "completed_games",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "upcoming_games",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "live_games",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "postponed_games",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "first_game_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "last_game_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "first_week",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "last_week",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "34ad69dbb921559d5199d4a5d3071d1fe3a885f69877c935046a5b54b278df1b"
+}

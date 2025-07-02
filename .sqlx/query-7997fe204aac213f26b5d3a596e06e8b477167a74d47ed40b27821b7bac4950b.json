@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE team_members SET role = $1, updated_at = $2 WHERE id = $3 AND team_id = $4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Timestamptz",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7997fe204aac213f26b5d3a596e06e8b477167a74d47ed40b27821b7bac4950b"
+}

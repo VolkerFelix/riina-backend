@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT \n            tm.team_id as \"team_id!\",\n            tm.user_id as \"user_id!\",\n            tm.status as \"status!\",\n            COALESCE(ua.stamina, 0) as \"stamina!\",\n            COALESCE(ua.strength, 0) as \"strength!\"\n        FROM team_members tm\n        LEFT JOIN user_avatars ua ON tm.user_id = ua.user_id\n        WHERE tm.team_id = ANY($1)\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "team_id!",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id!",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "status!",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "stamina!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 4,
+        "name": "strength!",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "8bdbfdea9a56c7c3b21efee72711d9baf5b28dc9376264441391c57e94e09f13"
+}

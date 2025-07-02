@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE league_standings \n            SET games_played = games_played + 1,\n                wins = wins + CASE WHEN $1 = 3 THEN 1 ELSE 0 END,\n                draws = draws + CASE WHEN $1 = 1 THEN 1 ELSE 0 END,\n                losses = losses + CASE WHEN $1 = 0 THEN 1 ELSE 0 END,\n                last_updated = NOW()\n            WHERE season_id = $2 AND team_id = $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4d6ff9efdaff19abf4e829a1eb3c41caceb66c9bd27dcaa9e2c2d5e355416257"
+}
