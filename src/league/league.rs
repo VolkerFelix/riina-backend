@@ -59,10 +59,16 @@ impl LeagueService {
 
         match active_season {
             Some(season) => {
-                let countdown_seconds = self.countdown.seconds_until_next_game();
                 let next_game = self.games.get_next_game(season.id).await?;
                 let games_this_week = self.games.get_games_this_week(season.id).await?;
                 let week_number = next_game.as_ref().map(|g| g.game.week_number);
+                
+                // Only calculate countdown if there's actually a next game
+                let countdown_seconds = if next_game.is_some() {
+                    Some(self.countdown.seconds_until_next_game())
+                } else {
+                    None
+                };
 
                 Ok(NextGameInfo {
                     next_game,
@@ -72,10 +78,10 @@ impl LeagueService {
                 })
             }
             None => {
-                // No active season
+                // No active season - no countdown
                 Ok(NextGameInfo {
                     next_game: None,
-                    countdown_seconds: self.countdown.seconds_until_next_game(),
+                    countdown_seconds: None,
                     week_number: None,
                     games_this_week: vec![],
                 })

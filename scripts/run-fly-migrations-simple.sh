@@ -42,7 +42,7 @@ echo ""
 echo "📦 Running all migrations in a single transaction..."
 
 # Run all migrations at once
-fly postgres connect -a evolveme-db -d evolveme_backend -c "psql -v ON_ERROR_STOP=1 -f -" < "$TEMP_FILE"
+fly postgres connect -a evolveme-db -d evolveme_db -c "psql -v ON_ERROR_STOP=1 -f -" < "$TEMP_FILE"
 
 # Clean up
 rm -f "$TEMP_FILE"

@@ -129,7 +129,7 @@ pub struct StandingWithTeam {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NextGameInfo {
     pub next_game: Option<GameWithTeams>,
-    pub countdown_seconds: i64,
+    pub countdown_seconds: Option<i64>,
     pub week_number: Option<i32>,
     pub games_this_week: Vec<GameWithTeams>,
 }
