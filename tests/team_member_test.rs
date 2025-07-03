@@ -4,27 +4,15 @@ use uuid::Uuid;
 
 mod common;
 use common::utils::spawn_app;
+use common::admin_helpers::create_admin_user_and_login;
 
 #[tokio::test]
 async fn test_add_user_to_team_success() {
     let test_app = spawn_app().await;
     let client = Client::new();
     
-    // Create first user (team owner)
-    let owner_username = format!("team_owner_{}", Uuid::new_v4());
-    let owner_user = json!({
-        "username": owner_username,
-        "email": format!("{}@example.com", owner_username),
-        "password": "password123"
-    });
-    
-    let response = client
-        .post(&format!("{}/register_user", test_app.address))
-        .json(&owner_user)
-        .send()
-        .await
-        .expect("Failed to execute registration request");
-    assert_eq!(response.status().as_u16(), 200);
+    // Create admin user (team owner with admin privileges)
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
     
     // Create 4 more users(to be added as members)
     let mut member_usernames = Vec::new();
@@ -47,34 +35,38 @@ async fn test_add_user_to_team_success() {
         member_usernames.push(member_username);
     }
     
-    // Login as owner
-    let login_data = json!({
-        "username": owner_username,
-        "password": "password123"
+    // First create a league to assign the team to
+    let league_name = format!("Test_League_{}", Uuid::new_v4());
+    let league_data = json!({
+        "name": league_name,
+        "description": "A test league for team creation",
+        "max_teams": 8
     });
     
-    let login_response = client
-        .post(&format!("{}/login", test_app.address))
-        .json(&login_data)
+    let league_response = client
+        .post(&format!("{}/admin/leagues", test_app.address))
+        .header("Authorization", format!("Bearer {}", admin_user.token))
+        .json(&league_data)
         .send()
         .await
-        .expect("Failed to execute login request");
-    assert_eq!(login_response.status().as_u16(), 200);
+        .expect("Failed to execute league creation request");
+    assert_eq!(league_response.status().as_u16(), 201);
     
-    let login_body: serde_json::Value = login_response.json().await.unwrap();
-    let owner_token = login_body["token"].as_str().unwrap();
+    let league_body: serde_json::Value = league_response.json().await.unwrap();
+    let league_id = league_body["data"]["id"].as_str().unwrap();
     
-    // Register a team
+    // Register a team with league assignment
     let team_name = format!("Test_Team_{}", Uuid::new_v4());
     let team_data = json!({
         "team_name": team_name,
         "team_description": "A test team",
-        "team_color": "#FF0000"
+        "team_color": "#FF0000",
+        "league_id": league_id
     });
     
     let response = client
         .post(&format!("{}/league/teams/register", test_app.address))
-        .header("Authorization", format!("Bearer {}", owner_token))
+        .header("Authorization", format!("Bearer {}", admin_user.token))
         .json(&team_data)
         .send()
         .await
@@ -83,6 +75,18 @@ async fn test_add_user_to_team_success() {
     
     let team_body: serde_json::Value = response.json().await.unwrap();
     let team_id = team_body["data"]["team_id"].as_str().unwrap();
+    
+    // Verify team was created with correct league assignment
+    let team_info_response = client
+        .get(&format!("{}/league/teams/{}", test_app.address, team_id))
+        .header("Authorization", format!("Bearer {}", admin_user.token))
+        .send()
+        .await
+        .expect("Failed to get team info");
+    assert_eq!(team_info_response.status().as_u16(), 200);
+    
+    let team_info: serde_json::Value = team_info_response.json().await.unwrap();
+    assert_eq!(team_info["data"]["league_id"], league_id, "Team should be assigned to the correct league");
     
     // Add members to team
     let add_member_data = json!({
@@ -94,7 +98,7 @@ async fn test_add_user_to_team_success() {
     
     let response = client
         .post(&format!("{}/league/teams/{}/members", test_app.address, team_id))
-        .header("Authorization", format!("Bearer {}", owner_token))
+        .header("Authorization", format!("Bearer {}", admin_user.token))
         .json(&add_member_data)
         .send()
         .await

@@ -182,6 +182,7 @@ pub async fn get_team_info(team_id: &Uuid, pool: &PgPool) -> Result<Option<TeamI
             t.team_name,
             t.team_description,
             t.team_color,
+            t.league_id,
             t.created_at,
             t.updated_at,
             u.username as owner_username
