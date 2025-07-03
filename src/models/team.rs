@@ -11,6 +11,7 @@ pub struct Team {
     pub team_name: String,
     pub team_description: Option<String>,
     pub team_color: String,
+    pub league_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -22,6 +23,7 @@ pub struct TeamInfo {
     pub team_name: String,
     pub team_description: Option<String>,
     pub team_color: String,
+    pub league_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub owner_username: String,
@@ -33,6 +35,7 @@ pub struct TeamRegistrationRequest {
     pub team_name: String,
     pub team_description: Option<String>,
     pub team_color: Option<String>,
+    pub league_id: Option<Uuid>,
 }
 
 /// Request to update team information
@@ -238,6 +241,7 @@ pub struct TeamInfoWithPower {
     pub team_name: String,
     pub team_description: Option<String>,
     pub team_color: String,
+    pub league_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub owner_username: String,

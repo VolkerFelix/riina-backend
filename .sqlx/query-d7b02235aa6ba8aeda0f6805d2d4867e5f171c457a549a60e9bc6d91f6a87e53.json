@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT COUNT(*) as count FROM league_memberships WHERE league_id = $1 AND status = 'active'",
+  "query": "SELECT COUNT(*) as count FROM teams WHERE league_id = $1",
   "describe": {
     "columns": [
       {
@@ -18,5 +18,5 @@
       null
     ]
   },
-  "hash": "e86be505b3d7838a328062ceb5d06d656af58448edb4bbae22a037b0e8c62238"
+  "hash": "d7b02235aa6ba8aeda0f6805d2d4867e5f171c457a549a60e9bc6d91f6a87e53"
 }

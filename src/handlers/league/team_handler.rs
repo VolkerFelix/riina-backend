@@ -119,14 +119,15 @@ pub async fn register_new_team(
     // Create the team
     match sqlx::query!(
         r#"
-        INSERT INTO teams (id, user_id, team_name, team_description, team_color, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO teams (id, user_id, team_name, team_description, team_color, league_id, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         "#,
         team_id,
         user_id,
         sanitized_team_name,
         team_request.team_description,
         team_request.team_color.as_deref().unwrap_or("#4F46E5"),
+        team_request.league_id,
         now,
         now
     )
@@ -218,6 +219,7 @@ pub async fn get_team_information(
             t.team_name,
             t.team_description,
             t.team_color,
+            t.league_id,
             t.created_at,
             t.updated_at,
             u.username as owner_username
@@ -262,6 +264,7 @@ pub async fn get_team_information(
         team_name: team.team_name,
         team_description: team.team_description,
         team_color: team.team_color,
+        league_id: team.league_id,
         created_at: team.created_at,
         updated_at: team.updated_at,
         owner_username: team.owner_username,
@@ -291,6 +294,7 @@ pub async fn get_all_registered_teams(
             t.team_name,
             t.team_description,
             t.team_color,
+            t.league_id,
             t.created_at,
             t.updated_at,
             u.username as owner_username
@@ -337,6 +341,7 @@ pub async fn get_all_registered_teams(
             team_name: team.team_name,
             team_description: team.team_description,
             team_color: team.team_color,
+            league_id: team.league_id,
             created_at: team.created_at,
             updated_at: team.updated_at,
             owner_username: team.owner_username,

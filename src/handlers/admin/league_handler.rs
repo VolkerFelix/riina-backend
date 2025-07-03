@@ -88,9 +88,9 @@ pub async fn get_leagues(
             l.description,
             l.max_teams,
             l.created_at,
-            COUNT(DISTINCT lm.team_id) as current_team_count
+            COUNT(DISTINCT t.id) as current_team_count
         FROM leagues l
-        LEFT JOIN league_memberships lm ON l.id = lm.league_id AND lm.status = 'active'
+        LEFT JOIN teams t ON l.id = t.league_id
         GROUP BY l.id, l.name, l.description, l.max_teams, l.created_at
         ORDER BY l.created_at DESC
     "#)
@@ -138,10 +138,10 @@ pub async fn get_league_by_id(
             l.created_at,
             ls.start_date as season_start_date,
             ls.end_date as season_end_date,
-            COUNT(DISTINCT lm.team_id) as current_team_count
+            COUNT(DISTINCT t.id) as current_team_count
         FROM leagues l
         LEFT JOIN league_seasons ls ON l.id = ls.league_id
-        LEFT JOIN league_memberships lm ON l.id = lm.league_id AND lm.status = 'active'
+        LEFT JOIN teams t ON l.id = t.league_id
         WHERE l.id = $1
         GROUP BY l.id, l.name, l.description, l.max_teams, l.created_at, ls.start_date, ls.end_date
     "#)
@@ -370,32 +370,47 @@ pub async fn assign_team_to_league(
     }
 
     // Check if team is already assigned to this league
-    let existing_membership = sqlx::query!(
-        "SELECT id FROM league_memberships WHERE league_id = $1 AND team_id = $2",
-        league_id,
-        team_id
+    let existing_assignment = sqlx::query!(
+        "SELECT id FROM teams WHERE id = $1 AND league_id = $2",
+        team_id,
+        league_id
     )
     .fetch_optional(pool.get_ref())
     .await
     .map_err(|e| {
-        eprintln!("Database error checking existing membership: {}", e);
+        eprintln!("Database error checking existing assignment: {}", e);
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
-    if existing_membership.is_some() {
+    if existing_assignment.is_some() {
         return Ok(HttpResponse::Conflict().json(serde_json::json!({
             "error": "Team is already assigned to this league"
         })));
     }
 
-    // Insert team into league_memberships only
-    // Teams will be added to specific seasons separately when seasons are created/activated
+    // Check if team is already assigned to another league
+    let team_league = sqlx::query!(
+        "SELECT league_id FROM teams WHERE id = $1",
+        team_id
+    )
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(|e| {
+        eprintln!("Database error checking team league: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    if let Some(team_row) = team_league {
+        if team_row.league_id.is_some() {
+            return Ok(HttpResponse::Conflict().json(serde_json::json!({
+                "error": "Team is already assigned to another league"
+            })));
+        }
+    }
+
+    // Update team to assign it to this league
     let result = sqlx::query!(
-        r#"
-        INSERT INTO league_memberships (id, league_id, team_id, joined_at, status)
-        VALUES ($1, $2, $3, NOW(), 'active')
-        "#,
-        Uuid::new_v4(),
+        "UPDATE teams SET league_id = $1, updated_at = NOW() WHERE id = $2",
         league_id,
         team_id
     )
@@ -486,19 +501,19 @@ pub async fn remove_team_from_league(
         total_rows_affected += teams_result.rows_affected();
     }
 
-    // Remove from league_memberships
-    let membership_result = sqlx::query!(
-        "DELETE FROM league_memberships WHERE league_id = $1 AND team_id = $2",
-        league_id,
-        team_id
+    // Remove team from league by setting league_id to NULL
+    let team_result = sqlx::query!(
+        "UPDATE teams SET league_id = NULL, updated_at = NOW() WHERE id = $1 AND league_id = $2",
+        team_id,
+        league_id
     )
     .execute(&mut *tx)
     .await
     .map_err(|e| {
-        eprintln!("Database error removing from league_memberships: {}", e);
+        eprintln!("Database error removing team from league: {}", e);
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
-    total_rows_affected += membership_result.rows_affected();
+    total_rows_affected += team_result.rows_affected();
 
     if total_rows_affected > 0 {
         tx.commit().await.map_err(|e| {
@@ -539,11 +554,10 @@ pub async fn get_league_teams(
             t.user_id as owner_id,
             COUNT(tm.user_id) as member_count,
             COALESCE(SUM(ua.stamina + ua.strength), 0) as total_power
-        FROM league_memberships lm
-        JOIN teams t ON lm.team_id = t.id
+        FROM teams t
         LEFT JOIN team_members tm ON t.id = tm.team_id AND tm.status = 'active'
         LEFT JOIN user_avatars ua ON tm.user_id = ua.user_id
-        WHERE lm.league_id = $1 AND lm.status = 'active'
+        WHERE t.league_id = $1
         GROUP BY t.id, t.team_name, t.team_color, t.created_at, t.user_id
         ORDER BY t.team_name ASC
         "#,
@@ -669,7 +683,7 @@ pub async fn create_league_season(
 
     // Calculate end date automatically based on league size
     let team_count = sqlx::query!(
-        "SELECT COUNT(*) as count FROM league_memberships WHERE league_id = $1 AND status = 'active'",
+        "SELECT COUNT(*) as count FROM teams WHERE league_id = $1",
         league_id
     )
     .fetch_one(pool.get_ref())
@@ -759,9 +773,9 @@ pub async fn create_league_season(
             let teams_added = sqlx::query!(
                 r#"
                 INSERT INTO league_teams (id, season_id, team_id, joined_at)
-                SELECT gen_random_uuid(), $1, lm.team_id, NOW()
-                FROM league_memberships lm 
-                WHERE lm.league_id = $2 AND lm.status = 'active'
+                SELECT gen_random_uuid(), $1, t.id, NOW()
+                FROM teams t 
+                WHERE t.league_id = $2
                 "#,
                 season_id,
                 league_id
@@ -777,9 +791,9 @@ pub async fn create_league_season(
             sqlx::query!(
                 r#"
                 INSERT INTO league_standings (id, season_id, team_id, games_played, wins, draws, losses, position, last_updated)
-                SELECT gen_random_uuid(), $1, lm.team_id, 0, 0, 0, 0, 1, NOW()
-                FROM league_memberships lm 
-                WHERE lm.league_id = $2 AND lm.status = 'active'
+                SELECT gen_random_uuid(), $1, t.id, 0, 0, 0, 0, 1, NOW()
+                FROM teams t 
+                WHERE t.league_id = $2
                 "#,
                 season_id,
                 league_id
