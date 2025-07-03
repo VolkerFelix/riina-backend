@@ -26,35 +26,53 @@ pub async fn get_team_members_with_stats(
     team_id: Uuid,
     pool: &PgPool,
 ) -> Result<Vec<TeamMemberStats>, sqlx::Error> {
-    let results = sqlx::query!(
+    // First, get all team members
+    let members = sqlx::query!(
         r#"
-        SELECT 
-            tm.user_id,
-            tm.status,
-            COALESCE(ua.stamina, 0) as stamina,
-            COALESCE(ua.strength, 0) as strength
-        FROM team_members tm
-        LEFT JOIN user_avatars ua ON tm.user_id = ua.user_id
-        WHERE tm.team_id = $1
+        SELECT user_id, status
+        FROM team_members
+        WHERE team_id = $1
         "#,
         team_id
     )
     .fetch_all(pool)
     .await?;
 
-    let members = results
-        .into_iter()
-        .map(|row| TeamMemberStats {
-            user_id: row.user_id,
-            stats: PlayerStats {
-                stamina: row.stamina.unwrap_or(0),
-                strength: row.strength.unwrap_or(0),
-            },
-            status: row.status,
-        })
-        .collect();
+    // Then, fetch stats for each member separately
+    let mut team_members = Vec::new();
+    
+    for member in members {
+        // Get user avatar stats if they exist
+        let stats = sqlx::query!(
+            r#"
+            SELECT stamina, strength
+            FROM user_avatars
+            WHERE user_id = $1
+            "#,
+            member.user_id
+        )
+        .fetch_optional(pool)
+        .await?;
 
-    Ok(members)
+        let player_stats = match stats {
+            Some(row) => PlayerStats {
+                stamina: row.stamina,
+                strength: row.strength,
+            },
+            None => PlayerStats {
+                stamina: 0,
+                strength: 0,
+            },
+        };
+
+        team_members.push(TeamMemberStats {
+            user_id: member.user_id,
+            stats: player_stats,
+            status: member.status,
+        });
+    }
+
+    Ok(team_members)
 }
 
 /// Calculate team power by fetching members and calculating
@@ -71,22 +89,41 @@ pub async fn calculate_multiple_team_powers(
     team_ids: &[Uuid],
     pool: &PgPool,
 ) -> Result<HashMap<Uuid, i32>, sqlx::Error> {
-    let results = sqlx::query!(
+    // Get all team members for the given teams
+    let members = sqlx::query!(
         r#"
-        SELECT 
-            tm.team_id,
-            tm.user_id,
-            tm.status,
-            COALESCE(ua.stamina, 0) as stamina,
-            COALESCE(ua.strength, 0) as strength
-        FROM team_members tm
-        LEFT JOIN user_avatars ua ON tm.user_id = ua.user_id
-        WHERE tm.team_id = ANY($1)
+        SELECT team_id, user_id, status
+        FROM team_members
+        WHERE team_id = ANY($1)
         "#,
         &team_ids
     )
     .fetch_all(pool)
     .await?;
+
+    // Collect all unique user IDs
+    let user_ids: Vec<Uuid> = members.iter().map(|m| m.user_id).collect();
+    
+    // Get all avatar stats in one query
+    let avatar_stats = sqlx::query!(
+        r#"
+        SELECT user_id, stamina, strength
+        FROM user_avatars
+        WHERE user_id = ANY($1)
+        "#,
+        &user_ids
+    )
+    .fetch_all(pool)
+    .await?;
+
+    // Create a map of user_id to stats
+    let mut stats_map: HashMap<Uuid, PlayerStats> = HashMap::new();
+    for stat in avatar_stats {
+        stats_map.insert(stat.user_id, PlayerStats {
+            stamina: stat.stamina,
+            strength: stat.strength,
+        });
+    }
 
     // Group members by team
     let mut teams_members: HashMap<Uuid, Vec<TeamMemberStats>> = HashMap::new();
@@ -96,21 +133,23 @@ pub async fn calculate_multiple_team_powers(
         teams_members.insert(team_id, Vec::new());
     }
     
-    // Group results by team_id
-    for row in results {
-        let member = TeamMemberStats {
-            user_id: row.user_id,
-            stats: PlayerStats {
-                stamina: row.stamina.unwrap_or(0),
-                strength: row.strength.unwrap_or(0),
-            },
-            status: row.status,
+    // Group members by team_id
+    for member in members {
+        let stats = stats_map.get(&member.user_id).cloned().unwrap_or(PlayerStats {
+            stamina: 0,
+            strength: 0,
+        });
+
+        let team_member = TeamMemberStats {
+            user_id: member.user_id,
+            stats,
+            status: member.status,
         };
         
         teams_members
-            .entry(row.team_id)
+            .entry(member.team_id)
             .or_insert_with(Vec::new)
-            .push(member);
+            .push(team_member);
     }
 
     // Calculate power for each team
