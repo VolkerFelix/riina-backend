@@ -1,6 +1,7 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 use crate::models::league::*;
+use crate::utils::team_power;
 
 /// Service responsible for managing league standings
 pub struct StandingsService {
@@ -134,6 +135,10 @@ impl StandingsService {
         .fetch_all(&self.pool)
         .await?;
 
+        // Calculate team powers
+        let team_ids: Vec<Uuid> = standings_with_teams.iter().map(|row| row.team_id).collect();
+        let team_powers = team_power::calculate_multiple_team_powers(&team_ids, &self.pool).await?;
+
         let standings: Vec<StandingWithTeam> = standings_with_teams
             .into_iter()
             .map(|row| {
@@ -153,6 +158,7 @@ impl StandingsService {
                     team_name: row.team_name,
                     team_color: row.team_color,
                     recent_form: vec!['W', 'L', 'D'], // TODO: Calculate actual form
+                    team_power: team_powers.get(&row.team_id).copied().unwrap_or(0),
                 }
             })
             .collect();
@@ -234,9 +240,10 @@ impl StandingsService {
             r#"
             SELECT 
                 ls.*,
-                'Team ' || SUBSTRING(ls.team_id::text, 1, 8) as team_name,
-                '#4F46E5' as team_color
+                t.team_name,
+                t.team_color
             FROM league_standings ls
+            JOIN teams t ON ls.team_id = t.id
             WHERE ls.season_id = $1
             ORDER BY ls.points DESC, ls.wins DESC
             LIMIT $2
@@ -246,6 +253,10 @@ impl StandingsService {
         )
         .fetch_all(&self.pool)
         .await?;
+
+        // Calculate team powers
+        let team_ids: Vec<Uuid> = standings_with_teams.iter().map(|row| row.team_id).collect();
+        let team_powers = team_power::calculate_multiple_team_powers(&team_ids, &self.pool).await?;
 
         Ok(standings_with_teams
             .into_iter()
@@ -262,9 +273,10 @@ impl StandingsService {
                     position: row.position,
                     last_updated: row.last_updated,
                 },
-                team_name: row.team_name.unwrap_or_default(),
-                team_color: row.team_color.unwrap_or_default(),
+                team_name: row.team_name,
+                team_color: row.team_color,
                 recent_form: vec!['W', 'L', 'D'], // TODO: Calculate actual form
+                team_power: team_powers.get(&row.team_id).copied().unwrap_or(0),
             })
             .collect())
     }
