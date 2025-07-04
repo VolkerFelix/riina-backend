@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT * FROM league_games WHERE id = $1",
+  "query": "\n            SELECT \n                id, season_id, home_team_id, away_team_id, scheduled_time,\n                week_number, is_first_leg, status as \"status: GameStatus\",\n                home_score, away_score, winner_team_id, week_start_date, week_end_date,\n                created_at, updated_at\n            FROM league_games\n            WHERE status = 'in_progress'\n            AND CURRENT_DATE BETWEEN week_start_date AND week_end_date\n            ORDER BY week_number, scheduled_time\n            ",
   "describe": {
     "columns": [
       {
@@ -40,49 +40,47 @@
       },
       {
         "ordinal": 7,
-        "name": "status",
+        "name": "status: GameStatus",
         "type_info": "Varchar"
       },
       {
         "ordinal": 8,
-        "name": "winner_team_id",
-        "type_info": "Uuid"
-      },
-      {
-        "ordinal": 9,
         "name": "home_score",
         "type_info": "Int4"
       },
       {
-        "ordinal": 10,
+        "ordinal": 9,
         "name": "away_score",
         "type_info": "Int4"
       },
       {
+        "ordinal": 10,
+        "name": "winner_team_id",
+        "type_info": "Uuid"
+      },
+      {
         "ordinal": 11,
-        "name": "created_at",
-        "type_info": "Timestamptz"
-      },
-      {
-        "ordinal": 12,
-        "name": "updated_at",
-        "type_info": "Timestamptz"
-      },
-      {
-        "ordinal": 13,
         "name": "week_start_date",
         "type_info": "Date"
       },
       {
-        "ordinal": 14,
+        "ordinal": 12,
         "name": "week_end_date",
         "type_info": "Date"
+      },
+      {
+        "ordinal": 13,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 14,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
-      "Left": [
-        "Uuid"
-      ]
+      "Left": []
     },
     "nullable": [
       false,
@@ -96,11 +94,11 @@
       true,
       true,
       true,
-      false,
-      false,
       true,
-      true
+      true,
+      false,
+      false
     ]
   },
-  "hash": "67371aac4c2feae5d03bebd4a7628c6588296d6923e0862c91dec2eb12c42690"
+  "hash": "cb5f2601d4eeb81e6bfb7bb9cd98071f57c131f0261ea14873bd63d659bf8382"
 }

@@ -1,0 +1,42 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT total_stamina, total_strength, member_count, snapshot_time\n            FROM game_team_snapshots\n            WHERE game_id = $1 AND team_id = $2 AND snapshot_type = $3\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "total_stamina",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "total_strength",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "member_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "snapshot_time",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "425c248508fbc71150c10dad15f3cc9d9c7d53ead404f3dc8d998216655b6eb9"
+}

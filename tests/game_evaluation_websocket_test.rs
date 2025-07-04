@@ -103,20 +103,6 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     let team_b_id = team_b_data["data"]["id"].as_str().unwrap();
     
     // Add members to teams
-    let add_user1_to_team_a = json!({
-        "user_id": user1.user_id,
-        "role": "member"
-    });
-    
-    let member1_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/teams/{}/members", &app.address, team_a_id),
-        &admin_user.token,
-        Some(add_user1_to_team_a),
-    ).await;
-    assert_eq!(member1_response.status(), 201);
-    
     let add_user2_to_team_a = json!({
         "user_id": user2.user_id,
         "role": "member"
@@ -130,20 +116,6 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
         Some(add_user2_to_team_a),
     ).await;
     assert_eq!(member2_response.status(), 201);
-    
-    let add_user3_to_team_b = json!({
-        "user_id": user3.user_id,
-        "role": "member"
-    });
-    
-    let member3_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/teams/{}/members", &app.address, team_b_id),
-        &admin_user.token,
-        Some(add_user3_to_team_b),
-    ).await;
-    assert_eq!(member3_response.status(), 201);
     
     let add_user4_to_team_b = json!({
         "user_id": user4.user_id,

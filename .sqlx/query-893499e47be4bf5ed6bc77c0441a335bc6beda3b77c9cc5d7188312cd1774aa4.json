@@ -1,0 +1,32 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id, home_team_id, away_team_id\n            FROM league_games \n            WHERE status = 'scheduled'\n            AND CURRENT_DATE BETWEEN week_start_date AND week_end_date\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "home_team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "away_team_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "893499e47be4bf5ed6bc77c0441a335bc6beda3b77c9cc5d7188312cd1774aa4"
+}

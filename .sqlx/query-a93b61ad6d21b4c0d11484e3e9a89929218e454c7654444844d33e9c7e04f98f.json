@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT \n                id, season_id, home_team_id, away_team_id, scheduled_time, \n                week_number, is_first_leg, status as \"status: GameStatus\", \n                home_score, away_score, winner_team_id, created_at, updated_at\n            FROM league_games \n            WHERE id = $1\n            ",
+  "query": "\n            SELECT \n                id, season_id, home_team_id, away_team_id, scheduled_time, \n                week_number, is_first_leg, status as \"status: GameStatus\", \n                home_score, away_score, winner_team_id, week_start_date, week_end_date,\n                created_at, updated_at\n            FROM league_games \n            WHERE id = $1\n            ",
   "describe": {
     "columns": [
       {
@@ -60,11 +60,21 @@
       },
       {
         "ordinal": 11,
+        "name": "week_start_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 12,
+        "name": "week_end_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 13,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 12,
+        "ordinal": 14,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
@@ -86,9 +96,11 @@
       true,
       true,
       true,
+      true,
+      true,
       false,
       false
     ]
   },
-  "hash": "14f76cba3583373bb22939cb13e9c3513d4d4632a6e4aea754e0d933da1e7418"
+  "hash": "a93b61ad6d21b4c0d11484e3e9a89929218e454c7654444844d33e9c7e04f98f"
 }
