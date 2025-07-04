@@ -325,3 +325,123 @@ pub async fn get_users_without_team(
 
     Ok(HttpResponse::Ok().json(response))
 }
+
+// DELETE /admin/users/{id} - Delete a user
+pub async fn delete_user(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse> {
+    let user_id = path.into_inner();
+
+    // Start a transaction to ensure all related data is deleted atomically
+    let mut tx = pool.begin().await.map_err(|e| {
+        eprintln!("Database error starting transaction: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    // Check if user exists
+    let user_exists = sqlx::query!(
+        "SELECT id FROM users WHERE id = $1",
+        user_id
+    )
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|e| {
+        eprintln!("Database error checking user: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    if user_exists.is_none() {
+        return Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "User not found"
+        })));
+    }
+
+    // Delete in the correct order to maintain referential integrity
+    
+    // 1. Delete from team_members
+    sqlx::query!(
+        "DELETE FROM team_members WHERE user_id = $1",
+        user_id
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        eprintln!("Database error deleting team memberships: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    // 2. Delete teams owned by this user (and cascade to team_members)
+    sqlx::query!(
+        "DELETE FROM teams WHERE user_id = $1",
+        user_id
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        eprintln!("Database error deleting owned teams: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    // 3. Delete from league_games (where user is part of home or away team)
+    // This is handled by CASCADE from teams deletion
+
+    // 4. Delete from user_avatars
+    sqlx::query!(
+        "DELETE FROM user_avatars WHERE user_id = $1",
+        user_id
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        eprintln!("Database error deleting user avatar: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    // 5. Delete from health_data
+    sqlx::query!(
+        "DELETE FROM health_data WHERE user_id = $1",
+        user_id
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        eprintln!("Database error deleting health data: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    // 6. Finally delete the user
+    let result = sqlx::query!(
+        "DELETE FROM users WHERE id = $1",
+        user_id
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        eprintln!("Database error deleting user: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    if result.rows_affected() == 0 {
+        return Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "User not found"
+        })));
+    }
+
+    // Commit the transaction
+    tx.commit().await.map_err(|e| {
+        eprintln!("Database error committing transaction: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    let response = ApiResponse {
+        data: serde_json::json!({
+            "id": user_id,
+            "message": "User and all related data deleted successfully"
+        }),
+        success: true,
+        message: Some("User deleted successfully".to_string()),
+    };
+
+    Ok(HttpResponse::Ok().json(response))
+}

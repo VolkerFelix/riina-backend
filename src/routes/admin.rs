@@ -24,6 +24,7 @@ pub fn init_admin_routes(cfg: &mut web::ServiceConfig) {
             .service(
                 web::resource("/users/{id}")
                     .route(web::get().to(user_handler::get_user_by_id))
+                    .route(web::delete().to(user_handler::delete_user))
             )
             .service(
                 web::resource("/users/{id}/status")
