@@ -67,6 +67,16 @@
         "ordinal": 12,
         "name": "updated_at",
         "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "week_start_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 14,
+        "name": "week_end_date",
+        "type_info": "Date"
       }
     ],
     "parameters": {
@@ -89,7 +99,9 @@
       true,
       true,
       false,
-      false
+      false,
+      true,
+      true
     ]
   },
   "hash": "d4d8fcbc601e261a90de8dd39d0aec102758e0c45f7ae9e4ff8c7aec10732594"

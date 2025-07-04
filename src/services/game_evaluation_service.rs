@@ -117,7 +117,8 @@ impl GameEvaluationService {
             SELECT 
                 id, season_id, home_team_id, away_team_id, scheduled_time, 
                 week_number, is_first_leg, status as "status: GameStatus", 
-                home_score, away_score, winner_team_id, created_at, updated_at
+                home_score, away_score, winner_team_id, week_start_date, week_end_date,
+                created_at, updated_at
             FROM league_games 
             WHERE id = $1
             "#,

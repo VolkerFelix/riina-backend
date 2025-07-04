@@ -32,83 +32,99 @@ pub struct GameManagementResponse {
     pub message: String,
 }
 
-/// Get live scores for all currently active games
+/// Get live scores for all currently active games - now just returns active games without scores
 pub async fn get_live_scores(
     pool: web::Data<PgPool>,
     _claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
     let week_game_service = WeekGameService::new(pool.get_ref().clone());
     
-    match week_game_service.get_live_scores().await {
-        Ok(live_scores) => {
-            let games: Vec<LiveGameScore> = live_scores
+    match week_game_service.get_active_games().await {
+        Ok(games) => {
+            let game_list: Vec<LiveGameScore> = games
                 .into_iter()
-                .map(|(game_id, stats)| LiveGameScore {
-                    game_id,
-                    home_team_name: stats.home_team_name,
-                    away_team_name: stats.away_team_name,
-                    home_score: stats.home_score,
-                    away_score: stats.away_score,
-                    week_number: 0, // This would need to be fetched separately
-                    status: "in_progress".to_string(),
+                .map(|game| LiveGameScore {
+                    game_id: game.id,
+                    home_team_name: "TBD".to_string(), // Team names would need separate query
+                    away_team_name: "TBD".to_string(),
+                    home_score: 0, // No live scoring, just show game is active
+                    away_score: 0,
+                    week_number: game.week_number,
+                    status: game.status.as_str().to_string(),
                 })
                 .collect();
 
             let response = LiveScoresResponse {
                 success: true,
-                total_active_games: games.len(),
-                data: games,
+                total_active_games: game_list.len(),
+                data: game_list,
             };
 
             Ok(HttpResponse::Ok().json(response))
         }
         Err(e) => {
-            tracing::error!("Failed to get live scores: {}", e);
+            tracing::error!("Failed to get active games: {}", e);
             Ok(HttpResponse::InternalServerError().json(serde_json::json!({
                 "success": false,
-                "error": "Failed to get live scores"
+                "error": "Failed to get active games"
             })))
         }
     }
 }
 
-/// Get live score for a specific game
+/// Get specific game details (no live scoring, just game info)
 pub async fn get_game_live_score(
     pool: web::Data<PgPool>,
     path: web::Path<Uuid>,
     _claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
     let game_id = path.into_inner();
-    let week_game_service = WeekGameService::new(pool.get_ref().clone());
     
-    match week_game_service.get_game_live_score(game_id).await {
-        Ok(Some(stats)) => {
-            let game_score = LiveGameScore {
-                game_id: stats.game_id,
-                home_team_name: stats.home_team_name,
-                away_team_name: stats.away_team_name,
-                home_score: stats.home_score,
-                away_score: stats.away_score,
-                week_number: 0, // This would need to be fetched separately
-                status: "in_progress".to_string(),
+    // Just return game details without live scoring
+    let game = sqlx::query!(
+        r#"
+        SELECT 
+            lg.id, lg.week_number, lg.status,
+            ht.team_name as home_team_name,
+            at.team_name as away_team_name
+        FROM league_games lg
+        JOIN teams ht ON lg.home_team_id = ht.id
+        JOIN teams at ON lg.away_team_id = at.id
+        WHERE lg.id = $1
+        "#,
+        game_id
+    )
+    .fetch_optional(pool.get_ref())
+    .await;
+
+    match game {
+        Ok(Some(game_data)) => {
+            let game_info = LiveGameScore {
+                game_id,
+                home_team_name: game_data.home_team_name,
+                away_team_name: game_data.away_team_name,
+                home_score: 0, // No live scoring
+                away_score: 0,
+                week_number: game_data.week_number,
+                status: game_data.status,
             };
 
             Ok(HttpResponse::Ok().json(serde_json::json!({
                 "success": true,
-                "data": game_score
+                "data": game_info
             })))
         }
         Ok(None) => {
             Ok(HttpResponse::NotFound().json(serde_json::json!({
                 "success": false,
-                "error": "Game not found or not currently active"
+                "error": "Game not found"
             })))
         }
         Err(e) => {
-            tracing::error!("Failed to get game live score for {}: {}", game_id, e);
+            tracing::error!("Failed to get game details for {}: {}", game_id, e);
             Ok(HttpResponse::InternalServerError().json(serde_json::json!({
                 "success": false,
-                "error": "Failed to get game live score"
+                "error": "Failed to get game details"
             })))
         }
     }

@@ -1,0 +1,44 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id, home_team_id, away_team_id, week_start_date, week_end_date\n            FROM league_games \n            WHERE status = 'in_progress'\n            AND CURRENT_DATE > week_end_date\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "home_team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "away_team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "week_start_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 4,
+        "name": "week_end_date",
+        "type_info": "Date"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "36dd264aa4de9c9362bc96b1d419bb6755a357e2a857a9e18db1af712724448b"
+}

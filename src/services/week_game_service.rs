@@ -18,25 +18,53 @@ impl WeekGameService {
 
     /// Start games that should be in progress (today is within their week window)
     pub async fn start_due_games(&self) -> Result<Vec<Uuid>, sqlx::Error> {
-        let started_games = sqlx::query!(
+        // First, get games that need to be started with their team info
+        let games_to_start = sqlx::query!(
             r#"
-            UPDATE league_games 
-            SET status = 'in_progress', updated_at = NOW()
+            SELECT id, home_team_id, away_team_id
+            FROM league_games 
             WHERE status = 'scheduled'
             AND CURRENT_DATE BETWEEN week_start_date AND week_end_date
-            RETURNING id
             "#
         )
         .fetch_all(&self.pool)
         .await?;
 
-        let game_ids: Vec<Uuid> = started_games.into_iter().map(|row| row.id).collect();
+        let mut started_game_ids = Vec::new();
+
+        for game in games_to_start {
+            // Take start snapshots for both teams
+            match GameEvaluator::take_team_snapshot(&self.pool, &game.id, &game.home_team_id, "start").await {
+                Ok(_) => tracing::debug!("📸 Took start snapshot for home team {} in game {}", game.home_team_id, game.id),
+                Err(e) => tracing::error!("Failed to take start snapshot for home team {}: {:?}", game.home_team_id, e),
+            }
+
+            match GameEvaluator::take_team_snapshot(&self.pool, &game.id, &game.away_team_id, "start").await {
+                Ok(_) => tracing::debug!("📸 Took start snapshot for away team {} in game {}", game.away_team_id, game.id),
+                Err(e) => tracing::error!("Failed to take start snapshot for away team {}: {:?}", game.away_team_id, e),
+            }
+
+            // Update game status
+            sqlx::query!(
+                r#"
+                UPDATE league_games 
+                SET status = 'in_progress', updated_at = NOW()
+                WHERE id = $1
+                "#,
+                game.id
+            )
+            .execute(&self.pool)
+            .await?;
+
+            started_game_ids.push(game.id);
+            tracing::info!("🎮 Started week-long game {} with snapshots taken", game.id);
+        }
         
-        if !game_ids.is_empty() {
-            tracing::info!("🎮 Started {} week-long games", game_ids.len());
+        if !started_game_ids.is_empty() {
+            tracing::info!("🎮 Started {} week-long games", started_game_ids.len());
         }
 
-        Ok(game_ids)
+        Ok(started_game_ids)
     }
 
     /// Finish games where the week has ended
@@ -56,13 +84,23 @@ impl WeekGameService {
         let mut finished_game_ids = Vec::new();
 
         for game in games_to_finish {
-            // Calculate final scores
-            let game_stats = GameEvaluator::calculate_live_score(
+            // Take end snapshots for both teams
+            match GameEvaluator::take_team_snapshot(&self.pool, &game.id, &game.home_team_id, "end").await {
+                Ok(_) => tracing::debug!("📸 Took end snapshot for home team {} in game {}", game.home_team_id, game.id),
+                Err(e) => tracing::error!("Failed to take end snapshot for home team {}: {:?}", game.home_team_id, e),
+            }
+
+            match GameEvaluator::take_team_snapshot(&self.pool, &game.id, &game.away_team_id, "end").await {
+                Ok(_) => tracing::debug!("📸 Took end snapshot for away team {} in game {}", game.away_team_id, game.id),
+                Err(e) => tracing::error!("Failed to take end snapshot for away team {}: {:?}", game.away_team_id, e),
+            }
+
+            // Calculate final scores using snapshots
+            let game_stats = GameEvaluator::evaluate_game_with_snapshots(
                 &self.pool,
+                &game.id,
                 &game.home_team_id,
-                &game.away_team_id,
-                game.week_start_date,
-                game.week_end_date
+                &game.away_team_id
             ).await?;
 
             // Update game with final results
@@ -86,56 +124,13 @@ impl WeekGameService {
             .await?;
 
             finished_game_ids.push(game.id);
-            tracing::info!("🏁 Finished game {} with scores {} - {}", 
+            tracing::info!("🏁 Finished game {} with snapshot-based scores {} - {}", 
                 game.id, game_stats.home_score, game_stats.away_score);
         }
 
         Ok(finished_game_ids)
     }
 
-    /// Get live scores for all currently active games
-    pub async fn get_live_scores(&self) -> Result<Vec<(Uuid, GameStats)>, sqlx::Error> {
-        GameEvaluator::get_live_scores_for_active_games(&self.pool).await
-    }
-
-    /// Get live score for a specific game
-    pub async fn get_game_live_score(&self, game_id: Uuid) -> Result<Option<GameStats>, sqlx::Error> {
-        let game = sqlx::query!(
-            r#"
-            SELECT 
-                id, home_team_id, away_team_id, week_start_date, week_end_date, status,
-                ht.team_name as home_team_name,
-                at.team_name as away_team_name
-            FROM league_games lg
-            JOIN teams ht ON lg.home_team_id = ht.id
-            JOIN teams at ON lg.away_team_id = at.id
-            WHERE lg.id = $1
-            AND lg.status = 'in_progress'
-            "#,
-            game_id
-        )
-        .fetch_optional(&self.pool)
-        .await?;
-
-        if let Some(game) = game {
-            let mut game_stats = GameEvaluator::calculate_live_score(
-                &self.pool,
-                &game.home_team_id,
-                &game.away_team_id,
-                game.week_start_date,
-                game.week_end_date
-            ).await?;
-
-            // Add game details
-            game_stats.game_id = game.id;
-            game_stats.home_team_name = game.home_team_name;
-            game_stats.away_team_name = game.away_team_name;
-
-            Ok(Some(game_stats))
-        } else {
-            Ok(None)
-        }
-    }
 
     /// Get all games that are currently in their active week
     pub async fn get_active_games(&self) -> Result<Vec<LeagueGame>, sqlx::Error> {

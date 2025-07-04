@@ -193,6 +193,7 @@ impl GameStatus {
     pub fn as_str(&self) -> &'static str {
         match self {
             GameStatus::Scheduled => "scheduled",
+            GameStatus::InProgress => "in_progress",
             GameStatus::Live => "live",
             GameStatus::Finished => "finished",
             GameStatus::Postponed => "postponed",

@@ -241,7 +241,19 @@ pub async fn create_team(
     let team_id = Uuid::new_v4();
     let now = chrono::Utc::now();
 
-    let result = sqlx::query!(
+    // Start a transaction to ensure both team and membership are created atomically
+    let mut tx = match pool.begin().await {
+        Ok(tx) => tx,
+        Err(e) => {
+            eprintln!("Failed to start transaction: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to start database transaction"
+            })));
+        }
+    };
+
+    // Create the team
+    let team_result = sqlx::query!(
         r#"
         INSERT INTO teams (id, user_id, team_name, team_description, team_color, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -254,38 +266,68 @@ pub async fn create_team(
         now,
         now
     )
-    .execute(pool.get_ref())
+    .execute(&mut *tx)
     .await;
 
-    match result {
-        Ok(_) => {
-            let team = AdminTeamResponse {
-                id: team_id,
-                name: body.name.clone(),
-                color: body.color.clone(),
-                member_count: 0,
-                max_members: 5,
-                total_power: 0,
-                created_at: now,
-                owner_id,
-                league_id: body.league_id,
-            };
-
-            let response = ApiResponse {
-                data: team,
-                success: true,
-                message: Some("Team created successfully".to_string()),
-            };
-
-            Ok(HttpResponse::Created().json(response))
-        }
-        Err(e) => {
-            eprintln!("Database error creating team: {}", e);
-            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": "Failed to create team"
-            })))
-        }
+    if let Err(e) = team_result {
+        eprintln!("Database error creating team: {}", e);
+        let _ = tx.rollback().await;
+        return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": "Failed to create team"
+        })));
     }
+
+    // Add the team owner as a member with 'owner' role
+    let member_id = Uuid::new_v4();
+    let member_result = sqlx::query!(
+        r#"
+        INSERT INTO team_members (id, team_id, user_id, role, status, joined_at, updated_at)
+        VALUES ($1, $2, $3, 'owner', 'active', $4, $5)
+        "#,
+        member_id,
+        team_id,
+        owner_id,
+        now,
+        now
+    )
+    .execute(&mut *tx)
+    .await;
+
+    if let Err(e) = member_result {
+        eprintln!("Database error adding team owner as member: {}", e);
+        let _ = tx.rollback().await;
+        return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": "Failed to add team owner as member"
+        })));
+    }
+
+    // Commit the transaction
+    if let Err(e) = tx.commit().await {
+        eprintln!("Failed to commit transaction: {}", e);
+        return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": "Failed to commit team creation"
+        })));
+    }
+
+    let team = AdminTeamResponse {
+        id: team_id,
+        name: body.name.clone(),
+        color: body.color.clone(),
+        member_count: 1, // Owner is now a member
+        max_members: 5,
+        total_power: 0,
+        created_at: now,
+        owner_id,
+        league_id: body.league_id,
+    };
+
+    let response = ApiResponse {
+        data: team,
+        success: true,
+        message: Some("Team created successfully with owner as member".to_string()),
+    };
+
+    Ok(HttpResponse::Created().json(response))
 }
 
 // PATCH /admin/teams/{id} - Update team
