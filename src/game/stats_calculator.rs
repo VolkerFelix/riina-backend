@@ -52,7 +52,7 @@ impl StatCalculator {
         let heart_rate_zones = HeartRateZones::new(hrr, resting_heart_rate, max_heart_rate);
         
         tracing::info!("📊 Processing {} heart rate data points", heart_rate.len());
-        if heart_rate.len() > 0 {
+        if !heart_rate.is_empty() {
             let avg_hr: f32 = heart_rate.iter().map(|hr| hr.heart_rate).sum::<f32>() / heart_rate.len() as f32;
             tracing::info!("💗 Heart rate range: avg={:.1}, min={:.1}, max={:.1}", 
                 avg_hr,

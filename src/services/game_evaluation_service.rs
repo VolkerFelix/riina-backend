@@ -511,8 +511,6 @@ impl GameEvaluationService {
         Ok(members.into_iter().map(|row| TeamMember {
             user_id: row.user_id,
             team_id: row.team_id,
-            username: row.username,
-            team_name: row.team_name,
         }).collect())
     }
 }
@@ -543,8 +541,6 @@ impl std::fmt::Display for EvaluationResult {
 struct TeamMember {
     pub user_id: Uuid,
     pub team_id: Uuid,
-    pub username: String,
-    pub team_name: String,
 }
 
 #[derive(Debug)]

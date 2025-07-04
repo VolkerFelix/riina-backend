@@ -7,6 +7,7 @@ use sqlx::Type;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[sqlx(type_name = "varchar", rename_all = "lowercase")]
+#[derive(Default)]
 pub enum UserRole {
     #[sqlx(rename = "superadmin")]
     SuperAdmin,
@@ -15,14 +16,10 @@ pub enum UserRole {
     #[sqlx(rename = "moderator")]
     Moderator,
     #[sqlx(rename = "user")]
+    #[default]
     User,
 }
 
-impl Default for UserRole {
-    fn default() -> Self {
-        UserRole::User
-    }
-}
 
 impl fmt::Display for UserRole {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -37,8 +34,10 @@ impl fmt::Display for UserRole {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[sqlx(type_name = "varchar", rename_all = "lowercase")]
+#[derive(Default)]
 pub enum UserStatus {
     #[sqlx(rename = "active")]
+    #[default]
     Active,
     #[sqlx(rename = "inactive")]
     Inactive,
@@ -48,11 +47,6 @@ pub enum UserStatus {
     Banned,
 }
 
-impl Default for UserStatus {
-    fn default() -> Self {
-        UserStatus::Active
-    }
-}
 
 impl fmt::Display for UserStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

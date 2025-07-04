@@ -1,10 +1,8 @@
-use chrono::{DateTime, Utc, NaiveDate};
 use sqlx::PgPool;
 use uuid::Uuid;
-use std::sync::Arc;
 
 use crate::models::league::{LeagueGame, GameStatus};
-use crate::game::game_evaluator::{GameEvaluator, GameStats};
+use crate::game::game_evaluator::GameEvaluator;
 
 /// Service for managing week-long games
 pub struct WeekGameService {

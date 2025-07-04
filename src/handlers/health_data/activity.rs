@@ -141,7 +141,7 @@ async fn calculate_weekly_stats(pool: &PgPool, user_id: Uuid, since: DateTime<Ut
     .fetch_one(pool)
     .await
     {
-        Ok(row) => row.total_calories.unwrap_or(0.0) as f32,
+        Ok(row) => row.total_calories.unwrap_or(0.0),
         Err(_) => 0.0,
     };
 
@@ -205,7 +205,7 @@ async fn calculate_monthly_trend(pool: &PgPool, user_id: Uuid, since: DateTime<U
 
     // Estimate gains based on activity (very simplified)
     let stamina_gain = (activity_count * 2).min(50); // Max 50 points gain per month
-    let strength_gain = (activity_count * 1).min(30); // Max 30 points gain per month
+    let strength_gain = activity_count.min(30); // Max 30 points gain per month
     
     MonthlyTrend {
         stamina_gain,

@@ -7,9 +7,7 @@ use crate::models::common::PlayerStats;
 /// Team member with stats for power calculation
 #[derive(Debug)]
 pub struct TeamMemberStats {
-    pub user_id: Uuid,
     pub stats: PlayerStats,
-    pub status: String,
 }
 
 /// Calculate team power based on member stats
@@ -66,9 +64,7 @@ pub async fn get_team_members_with_stats(
         };
 
         team_members.push(TeamMemberStats {
-            user_id: member.user_id,
             stats: player_stats,
-            status: member.status,
         });
     }
 
@@ -141,14 +137,12 @@ pub async fn calculate_multiple_team_powers(
         });
 
         let team_member = TeamMemberStats {
-            user_id: member.user_id,
             stats,
-            status: member.status,
         };
         
         teams_members
             .entry(member.team_id)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(team_member);
     }
 
@@ -162,19 +156,3 @@ pub async fn calculate_multiple_team_powers(
     Ok(power_map)
 }
 
-/// Calculate all teams' power in the league
-pub async fn calculate_all_teams_power(
-    pool: &PgPool,
-) -> Result<HashMap<Uuid, i32>, sqlx::Error> {
-    // Get all team IDs first
-    let team_ids = sqlx::query!(
-        "SELECT DISTINCT id FROM teams"
-    )
-    .fetch_all(pool)
-    .await?
-    .into_iter()
-    .map(|row| row.id)
-    .collect::<Vec<_>>();
-
-    calculate_multiple_team_powers(&team_ids, pool).await
-}
