@@ -104,7 +104,7 @@ impl HeartRateZones {
     pub fn get_zone(&self, heart_rate: f32) -> Option<ZoneName> {
         for (zone_name, zone_range) in &self.zones {
             if heart_rate >= zone_range.low as f32 && heart_rate <= zone_range.high as f32 {
-                return Some(zone_name.clone());
+                return Some(*zone_name);
             }
         }
         None

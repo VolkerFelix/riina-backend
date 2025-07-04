@@ -2,7 +2,7 @@ use actix_web::{web, HttpResponse, Result};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc, Timelike, Datelike};
+use chrono::{DateTime, Utc};
 use std::sync::Arc;
 
 use crate::handlers::admin::user_handler::ApiResponse;
@@ -43,8 +43,6 @@ pub struct RemoveTeamRequest {
 
 #[derive(Deserialize)]
 pub struct GenerateScheduleRequest {
-    pub season_id: Uuid,
-    pub start_date: DateTime<Utc>,
 }
 
 #[derive(Deserialize)]
@@ -869,7 +867,7 @@ pub async fn create_league_season(
                 league_id,
                 name: body.name.clone(),
                 start_date: body.start_date,
-                end_date: end_date,
+                end_date,
                 total_teams: teams_added.rows_affected() as i64,
                 games_count: games_created as i64,
                 evaluation_cron: Some(evaluation_cron.to_string()),
@@ -1119,7 +1117,7 @@ pub async fn delete_league_season(
                 tracing::info!("✅ Unscheduled evaluation for deleted season {}", season_id);
             }
 
-            let response = ApiResponse {
+            let _response = ApiResponse {
                 data: serde_json::json!({
                     "league_id": league_id,
                     "season_id": season_id,

@@ -21,8 +21,6 @@ pub struct GameStats {
 
 struct TeamPower {
     pub team_id: Uuid,
-    pub total_power: u32,
-    pub member_count: u32,
     pub average_power: u32,
 }
 
@@ -81,19 +79,15 @@ impl GameEvaluator {
             Some(team_stats) => {
                 let total_power = team_stats.total_power.unwrap_or(0) as u32;
                 let member_count = team_stats.member_count.unwrap_or(0) as u32;
-                let average_power = if member_count > 0 { (total_power / member_count) as u32 } else { 0 };
+                let average_power = if member_count > 0 { total_power / member_count } else { 0 };
                 Ok(TeamPower {
                     team_id: team_stats.team_id,
-                    member_count,
-                    total_power,
                     average_power,
                 })
             }
             None => {
                 Ok(TeamPower {
-                    team_id: team_id.clone(),
-                    member_count: 0,
-                    total_power: 0,
+                    team_id: *team_id,
                     average_power: 0,
                 })
             }

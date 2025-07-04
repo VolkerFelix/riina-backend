@@ -4,9 +4,7 @@ use tokio::sync::Mutex;
 use tokio_cron_scheduler::{Job, JobScheduler};
 use sqlx::PgPool;
 use uuid::Uuid;
-use chrono::{Local, Timelike, Datelike, NaiveDate};
 use crate::services::game_evaluation_service::GameEvaluationService;
-use crate::models::league::LeagueSeason;
 
 pub struct SchedulerService {
     scheduler: Arc<Mutex<JobScheduler>>,
@@ -40,7 +38,7 @@ impl SchedulerService {
     }
 
     pub async fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut scheduler = self.scheduler.lock().await;
+        let scheduler = self.scheduler.lock().await;
         
         // For now, just start the scheduler without loading from DB
         // Seasons will be scheduled when created via the API
@@ -58,75 +56,6 @@ impl SchedulerService {
         Ok(())
     }
 
-    async fn schedule_game_evaluation(&self, scheduler: &mut JobScheduler) -> Result<(), Box<dyn std::error::Error>> {
-        let pool = self.pool.clone();
-        let redis_client = self.redis_client.clone();
-        
-        // Run game evaluation every hour to check for completed games
-        let evaluation_job = Job::new_async("0 0 * * * *", move |_uuid, _l| {
-            let pool = pool.clone();
-            let redis_client = redis_client.clone();
-            Box::pin(async move {
-                tracing::info!("🎮 Running scheduled game evaluation");
-                
-                let evaluation_service = GameEvaluationService::new_with_redis(pool, redis_client);
-                
-                match evaluation_service.evaluate_and_update_todays_games().await {
-                    Ok(result) => {
-                        tracing::info!("✅ Game evaluation completed: {}", result);
-                        
-                        // Log any errors that occurred during evaluation
-                        if !result.errors.is_empty() {
-                            for error in &result.errors {
-                                tracing::error!("Game evaluation error: {}", error);
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        tracing::error!("❌ Game evaluation failed: {}", e);
-                    }
-                }
-            })
-        })?;
-        
-        scheduler.add(evaluation_job).await?;
-        tracing::info!("📅 Scheduled game evaluation job for Saturdays at 22:00 UTC");
-        
-        // Also schedule a more frequent check for development/testing (every hour)
-        if cfg!(debug_assertions) {
-            let pool = self.pool.clone();
-            let redis_client = self.redis_client.clone();
-            
-            let hourly_job = Job::new_async("0 0 * * * *", move |_uuid, _l| {
-                let pool = pool.clone();
-                let redis_client = redis_client.clone();
-                Box::pin(async move {
-                    let now = Local::now();
-                    
-                    // Only run on Saturday at 22:00 local time
-                    if now.weekday() == chrono::Weekday::Sat && now.hour() == 22 {
-                        tracing::info!("🎮 Running hourly game evaluation check (dev mode)");
-                        
-                        let evaluation_service = GameEvaluationService::new_with_redis(pool, redis_client);
-                        
-                        match evaluation_service.evaluate_and_update_todays_games().await {
-                            Ok(result) => {
-                                tracing::info!("✅ Dev mode evaluation completed: {}", result);
-                            }
-                            Err(e) => {
-                                tracing::error!("❌ Dev mode evaluation failed: {}", e);
-                            }
-                        }
-                    }
-                })
-            })?;
-            
-            scheduler.add(hourly_job).await?;
-            tracing::info!("📅 Scheduled hourly evaluation check for development");
-        }
-        
-        Ok(())
-    }
 
     // Manual trigger for testing or admin use
     pub async fn trigger_game_evaluation(&self) -> Result<String, Box<dyn std::error::Error>> {
@@ -161,7 +90,7 @@ impl SchedulerService {
 
     /// Schedule evaluation job for a new season
     pub async fn schedule_season(&self, season_id: Uuid, season_name: String, cron_expr: String) -> Result<(), Box<dyn std::error::Error>> {
-        let mut scheduler = self.scheduler.lock().await;
+        let scheduler = self.scheduler.lock().await;
         
         let pool = self.pool.clone();
         let redis_client = self.redis_client.clone();
@@ -216,7 +145,7 @@ impl SchedulerService {
         let mut active_jobs = self.active_jobs.lock().await;
         
         if let Some(job_id) = active_jobs.remove(&season_id) {
-            let mut scheduler = self.scheduler.lock().await;
+            let scheduler = self.scheduler.lock().await;
             scheduler.remove(&job_id).await?;
             tracing::info!("✅ Removed scheduling for season {}", season_id);
         }

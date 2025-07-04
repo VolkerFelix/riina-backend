@@ -58,14 +58,14 @@ impl LeagueValidator {
         // Check minimum teams
         if team_ids.len() < 2 {
             return Err(sqlx::Error::Protocol(
-                format!("Minimum 2 teams required, got {}", team_ids.len()).into()
+                format!("Minimum 2 teams required, got {}", team_ids.len())
             ));
         }
 
         // Check maximum teams (reasonable limit)
         if team_ids.len() > 20 {
             return Err(sqlx::Error::Protocol(
-                format!("Maximum 20 teams allowed, got {}", team_ids.len()).into()
+                format!("Maximum 20 teams allowed, got {}", team_ids.len())
             ));
         }
 
@@ -74,7 +74,7 @@ impl LeagueValidator {
         for team_id in team_ids {
             if !unique_teams.insert(team_id) {
                 return Err(sqlx::Error::Protocol(
-                    format!("Duplicate team ID found: {}", team_id).into()
+                    format!("Duplicate team ID found: {}", team_id)
                 ));
             }
         }
@@ -97,7 +97,7 @@ impl LeagueValidator {
         let tolerance = Duration::hours(2);
         if start_date < now - tolerance {
             return Err(sqlx::Error::Protocol(
-                format!("Start date {} is too far in the past", start_date).into()
+                format!("Start date {} is too far in the past", start_date)
             ));
         }
 
@@ -105,7 +105,7 @@ impl LeagueValidator {
         let max_future = Duration::days(365); // 1 year
         if start_date > now + max_future {
             return Err(sqlx::Error::Protocol(
-                format!("Start date {} is too far in the future (max 1 year)", start_date).into()
+                format!("Start date {} is too far in the future (max 1 year)", start_date)
             ));
         }
 
@@ -130,7 +130,7 @@ impl LeagueValidator {
                 format!(
                     "Season with {} teams would take {} weeks (over 1 year)",
                     team_count, total_weeks
-                ).into()
+                )
             ));
         }
 
@@ -149,13 +149,13 @@ impl LeagueValidator {
         // Scores cannot be negative
         if home_score < 0 {
             return Err(sqlx::Error::Protocol(
-                format!("Home score cannot be negative: {}", home_score).into()
+                format!("Home score cannot be negative: {}", home_score)
             ));
         }
 
         if away_score < 0 {
             return Err(sqlx::Error::Protocol(
-                format!("Away score cannot be negative: {}", away_score).into()
+                format!("Away score cannot be negative: {}", away_score)
             ));
         }
 
@@ -163,13 +163,13 @@ impl LeagueValidator {
         const MAX_REASONABLE_SCORE: i32 = 50;
         if home_score > MAX_REASONABLE_SCORE {
             return Err(sqlx::Error::Protocol(
-                format!("Home score too high: {} (max {})", home_score, MAX_REASONABLE_SCORE).into()
+                format!("Home score too high: {} (max {})", home_score, MAX_REASONABLE_SCORE)
             ));
         }
 
         if away_score > MAX_REASONABLE_SCORE {
             return Err(sqlx::Error::Protocol(
-                format!("Away score too high: {} (max {})", away_score, MAX_REASONABLE_SCORE).into()
+                format!("Away score too high: {} (max {})", away_score, MAX_REASONABLE_SCORE)
             ));
         }
 
@@ -204,13 +204,13 @@ impl LeagueValidator {
     pub fn validate_week_number(&self, week_number: i32) -> Result<(), sqlx::Error> {
         if week_number < 1 {
             return Err(sqlx::Error::Protocol(
-                format!("Week number must be positive: {}", week_number).into()
+                format!("Week number must be positive: {}", week_number)
             ));
         }
 
         if week_number > 100 {
             return Err(sqlx::Error::Protocol(
-                format!("Week number too high: {} (max 100)", week_number).into()
+                format!("Week number too high: {} (max 100)", week_number)
             ));
         }
 

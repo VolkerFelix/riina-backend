@@ -82,7 +82,7 @@ pub async fn update_health_profile(
 
     // Validate input data
     if let Some(age) = profile_data.age {
-        if age < 10 || age > 120 {
+        if !(10..=120).contains(&age) {
             return HttpResponse::BadRequest().json(json!({
                 "error": "Age must be between 10 and 120"
             }));
@@ -90,7 +90,7 @@ pub async fn update_health_profile(
     }
 
     if let Some(rhr) = profile_data.resting_heart_rate {
-        if rhr < 30 || rhr > 120 {
+        if !(30..=120).contains(&rhr) {
             return HttpResponse::BadRequest().json(json!({
                 "error": "Resting heart rate must be between 30 and 120 BPM"
             }));
@@ -98,7 +98,7 @@ pub async fn update_health_profile(
     }
 
     if let Some(weight) = profile_data.weight {
-        if weight < 20.0 || weight > 300.0 {
+        if !(20.0..=300.0).contains(&weight) {
             return HttpResponse::BadRequest().json(json!({
                 "error": "Weight must be between 20 and 300 kg"
             }));
@@ -106,7 +106,7 @@ pub async fn update_health_profile(
     }
 
     if let Some(height) = profile_data.height {
-        if height < 100.0 || height > 250.0 {
+        if !(100.0..=250.0).contains(&height) {
             return HttpResponse::BadRequest().json(json!({
                 "error": "Height must be between 100 and 250 cm"
             }));

@@ -207,7 +207,7 @@ pub async fn get_league_users_with_stats(
         }
     };
 
-    let total_pages = (total_count + page_size - 1) / page_size;
+    let total_pages = total_count.div_ceil(page_size);
 
     tracing::info!(
         "Successfully fetched {} league users with stats (page {} of {}, {} per page)",

@@ -1,7 +1,7 @@
 use actix_web::{web, HttpResponse, Result};
 use sqlx::PgPool;
 use uuid::Uuid;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::services::WeekGameService;
 use crate::middleware::auth::Claims;

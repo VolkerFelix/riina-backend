@@ -12,7 +12,7 @@ pub async fn add_member(
 ) -> Result<TeamMemberInfo, sqlx::Error> {
     
     // Find the target user
-    let target_user_id = match find_user_by_request(&member, &pool).await {
+    let target_user_id = match find_user_by_request(member, pool).await {
         Ok(Some(user_id)) => user_id,
         Ok(None) => {
             tracing::error!("User not found");
@@ -25,7 +25,7 @@ pub async fn add_member(
     };
 
     // Check if user is already a member
-    match check_team_member_role(&team_id, &target_user_id, &pool).await {
+    match check_team_member_role(&team_id, &target_user_id, pool).await {
         Ok(Some(_)) => {
             tracing::error!("User is already a member of this team");
             return Err(sqlx::Error::TypeNotFound { type_name: "User".to_string() });
@@ -73,23 +73,23 @@ pub async fn add_member(
                 target_user_id, team_id, member_role);
 
             // Get the member info for response
-            match get_team_member_info(&team_id, &target_user_id, &pool).await {
+            match get_team_member_info(&team_id, &target_user_id, pool).await {
                 Ok(Some(member_info)) => {
-                    return Ok(member_info);
+                    Ok(member_info)
                 }
                 Ok(None) => {
                     tracing::error!("Failed to get member info after adding");
-                    return Err(sqlx::Error::TypeNotFound { type_name: "TeamMemberInfo".to_string() });
+                    Err(sqlx::Error::TypeNotFound { type_name: "TeamMemberInfo".to_string() })
                 }
                 Err(e) => {
                     tracing::error!("Failed to get member info after adding");
-                    return Err(e);
+                    Err(e)
                 }
             }
         }
         Err(e) => {
             tracing::error!("Failed to add user {} to team {}", target_user_id, team_id);
-            return Err(e);
+            Err(e)
         }
     }
 }

@@ -1,6 +1,12 @@
 use chrono::{DateTime, Utc, Datelike, Duration, Weekday, Timelike};
 pub struct CountdownService;
 
+impl Default for CountdownService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CountdownService {
     pub fn new() -> Self {
         Self

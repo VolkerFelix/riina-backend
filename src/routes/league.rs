@@ -258,33 +258,3 @@ async fn manage_games(
     live_game_handler::manage_games(pool).await
 }
 
-pub fn init_league_routes(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/league")
-            .service(create_season)
-            .service(get_active_season)
-            .service(get_season)
-            .service(get_all_seasons)
-            .service(get_season_schedule)
-            .service(get_season_standings)
-            .service(update_game_result)
-            .service(get_countdown_info)
-            .service(get_upcoming_games)
-            .service(get_recent_results)
-            .service(get_game_week)
-            .service(register_team)
-            .service(get_team_info)
-            .service(get_all_teams)
-            .service(update_team)
-            .service(get_team_history)
-            .service(add_team_member)
-            .service(get_team_members)
-            .service(remove_team_member)
-            .service(update_team_member)
-            .service(get_league_users_with_stats)
-            .service(get_live_scores)
-            .service(get_game_live_score)
-            .service(get_active_games)
-            .service(manage_games)
-    );
-}
