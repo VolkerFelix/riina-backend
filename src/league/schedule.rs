@@ -72,18 +72,24 @@ impl ScheduleService {
                     week_num, home_team, away_team
                 );
 
+                // Week starts at the scheduled time, ends 6 days later
+                let week_start = game_time.date_naive();
+                let week_end = week_start + chrono::Duration::days(6);
+
                 sqlx::query!(
                     r#"
                     INSERT INTO league_games (
                         season_id, home_team_id, away_team_id, scheduled_time, 
-                        week_number, is_first_leg, status
-                    ) VALUES ($1, $2, $3, $4, $5, TRUE, 'scheduled')
+                        week_number, is_first_leg, status, week_start_date, week_end_date
+                    ) VALUES ($1, $2, $3, $4, $5, TRUE, 'scheduled', $6, $7)
                     "#,
                     season_id,
                     home_team,
                     away_team,
                     game_time,
-                    week_num as i32
+                    week_num as i32,
+                    week_start,
+                    week_end
                 )
                 .execute(&mut *tx)
                 .await?;
@@ -129,18 +135,24 @@ impl ScheduleService {
                     week_num, home_team, away_team
                 );
 
+                // Week starts at the scheduled time, ends 6 days later
+                let week_start = game_time.date_naive();
+                let week_end = week_start + chrono::Duration::days(6);
+
                 sqlx::query!(
                     r#"
                     INSERT INTO league_games (
                         season_id, home_team_id, away_team_id, scheduled_time,
-                        week_number, is_first_leg, status
-                    ) VALUES ($1, $2, $3, $4, $5, FALSE, 'scheduled')
+                        week_number, is_first_leg, status, week_start_date, week_end_date
+                    ) VALUES ($1, $2, $3, $4, $5, FALSE, 'scheduled', $6, $7)
                     "#,
                     season_id,
                     home_team,
                     away_team,
                     game_time,
-                    week_num as i32
+                    week_num as i32,
+                    week_start,
+                    week_end
                 )
                 .execute(&mut *tx)
                 .await?;

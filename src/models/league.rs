@@ -43,6 +43,8 @@ pub struct LeagueGame {
     pub home_score: Option<i32>,
     pub away_score: Option<i32>,
     pub winner_team_id: Option<Uuid>,
+    pub week_start_date: Option<chrono::NaiveDate>,
+    pub week_end_date: Option<chrono::NaiveDate>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -51,6 +53,7 @@ pub struct LeagueGame {
 #[sqlx(type_name = "varchar", rename_all = "lowercase")]
 pub enum GameStatus {
     Scheduled,
+    InProgress,
     Live,
     Finished,
     Postponed,
@@ -59,6 +62,7 @@ pub enum GameStatus {
 impl From<String> for GameStatus {
     fn from(s: String) -> Self {
         match s.to_lowercase().as_str() {
+            "in_progress" | "in-progress" => GameStatus::InProgress,
             "live" => GameStatus::Live,
             "finished" => GameStatus::Finished,
             "postponed" => GameStatus::Postponed,
