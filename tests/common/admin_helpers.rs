@@ -101,8 +101,14 @@ pub async fn create_league_season(
         Some(season_request),
     ).await;
 
-    assert_eq!(season_response.status(), 201, "Failed to create season");
-    let season_data: serde_json::Value = season_response.json().await.expect("Failed to parse season response");
+    let status = season_response.status();
+    let response_text = season_response.text().await.expect("Failed to read response");
+    
+    if status != 201 {
+        panic!("Failed to create season. Status: {}. Body: {}", status, response_text);
+    }
+    
+    let season_data: serde_json::Value = serde_json::from_str(&response_text).expect("Failed to parse season response");
     season_data["data"]["id"].as_str().expect("Season ID not found").to_string()
 }
 

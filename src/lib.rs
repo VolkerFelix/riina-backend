@@ -19,7 +19,7 @@ mod workout;
 pub mod services;
 use crate::routes::init_routes;
 use crate::config::jwt::JwtSettings;
-use crate::services::SchedulerService;
+use crate::services::{SchedulerService, LiveGameService};
 use std::sync::Arc;
 
 pub fn run(
@@ -30,12 +30,15 @@ pub fn run(
     scheduler_service: Arc<SchedulerService>
 ) -> Result<Server, std::io::Error> {
     // Wrap using web::Data, which boils down to an Arc smart pointer
-    let db_pool = web::Data::new(db_pool);
+    let db_pool_data = web::Data::new(db_pool.clone());
     let jwt_settings = web::Data::new(jwt_settings);
     let scheduler_service = web::Data::new(scheduler_service);
-    let redis_client = redis_client.map(|client| {
-        web::Data::new(client)
+    let redis_client_data = redis_client.as_ref().map(|client| {
+        web::Data::new(client.clone())
     });
+    
+    // Create LiveGameService
+    let live_game_service = web::Data::new(LiveGameService::new(db_pool, redis_client));
 
     let server = HttpServer::new( move || {
         let cors = Cors::default()
@@ -58,10 +61,11 @@ pub fn run(
             .wrap(TracingLogger::default())
             .wrap(cors)
             // Get a pointer copy and attach it to the application state
-            .app_data(db_pool.clone())
+            .app_data(db_pool_data.clone())
             .app_data(jwt_settings.clone())
-            .app_data(scheduler_service.clone());
-        if let Some(ref redis) = redis_client {
+            .app_data(scheduler_service.clone())
+            .app_data(live_game_service.clone());
+        if let Some(ref redis) = redis_client_data {
             app = app.app_data(redis.clone());
         }
 

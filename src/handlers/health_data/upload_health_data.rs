@@ -9,11 +9,14 @@ use crate::db::health_data::insert_health_data;
 use crate::models::health_data::HealthDataSyncRequest;
 use crate::models::common::ApiResponse;
 use crate::game::stats_calculator::StatCalculator;
+use crate::models::game_events::GameEvent;
+use crate::models::live_game::LiveGameScoreUpdate;
+use crate::services::live_game_service::LiveGameService;
 use redis::AsyncCommands;
 
 #[tracing::instrument(
     name = "Upload health data with game stats",
-    skip(data, pool, redis, claims),
+    skip(data, pool, redis, live_game_service, claims),
     fields(
         username = %claims.username,
         data_type = %data.device_id
@@ -23,6 +26,7 @@ pub async fn upload_health_data(
     data: web::Json<HealthDataSyncRequest>,
     pool: web::Data<sqlx::PgPool>,
     redis: Option<web::Data<redis::Client>>,
+    live_game_service: Option<web::Data<LiveGameService>>,
     claims: web::ReqData<Claims>
 ) -> HttpResponse {
     tracing::info!("🎮 Processing health data with game mechanics for user: {}", claims.username);
@@ -73,6 +77,17 @@ pub async fn upload_health_data(
                 ApiResponse::<()>::error("Failed to update avatar stats")
             );
         }
+    }
+
+    // 🏆 CHECK FOR ACTIVE LIVE GAMES AND UPDATE SCORES
+    if let Some(live_service) = &live_game_service {
+        check_and_update_live_games(
+            user_id, 
+            &claims.username,
+            &stat_changes,
+            live_service,
+            &pool
+        ).await;
     }
 
     // Insert health data into database
@@ -168,3 +183,131 @@ pub async fn upload_health_data(
         }
     }
 }
+
+/// Check if user is in any active live games and update scores
+async fn check_and_update_live_games(
+    user_id: Uuid,
+    username: &str,
+    stat_changes: &crate::game::stats_calculator::StatChanges,
+    live_game_service: &LiveGameService,
+    pool: &sqlx::PgPool,
+) {
+    tracing::info!("🎮 Checking for active live games for user {}", username);
+
+    // Get user's active live games
+    match live_game_service.get_user_active_games(user_id).await {
+        Ok(active_games) => {
+            if active_games.is_empty() {
+                tracing::debug!("No active live games found for user {}", username);
+                return;
+            }
+
+            tracing::info!("🏆 Found {} active live game(s) for user {}", active_games.len(), username);
+
+            for live_game in active_games {
+                // Determine which team the user belongs to
+                let user_team_id = if let Ok(team_id) = get_user_team_id(user_id, &live_game, pool).await {
+                    team_id
+                } else {
+                    tracing::error!("Could not determine team for user {} in game {}", username, live_game.game_id);
+                    continue;
+                };
+
+                // Calculate score increases based on stat changes
+                let score_increase = live_game_service.calculate_score_from_stats(
+                    stat_changes.stamina_change,
+                    stat_changes.strength_change,
+                );
+                let power_increase = live_game_service.calculate_power_from_stats(
+                    stat_changes.stamina_change,
+                    stat_changes.strength_change,
+                );
+                
+                tracing::info!("📊 Score calculation for {}: stamina={}, strength={}, score_increase={}, power_increase={}, team_id={}", 
+                    username, stat_changes.stamina_change, stat_changes.strength_change, 
+                    score_increase, power_increase, user_team_id);
+
+                // Create the score update
+                let score_update = LiveGameScoreUpdate {
+                    user_id,
+                    username: username.to_string(),
+                    team_id: user_team_id,
+                    score_increase,
+                    power_increase,
+                    stamina_gained: stat_changes.stamina_change,
+                    strength_gained: stat_changes.strength_change,
+                    description: format!("Workout upload: +{} stamina, +{} strength", 
+                        stat_changes.stamina_change, stat_changes.strength_change),
+                };
+
+                // Apply the score update
+                match live_game_service.handle_score_update(live_game.game_id, score_update).await {
+                    Ok(updated_game) => {
+                        tracing::info!("📊 Updated live game {}: {} {} - {} {} (Player: {} +{})", 
+                            live_game.game_id,
+                            updated_game.home_team_name,
+                            updated_game.home_score,
+                            updated_game.away_score,
+                            updated_game.away_team_name,
+                            username,
+                            score_increase
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!("❌ Failed to update live game score for {}: {}", username, e);
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("❌ Failed to get active games for user {}: {}", username, e);
+        }
+    }
+}
+
+/// Helper function to determine which team a user belongs to in a live game
+async fn get_user_team_id(
+    user_id: Uuid, 
+    live_game: &crate::models::live_game::LiveGame,
+    pool: &sqlx::PgPool
+) -> Result<Uuid, Box<dyn std::error::Error>> {
+    // Query live_player_contributions to find which team the user belongs to
+    let team_info = sqlx::query!(
+        r#"
+        SELECT team_id, team_side 
+        FROM live_player_contributions 
+        WHERE live_game_id = $1 AND user_id = $2
+        "#,
+        live_game.id,
+        user_id
+    )
+    .fetch_optional(pool)
+    .await?;
+    
+    match team_info {
+        Some(info) => Ok(info.team_id),
+        None => {
+            // If not found in contributions, check team membership directly
+            let membership = sqlx::query!(
+                r#"
+                SELECT team_id 
+                FROM team_members 
+                WHERE user_id = $1 
+                AND status = 'active'
+                AND (team_id = $2 OR team_id = $3)
+                "#,
+                user_id,
+                live_game.home_team_id,
+                live_game.away_team_id
+            )
+            .fetch_optional(pool)
+            .await?;
+            
+            match membership {
+                Some(m) => Ok(m.team_id),
+                None => Err("User does not belong to either team in this game".into())
+            }
+        }
+    }
+}
+

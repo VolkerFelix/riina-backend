@@ -43,8 +43,8 @@ pub struct LeagueGame {
     pub home_score: Option<i32>,
     pub away_score: Option<i32>,
     pub winner_team_id: Option<Uuid>,
-    pub week_start_date: Option<chrono::NaiveDate>,
-    pub week_end_date: Option<chrono::NaiveDate>,
+    pub week_start_date: Option<DateTime<Utc>>,
+    pub week_end_date: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

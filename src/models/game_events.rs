@@ -108,6 +108,23 @@ pub enum GameEvent {
         standings: Vec<TeamStandings>,
         updated_at: DateTime<Utc>,
     },
+
+    #[serde(rename = "live_score_update")]
+    LiveScoreUpdate {
+        game_id: Uuid,
+        home_team_id: Uuid,
+        home_team_name: String,
+        away_team_id: Uuid,
+        away_team_name: String,
+        home_score: u32,
+        away_score: u32,
+        home_power: u32,
+        away_power: u32,
+        game_progress: f32, // 0.0 to 100.0 percentage
+        game_time_remaining: Option<String>,
+        is_active: bool,
+        last_updated: DateTime<Utc>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

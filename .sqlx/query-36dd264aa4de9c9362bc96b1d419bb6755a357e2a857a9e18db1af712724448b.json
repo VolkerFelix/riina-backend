@@ -21,12 +21,12 @@
       {
         "ordinal": 3,
         "name": "week_start_date",
-        "type_info": "Date"
+        "type_info": "Timestamptz"
       },
       {
         "ordinal": 4,
         "name": "week_end_date",
-        "type_info": "Date"
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {

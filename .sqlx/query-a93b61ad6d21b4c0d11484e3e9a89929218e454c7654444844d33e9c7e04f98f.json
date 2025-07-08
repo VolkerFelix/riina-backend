@@ -61,12 +61,12 @@
       {
         "ordinal": 11,
         "name": "week_start_date",
-        "type_info": "Date"
+        "type_info": "Timestamptz"
       },
       {
         "ordinal": 12,
         "name": "week_end_date",
-        "type_info": "Date"
+        "type_info": "Timestamptz"
       },
       {
         "ordinal": 13,
