@@ -7,8 +7,8 @@ BEGIN
     UPDATE league_games 
     SET week_end_date = week_end_date + INTERVAL '23 hours 59 minutes'
     WHERE week_end_date IS NOT NULL 
-    AND EXTRACT(hour FROM week_end_date) = 0 
-    AND EXTRACT(minute FROM week_end_date) = 0;
+    AND DATE_PART('hour', week_end_date) = 0 
+    AND DATE_PART('minute', week_end_date) = 0;
 END $$;
 
 -- Live score event type enum
