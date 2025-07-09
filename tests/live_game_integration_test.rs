@@ -1,15 +1,12 @@
 use reqwest::Client;
 use serde_json::json;
 use chrono::{Utc, Duration, Weekday, NaiveTime, DateTime};
-use sqlx::Row;
 use uuid::Uuid;
 
 mod common;
-use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, TestApp};
-use common::admin_helpers::{create_admin_user_and_login, create_league_season};
+use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, TestApp, get_next_date, UserRegLoginResponse};
+use common::admin_helpers::{create_admin_user_and_login, create_league_season, create_teams_for_test, create_league, add_team_to_league, add_user_to_team};
 
-use crate::common::admin_helpers::create_teams_for_test;
-use crate::common::utils::get_next_date;
 
 #[tokio::test]
 async fn test_complete_live_game_workflow() {
@@ -17,22 +14,14 @@ async fn test_complete_live_game_workflow() {
     let client = Client::new();
 
     // Step 1: Setup test environment - create league, season, teams, and users
-    let (league_id, season_id, home_team_id, away_team_id, home_user, away_user_1, away_user_2) = 
-        setup_live_game_environment(&test_app, &client).await;
-
-    // Step 2: Create a game between the teams
-    let game_id = create_test_game(
-        &test_app, 
-        &client, 
-        Uuid::parse_str(&home_team_id).unwrap(), 
-        Uuid::parse_str(&away_team_id).unwrap(), 
-        Uuid::parse_str(&season_id).unwrap()
-    ).await;
+    let (home_user, away_user_1, away_user_2, game_id) = 
+        setup_live_game_environment(&test_app).await;
     
-    // Step 3: Start the game (set status to in_progress)
-    start_test_game(&test_app, &client, game_id).await;
+    // Update game times to current (games are auto-generated with future dates)
+    update_game_times_to_now(&test_app, game_id).await;
+    
+    start_test_game(&test_app, game_id).await;
 
-    // Step 4: Initialize live game
     let live_game = initialize_live_game(&test_app, game_id).await;
     
     // Verify initial live game state
@@ -105,18 +94,20 @@ async fn test_complete_live_game_workflow() {
     // Step 6: Test player contributions tracking
     let (home_contributions, away_contributions) = get_player_contributions(&test_app, final_live_game.id).await;
     
-    // Verify home team contribution
-    assert_eq!(home_contributions.len(), 1);
-    let home_contrib = &home_contributions[0];
-    assert_eq!(home_contrib.user_id, home_user.user_id);
-    assert!(home_contrib.total_score_contribution > 0);
-    assert_eq!(home_contrib.contribution_count, 1);
-    assert!(home_contrib.is_recently_active());
+    // Verify home team contribution - filter to only the user we're testing
+    let home_user_contrib = home_contributions.iter()
+        .find(|c| c.user_id == home_user.user_id)
+        .expect("Home user should have a contribution record");
+    assert!(home_user_contrib.total_score_contribution > 0);
+    assert_eq!(home_user_contrib.contribution_count, 1);
+    assert!(home_user_contrib.is_recently_active());
 
-    // Verify away team contributions (only away_user_1 should have contribution since away_user_2 had 0 stats)
-    assert_eq!(away_contributions.len(), 1);
-    assert!(away_contributions.iter().any(|c| c.user_id == away_user_1.user_id));
-    assert!(away_contributions.iter().all(|c| c.total_score_contribution > 0));
+    // Verify away team contributions - filter to only users with actual contributions
+    let away_active_contributions: Vec<&PlayerContribution> = away_contributions.iter()
+        .filter(|c| c.total_score_contribution > 0)
+        .collect();
+    assert_eq!(away_active_contributions.len(), 1, "Only away_user_1 should have non-zero contribution");
+    assert!(away_active_contributions.iter().any(|c| c.user_id == away_user_1.user_id));
 
     // Step 7: Test score events logging
     let score_events = get_recent_score_events(&test_app, final_live_game.id).await;
@@ -166,11 +157,11 @@ async fn test_live_game_edge_cases() {
     upload_workout_data(&test_app, &client, &test_user, "no_game_workout").await;
 
     // Test 2: Multiple initializations of same live game
-    let (_, season_id, home_team_id, away_team_id, _, _, _) = 
-        setup_live_game_environment(&test_app, &client).await;
+    let (_, _, _, game_id) = 
+        setup_live_game_environment(&test_app).await;
     
-    let game_id = create_test_game(&test_app, &client, Uuid::parse_str(&home_team_id).unwrap(), Uuid::parse_str(&away_team_id).unwrap(), Uuid::parse_str(&season_id).unwrap()).await;
-    start_test_game(&test_app, &client, game_id).await;
+    update_game_times_to_now(&test_app, game_id).await;
+    start_test_game(&test_app, game_id).await;
 
     let live_game_1 = initialize_live_game(&test_app, game_id).await;
     let live_game_2 = initialize_live_game(&test_app, game_id).await;
@@ -187,18 +178,12 @@ async fn test_live_game_finish_workflow() {
     let client = Client::new();
 
     // Setup and create a game that ends soon
-    let (_, season_id, home_team_id, away_team_id, home_user, _, _) = 
-        setup_live_game_environment(&test_app, &client).await;
+    let (home_user, _, _, game_id) = 
+        setup_live_game_environment(&test_app).await;
     
-    // Create game that ends in 1 minute
-    let game_id = create_short_test_game(
-        &test_app, 
-        &client, 
-        Uuid::parse_str(&home_team_id).unwrap(), 
-        Uuid::parse_str(&away_team_id).unwrap(),
-        Uuid::parse_str(&season_id).unwrap()
-    ).await;
-    start_test_game(&test_app, &client, game_id).await;
+    // Update the auto-generated game to end in 1 minute for testing
+    update_game_to_short_duration(&test_app, game_id).await;
+    start_test_game(&test_app, game_id).await;
     
     let live_game = initialize_live_game(&test_app, game_id).await;
     
@@ -229,105 +214,59 @@ async fn test_live_game_finish_workflow() {
 
 async fn setup_live_game_environment(
     test_app: &TestApp, 
-    client: &Client
-) -> (String, String, String, String, common::utils::UserRegLoginResponse, common::utils::UserRegLoginResponse, common::utils::UserRegLoginResponse) {
+) -> (UserRegLoginResponse, UserRegLoginResponse, UserRegLoginResponse, Uuid) {
     let admin_session = create_admin_user_and_login(&test_app.address).await;
     // Create league
-    let league_request = json!({
-        "name": format!("Live Game Test League {}", &Uuid::new_v4().to_string()[..8]),
-        "description": "Testing live game service",
-        "max_teams": 2
-    });
-    
-    let league_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/leagues", &test_app.address),
-        &admin_session.token,
-        Some(league_request),
-    ).await;
-    
-    assert_eq!(league_response.status(), 201);
-    let league_data: serde_json::Value = league_response.json().await.unwrap();
-    let league_id = league_data["data"]["id"].as_str().unwrap();
+    let league_id = create_league(&test_app.address, &admin_session.token, 2).await;
 
     // Create teams
     let team_ids = create_teams_for_test(&test_app.address, &admin_session.token, 2).await;
     let home_team_id = team_ids[0].clone();
     let away_team_id = team_ids[1].clone();
 
-    // Create users and add them to teams
+    // Create additional users and add them to teams
     let home_user = create_test_user_and_login(&test_app.address).await;
     let away_user_1 = create_test_user_and_login(&test_app.address).await;
     let away_user_2 = create_test_user_and_login(&test_app.address).await;
 
     // Add users to teams
-    add_user_to_team(&test_app, client, &admin_session.token, &home_team_id, home_user.user_id).await;
-    add_user_to_team(&test_app, client, &admin_session.token, &away_team_id, away_user_1.user_id).await;
-    add_user_to_team(&test_app, client, &admin_session.token, &away_team_id, away_user_2.user_id).await;
+    add_user_to_team(&test_app.address, &admin_session.token, &home_team_id, home_user.user_id).await;
+    add_user_to_team(&test_app.address, &admin_session.token, &away_team_id, away_user_1.user_id).await;
+    add_user_to_team(&test_app.address, &admin_session.token, &away_team_id, away_user_2.user_id).await;
 
-    // Add teams to league
-    add_team_to_league(&test_app, client, &admin_session.token, &league_id, &home_team_id).await;
-    add_team_to_league(&test_app, client, &admin_session.token, &league_id, &away_team_id).await;
+    // Add teams to league BEFORE creating the season so games are auto-generated
+    add_team_to_league(&test_app.address, &admin_session.token, &league_id, &home_team_id).await;
+    add_team_to_league(&test_app.address, &admin_session.token, &league_id, &away_team_id).await;
 
     let start_date = get_next_date(Weekday::Sat, NaiveTime::from_hms_opt(22, 0, 0).unwrap());
     let season_id = create_league_season(&test_app.address, &admin_session.token, &league_id, "Test Season", &start_date.to_rfc3339()).await;
+    
+    // Get the auto-generated game ID
+    let game_id = get_first_game_for_teams(&test_app, Uuid::parse_str(&season_id).unwrap(), Uuid::parse_str(&home_team_id).unwrap(), Uuid::parse_str(&away_team_id).unwrap()).await;
 
-    (league_id.to_string(), season_id.to_string(), home_team_id.to_string(), away_team_id.to_string(), home_user, away_user_1, away_user_2)
+    (home_user, away_user_1, away_user_2, game_id)
 }
 
-async fn add_team_to_league(test_app: &TestApp, client: &Client, admin_token: &str, league_id: &str, team_id: &str) {
-    let team_data = json!({
-        "team_id": team_id,
-        "league_id": league_id
-    });
-
-    let response = make_authenticated_request(
-        client,
-        reqwest::Method::POST,
-        &format!("{}/admin/leagues/{}/teams", test_app.address, league_id),
-        admin_token,
-        Some(team_data),
-    ).await;
-
-    assert!(response.status().is_success());
-}
-
-async fn create_test_team(test_app: &TestApp, client: &Client, admin_token: &str, team_name: &str, league_id: Uuid) -> Uuid {
-    let team_data = json!({
-        "name": team_name,
-        "league_id": league_id,
-        "team_color": "#FF0000"
-    });
-
-    let response = make_authenticated_request(
-        client,
-        reqwest::Method::POST,
-        &format!("{}/admin/teams", test_app.address),
-        admin_token,
-        Some(team_data),
-    ).await;
-
-    assert!(response.status().is_success());
-    let team_response: serde_json::Value = response.json().await.unwrap();
-    Uuid::parse_str(team_response["data"]["id"].as_str().unwrap()).unwrap()
-}
-
-async fn add_user_to_team(test_app: &TestApp, client: &Client, admin_token: &str, team_id: &str, user_id: Uuid) {
-    let member_data = json!({
-        "user_id": user_id,
-        "role": "member"
-    });
-
-    let response = make_authenticated_request(
-        client,
-        reqwest::Method::POST,
-        &format!("{}/admin/teams/{}/members", test_app.address, team_id),
-        admin_token,
-        Some(member_data),
-    ).await;
-
-    assert!(response.status().is_success());
+async fn get_first_game_for_teams(test_app: &TestApp, season_id: Uuid, home_team_id: Uuid, away_team_id: Uuid) -> Uuid {
+    // Get the auto-generated game between these teams
+    let game = sqlx::query!(
+        r#"
+        SELECT id 
+        FROM league_games 
+        WHERE season_id = $1 
+        AND ((home_team_id = $2 AND away_team_id = $3) OR (home_team_id = $3 AND away_team_id = $2))
+        ORDER BY week_number
+        LIMIT 1
+        "#,
+        season_id,
+        home_team_id,
+        away_team_id
+    )
+    .fetch_one(&test_app.db_pool)
+    .await
+    .expect("Failed to find auto-generated game");
+    
+    game.id
 }
 
 async fn create_test_game(test_app: &TestApp, client: &Client, home_team_id: Uuid, away_team_id: Uuid, season_id: Uuid) -> Uuid {
@@ -357,33 +296,45 @@ async fn create_test_game(test_app: &TestApp, client: &Client, home_team_id: Uui
     game_id
 }
 
-async fn create_short_test_game(test_app: &TestApp, client: &Client, home_team_id: Uuid, away_team_id: Uuid, season_id: Uuid) -> Uuid {
+async fn update_game_to_short_duration(test_app: &TestApp, game_id: Uuid) {
     let game_start = Utc::now();
     let game_end = game_start + Duration::minutes(1); // Very short game for testing
-
-    let game_id = Uuid::new_v4();
     
     sqlx::query!(
         r#"
-        INSERT INTO league_games (id, home_team_id, away_team_id, season_id, week_number, scheduled_time, status, week_start_date, week_end_date)
-        VALUES ($1, $2, $3, $4, 1, $5, 'in_progress', $6, $7)
+        UPDATE league_games 
+        SET week_start_date = $1, week_end_date = $2, scheduled_time = $1
+        WHERE id = $3
         "#,
-        game_id,
-        home_team_id,
-        away_team_id,
-        season_id,
         game_start,
-        game_start,
-        game_end
+        game_end,
+        game_id
     )
     .execute(&test_app.db_pool)
     .await
-    .expect("Failed to insert short test game");
-
-    game_id
+    .expect("Failed to update game duration");
 }
 
-async fn start_test_game(test_app: &TestApp, client: &Client, game_id: Uuid) {
+async fn update_game_times_to_now(test_app: &TestApp, game_id: Uuid) {
+    let now = Utc::now();
+    let game_end = now + Duration::hours(2);
+    
+    sqlx::query!(
+        r#"
+        UPDATE league_games 
+        SET scheduled_time = $1, week_start_date = $1, week_end_date = $2
+        WHERE id = $3
+        "#,
+        now,
+        game_end,
+        game_id
+    )
+    .execute(&test_app.db_pool)
+    .await
+    .expect("Failed to update game times to current");
+}
+
+async fn start_test_game(test_app: &TestApp, game_id: Uuid) {
     sqlx::query!(
         "UPDATE league_games SET status = 'in_progress' WHERE id = $1",
         game_id

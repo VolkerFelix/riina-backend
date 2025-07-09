@@ -1,3 +1,4 @@
+use evolveme_backend::league::league;
 use reqwest::Client;
 use serde_json::json;
 use uuid::Uuid;
@@ -75,6 +76,29 @@ pub async fn create_admin_user_and_login(app_address: &str) -> UserRegLoginRespo
         user_id,
         username
     }
+}
+
+/// Helper function to create a league
+pub async fn create_league(app_address: &str, token: &str, amount_of_teams: i32) -> String {
+    let client = Client::new();
+    let league_name = format!("Test League {}", &Uuid::new_v4().to_string()[..4]);
+    let league_request = json!({
+        "name": league_name,
+        "description": "Testing live game service",
+        "max_teams": amount_of_teams
+    });
+
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/leagues", app_address),
+        token,
+        Some(league_request)
+    ).await;
+
+    assert_eq!(response.status(), 201);
+    let league_data: serde_json::Value = response.json().await.unwrap();
+    league_data["data"]["id"].as_str().unwrap().to_string()
 }
 
 /// Helper function to create a league season
@@ -219,4 +243,40 @@ pub async fn create_teams_for_test(app_address: &str, token: &str, count: usize)
     }
 
     team_ids
+}
+
+pub async fn add_team_to_league(app_address: &str, admin_token: &str, league_id: &str, team_id: &str) {
+    let client = Client::new();
+    let team_data = json!({
+        "team_id": team_id,
+        "league_id": league_id
+    });
+
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/leagues/{}/teams", app_address, league_id),
+        admin_token,
+        Some(team_data),
+    ).await;
+
+    assert!(response.status().is_success());
+}
+
+pub async fn add_user_to_team(app_address: &str, admin_token: &str, team_id: &str, user_id: Uuid) {
+    let client = Client::new();
+    let member_data = json!({
+        "user_id": user_id,
+        "role": "member"
+    });
+
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/teams/{}/members", app_address, team_id),
+        admin_token,
+        Some(member_data),
+    ).await;
+
+    assert!(response.status().is_success());
 }
