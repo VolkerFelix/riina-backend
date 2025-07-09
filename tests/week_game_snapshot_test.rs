@@ -166,9 +166,8 @@ async fn test_week_long_game_snapshot_system() {
     ).await;
 
     // Create a week-long game manually in database
-    let today = Utc::now().date_naive();
-    let week_start = today;
-    let week_end = today + Duration::days(7);
+    let week_start_date = Utc::now();
+    let week_end_date = week_start_date + Duration::days(7);
 
     let game_id = Uuid::new_v4();
     sqlx::query!(
@@ -185,12 +184,12 @@ async fn test_week_long_game_snapshot_system() {
         Uuid::parse_str(team1_id).unwrap(),
         Uuid::parse_str(team2_id).unwrap(), 
         Utc::now(),
-        week_start,
-        week_end,
+        week_start_date,
+        week_end_date,
         Uuid::parse_str(league1_id).unwrap()
     ).execute(&test_app.db_pool).await.unwrap();
 
-    println!("🎮 Created game {} with week {} to {}", game_id, week_start, week_end);
+    println!("🎮 Created game {} with week {} to {}", game_id, week_start_date, week_end_date);
 
     // Test 1: Start the game and verify snapshots are taken
     let start_response = sqlx::query!(
