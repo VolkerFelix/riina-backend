@@ -78,7 +78,7 @@ pub async fn start_games_now(
     }
 
     let now = Utc::now();
-    let game_end = now + Duration::hours(2);
+    let game_end = now + Duration::days(6); // Games last 6 days
     let mut games_started = 0;
 
     // Update all games to current time and set to in_progress
@@ -169,6 +169,8 @@ pub struct GameStatusInfo {
     pub away_team_name: String,
     pub status: String,
     pub scheduled_time: chrono::DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub week_end_date: Option<chrono::DateTime<Utc>>,
     pub has_live_game: bool,
 }
 
@@ -189,6 +191,7 @@ pub async fn get_games_status(
             lg.week_number,
             lg.status,
             lg.scheduled_time,
+            lg.week_end_date as "week_end_date?",
             ht.team_name as home_team_name,
             at.team_name as away_team_name,
             live_g.id as "live_game_id?"
@@ -220,6 +223,7 @@ pub async fn get_games_status(
             away_team_name: game.away_team_name,
             status: game.status.clone(),
             scheduled_time: game.scheduled_time,
+            week_end_date: game.week_end_date,
             has_live_game: game.live_game_id.is_some(),
         };
 

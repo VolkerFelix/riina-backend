@@ -115,22 +115,14 @@ pub async fn get_game_live_score(
 
     match game {
         Ok(Some(game_data)) => {
-            let (home_score, away_score, game_progress) = 
+            let (home_score, away_score, game_start_time, game_end_time) = 
                 if let Ok(Some(live_data)) = live_game {
                     // Use live game data if available
-                    let progress = if live_data.game_end_time > live_data.game_start_time {
-                        let now = chrono::Utc::now();
-                        let total_duration = (live_data.game_end_time - live_data.game_start_time).num_milliseconds() as f32;
-                        let elapsed = (now - live_data.game_start_time).num_milliseconds() as f32;
-                        (elapsed / total_duration * 100.0).clamp(0.0, 100.0)
-                    } else {
-                        0.0
-                    };
-                    
-                    (live_data.home_score as u32, live_data.away_score as u32, Some(progress))
+                    (live_data.home_score as u32, live_data.away_score as u32, 
+                     Some(live_data.game_start_time), Some(live_data.game_end_time))
                 } else {
                     // No live game data, return zeros
-                    (0, 0, None)
+                    (0, 0, None, None)
                 };
 
             let mut game_info = serde_json::json!({
@@ -143,9 +135,12 @@ pub async fn get_game_live_score(
                 "status": game_data.status,
             });
 
-            // Add optional fields if we have live data
-            if let Some(gp) = game_progress {
-                game_info["game_progress"] = serde_json::Value::Number(serde_json::Number::from_f64(gp as f64).unwrap_or(serde_json::Number::from(0)));
+            // Add optional game timing fields if we have live data
+            if let Some(start_time) = game_start_time {
+                game_info["game_start_time"] = serde_json::Value::String(start_time.to_rfc3339());
+            }
+            if let Some(end_time) = game_end_time {
+                game_info["game_end_time"] = serde_json::Value::String(end_time.to_rfc3339());
             }
 
             Ok(HttpResponse::Ok().json(serde_json::json!({
