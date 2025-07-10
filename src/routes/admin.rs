@@ -5,6 +5,7 @@ use crate::handlers::admin::{
     team_handler,
     league_handler,
     game_evaluation_handler,
+    game_management_handler,
 };
 use crate::middleware::admin::AdminMiddleware;
 
@@ -100,6 +101,16 @@ pub fn init_admin_routes(cfg: &mut web::ServiceConfig) {
             .service(
                 web::resource("/games/summary")
                     .route(web::post().to(game_evaluation_handler::get_game_summary_for_date))
+            )
+            
+            // Game management routes
+            .service(
+                web::resource("/games/start-now")
+                    .route(web::post().to(game_management_handler::start_games_now))
+            )
+            .service(
+                web::resource("/games/status/{season_id}")
+                    .route(web::get().to(game_management_handler::get_games_status))
             )
     );
 }

@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT team_id \n                FROM team_members \n                WHERE user_id = $1 \n                AND status = 'active'\n                AND (team_id = $2 OR team_id = $3)\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "team_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "260ef8ac713a2ba419fec37721ebc7e9e571550d6323a57dd9947c86325b091a"
+}

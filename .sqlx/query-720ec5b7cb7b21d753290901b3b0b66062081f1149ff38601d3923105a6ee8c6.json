@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT \n                lg.*,\n                ht.team_name as home_team_name,\n                ht.team_color as home_team_color,\n                at.team_name as away_team_name,\n                at.team_color as away_team_color\n            FROM league_games lg\n            JOIN teams ht ON lg.home_team_id = ht.id\n            JOIN teams at ON lg.away_team_id = at.id\n            WHERE lg.season_id = $1 \n            AND lg.scheduled_time >= $2\n            AND lg.status IN ('scheduled', 'postponed')\n            ORDER BY lg.scheduled_time ASC\n            LIMIT $3\n            ",
+  "query": "\n            SELECT \n                lg.*,\n                ht.team_name as home_team_name,\n                ht.team_color as home_team_color,\n                at.team_name as away_team_name,\n                at.team_color as away_team_color\n            FROM league_games lg\n            JOIN teams ht ON lg.home_team_id = ht.id\n            JOIN teams at ON lg.away_team_id = at.id\n            WHERE lg.season_id = $1 \n            AND (\n                (lg.scheduled_time >= $2 AND lg.status IN ('scheduled', 'postponed'))\n                OR lg.status IN ('in_progress', 'live')\n            )\n            ORDER BY lg.scheduled_time ASC\n            LIMIT $3\n            ",
   "describe": {
     "columns": [
       {
@@ -71,12 +71,12 @@
       {
         "ordinal": 13,
         "name": "week_start_date",
-        "type_info": "Date"
+        "type_info": "Timestamptz"
       },
       {
         "ordinal": 14,
         "name": "week_end_date",
-        "type_info": "Date"
+        "type_info": "Timestamptz"
       },
       {
         "ordinal": 15,
@@ -128,5 +128,5 @@
       false
     ]
   },
-  "hash": "b247c951bd535a536fcbaab1092c3ed3ec1676dc8a822694061fd1364084c7f2"
+  "hash": "720ec5b7cb7b21d753290901b3b0b66062081f1149ff38601d3923105a6ee8c6"
 }

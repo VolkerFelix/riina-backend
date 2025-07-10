@@ -10,8 +10,8 @@
         "Uuid",
         "Timestamptz",
         "Int4",
-        "Date",
-        "Date"
+        "Timestamptz",
+        "Timestamptz"
       ]
     },
     "nullable": []

@@ -73,7 +73,7 @@ impl ScheduleService {
                 );
 
                 // Week starts at the scheduled time, ends 6 days later
-                let week_start = game_time.date_naive();
+                let week_start = game_time.clone();
                 let week_end = week_start + chrono::Duration::days(6);
 
                 sqlx::query!(
@@ -136,7 +136,7 @@ impl ScheduleService {
                 );
 
                 // Week starts at the scheduled time, ends 6 days later
-                let week_start = game_time.date_naive();
+                let week_start = game_time.clone();
                 let week_end = week_start + chrono::Duration::days(6);
 
                 sqlx::query!(

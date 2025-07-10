@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE live_player_contributions \n            SET \n                current_power = current_power + $1,\n                total_score_contribution = total_score_contribution + $2,\n                contribution_count = contribution_count + 1,\n                last_contribution_time = NOW(),\n                is_currently_active = true,\n                updated_at = NOW()\n            WHERE live_game_id = $3 AND user_id = $4\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Int4",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fb00dcc867aadbf0ac126c171a2ebb56093af4a90e590af159b953b731cb1f9a"
+}

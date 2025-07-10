@@ -72,7 +72,7 @@ pub async fn get_live_scores(
     }
 }
 
-/// Get specific game details (no live scoring, just game info)
+/// Get specific game details with actual live scoring data
 pub async fn get_game_live_score(
     pool: web::Data<PgPool>,
     path: web::Path<Uuid>,
@@ -80,7 +80,23 @@ pub async fn get_game_live_score(
 ) -> Result<HttpResponse> {
     let game_id = path.into_inner();
     
-    // Just return game details without live scoring
+    // First try to get live game data if it exists
+    let live_game = sqlx::query!(
+        r#"
+        SELECT 
+            lg.home_score, lg.away_score,
+            lg.is_active, lg.game_start_time, lg.game_end_time
+        FROM live_games lg
+        WHERE lg.game_id = $1 AND lg.is_active = true
+        ORDER BY lg.created_at DESC
+        LIMIT 1
+        "#,
+        game_id
+    )
+    .fetch_optional(pool.get_ref())
+    .await;
+
+    // Get basic game info
     let game = sqlx::query!(
         r#"
         SELECT 
@@ -99,15 +115,33 @@ pub async fn get_game_live_score(
 
     match game {
         Ok(Some(game_data)) => {
-            let game_info = LiveGameScore {
-                game_id,
-                home_team_name: game_data.home_team_name,
-                away_team_name: game_data.away_team_name,
-                home_score: 0, // No live scoring
-                away_score: 0,
-                week_number: game_data.week_number,
-                status: game_data.status,
-            };
+            let (home_score, away_score, game_start_time, game_end_time) = 
+                if let Ok(Some(live_data)) = live_game {
+                    // Use live game data if available
+                    (live_data.home_score as u32, live_data.away_score as u32, 
+                     Some(live_data.game_start_time), Some(live_data.game_end_time))
+                } else {
+                    // No live game data, return zeros
+                    (0, 0, None, None)
+                };
+
+            let mut game_info = serde_json::json!({
+                "game_id": game_id,
+                "home_team_name": game_data.home_team_name,
+                "away_team_name": game_data.away_team_name,
+                "home_score": home_score,
+                "away_score": away_score,
+                "week_number": game_data.week_number,
+                "status": game_data.status,
+            });
+
+            // Add optional game timing fields if we have live data
+            if let Some(start_time) = game_start_time {
+                game_info["game_start_time"] = serde_json::Value::String(start_time.to_rfc3339());
+            }
+            if let Some(end_time) = game_end_time {
+                game_info["game_end_time"] = serde_json::Value::String(end_time.to_rfc3339());
+            }
 
             Ok(HttpResponse::Ok().json(serde_json::json!({
                 "success": true,
