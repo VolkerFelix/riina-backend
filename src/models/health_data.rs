@@ -28,6 +28,7 @@ pub struct HealthDataSyncRequest {
     pub timestamp: DateTime<Utc>,
     pub heart_rate: Option<Vec<HeartRateData>>,
     pub active_energy_burned: Option<f32>,
+    pub workout_uuid: Option<String>, // Apple Health workout UUID for duplicate prevention
 }
 
 #[derive(Debug, Serialize)]

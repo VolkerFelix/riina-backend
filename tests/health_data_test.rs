@@ -125,4 +125,107 @@ async fn upload_health_data_working() {
         
         println!("Heart rate progression: start={:.1}, peak={:.1}, end={:.1}", first_hr, mid_hr, last_hr);
     }
+}
+
+#[tokio::test]
+async fn duplicate_workout_uuid_prevention() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_and_login(&test_app.address).await;
+
+    // Create workout data with a specific UUID
+    let workout_uuid = "apple-health-workout-12345-abcdef";
+    let base_time = Utc::now();
+    
+    let health_data = json!({
+        "device_id": "apple-health-kit",
+        "timestamp": base_time,
+        "workout_uuid": workout_uuid,
+        "heart_rate": [
+            {
+                "timestamp": base_time,
+                "heart_rate": 120
+            },
+            {
+                "timestamp": base_time + Duration::seconds(60),
+                "heart_rate": 130
+            }
+        ],
+        "active_energy_burned": 250.0
+    });
+
+    // First upload - should succeed
+    let response1 = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/upload_health", &test_app.address),
+        &test_user.token,
+        Some(health_data.clone()),
+    ).await;
+
+    assert!(response1.status().is_success(), "First upload should succeed");
+    
+    let response1_body: serde_json::Value = response1.json().await.expect("Failed to parse response");
+    assert_eq!(response1_body["success"], true);
+    assert!(response1_body["data"]["game_stats"].is_object(), "Should contain game stats");
+
+    // Second upload with same UUID - should be detected as duplicate
+    let response2 = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/upload_health", &test_app.address),
+        &test_user.token,
+        Some(health_data.clone()),
+    ).await;
+
+    assert!(response2.status().is_success(), "Duplicate response should still be 200 OK");
+    
+    let response2_body: serde_json::Value = response2.json().await.expect("Failed to parse duplicate response");
+    assert_eq!(response2_body["success"], true);
+    assert_eq!(response2_body["data"]["duplicate"], true);
+    assert_eq!(response2_body["data"]["workout_uuid"], workout_uuid);
+    assert!(response2_body["message"].as_str().unwrap().contains("already processed"));
+
+    // Verify only one record exists in database
+    let count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM health_data WHERE workout_uuid = $1"
+    )
+    .bind(workout_uuid)
+    .fetch_one(&test_app.db_pool)
+    .await
+    .expect("Failed to count health data records");
+
+    assert_eq!(count, 1, "Should have exactly one record with this workout UUID");
+
+    // Third upload with different UUID - should succeed
+    let different_uuid = "apple-health-workout-67890-fedcba";
+    let mut health_data_different = health_data.clone();
+    health_data_different["workout_uuid"] = json!(different_uuid);
+
+    let response3 = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/upload_health", &test_app.address),
+        &test_user.token,
+        Some(health_data_different),
+    ).await;
+
+    assert!(response3.status().is_success(), "Different UUID upload should succeed");
+    
+    let response3_body: serde_json::Value = response3.json().await.expect("Failed to parse third response");
+    assert_eq!(response3_body["success"], true);
+    assert!(response3_body["data"]["duplicate"].is_null() || response3_body["data"]["duplicate"] == false);
+
+    // Verify now we have two records with different UUIDs
+    let total_count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM health_data WHERE workout_uuid IN ($1, $2)"
+    )
+    .bind(workout_uuid)
+    .bind(different_uuid)
+    .fetch_one(&test_app.db_pool)
+    .await
+    .expect("Failed to count total health data records");
+
+    assert_eq!(total_count, 2, "Should have two records with different workout UUIDs");
 } 
