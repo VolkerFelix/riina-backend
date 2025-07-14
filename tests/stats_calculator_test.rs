@@ -51,6 +51,7 @@ async fn test_zone_1_active_recovery() {
     }
     
     let health_data = HealthDataSyncRequest {
+        workout_uuid: Some(Uuid::new_v4().to_string()),
         device_id: "test".to_string(),
         timestamp: Utc::now(),
         heart_rate: Some(heart_rate_data),
@@ -110,8 +111,9 @@ async fn test_zone_2_aerobic_base() {
             heart_rate: 145.0, // Zone 2 for 25-year-old male (60-70% HRR)
         });
     }
-    
+
     let health_data = HealthDataSyncRequest {
+        workout_uuid: Some(Uuid::new_v4().to_string()),
         device_id: "test".to_string(),
         timestamp: Utc::now(),
         heart_rate: Some(heart_rate_data),
@@ -173,6 +175,7 @@ async fn test_zone_4_lactate_threshold() {
     }
     
     let health_data = HealthDataSyncRequest {
+        workout_uuid: Some(Uuid::new_v4().to_string()),
         device_id: "test".to_string(),
         timestamp: Utc::now(),
         heart_rate: Some(heart_rate_data),
@@ -234,6 +237,7 @@ async fn test_zone_5_neuromuscular_power() {
     }
     
     let health_data = HealthDataSyncRequest {
+        workout_uuid: Some(Uuid::new_v4().to_string()),
         device_id: "test".to_string(),
         timestamp: Utc::now(),
         heart_rate: Some(heart_rate_data),
@@ -283,6 +287,7 @@ async fn test_no_heart_rate_no_gains() {
     .unwrap();
 
     let health_data = HealthDataSyncRequest {
+        workout_uuid: Some(Uuid::new_v4().to_string()),
         device_id: "test".to_string(),
         timestamp: Utc::now(),
         heart_rate: None,

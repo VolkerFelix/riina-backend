@@ -5,7 +5,7 @@ use chrono::Utc;
 use serde_json::json;
 use uuid::Uuid;
 use crate::middleware::auth::Claims;
-use crate::db::health_data::insert_health_data;
+use crate::db::health_data::{insert_health_data, check_workout_uuid_exists};
 use crate::models::health_data::HealthDataSyncRequest;
 use crate::models::common::ApiResponse;
 use crate::game::stats_calculator::StatCalculator;
@@ -43,6 +43,35 @@ pub async fn upload_health_data(
             );
         }
     };
+
+    // 🔍 CHECK FOR DUPLICATE WORKOUT
+    if let Some(workout_uuid) = &data.workout_uuid {
+        tracing::info!("🔍 Checking for duplicate workout UUID: {}", workout_uuid);
+        
+        match check_workout_uuid_exists(&pool, user_id, workout_uuid).await {
+            Ok(exists) => {
+                if exists {
+                    tracing::info!("⚠️ Duplicate workout detected for {}: {}", claims.username, workout_uuid);
+                    return HttpResponse::Ok().json(
+                        ApiResponse::success(
+                            "Workout already processed - skipping duplicate", 
+                            json!({
+                                "duplicate": true,
+                                "workout_uuid": workout_uuid,
+                                "message": "This workout has already been processed"
+                            })
+                        )
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::error!("❌ Failed to check for duplicate workout: {}", e);
+                return HttpResponse::InternalServerError().json(
+                    ApiResponse::<()>::error("Failed to check for duplicate workout")
+                );
+            }
+        }
+    }
 
     // 🎲 CALCULATE GAME STATS FROM HEALTH DATA
     let stat_changes = StatCalculator::calculate_stat_changes(&pool, user_id, &data).await;
