@@ -5,6 +5,7 @@ use sqlx::PgPool;
 
 use crate::middleware::auth::Claims;
 use crate::models::profile::{HealthProfileResponse, UpdateHealthProfileRequest};
+use crate::models::health_data::{HeartRateZones, ZoneName};
 
 #[tracing::instrument(
     name = "Get health profile",
@@ -125,7 +126,7 @@ pub async fn update_health_profile(
             weight = COALESCE($5, user_health_profiles.weight),
             height = COALESCE($6, user_health_profiles.height),
             last_updated = NOW()
-        RETURNING id
+        RETURNING id, age, resting_heart_rate
         "#,
         user_id,
         profile_data.age,
@@ -138,8 +139,46 @@ pub async fn update_health_profile(
     .await;
 
     match result {
-        Ok(_) => {
+        Ok(profile_record) => {
             tracing::info!("Successfully updated health profile for user: {}", claims.username);
+            
+            // Calculate and store heart rate zones if we have age and resting heart rate
+            if let (Some(age), Some(resting_heart_rate)) = (profile_record.age, profile_record.resting_heart_rate) {
+                // Calculate max heart rate using 220 - age formula
+                let max_heart_rate = 220 - age;
+                let hhr = max_heart_rate - resting_heart_rate; // Heart Rate Reserve
+                
+                // Calculate zone thresholds using HeartRateZones
+                let zones = HeartRateZones::new(hhr, resting_heart_rate, max_heart_rate);
+                
+                // Update the profile with calculated zone thresholds
+                if let Err(e) = sqlx::query!(
+                    r#"
+                    UPDATE user_health_profiles 
+                    SET max_heart_rate = $1,
+                        hr_zone_1_max = $2,
+                        hr_zone_2_max = $3,
+                        hr_zone_3_max = $4,
+                        hr_zone_4_max = $5,
+                        hr_zone_5_max = $6
+                    WHERE user_id = $7
+                    "#,
+                    max_heart_rate,
+                    zones.zones.get(&ZoneName::Zone1).map(|z| z.high),
+                    zones.zones.get(&ZoneName::Zone2).map(|z| z.high),
+                    zones.zones.get(&ZoneName::Zone3).map(|z| z.high),
+                    zones.zones.get(&ZoneName::Zone4).map(|z| z.high),
+                    zones.zones.get(&ZoneName::Zone5).map(|z| z.high),
+                    user_id
+                )
+                .execute(&**pool)
+                .await {
+                    tracing::error!("Failed to update heart rate zones: {}", e);
+                    // Continue execution - zones are optional
+                } else {
+                    tracing::info!("Successfully calculated and stored heart rate zones for user: {}", claims.username);
+                }
+            }
             
             // Fetch and return the updated profile
             match sqlx::query_as!(

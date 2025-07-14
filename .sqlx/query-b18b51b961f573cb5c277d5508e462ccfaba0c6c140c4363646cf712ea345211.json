@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT age, gender, resting_heart_rate, max_heart_rate, \n               hr_zone_1_max, hr_zone_2_max, hr_zone_3_max, hr_zone_4_max, hr_zone_5_max\n        FROM user_health_profiles \n        WHERE user_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "age",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "gender",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "resting_heart_rate",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "max_heart_rate",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 4,
+        "name": "hr_zone_1_max",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "hr_zone_2_max",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "hr_zone_3_max",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "hr_zone_4_max",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "hr_zone_5_max",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "b18b51b961f573cb5c277d5508e462ccfaba0c6c140c4363646cf712ea345211"
+}
