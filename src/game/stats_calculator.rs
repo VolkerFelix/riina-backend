@@ -42,14 +42,24 @@ impl StatCalculator {
         };
 
         let user_profile = get_user_profile(pool, user_id).await.unwrap();
-        let max_heart_rate = calc_max_heart_rate(user_profile.age, user_profile.gender);
-        let resting_heart_rate = user_profile.resting_heart_rate.unwrap_or(60); // Default 60 BPM instead of 0
-        let hrr = max_heart_rate - resting_heart_rate;
         
-        tracing::info!("💓 Heart rate calculation: max_hr={}, resting_hr={}, hrr={}", 
-            max_heart_rate, resting_heart_rate, hrr);
-        
-        let heart_rate_zones = HeartRateZones::new(hrr, resting_heart_rate, max_heart_rate);
+        // Use stored heart rate zones if available, otherwise calculate them
+        let heart_rate_zones = if let Some(stored_zones) = user_profile.stored_heart_rate_zones {
+            tracing::info!("📊 Using stored heart rate zones from database");
+            stored_zones
+        } else {
+            tracing::info!("⚠️ No stored zones found, calculating heart rate zones");
+            let max_heart_rate = user_profile.max_heart_rate.unwrap_or_else(|| 
+                calc_max_heart_rate(user_profile.age, user_profile.gender)
+            );
+            let resting_heart_rate = user_profile.resting_heart_rate.unwrap_or(60);
+            let hrr = max_heart_rate - resting_heart_rate;
+            
+            tracing::info!("💓 Heart rate calculation: max_hr={}, resting_hr={}, hrr={}", 
+                max_heart_rate, resting_heart_rate, hrr);
+            
+            HeartRateZones::new(hrr, resting_heart_rate, max_heart_rate)
+        };
         
         tracing::info!("📊 Processing {} heart rate data points", heart_rate.len());
         if !heart_rate.is_empty() {
