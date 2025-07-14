@@ -40,6 +40,7 @@ pub fn run(
     // Create LiveGameService
     let live_game_service = web::Data::new(LiveGameService::new(db_pool, redis_client));
 
+
     let server = HttpServer::new( move || {
         let cors = Cors::default()
             .allowed_origin("http://localhost:3000")

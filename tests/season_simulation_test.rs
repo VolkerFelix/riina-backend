@@ -244,8 +244,7 @@ async fn simulate_complete_season_with_4_players_2_teams() {
         ).await;
         
         if response.status() != 200 {
-            println!("   ⚠️  Failed to get user stats for {}: {}", user_id, response.status());
-            return (50, 50, 100); // Default values
+            panic!("Failed to get user stats for {}: {}", user_id, response.status());
         }
         
         let user_data: serde_json::Value = response.json().await.unwrap();
