@@ -13,16 +13,18 @@ pub async fn insert_health_data(
         r#"
         INSERT INTO health_data (
             user_id, device_id, heart_rate_data, 
-            active_energy_burned, workout_uuid
+            active_energy_burned, workout_uuid, workout_start, workout_end
         )
-        VALUES ($1, $2, $3, $4, $5)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING id
         "#,
         user_id,
         &data.device_id,
         json!(data.heart_rate),
         data.active_energy_burned,
-        data.workout_uuid.as_deref()
+        data.workout_uuid.as_deref(),
+        data.workout_start,
+        data.workout_end
     )
     .fetch_one(pool)
     .await?;

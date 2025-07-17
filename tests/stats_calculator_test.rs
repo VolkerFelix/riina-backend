@@ -40,7 +40,10 @@ async fn test_zone_1_active_recovery() {
 
     // Create heart rate data for Zone 1 (around 50-60% HRR)
     let mut heart_rate_data = Vec::new();
-    let base_time = Utc::now();
+    let now = Utc::now();
+    let workout_start = now - Duration::minutes(30);
+    let workout_end = now;
+    let base_time = workout_start;
     
     // Generate 5 minutes of Zone 1 heart rate data
     for i in 0..300 { // 300 seconds = 5 minutes
@@ -53,7 +56,9 @@ async fn test_zone_1_active_recovery() {
     let health_data = HealthDataSyncRequest {
         workout_uuid: Some(Uuid::new_v4().to_string()),
         device_id: "test".to_string(),
-        timestamp: Utc::now(),
+        timestamp: now,
+        workout_start: Some(workout_start),
+        workout_end: Some(workout_end),
         heart_rate: Some(heart_rate_data),
         active_energy_burned: Some(150.0),
     };
@@ -102,7 +107,10 @@ async fn test_zone_2_aerobic_base() {
 
     // Create heart rate data for Zone 2 (around 60-70% HRR)
     let mut heart_rate_data = Vec::new();
-    let base_time = Utc::now();
+    let now = Utc::now();
+    let workout_start = now - Duration::minutes(30);
+    let workout_end = now;
+    let base_time = workout_start;
     
     // Generate 3 minutes of Zone 2 heart rate data
     for i in 0..180 { // 180 seconds = 3 minutes
@@ -115,7 +123,9 @@ async fn test_zone_2_aerobic_base() {
     let health_data = HealthDataSyncRequest {
         workout_uuid: Some(Uuid::new_v4().to_string()),
         device_id: "test".to_string(),
-        timestamp: Utc::now(),
+        timestamp: now,
+        workout_start: Some(workout_start),
+        workout_end: Some(workout_end),
         heart_rate: Some(heart_rate_data),
         active_energy_burned: Some(225.0),
     };
@@ -164,7 +174,10 @@ async fn test_zone_4_lactate_threshold() {
 
     // Create heart rate data for Zone 4 (around 80-90% HRR)
     let mut heart_rate_data = Vec::new();
-    let base_time = Utc::now();
+    let now = Utc::now();
+    let workout_start = now - Duration::minutes(30);
+    let workout_end = now;
+    let base_time = workout_start;
     
     // Generate 2 minutes of Zone 4 heart rate data
     for i in 0..120 { // 120 seconds = 2 minutes
@@ -177,7 +190,9 @@ async fn test_zone_4_lactate_threshold() {
     let health_data = HealthDataSyncRequest {
         workout_uuid: Some(Uuid::new_v4().to_string()),
         device_id: "test".to_string(),
-        timestamp: Utc::now(),
+        timestamp: now,
+        workout_start: Some(workout_start),
+        workout_end: Some(workout_end),
         heart_rate: Some(heart_rate_data),
         active_energy_burned: Some(300.0),
     };
@@ -226,7 +241,10 @@ async fn test_zone_5_neuromuscular_power() {
 
     // Create heart rate data for Zone 5 (90%+ HRR)
     let mut heart_rate_data = Vec::new();
-    let base_time = Utc::now();
+    let now = Utc::now();
+    let workout_start = now - Duration::minutes(30);
+    let workout_end = now;
+    let base_time = workout_start;
     
     // Generate 1.5 minutes of Zone 5 heart rate data
     for i in 0..90 { // 90 seconds = 1.5 minutes
@@ -239,7 +257,9 @@ async fn test_zone_5_neuromuscular_power() {
     let health_data = HealthDataSyncRequest {
         workout_uuid: Some(Uuid::new_v4().to_string()),
         device_id: "test".to_string(),
-        timestamp: Utc::now(),
+        timestamp: now,
+        workout_start: Some(workout_start),
+        workout_end: Some(workout_end),
         heart_rate: Some(heart_rate_data),
         active_energy_burned: Some(400.0),
     };
@@ -286,10 +306,16 @@ async fn test_no_heart_rate_no_gains() {
     .await
     .unwrap();
 
+    let now = Utc::now();
+    let workout_start = now - Duration::minutes(30);
+    let workout_end = now;
+    
     let health_data = HealthDataSyncRequest {
         workout_uuid: Some(Uuid::new_v4().to_string()),
         device_id: "test".to_string(),
-        timestamp: Utc::now(),
+        timestamp: now,
+        workout_start: Some(workout_start),
+        workout_end: Some(workout_end),
         heart_rate: None,
         active_energy_burned: Some(200.0),
     };
