@@ -85,9 +85,10 @@ pub async fn get_workout_history(
         r#"
         SELECT 
             hd.id,
-            hd.created_at as workout_date,
+            COALESCE(hd.workout_start, hd.created_at) as workout_date,
             hd.workout_start,
             hd.workout_end,
+            hd.created_at,
             hd.active_energy_burned as calories_burned,
             hd.heart_rate_data,
             -- Get game stats from stat_changes table
@@ -98,7 +99,7 @@ pub async fn get_workout_history(
         LEFT JOIN stat_changes sc ON sc.health_data_id = hd.id
         WHERE hd.user_id = $1
         AND (hd.active_energy_burned > 100 OR hd.heart_rate_data IS NOT NULL)
-        ORDER BY hd.created_at DESC
+        ORDER BY COALESCE(hd.workout_start, hd.created_at) DESC
         LIMIT $2 OFFSET $3
         "#,
         user_id,
@@ -123,7 +124,7 @@ pub async fn get_workout_history(
                 
                 WorkoutHistoryItem {
                     id: row.id,
-                    workout_date: row.workout_date,
+                    workout_date: row.workout_date.unwrap_or(row.created_at),
                     workout_start: row.workout_start,
                     workout_end: row.workout_end,
                     duration_minutes,

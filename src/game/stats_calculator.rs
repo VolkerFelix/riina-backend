@@ -13,6 +13,8 @@ pub struct ZoneBreakdown {
     pub minutes: f32,
     pub stamina_gained: i32,
     pub strength_gained: i32,
+    pub hr_min: Option<i32>, // Lower heart rate limit for this zone
+    pub hr_max: Option<i32>, // Upper heart rate limit for this zone
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -88,7 +90,7 @@ impl StatCalculator {
             for (zone, minutes) in &workout_analysis.zone_durations {
                 tracing::info!("📈 Zone {:?}: {:.1} minutes", zone, minutes);
             }
-            let (points_changes, zone_breakdown) = Self::calc_points_and_breakdown_from_workout_analysis(&workout_analysis);
+            let (points_changes, zone_breakdown) = Self::calc_points_and_breakdown_from_workout_analysis(&workout_analysis, &heart_rate_zones);
             changes.stamina_change += points_changes.stamina_change;
             changes.strength_change += points_changes.strength_change;
             changes.zone_breakdown = Some(zone_breakdown);
@@ -116,7 +118,7 @@ impl StatCalculator {
         changes
     }
 
-    fn calc_points_and_breakdown_from_workout_analysis(workout_analysis: &WorkoutAnalyzer) -> (StatChanges, Vec<ZoneBreakdown>) {
+    fn calc_points_and_breakdown_from_workout_analysis(workout_analysis: &WorkoutAnalyzer, heart_rate_zones: &HeartRateZones) -> (StatChanges, Vec<ZoneBreakdown>) {
         let mut changes = StatChanges {
             stamina_change: 0,
             strength_change: 0,
@@ -143,12 +145,21 @@ impl StatCalculator {
             total_stamina += zone_stamina as f32;
             total_strength += zone_strength as f32;
 
+            // Get heart rate limits for this zone from the user's zones
+            let (hr_min, hr_max) = if let Some(zone_range) = heart_rate_zones.zones.get(zone) {
+                (Some(zone_range.low), Some(zone_range.high))
+            } else {
+                (None, None)
+            };
+
             // Add zone breakdown for this zone
             zone_breakdown.push(ZoneBreakdown {
                 zone: format!("{:?}", zone),
                 minutes: *duration_minutes,
                 stamina_gained: zone_stamina,
                 strength_gained: zone_strength,
+                hr_min,
+                hr_max,
             });
         }
 

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT \n            hd.id,\n            hd.created_at as workout_date,\n            hd.workout_start,\n            hd.workout_end,\n            hd.active_energy_burned as calories_burned,\n            hd.heart_rate_data,\n            -- Get game stats from stat_changes table\n            COALESCE(sc.stamina_change, 0) as stamina_gained,\n            COALESCE(sc.strength_change, 0) as strength_gained,\n            sc.zone_breakdown\n        FROM health_data hd\n        LEFT JOIN stat_changes sc ON sc.health_data_id = hd.id\n        WHERE hd.user_id = $1\n        AND (hd.active_energy_burned > 100 OR hd.heart_rate_data IS NOT NULL)\n        ORDER BY hd.created_at DESC\n        LIMIT $2 OFFSET $3\n        ",
+  "query": "\n        SELECT \n            hd.id,\n            COALESCE(hd.workout_start, hd.created_at) as workout_date,\n            hd.workout_start,\n            hd.workout_end,\n            hd.created_at,\n            hd.active_energy_burned as calories_burned,\n            hd.heart_rate_data,\n            -- Get game stats from stat_changes table\n            COALESCE(sc.stamina_change, 0) as stamina_gained,\n            COALESCE(sc.strength_change, 0) as strength_gained,\n            sc.zone_breakdown\n        FROM health_data hd\n        LEFT JOIN stat_changes sc ON sc.health_data_id = hd.id\n        WHERE hd.user_id = $1\n        AND (hd.active_energy_burned > 100 OR hd.heart_rate_data IS NOT NULL)\n        ORDER BY COALESCE(hd.workout_start, hd.created_at) DESC\n        LIMIT $2 OFFSET $3\n        ",
   "describe": {
     "columns": [
       {
@@ -25,26 +25,31 @@
       },
       {
         "ordinal": 4,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
         "name": "calories_burned",
         "type_info": "Float4"
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "heart_rate_data",
         "type_info": "Jsonb"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "stamina_gained",
         "type_info": "Int4"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "strength_gained",
         "type_info": "Int4"
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "zone_breakdown",
         "type_info": "Jsonb"
       }
@@ -58,9 +63,10 @@
     },
     "nullable": [
       false,
+      null,
+      true,
+      true,
       false,
-      true,
-      true,
       true,
       false,
       null,
@@ -68,5 +74,5 @@
       true
     ]
   },
-  "hash": "0e0512ec734ec1ccb7056003238bc0be5227dfec6a2157e4829045a21a227a54"
+  "hash": "3720177abd9c6c9ac1efe6809afe36bcab8fdde54b743ad72bd2a29758d9bbc2"
 }
