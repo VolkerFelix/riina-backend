@@ -1,0 +1,66 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT \n            hd.id,\n            hd.created_at as workout_date,\n            hd.workout_start,\n            hd.workout_end,\n            hd.active_energy_burned as calories_burned,\n            hd.heart_rate_data,\n            -- Get game stats from stat_changes table\n            COALESCE(sc.stamina_change, 0) as stamina_gained,\n            COALESCE(sc.strength_change, 0) as strength_gained\n        FROM health_data hd\n        LEFT JOIN stat_changes sc ON sc.health_data_id = hd.id\n        WHERE hd.user_id = $1\n        AND (hd.active_energy_burned > 100 OR hd.heart_rate_data IS NOT NULL)\n        ORDER BY hd.created_at DESC\n        LIMIT $2 OFFSET $3\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "workout_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 2,
+        "name": "workout_start",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 3,
+        "name": "workout_end",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "calories_burned",
+        "type_info": "Float4"
+      },
+      {
+        "ordinal": 5,
+        "name": "heart_rate_data",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 6,
+        "name": "stamina_gained",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "strength_gained",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "6d6c3d31a1d4764e35bbec9f8f12b399067294afede333f584305a7ea90f5f00"
+}
