@@ -8,10 +8,19 @@ use crate::game::helper::{get_user_profile, calc_max_heart_rate};
 use crate::workout::workout_analyzer::WorkoutAnalyzer;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ZoneBreakdown {
+    pub zone: String,
+    pub minutes: f32,
+    pub stamina_gained: i32,
+    pub strength_gained: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StatChanges {
     pub stamina_change: i32,
     pub strength_change: i32,
     pub reasoning: Vec<String>,
+    pub zone_breakdown: Option<Vec<ZoneBreakdown>>,
 }
 
 pub struct StatCalculator;
@@ -23,12 +32,14 @@ impl StatCalculator {
             stamina_change: 0,
             strength_change: 0,
             reasoning: Vec::new(),
+            zone_breakdown: None,
         };
 
         if let Some(heart_rate) = &health_data.heart_rate {
             let stats_changes = Self::calc_stats_hhr_based(pool, user_id, heart_rate).await;
             changes.stamina_change += stats_changes.stamina_change;
             changes.strength_change += stats_changes.strength_change;
+            changes.zone_breakdown = stats_changes.zone_breakdown;
         }
         changes
     }
@@ -39,6 +50,7 @@ impl StatCalculator {
             stamina_change: 0,
             strength_change: 0,
             reasoning: Vec::new(),
+            zone_breakdown: None,
         };
 
         let user_profile = get_user_profile(pool, user_id).await.unwrap();
@@ -76,9 +88,10 @@ impl StatCalculator {
             for (zone, minutes) in &workout_analysis.zone_durations {
                 tracing::info!("📈 Zone {:?}: {:.1} minutes", zone, minutes);
             }
-            let points_changes = Self::calc_points_from_workout_analysis(&workout_analysis);
+            let (points_changes, zone_breakdown) = Self::calc_points_and_breakdown_from_workout_analysis(&workout_analysis);
             changes.stamina_change += points_changes.stamina_change;
             changes.strength_change += points_changes.strength_change;
+            changes.zone_breakdown = Some(zone_breakdown);
 
             // Add zone distribution info
             for (zone, minutes) in &workout_analysis.zone_durations {
@@ -103,15 +116,17 @@ impl StatCalculator {
         changes
     }
 
-    fn calc_points_from_workout_analysis(workout_analysis: &WorkoutAnalyzer) -> StatChanges {
+    fn calc_points_and_breakdown_from_workout_analysis(workout_analysis: &WorkoutAnalyzer) -> (StatChanges, Vec<ZoneBreakdown>) {
         let mut changes = StatChanges {
             stamina_change: 0,
             strength_change: 0,
             reasoning: Vec::new(),
+            zone_breakdown: None,
         };
 
         let mut total_stamina = 0.0;
         let mut total_strength = 0.0;
+        let mut zone_breakdown = Vec::new();
 
         for (zone, duration_minutes) in &workout_analysis.zone_durations {
             let (stamina_per_min, strength_per_min) = match zone {
@@ -122,12 +137,23 @@ impl StatCalculator {
                 ZoneName::Zone5 => (ZONE_5_STAMINA_POINTS_PER_MIN, ZONE_5_STRENGTH_POINTS_PER_MIN),
             };
             
-            total_stamina += duration_minutes * stamina_per_min as f32;
-            total_strength += duration_minutes * strength_per_min as f32;
+            let zone_stamina = (duration_minutes * stamina_per_min as f32) as i32;
+            let zone_strength = (duration_minutes * strength_per_min as f32) as i32;
+            
+            total_stamina += zone_stamina as f32;
+            total_strength += zone_strength as f32;
+
+            // Add zone breakdown for this zone
+            zone_breakdown.push(ZoneBreakdown {
+                zone: format!("{:?}", zone),
+                minutes: *duration_minutes,
+                stamina_gained: zone_stamina,
+                strength_gained: zone_strength,
+            });
         }
 
         changes.stamina_change = total_stamina as i32;
         changes.strength_change = total_strength as i32;
-        changes
+        (changes, zone_breakdown)
     }
 }

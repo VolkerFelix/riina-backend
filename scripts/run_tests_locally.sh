@@ -122,20 +122,20 @@ run_tests() {
     if [ -n "${TEST_FILE:-}" ]; then
         echo -e "${YELLOW}Running all tests in file: $TEST_FILE${NC}"
         if [ "${SHOW_OUTPUT:-false}" = "true" ]; then
-            RUST_BACKTRACE=1 cargo test --test "$TEST_FILE" -- --nocapture
+            TEST_LOG=1 RUST_BACKTRACE=1 cargo test --test "$TEST_FILE" -- --nocapture
         else
             RUST_BACKTRACE=1 cargo test --test "$TEST_FILE"
         fi
     elif [ -n "${TEST_NAME:-}" ]; then
         echo -e "${YELLOW}Running test matching pattern: $TEST_NAME${NC}"
         if [ "${SHOW_OUTPUT:-false}" = "true" ]; then
-            RUST_BACKTRACE=1 cargo test "$TEST_NAME" -- --nocapture
+            TEST_LOG=1 RUST_BACKTRACE=1 cargo test "$TEST_NAME" -- --nocapture
         else
             RUST_BACKTRACE=1 cargo test "$TEST_NAME"
         fi
     else
         if [ "${SHOW_OUTPUT:-false}" = "true" ]; then
-            RUST_BACKTRACE=1 cargo test -- --nocapture
+            TEST_LOG=1 RUST_BACKTRACE=1 cargo test -- --nocapture
         else
             RUST_BACKTRACE=1 cargo test
         fi

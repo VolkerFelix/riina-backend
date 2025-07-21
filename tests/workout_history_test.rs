@@ -261,3 +261,97 @@ async fn test_workout_history_with_stats() {
     assert!(stamina > 0, "Stamina should be positive");
     assert!(strength > 0, "Strength should be positive");
 }
+
+#[tokio::test]
+async fn test_workout_history_zone_breakdown() {
+    // Set up the test app
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_and_login(&test_app.address).await;
+    let token = test_user.token;
+
+    // Upload health data with high intensity to generate zone breakdown
+    let health_data = create_elite_health_data();
+
+    let health_response = client
+        .post(&format!("{}/health/upload_health", &test_app.address))
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&health_data)
+        .send()
+        .await
+        .expect("Failed to execute health upload request.");
+
+    assert!(health_response.status().is_success(), "Health upload should succeed");
+
+    // Wait for processing
+    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+
+    // Test workout history and check zone breakdown
+    let history_response = client
+        .get(&format!("{}/health/history", &test_app.address))
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await
+        .expect("Failed to execute workout history request.");
+
+    assert!(history_response.status().is_success(), "Workout history should succeed");
+
+    let history_body: serde_json::Value = history_response
+        .json()
+        .await
+        .expect("Failed to parse workout history response");
+
+    println!("🔍 Full workout history response: {}", serde_json::to_string_pretty(&history_body).unwrap());
+
+    assert_eq!(history_body["success"], true);
+    
+    let workouts = history_body["data"]["workouts"].as_array().unwrap();
+    assert_eq!(workouts.len(), 1, "Should have one workout");
+
+    let workout = &workouts[0];
+    
+    println!("🔍 Workout data: {}", serde_json::to_string_pretty(&workout).unwrap());
+    
+    // Check that zone breakdown exists
+    let zone_breakdown = &workout["heart_rate_zones"];
+    println!("🔍 Zone breakdown field: {}", zone_breakdown);
+    
+    if !zone_breakdown.is_null() {
+        let zones = zone_breakdown.as_array().expect("Zone breakdown should be an array");
+        assert!(zones.len() > 0, "Should have at least one heart rate zone");
+        
+        // Verify zone structure
+        for zone in zones {
+            assert!(zone["zone"].is_string(), "Zone should have a zone name");
+            assert!(zone["minutes"].is_number(), "Zone should have minutes");
+            assert!(zone["stamina_gained"].is_number(), "Zone should have stamina gained");
+            assert!(zone["strength_gained"].is_number(), "Zone should have strength gained");
+            
+            println!("✅ Zone: {} - {}min, +{} stamina, +{} strength", 
+                zone["zone"].as_str().unwrap(),
+                zone["minutes"].as_f64().unwrap(),
+                zone["stamina_gained"].as_i64().unwrap(),
+                zone["strength_gained"].as_i64().unwrap()
+            );
+        }
+        
+        // Verify that zone breakdown totals match workout totals
+        let zone_stamina_total: i64 = zones.iter()
+            .map(|z| z["stamina_gained"].as_i64().unwrap_or(0))
+            .sum();
+        let zone_strength_total: i64 = zones.iter()
+            .map(|z| z["strength_gained"].as_i64().unwrap_or(0))
+            .sum();
+            
+        assert_eq!(zone_stamina_total, workout["stamina_gained"].as_i64().unwrap(),
+            "Zone stamina breakdown should equal workout total stamina");
+        assert_eq!(zone_strength_total, workout["strength_gained"].as_i64().unwrap(),
+            "Zone strength breakdown should equal workout total strength");
+        
+        println!("✅ Zone breakdown totals match workout totals: {}stamina, {}strength", 
+            zone_stamina_total, zone_strength_total);
+    } else {
+        panic!("❌ Zone breakdown is null - this indicates the zone calculation/storage is not working");
+    }
+}

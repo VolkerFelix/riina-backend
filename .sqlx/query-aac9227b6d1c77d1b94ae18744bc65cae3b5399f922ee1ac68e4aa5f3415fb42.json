@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                INSERT INTO stat_changes (health_data_id, user_id, stamina_change, strength_change, reasoning, zone_breakdown)\n                VALUES ($1, $2, $3, $4, $5, $6)\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int4",
+        "Int4",
+        "TextArray",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "aac9227b6d1c77d1b94ae18744bc65cae3b5399f922ee1ac68e4aa5f3415fb42"
+}

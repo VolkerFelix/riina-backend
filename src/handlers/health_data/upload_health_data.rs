@@ -125,16 +125,20 @@ pub async fn upload_health_data(
     match insert_result {
         Ok(sync_id) => {
             // 📊 STORE STAT CHANGES IN DATABASE (linked to this workout)
+            let zone_breakdown_json = stat_changes.zone_breakdown.as_ref()
+                .map(|breakdown| serde_json::to_value(breakdown).unwrap_or(serde_json::Value::Null));
+
             let stat_insert_result = sqlx::query!(
                 r#"
-                INSERT INTO stat_changes (health_data_id, user_id, stamina_change, strength_change, reasoning)
-                VALUES ($1, $2, $3, $4, $5)
+                INSERT INTO stat_changes (health_data_id, user_id, stamina_change, strength_change, reasoning, zone_breakdown)
+                VALUES ($1, $2, $3, $4, $5, $6)
                 "#,
                 sync_id,
                 user_id,
                 stat_changes.stamina_change,
                 stat_changes.strength_change,
-                &stat_changes.reasoning
+                &stat_changes.reasoning,
+                zone_breakdown_json
             )
             .execute(&**pool)
             .await;

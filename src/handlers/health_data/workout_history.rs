@@ -80,7 +80,7 @@ pub async fn get_workout_history(
     let limit = query.limit.unwrap_or(20).min(100); // Max 100 items
     let offset = query.offset.unwrap_or(0);
 
-    // Fetch workout history with game stats
+    // Fetch workout history with game stats and zone breakdown
     let workouts: Vec<WorkoutHistoryItem> = match sqlx::query!(
         r#"
         SELECT 
@@ -92,7 +92,8 @@ pub async fn get_workout_history(
             hd.heart_rate_data,
             -- Get game stats from stat_changes table
             COALESCE(sc.stamina_change, 0) as stamina_gained,
-            COALESCE(sc.strength_change, 0) as strength_gained
+            COALESCE(sc.strength_change, 0) as strength_gained,
+            sc.zone_breakdown
         FROM health_data hd
         LEFT JOIN stat_changes sc ON sc.health_data_id = hd.id
         WHERE hd.user_id = $1
@@ -129,7 +130,7 @@ pub async fn get_workout_history(
                     calories_burned: row.calories_burned,
                     avg_heart_rate,
                     max_heart_rate,
-                    heart_rate_zones: None, // Could be calculated if needed
+                    heart_rate_zones: row.zone_breakdown, // Include zone breakdown from stat_changes
                     stamina_gained: stamina,
                     strength_gained: strength,
                 }
