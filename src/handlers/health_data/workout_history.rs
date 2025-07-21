@@ -21,7 +21,6 @@ pub struct WorkoutHistoryItem {
     // Game stats gained from this workout
     pub stamina_gained: i32,
     pub strength_gained: i32,
-    pub total_points_gained: i32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -82,7 +81,7 @@ pub async fn get_workout_history(
     let offset = query.offset.unwrap_or(0);
 
     // Fetch workout history with game stats
-    let workouts: Vec<_> = match sqlx::query!(
+    let workouts: Vec<WorkoutHistoryItem> = match sqlx::query!(
         r#"
         SELECT 
             hd.id,
@@ -133,7 +132,6 @@ pub async fn get_workout_history(
                     heart_rate_zones: None, // Could be calculated if needed
                     stamina_gained: stamina,
                     strength_gained: strength,
-                    total_points_gained: stamina + strength,
                 }
             }).collect()
         },
@@ -161,33 +159,7 @@ pub async fn get_workout_history(
         Ok(row) => row.count.unwrap_or(0),
         Err(_) => 0,
     };
-
-    // Calculate total stats gained across all workouts
-    let total_stats = match sqlx::query!(
-        r#"
-        SELECT 
-            COALESCE(SUM(sc.stamina_change), 0) as total_stamina,
-            COALESCE(SUM(sc.strength_change), 0) as total_strength
-        FROM health_data hd
-        LEFT JOIN stat_changes sc ON sc.health_data_id = hd.id
-        WHERE hd.user_id = $1
-        "#,
-        user_id
-    )
-    .fetch_one(&**pool)
-    .await
-    {
-        Ok(row) => json!({
-            "total_stamina_gained": row.total_stamina,
-            "total_strength_gained": row.total_strength,
-            "total_points_gained": row.total_stamina.unwrap_or(0) + row.total_strength.unwrap_or(0)
-        }),
-        Err(_) => json!({
-            "total_stamina_gained": 0,
-            "total_strength_gained": 0,
-            "total_points_gained": 0
-        }),
-    };
+    
 
     tracing::info!(
         "Successfully retrieved {} workouts for user: {}",
@@ -199,7 +171,6 @@ pub async fn get_workout_history(
         "success": true,
         "data": {
             "workouts": workouts,
-            "total_stats": total_stats,
             "pagination": {
                 "total": total_count,
                 "limit": limit,
