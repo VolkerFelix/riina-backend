@@ -124,6 +124,27 @@ pub async fn upload_health_data(
     
     match insert_result {
         Ok(sync_id) => {
+            // 📊 STORE STAT CHANGES IN DATABASE (linked to this workout)
+            let stat_insert_result = sqlx::query!(
+                r#"
+                INSERT INTO stat_changes (health_data_id, user_id, stamina_change, strength_change, reasoning)
+                VALUES ($1, $2, $3, $4, $5)
+                "#,
+                sync_id,
+                user_id,
+                stat_changes.stamina_change,
+                stat_changes.strength_change,
+                &stat_changes.reasoning
+            )
+            .execute(&**pool)
+            .await;
+
+            if let Err(e) = stat_insert_result {
+                tracing::error!("❌ Failed to store stat changes for workout {}: {}", sync_id, e);
+                // Continue processing even if stat storage fails
+            } else {
+                tracing::info!("✅ Successfully stored stat changes for workout {}", sync_id);
+            }
             // 🎯 PREPARE GAME EVENT FOR REAL-TIME NOTIFICATION
             let game_event = json!({
                 "event_type": "health_data_processed",

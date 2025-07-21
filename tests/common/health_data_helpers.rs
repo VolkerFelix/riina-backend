@@ -36,7 +36,9 @@ pub fn create_beginner_health_data() -> serde_json::Value {
         "device_id": format!("device-{}", Uuid::new_v4()),
         "timestamp": base_time,
         "heart_rate": heart_rate_readings,
-        "active_energy_burned": 180.0 // Lower calories for beginner
+        "active_energy_burned": 180.0, // Lower calories for beginner
+        "workout_start": base_time,
+        "workout_end": base_time + Duration::seconds(480)
     })
 }
 
@@ -72,7 +74,9 @@ pub fn create_intermediate_health_data() -> serde_json::Value {
         "device_id": format!("device-{}", Uuid::new_v4()),
         "timestamp": base_time,
         "heart_rate": heart_rate_readings,
-        "active_energy_burned": 320.0 // Moderate calories
+        "active_energy_burned": 320.0, // Moderate calories
+        "workout_start": base_time,
+        "workout_end": base_time + Duration::seconds(1500)
     })
 }
 
@@ -110,7 +114,9 @@ pub fn create_advanced_health_data() -> serde_json::Value {
         "device_id": format!("device-{}", Uuid::new_v4()),
         "timestamp": base_time,
         "heart_rate": heart_rate_readings,
-        "active_energy_burned": 520.0 // Higher calories for advanced
+        "active_energy_burned": 520.0, // Higher calories for advanced
+        "workout_start": base_time,
+        "workout_end": base_time + Duration::seconds(2100)
     })
 }
 
@@ -148,7 +154,9 @@ pub fn create_elite_health_data() -> serde_json::Value {
         "device_id": format!("device-{}", Uuid::new_v4()),
         "timestamp": base_time,
         "heart_rate": heart_rate_readings,
-        "active_energy_burned": 720.0 // Highest calories for elite
+        "active_energy_burned": 720.0, // Highest calories for elite
+        "workout_start": base_time,
+        "workout_end": base_time + Duration::seconds(2100)
     })
 }
 
