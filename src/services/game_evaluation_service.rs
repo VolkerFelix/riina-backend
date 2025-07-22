@@ -11,6 +11,7 @@ use crate::models::common::MatchResult;
 use crate::league::standings::StandingsService;
 use crate::models::league::{LeagueGame, GameStatus};
 
+#[derive(Debug)]
 pub struct GameEvaluationService {
     pool: PgPool,
     redis_client: Option<Arc<redis::Client>>,
@@ -130,7 +131,7 @@ impl GameEvaluationService {
         // Start a transaction to ensure atomic updates
         let mut tx = self.pool.begin().await?;
 
-        // Update the game result
+        // Update the game result and mark as evaluated
         sqlx::query!(
             r#"
             UPDATE league_games 
@@ -138,7 +139,7 @@ impl GameEvaluationService {
                 home_score = $2,
                 away_score = $3,
                 winner_team_id = $4,
-                status = 'finished',
+                status = 'evaluated',
                 updated_at = $5
             WHERE id = $1
             "#,
@@ -159,7 +160,7 @@ impl GameEvaluationService {
         updated_game.home_score = Some(game_stats.home_team_score as i32);
         updated_game.away_score = Some(game_stats.away_team_score as i32);
         updated_game.winner_team_id = game_stats.winner_team_id;
-        updated_game.status = GameStatus::Finished;
+        updated_game.status = GameStatus::Evaluated;
 
         // Update standings
         self.standings.update_after_game_result(
@@ -203,6 +204,58 @@ impl GameEvaluationService {
                 ).await?;
 
                 tracing::info!("✅ Game {} evaluated: {} - {}", 
+                    game_id, game_stats.home_team_score, game_stats.away_team_score);
+
+                Ok(game_stats)
+            }
+            None => {
+                tracing::error!("❌ Game {} not found", game_id);
+                Err(sqlx::Error::RowNotFound)
+            }
+        }
+    }
+
+    /// Evaluate and update a finished live game
+    pub async fn evaluate_finished_live_game(&self, game_id: Uuid) -> Result<GameStats, sqlx::Error> {
+        tracing::info!("🎯 Evaluating finished live game: {}", game_id);
+
+        // Get the game details
+        let game = sqlx::query!(
+            r#"
+            SELECT home_team_id, away_team_id, status, home_score, away_score
+            FROM league_games 
+            WHERE id = $1
+            "#,
+            game_id
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        match game {
+            Some(game_data) => {
+                // Only evaluate games that are finished and don't already have scores
+                if game_data.status != "finished" {
+                    tracing::warn!("Game {} is not finished (status: {})", game_id, game_data.status);
+                    return Err(sqlx::Error::RowNotFound);
+                }
+
+                // Check if the game already has scores calculated
+                if game_data.home_score.is_some() && game_data.away_score.is_some() {
+                    tracing::info!("Game {} already has scores calculated", game_id);
+                    return Err(sqlx::Error::RowNotFound);
+                }
+
+                // Evaluate the game based on team performance
+                let game_stats = GameEvaluator::evaluate_game(
+                    &self.pool, 
+                    &game_data.home_team_id, 
+                    &game_data.away_team_id
+                ).await?;
+
+                // Update the game result in the database
+                self.update_game_result(game_id, &game_stats).await?;
+
+                tracing::info!("✅ Finished live game {} evaluated and updated: {} - {}", 
                     game_id, game_stats.home_team_score, game_stats.away_team_score);
 
                 Ok(game_stats)

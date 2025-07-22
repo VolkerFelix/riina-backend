@@ -57,6 +57,7 @@ pub enum GameStatus {
     InProgress,
     Live,
     Finished,
+    Evaluated,
     Postponed,
 }
 
@@ -66,6 +67,7 @@ impl From<String> for GameStatus {
             "in_progress" | "in-progress" => GameStatus::InProgress,
             "live" => GameStatus::Live,
             "finished" => GameStatus::Finished,
+            "evaluated" => GameStatus::Evaluated,
             "postponed" => GameStatus::Postponed,
             _ => GameStatus::Scheduled,
         }
@@ -197,6 +199,7 @@ impl GameStatus {
             GameStatus::InProgress => "in_progress",
             GameStatus::Live => "live",
             GameStatus::Finished => "finished",
+            GameStatus::Evaluated => "evaluated",
             GameStatus::Postponed => "postponed",
         }
     }

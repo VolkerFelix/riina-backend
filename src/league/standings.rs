@@ -4,6 +4,7 @@ use crate::models::league::*;
 use crate::utils::team_power;
 
 /// Service responsible for managing league standings
+#[derive(Debug)]
 pub struct StandingsService {
     pool: PgPool,
 }

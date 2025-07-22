@@ -31,17 +31,29 @@ async fn test_complete_live_game_workflow() {
     assert_eq!(live_game.away_power, 0);
     assert!(live_game.is_active);
 
+    // Step 4: Verify the game appears in the live games API endpoint
+    // Get season ID for the API call
+    let season_id = get_season_id_for_game(&test_app, game_id).await;
+    
+    // Fetch live games via API
+    let live_games = get_live_games_via_api(&test_app, &client, &home_user.token, Some(season_id)).await;
+    
+    // Verify our game is in the live games list
+    assert!(!live_games.is_empty(), "Should have at least one live game");
+    
+    let our_game = live_games.iter().find(|g| g["game"]["id"].as_str() == Some(&game_id.to_string()));
+    assert!(our_game.is_some(), "Our game should be in the live games list");
+    
+    let api_game = our_game.unwrap();
+    assert_eq!(api_game["game"]["status"].as_str(), Some("InProgress"));
+    assert!(api_game["home_team_name"].is_string(), "Should have home team name");
+    assert!(api_game["away_team_name"].is_string(), "Should have away team name");
+
     // Step 5: Test score updates through health data uploads
-    
     // Home team user uploads workout data
-    let home_initial_stats = upload_workout_data(&test_app, &client, &home_user, "intense_workout").await;
-    println!("Home user uploaded workout data. Expected stats: {:?}", home_initial_stats);
-    
+    upload_workout_data(&test_app, &client, &home_user, "intense_workout").await;
     // Verify live game was updated
     let updated_live_game = get_live_game_state(&test_app, game_id).await;
-    println!("Updated live game state: home_score={}, away_score={}, home_power={}, away_power={}", 
-        updated_live_game.home_score, updated_live_game.away_score, 
-        updated_live_game.home_power, updated_live_game.away_power);
     
     assert!(updated_live_game.home_score > 0, "Home team score should increase after workout upload");
     assert!(updated_live_game.home_power > 0, "Home team power should increase");
@@ -53,39 +65,15 @@ async fn test_complete_live_game_workflow() {
     assert_eq!(updated_live_game.last_scorer_team, Some("home".to_string()));
 
     // Away team users upload workout data
-    let away_1_stats = upload_workout_data(&test_app, &client, &away_user_1, "moderate_workout").await;
-    println!("Away user 1 uploaded workout data. Expected stats: {:?}", away_1_stats);
-    
-    let mid_game_state = get_live_game_state(&test_app, game_id).await;
-    println!("After away user 1: home_score={}, away_score={}", mid_game_state.home_score, mid_game_state.away_score);
-    
-    let away_2_stats = upload_workout_data(&test_app, &client, &away_user_2, "light_workout").await;
-    println!("Away user 2 uploaded workout data. Expected stats: {:?}", away_2_stats);
+    upload_workout_data(&test_app, &client, &away_user_1, "moderate_workout").await;
+    upload_workout_data(&test_app, &client, &away_user_2, "light_workout").await;
     
     // Verify live game reflects both team activities
     let final_live_game = get_live_game_state(&test_app, game_id).await;
-    println!("Final live game state: home_score={}, away_score={}, home_power={}, away_power={}", 
-        final_live_game.home_score, final_live_game.away_score, 
-        final_live_game.home_power, final_live_game.away_power);
     
     assert!(final_live_game.home_score > 0, "Home team should have score");
     assert!(final_live_game.away_score > 0, "Away team should have score after uploads");
     assert!(final_live_game.away_power > 0, "Away team power should increase");
-    
-    // Away team should have higher score due to two contributors
-    let away_1_total = away_1_stats.0 + away_1_stats.1;
-    let away_2_total = away_2_stats.0 + away_2_stats.1;
-    let expected_away_total = away_1_total + away_2_total;
-    
-    println!("Score calculation details:");
-    println!("  Home user: stamina={}, strength={}, total={}", 
-        home_initial_stats.0, home_initial_stats.1, home_initial_stats.0 + home_initial_stats.1);
-    println!("  Away user 1: stamina={}, strength={}, total={}", 
-        away_1_stats.0, away_1_stats.1, away_1_total);
-    println!("  Away user 2: stamina={}, strength={}, total={}", 
-        away_2_stats.0, away_2_stats.1, away_2_total);
-    println!("  Expected away total: {} + {} = {}", away_1_total, away_2_total, expected_away_total);
-    println!("  Actual scores: home={}, away={}", final_live_game.home_score, final_live_game.away_score);
     
     // For now, just check that both teams have scores
     assert!(final_live_game.home_score > 0, "Home team should have score");
@@ -173,6 +161,101 @@ async fn test_live_game_edge_cases() {
 }
 
 #[tokio::test]
+async fn test_live_games_api_filtering() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+    
+    // Create admin and setup environment
+    let admin = create_admin_user_and_login(&test_app.address).await;
+    let league_id = create_league(&test_app.address, &admin.token, 2).await;
+    let season_name = format!("API Test Season {}", &Uuid::new_v4().to_string()[..8]);
+    
+    // Create teams and add to league
+    let user1 = create_test_user_and_login(&test_app.address).await;
+    let user2 = create_test_user_and_login(&test_app.address).await;
+    
+    let team_ids = create_teams_for_test(&test_app.address, &admin.token, 2).await;
+    let team1_id = &team_ids[0];
+    let team2_id = &team_ids[1];
+
+    add_team_to_league(&test_app.address, &admin.token, &league_id, &team1_id).await;
+    add_team_to_league(&test_app.address, &admin.token, &league_id, &team2_id).await;
+
+    // Add users to teams
+    add_user_to_team(&test_app.address, &admin.token, &team1_id, user1.user_id).await;
+    add_user_to_team(&test_app.address, &admin.token, &team2_id, user2.user_id).await;
+
+    // Create season
+    let start_date = get_next_date(Weekday::Mon, NaiveTime::from_hms_opt(9, 0, 0).unwrap());
+    let season_id = create_league_season(
+        &test_app.address, 
+        &admin.token, 
+        &league_id, 
+        &season_name, 
+        &start_date.to_rfc3339()
+    ).await;
+    let season_uuid = Uuid::parse_str(&season_id).expect("Invalid season ID");
+    
+    // Create games with different statuses
+    let scheduled_game_id = create_manual_game(&test_app, season_uuid, 
+        Uuid::parse_str(&team1_id).unwrap(), 
+        Uuid::parse_str(&team2_id).unwrap(), 
+        "scheduled").await;
+    
+    let in_progress_game_id = create_manual_game(&test_app, season_uuid,
+        Uuid::parse_str(&team1_id).unwrap(),
+        Uuid::parse_str(&team2_id).unwrap(),
+        "in_progress").await;
+    
+    let finished_game_id = create_manual_game(&test_app, season_uuid,
+        Uuid::parse_str(&team1_id).unwrap(),
+        Uuid::parse_str(&team2_id).unwrap(),
+        "finished").await;
+    
+    // Fetch live games via API
+    let live_games = get_live_games_via_api(&test_app, &client, &user1.token, Some(season_uuid)).await;
+    
+    // Verify only in_progress games are returned
+    assert_eq!(live_games.len(), 1, "Should have exactly 1 live game");
+    
+    let live_game = &live_games[0];
+    let expected_id = in_progress_game_id.to_string();
+    assert_eq!(live_game["game"]["id"].as_str(), Some(expected_id.as_str()));
+    assert_eq!(live_game["game"]["status"].as_str(), Some("InProgress"));
+    
+    // Verify scheduled and finished games are NOT in the list
+    let has_scheduled = live_games.iter().any(|g| g["game"]["id"].as_str() == Some(&scheduled_game_id.to_string()));
+    let has_finished = live_games.iter().any(|g| g["game"]["id"].as_str() == Some(&finished_game_id.to_string()));
+    
+    assert!(!has_scheduled, "Scheduled games should not appear in live games API");
+    assert!(!has_finished, "Finished games should not appear in live games API");
+    }
+
+async fn create_manual_game(test_app: &TestApp, season_id: Uuid, home_team_id: Uuid, away_team_id: Uuid, status: &str) -> Uuid {
+    let game_id = Uuid::new_v4();
+    let now = Utc::now();
+    
+    sqlx::query!(
+        r#"
+        INSERT INTO league_games (id, season_id, home_team_id, away_team_id, scheduled_time, week_number, status)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        "#,
+        game_id,
+        season_id,
+        home_team_id,
+        away_team_id,
+        now,
+        1,
+        status
+    )
+    .execute(&test_app.db_pool)
+    .await
+    .expect("Failed to create manual game");
+    
+    game_id
+}
+
+#[tokio::test]
 async fn test_live_game_finish_workflow() {
     let test_app = spawn_app().await;
     let client = Client::new();
@@ -199,6 +282,26 @@ async fn test_live_game_finish_workflow() {
     
     let finished_game = get_live_game_state(&test_app, game_id).await;
     assert!(!finished_game.is_active);
+    
+    // Verify the game no longer appears in the live games API
+    let season_id = get_season_id_for_game(&test_app, game_id).await;
+    let live_games_after_finish = get_live_games_via_api(&test_app, &client, &home_user.token, Some(season_id)).await;
+    
+    // The finished game should NOT appear in the live games list
+    let finished_game_in_api = live_games_after_finish.iter().find(|g| g["game"]["id"].as_str() == Some(&game_id.to_string()));
+    assert!(finished_game_in_api.is_none(), "Finished game should not appear in live games API");
+    
+    println!("✅ Verified finished game is removed from live games API");
+    
+    // Also verify through the actual game status in the API
+    if !live_games_after_finish.is_empty() {
+        // If there are any games, verify they're all actually live
+        for game in &live_games_after_finish {
+            let status = game["game"]["status"].as_str().unwrap_or("");
+            assert!(status == "in_progress" || status == "live", 
+                "Only in_progress or live games should be returned, got: {}", status);
+        }
+    }
     
     // Try to upload data after game ended - should not affect scores
     let final_score = finished_game.home_score;
@@ -355,7 +458,42 @@ async fn initialize_live_game(test_app: &TestApp, game_id: Uuid) -> LiveGameRow 
     get_live_game_state(test_app, game_id).await
 }
 
+async fn get_season_id_for_game(test_app: &TestApp, game_id: Uuid) -> Uuid {
+    let row = sqlx::query!(
+        "SELECT season_id FROM league_games WHERE id = $1",
+        game_id
+    )
+    .fetch_one(&test_app.db_pool)
+    .await
+    .expect("Failed to get season ID for game");
+    
+    row.season_id
+}
+
+async fn get_live_games_via_api(test_app: &TestApp, client: &Client, token: &str, season_id: Option<Uuid>) -> Vec<serde_json::Value> {
+    let mut url = format!("{}/league/games/live-active", test_app.address);
+    if let Some(sid) = season_id {
+        url = format!("{}?season_id={}", url, sid);
+    }
+
+    let response = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await
+        .expect("Failed to get live games");
+
+    assert!(response.status().is_success(), "Failed to get live games from API");
+    
+    let data: serde_json::Value = response.json().await.expect("Failed to parse response");
+    assert_eq!(data["success"], true);
+    
+    data["data"].as_array().unwrap().clone()
+}
+
 async fn get_live_game_state(test_app: &TestApp, game_id: Uuid) -> LiveGameRow {
+    // For tests that need detailed live game info, we still need to query the database
+    // as the API endpoint returns league game data, not live game scoring data
     let row = sqlx::query!(
         r#"
         SELECT 
@@ -503,13 +641,12 @@ async fn get_recent_score_events(test_app: &TestApp, live_game_id: Uuid) -> Vec<
 }
 
 async fn finish_live_game(test_app: &TestApp, live_game_id: Uuid) {
-    sqlx::query!(
-        "UPDATE live_games SET is_active = false WHERE id = $1",
-        live_game_id
-    )
-    .execute(&test_app.db_pool)
-    .await
-    .expect("Failed to finish live game");
+    // Use the actual backend service instead of direct database calls
+    let live_game_service = evolveme_backend::services::LiveGameService::new(test_app.db_pool.clone(), None);
+    
+    live_game_service.finish_live_game(live_game_id)
+        .await
+        .expect("Failed to finish live game using service");
 }
 
 // Helper functions for generating workout data

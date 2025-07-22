@@ -129,7 +129,7 @@ impl GameEvaluator {
     }
 
     pub async fn evaluate_todays_games(pool: &PgPool) -> Result<Vec<(Uuid, GameStats)>, sqlx::Error> {
-        // Get all games for today
+        // Get all finished games for today that need evaluation (not yet evaluated)
         let pending_games = sqlx::query!(
             r#"
             SELECT
@@ -139,7 +139,7 @@ impl GameEvaluator {
                 lg.scheduled_time
             FROM league_games lg
             WHERE DATE(lg.scheduled_time) = CURRENT_DATE
-            AND lg.status = 'scheduled'
+            AND lg.status = 'finished'
             ORDER BY lg.scheduled_time
             "#
         )
@@ -320,7 +320,7 @@ impl GameEvaluator {
     }
 
     pub async fn evaluate_games_for_date(pool: &PgPool, date: chrono::NaiveDate) -> Result<Vec<GameStats>, sqlx::Error> {
-        // Get all games for the specified date
+        // Get all finished games for the specified date that need evaluation (not yet evaluated)
         let pending_games = sqlx::query!(
             r#"
             SELECT
@@ -334,7 +334,7 @@ impl GameEvaluator {
             JOIN teams ht ON lg.home_team_id = ht.id
             JOIN teams at ON lg.away_team_id = at.id
             WHERE DATE(lg.scheduled_time) = $1
-            AND lg.status = 'scheduled'
+            AND lg.status = 'finished'
             ORDER BY lg.scheduled_time
             "#,
             date
