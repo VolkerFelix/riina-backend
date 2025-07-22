@@ -17,6 +17,7 @@ pub struct LeagueSeason {
     pub evaluation_cron: Option<String>, // Cron expression for when to evaluate games
     pub evaluation_timezone: Option<String>, // Timezone for evaluation (e.g., "UTC", "America/New_York")
     pub auto_evaluation_enabled: Option<bool>, // Whether automatic evaluation is enabled
+    pub game_duration_minutes: i32, // Duration of each game in minutes (default: 8640 = 6 days)
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

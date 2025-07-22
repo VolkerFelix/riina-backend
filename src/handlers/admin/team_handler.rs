@@ -380,15 +380,7 @@ pub async fn delete_team(
 ) -> Result<HttpResponse> {
     let team_id = path.into_inner();
 
-    // First, remove all team members
-    let _ = sqlx::query!(
-        "DELETE FROM team_members WHERE team_id = $1",
-        team_id
-    )
-    .execute(pool.get_ref())
-    .await;
-
-    // Then delete the team
+    // Delete the team - all related data will be cascade deleted
     let result = sqlx::query!(
         "DELETE FROM teams WHERE id = $1",
         team_id
@@ -400,7 +392,10 @@ pub async fn delete_team(
         Ok(result) => {
             if result.rows_affected() > 0 {
                 let response = ApiResponse {
-                    data: serde_json::json!({}),
+                    data: serde_json::json!({
+                        "id": team_id,
+                        "message": "Team and all related data deleted successfully"
+                    }),
                     success: true,
                     message: Some("Team deleted successfully".to_string()),
                 };

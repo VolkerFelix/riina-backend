@@ -52,6 +52,11 @@
         "ordinal": 9,
         "name": "auto_evaluation_enabled",
         "type_info": "Bool"
+      },
+      {
+        "ordinal": 10,
+        "name": "game_duration_minutes",
+        "type_info": "Int4"
       }
     ],
     "parameters": {
@@ -67,7 +72,8 @@
       false,
       true,
       true,
-      true
+      true,
+      false
     ]
   },
   "hash": "402fcf82cd9d71a814b5939760b5ad80cf8947e2b08bed4652cb4c6365f608d1"
