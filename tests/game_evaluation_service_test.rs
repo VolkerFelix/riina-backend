@@ -14,9 +14,7 @@ use evolveme_backend::services::{GameEvaluationService, WeekGameService};
 async fn test_game_evaluation_service_integration() {
     let app = spawn_app().await;
     let client = Client::new();
-    
-    println!("🎯 Testing Game Evaluation Service Integration");
-    
+        
     // Step 1: Set up users with different power levels
     let admin_user = create_admin_user_and_login(&app.address).await;
     let user1 = create_test_user_and_login(&app.address).await; // Elite
@@ -24,16 +22,12 @@ async fn test_game_evaluation_service_integration() {
     let user3 = create_test_user_and_login(&app.address).await; // Elite
     let user4 = create_test_user_and_login(&app.address).await; // Advanced
     
-    println!("✅ Created 4 users + 1 admin");
-
     // Step 2: Upload health data to create power differences
     upload_health_data_for_user(&client, &app.address, &user1.token, create_elite_health_data()).await.unwrap();
     upload_health_data_for_user(&client, &app.address, &user2.token, create_advanced_health_data()).await.unwrap();
     upload_health_data_for_user(&client, &app.address, &user3.token, create_elite_health_data()).await.unwrap();
     upload_health_data_for_user(&client, &app.address, &user4.token, create_advanced_health_data()).await.unwrap();
     
-    println!("✅ Uploaded health data for all users");
-
     // Step 3: Create league and teams
     let league_request = json!({
         "name": "Game Evaluation Test League",
@@ -141,9 +135,7 @@ async fn test_game_evaluation_service_integration() {
     ).await;
     assert_eq!(assign2_response.status(), 201);
     
-    println!("✅ Created teams and assigned to league");
-
-    // Step 4: Create a season with games for nexxt Saturday at 10pm
+    // Step 4: Create a season with games for next Saturday at 10pm
     let start_date = get_next_date(Weekday::Sat, NaiveTime::from_hms_opt(22, 0, 0).unwrap());
     
     let _season_id = create_league_season(
@@ -154,8 +146,6 @@ async fn test_game_evaluation_service_integration() {
         &start_date.to_rfc3339()
     ).await;
     
-    println!("✅ Created season with games for next Saturday at 10pm");
-
     // Step 5: Set games to current time before running the cycle
     update_games_to_current_time(&app, league_id).await;
     
@@ -318,6 +308,4 @@ async fn update_games_to_current_time(app: &common::utils::TestApp, league_id: &
     .execute(&app.db_pool)
     .await
     .expect("Failed to update game times to current time");
-    
-    println!("✅ Updated all games in league {} to current time with 5-second game duration", league_id);
 }
