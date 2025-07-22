@@ -97,7 +97,11 @@ impl SchedulerService {
     }
 
     /// Schedule complete game management cycle for a new season
-    pub async fn schedule_season(&self, season_id: Uuid, season_name: String, cron_expr: String) -> Result<(), Box<dyn std::error::Error>> {
+    /// Uses every-minute schedule to handle all game durations efficiently
+    pub async fn schedule_season(&self, season_id: Uuid, season_name: String, _cron_expr: String) -> Result<(), Box<dyn std::error::Error>> {
+        // Use simple every-minute schedule for all game durations
+        let cron_expr = "0 * * * * *".to_string(); // Every minute
+        
         let scheduler = self.scheduler.lock().await;
         
         let pool = self.pool.clone();
@@ -155,7 +159,7 @@ impl SchedulerService {
         let mut active_jobs = self.active_jobs.lock().await;
         active_jobs.insert(season_id, job_id);
         
-        tracing::info!("✅ Scheduled complete game management cycle for season '{}' with cron '{}'", season_name_for_logging, cron_expr);
+        tracing::info!("✅ Scheduled complete game management cycle for season '{}' (every minute)", season_name_for_logging);
         
         Ok(())
     }

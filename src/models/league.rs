@@ -96,6 +96,7 @@ pub struct CreateSeasonRequest {
     pub name: String,
     pub start_date: DateTime<Utc>,
     pub team_ids: Vec<Uuid>,
+    pub game_duration_minutes: Option<i32>, // Optional, defaults to 8640 minutes (6 days) if not provided
 }
 
 #[derive(Debug, Serialize, Deserialize)]
