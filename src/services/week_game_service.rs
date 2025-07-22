@@ -73,7 +73,7 @@ impl WeekGameService {
             SELECT id, home_team_id, away_team_id, week_start_date, week_end_date
             FROM league_games 
             WHERE status = 'in_progress'
-            AND CURRENT_DATE > week_end_date
+            AND CURRENT_TIMESTAMP > week_end_date
             "#
         )
         .fetch_all(&self.pool)
