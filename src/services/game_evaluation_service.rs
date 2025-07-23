@@ -100,7 +100,7 @@ impl GameEvaluationService {
 
         // Send WebSocket notifications for successful evaluations
         if result.games_updated > 0 {
-            if let Err(e) = self.broadcast_game_evaluation_results(&result.game_results, chrono::Utc::now().date_naive()).await {
+            if let Err(e) = self.broadcast_game_evaluation_results(&result.game_results, chrono::Utc::now()).await {
                 tracing::error!("Failed to broadcast game evaluation results: {}", e);
                 // Don't fail the entire operation for notification failures
             }
@@ -315,8 +315,9 @@ impl GameEvaluationService {
         })
     }
 
-    pub async fn evaluate_and_update_games_for_date(&self, date: chrono::NaiveDate) -> Result<EvaluationResult, sqlx::Error> {
-        tracing::info!("🎯 Starting game evaluation process for date: {}", date);
+    pub async fn evaluate_and_update_games(&self) -> Result<EvaluationResult, sqlx::Error> {
+        tracing::info!("🎯 Starting game evaluation process");
+        let now = chrono::Utc::now();
         
         let mut result = EvaluationResult {
             games_evaluated: 0,
@@ -325,11 +326,11 @@ impl GameEvaluationService {
             game_results: HashMap::new(),
         };
 
-        // Get all game results for the specific date
-        let game_evaluations = match GameEvaluator::evaluate_games_for_date(&self.pool, date).await {
+        // Get all game results
+        let game_evaluations = match GameEvaluator::run_game_evaluation(&self.pool).await {
             Ok(evaluations) => evaluations,
             Err(e) => {
-                let error_msg = format!("Failed to evaluate games for date {}: {}", date, e);
+                let error_msg = format!("Failed to evaluate games for date {}: {}", now, e);
                 tracing::error!("{}", error_msg);
                 result.errors.push(error_msg);
                 return Ok(result);
@@ -337,11 +338,11 @@ impl GameEvaluationService {
         };
 
         if game_evaluations.is_empty() {
-            tracing::info!("No scheduled games found for date: {}", date);
+            tracing::info!("No scheduled games found for date: {}", now);
             return Ok(result);
         }
 
-        tracing::info!("📊 Found {} scheduled games for evaluation on {}", game_evaluations.len(), date);
+        tracing::info!("📊 Found {} scheduled games for evaluation on {}", game_evaluations.len(), now);
 
         // Process each game evaluation
         for game_eval in game_evaluations {
@@ -372,7 +373,7 @@ impl GameEvaluationService {
 
         // Send WebSocket notifications for successful evaluations
         if result.games_updated > 0 {
-            if let Err(e) = self.broadcast_game_evaluation_results(&result.game_results, date).await {
+            if let Err(e) = self.broadcast_game_evaluation_results(&result.game_results, now).await {
                 tracing::error!("Failed to broadcast game evaluation results: {}", e);
                 // Don't fail the entire operation for notification failures
             }
@@ -385,7 +386,7 @@ impl GameEvaluationService {
     async fn broadcast_game_evaluation_results(
         &self,
         game_results: &HashMap<Uuid, GameStats>,
-        date: chrono::NaiveDate,
+        date: chrono::DateTime<Utc>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!("📡 Broadcasting game evaluation results for {} games on {}", 
             game_results.len(), date);
@@ -466,11 +467,14 @@ impl GameEvaluationService {
 
     /// Send individual notifications to team members about their game results
     async fn send_team_notifications_with_game_info(&self, game_results: &HashMap<Uuid, GameStats>) -> Result<(), Box<dyn std::error::Error>> {
+        tracing::debug!("📨 Sending team notifications for {} games", game_results.len());
         for (game_id, stats) in game_results {
             // Get team IDs from the database for this game
             if let Ok(game_info) = self.get_game_team_info(*game_id).await {
+                tracing::debug!("📨 Processing game {} with teams {} vs {}", game_id, game_info.home_team_id, game_info.away_team_id);
                 // Get all team members for both teams
                 let team_members = self.get_team_members_for_game(game_info.home_team_id, game_info.away_team_id).await?;
+                tracing::debug!("📨 Found {} team members for game {}", team_members.len(), game_id);
                 
                 for member in team_members {
                     let is_home_team = member.team_id == game_info.home_team_id;
@@ -497,6 +501,7 @@ impl GameEvaluationService {
                         created_at: Utc::now(),
                     };
 
+                    tracing::debug!("📨 Sending notification to user {} for game {}", member.user_id, game_id);
                     self.send_user_notification(&member.user_id, &notification).await?;
                 }
             }

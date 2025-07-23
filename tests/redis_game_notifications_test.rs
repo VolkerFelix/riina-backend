@@ -331,12 +331,12 @@ async fn update_games_to_current_time(app: &common::utils::TestApp, league_id: &
     let week_end = now + chrono::Duration::seconds(5);
     let league_uuid = uuid::Uuid::parse_str(league_id).expect("Invalid league ID");
     
-    // Update all games in the league to current time
+    // Update all games in the league to current time and set them to finished status for evaluation
     // Set week_start_date to beginning of today (so CURRENT_DATE BETWEEN works) and week_end_date to 5 seconds later
     sqlx::query!(
         r#"
         UPDATE league_games 
-        SET scheduled_time = $1, week_start_date = $2, week_end_date = $3
+        SET scheduled_time = $1, week_start_date = $2, week_end_date = $3, status = 'finished'
         WHERE season_id IN (
             SELECT id FROM league_seasons WHERE league_id = $4
         )

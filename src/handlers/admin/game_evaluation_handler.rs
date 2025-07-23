@@ -66,7 +66,7 @@ pub async fn evaluate_games_for_date(
     let redis_arc = redis.map(|r| r.into_inner());
     let evaluation_service = GameEvaluationService::new_with_redis(pool.get_ref().clone(), redis_arc);
     
-    match evaluation_service.evaluate_and_update_games_for_date(request.date).await {
+    match evaluation_service.evaluate_and_update_games().await {
         Ok(result) => {
             let response = EvaluationResponse {
                 success: result.errors.is_empty(),

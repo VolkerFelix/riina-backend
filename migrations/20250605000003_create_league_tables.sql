@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS league_games (
     season_id UUID NOT NULL REFERENCES league_seasons(id) ON DELETE CASCADE,
     home_team_id UUID NOT NULL REFERENCES teams(id),
     away_team_id UUID NOT NULL REFERENCES teams(id),
-    scheduled_time TIMESTAMPTZ NOT NULL, -- Always Saturday 10pm
+    scheduled_time TIMESTAMPTZ NOT NULL,
     week_number INTEGER NOT NULL,
     is_first_leg BOOLEAN NOT NULL DEFAULT TRUE, -- True for first meeting, false for second
     status VARCHAR(50) NOT NULL DEFAULT 'scheduled', -- scheduled, live, finished, postponed

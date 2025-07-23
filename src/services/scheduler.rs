@@ -86,7 +86,7 @@ impl SchedulerService {
         
         let evaluation_service = GameEvaluationService::new_with_redis(self.pool.clone(), self.redis_client.clone());
         
-        let result = evaluation_service.evaluate_and_update_games_for_date(date).await?;
+        let result = evaluation_service.evaluate_and_update_games().await?;
         
         Ok(format!(
             "Game evaluation completed for {}: {} games evaluated, {} updated successfully",
@@ -98,8 +98,7 @@ impl SchedulerService {
 
     /// Schedule complete game management cycle for a new season
     /// Uses every-minute schedule to handle all game durations efficiently
-    pub async fn schedule_season(&self, season_id: Uuid, season_name: String, _cron_expr: String) -> Result<(), Box<dyn std::error::Error>> {
-        // Use simple every-minute schedule for all game durations
+    pub async fn schedule_season(&self, season_id: Uuid, season_name: String) -> Result<(), Box<dyn std::error::Error>> {
         let cron_expr = "0 * * * * *".to_string(); // Every minute
         
         let scheduler = self.scheduler.lock().await;
@@ -128,8 +127,7 @@ impl SchedulerService {
                             season_name, started_games.len(), finished_games.len());
                         
                         // Step 2: Evaluate any finished games
-                        let today = chrono::Utc::now().date_naive();
-                        match evaluation_service.evaluate_and_update_games_for_date(today).await {
+                        match evaluation_service.evaluate_and_update_games().await {
                             Ok(result) => {
                                 tracing::info!("✅ Season '{}' evaluation completed: {}", season_name, result);
                                 

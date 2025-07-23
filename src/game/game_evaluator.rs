@@ -319,9 +319,9 @@ impl GameEvaluator {
         })
     }
 
-    pub async fn evaluate_games_for_date(pool: &PgPool, date: chrono::NaiveDate) -> Result<Vec<GameStats>, sqlx::Error> {
-        // Get all finished games for the specified date that need evaluation (not yet evaluated)
-        let pending_games = sqlx::query!(
+    pub async fn run_game_evaluation(pool: &PgPool) -> Result<Vec<GameStats>, sqlx::Error> {
+        // Get all finished games that need evaluation (not yet evaluated)
+        let finished_games = sqlx::query!(
             r#"
             SELECT
                 lg.id as game_id,
@@ -333,19 +333,17 @@ impl GameEvaluator {
             FROM league_games lg
             JOIN teams ht ON lg.home_team_id = ht.id
             JOIN teams at ON lg.away_team_id = at.id
-            WHERE DATE(lg.scheduled_time) = $1
-            AND lg.status = 'finished'
+            WHERE lg.status = 'finished'
             ORDER BY lg.scheduled_time
             "#,
-            date
         )
         .fetch_all(pool)
         .await?;
 
         let mut results = Vec::new();
 
-        for game in pending_games {
-            tracing::info!("🎯 Evaluating game {} for date {}", game.game_id, date);
+        for game in finished_games {
+            tracing::info!("🎯 Evaluating game {}", game.game_id);
             let mut game_stats = Self::evaluate_game(pool, &game.home_team_id, &game.away_team_id).await?;
             
             // Add game ID and team names to the stats

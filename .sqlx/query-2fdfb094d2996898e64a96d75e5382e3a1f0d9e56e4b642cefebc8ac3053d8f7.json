@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                lg.id as game_id,\n                lg.home_team_id,\n                lg.away_team_id,\n                lg.scheduled_time,\n                ht.team_name as home_team_name,\n                at.team_name as away_team_name\n            FROM league_games lg\n            JOIN teams ht ON lg.home_team_id = ht.id\n            JOIN teams at ON lg.away_team_id = at.id\n            WHERE DATE(lg.scheduled_time) = $1\n            AND lg.status = 'finished'\n            ORDER BY lg.scheduled_time\n            ",
+  "query": "\n            SELECT\n                lg.id as game_id,\n                lg.home_team_id,\n                lg.away_team_id,\n                lg.scheduled_time,\n                ht.team_name as home_team_name,\n                at.team_name as away_team_name\n            FROM league_games lg\n            JOIN teams ht ON lg.home_team_id = ht.id\n            JOIN teams at ON lg.away_team_id = at.id\n            WHERE lg.status = 'finished'\n            ORDER BY lg.scheduled_time\n            ",
   "describe": {
     "columns": [
       {
@@ -35,9 +35,7 @@
       }
     ],
     "parameters": {
-      "Left": [
-        "Date"
-      ]
+      "Left": []
     },
     "nullable": [
       false,
@@ -48,5 +46,5 @@
       false
     ]
   },
-  "hash": "0aeb9bc799f5e041d9981e9d92c4769271f8c25953ffbdf4fe66d8fe2c1ce863"
+  "hash": "2fdfb094d2996898e64a96d75e5382e3a1f0d9e56e4b642cefebc8ac3053d8f7"
 }

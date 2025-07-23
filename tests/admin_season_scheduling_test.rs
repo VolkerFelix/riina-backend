@@ -80,74 +80,67 @@ async fn test_season_creation_with_dynamic_scheduling() {
     assert_eq!(season_response.status(), 200);
     let season_data: serde_json::Value = season_response.json().await.unwrap();
     
-    // Verify default values
-    assert_eq!(season_data["data"]["evaluation_cron"].as_str().unwrap(), "0 0 22 * * SAT");
+    // Verify default values (no evaluation_cron since we use every-minute scheduling)
     assert_eq!(season_data["data"]["evaluation_timezone"].as_str().unwrap(), "UTC");
     assert_eq!(season_data["data"]["auto_evaluation_enabled"].as_bool().unwrap(), true);
+    assert_eq!(season_data["data"]["game_duration_minutes"].as_i64().unwrap(), 8640); // Default 6 days
     
-    println!("✅ Created season with default schedule (Saturday 10 PM UTC)");
+    println!("✅ Created season with default schedule (every minute, 6-day games)");
 
-    // Step 5: Test custom scheduling (Tuesday 8 AM UTC)
-    let season_id_custom = create_league_season_with_schedule(
-        &app.address,
-        &admin_user.token,
-        league_id,
-        "Custom Schedule Season",
-        &(start_date + Duration::days(30)).to_rfc3339(),
-        "0 0 8 * * TUE", // Tuesday 8 AM
-        Some("UTC"),
-        Some(true),
-    ).await;
-    
-    // Fetch season details to verify custom values
+    // Step 5: Test custom game duration (30-minute games)
+    let custom_season_request = json!({
+        "name": "Custom Duration Season",
+        "start_date": (start_date + Duration::days(30)).to_rfc3339(),
+        "evaluation_timezone": "UTC",
+        "auto_evaluation_enabled": true,
+        "game_duration_minutes": 30
+    });
+
     let custom_season_response = make_authenticated_request(
         &client,
-        reqwest::Method::GET,
-        &format!("{}/admin/leagues/{}/seasons/{}", &app.address, league_id, season_id_custom),
+        reqwest::Method::POST,
+        &format!("{}/admin/leagues/{}/seasons", &app.address, league_id),
         &admin_user.token,
-        None,
+        Some(custom_season_request),
     ).await;
     
-    assert_eq!(custom_season_response.status(), 200);
+    assert_eq!(custom_season_response.status(), 201);
     let custom_season_data: serde_json::Value = custom_season_response.json().await.unwrap();
+    let season_id_custom = custom_season_data["data"]["id"].as_str().unwrap();
     
     // Verify custom values
-    assert_eq!(custom_season_data["data"]["evaluation_cron"].as_str().unwrap(), "0 0 8 * * TUE");
     assert_eq!(custom_season_data["data"]["evaluation_timezone"].as_str().unwrap(), "UTC");
     assert_eq!(custom_season_data["data"]["auto_evaluation_enabled"].as_bool().unwrap(), true);
+    assert_eq!(custom_season_data["data"]["game_duration_minutes"].as_i64().unwrap(), 30); // 30 minutes
     
-    println!("✅ Created season with custom schedule (Tuesday 8 AM UTC)");
+    println!("✅ Created season with custom game duration (30-minute games)");
 
-    // Step 6: Test disabled auto-evaluation
-    let season_id_disabled = create_league_season_with_schedule(
-        &app.address,
-        &admin_user.token,
-        league_id,
-        "Disabled Auto-Evaluation Season",
-        &(start_date + Duration::days(60)).to_rfc3339(),
-        "0 0 15 * * WED", // Wednesday 3 PM
-        Some("Europe/London"),
-        Some(false), // Disable auto-evaluation
-    ).await;
-    
-    // Fetch season details to verify disabled auto-evaluation
+    // Step 6: Test disabled auto-evaluation with 1-day games
+    let disabled_season_request = json!({
+        "name": "Disabled Auto-Evaluation Season",
+        "start_date": (start_date + Duration::days(60)).to_rfc3339(),
+        "evaluation_timezone": "Europe/London",
+        "auto_evaluation_enabled": false,
+        "game_duration_minutes": 1440 // 1 day = 1440 minutes
+    });
+
     let disabled_season_response = make_authenticated_request(
         &client,
-        reqwest::Method::GET,
-        &format!("{}/admin/leagues/{}/seasons/{}", &app.address, league_id, season_id_disabled),
+        reqwest::Method::POST,
+        &format!("{}/admin/leagues/{}/seasons", &app.address, league_id),
         &admin_user.token,
-        None,
+        Some(disabled_season_request),
     ).await;
     
-    assert_eq!(disabled_season_response.status(), 200);
+    assert_eq!(disabled_season_response.status(), 201);
     let disabled_season_data: serde_json::Value = disabled_season_response.json().await.unwrap();
     
     // Verify disabled auto-evaluation
-    assert_eq!(disabled_season_data["data"]["evaluation_cron"].as_str().unwrap(), "0 0 15 * * WED");
     assert_eq!(disabled_season_data["data"]["evaluation_timezone"].as_str().unwrap(), "Europe/London");
     assert_eq!(disabled_season_data["data"]["auto_evaluation_enabled"].as_bool().unwrap(), false);
+    assert_eq!(disabled_season_data["data"]["game_duration_minutes"].as_i64().unwrap(), 1440); // 1 day
     
-    println!("✅ Created season with disabled auto-evaluation");
+    println!("✅ Created season with disabled auto-evaluation and 1-day games");
 
     // Step 7: Verify end date is calculated based on team count (4 teams = 6 weeks)
     let expected_end_date = start_date + Duration::weeks(6);
@@ -164,13 +157,13 @@ async fn test_season_creation_with_dynamic_scheduling() {
     
     println!("✅ Verified end date calculation (6 weeks for 4 teams)");
 
-    // Step 8: Test invalid cron expression
-    let invalid_cron_request = json!({
-        "name": "Invalid Cron Season",
+    // Step 8: Test invalid game duration (exceeds 30-day limit)
+    let invalid_duration_request = json!({
+        "name": "Invalid Duration Season",
         "start_date": (start_date + Duration::days(90)).to_rfc3339(),
-        "evaluation_cron": "invalid cron expression",
         "evaluation_timezone": "UTC",
-        "auto_evaluation_enabled": true
+        "auto_evaluation_enabled": true,
+        "game_duration_minutes": 50000 // Exceeds 43200 minute (30 day) limit
     });
     
     let invalid_response = make_authenticated_request(
@@ -178,12 +171,12 @@ async fn test_season_creation_with_dynamic_scheduling() {
         reqwest::Method::POST,
         &format!("{}/admin/leagues/{}/seasons", &app.address, league_id),
         &admin_user.token,
-        Some(invalid_cron_request),
+        Some(invalid_duration_request),
     ).await;
     
-    // Should still create the season but log an error about scheduling
-    assert_eq!(invalid_response.status(), 201);
-    println!("✅ Season created even with invalid cron (scheduler error logged)");
+    // Should reject invalid game duration
+    assert_eq!(invalid_response.status(), 400);
+    println!("✅ Invalid game duration properly rejected");
 
     // Step 9: Delete a season and verify scheduler cleanup
     let delete_response = make_authenticated_request(
@@ -210,8 +203,8 @@ async fn test_season_creation_with_dynamic_scheduling() {
     let list_data: serde_json::Value = list_response.json().await.unwrap();
     let seasons = list_data["data"].as_array().unwrap();
     
-    // Should have 3 seasons (deleted one)
-    assert_eq!(seasons.len(), 3);
+    // Should have 2 seasons (deleted one, invalid one was rejected)
+    assert_eq!(seasons.len(), 2);
     
     println!("✅ Listed seasons successfully");
     println!("🎉 Dynamic season scheduling test completed successfully!");
@@ -257,49 +250,74 @@ async fn test_season_scheduling_edge_cases() {
         ).await;
     }
 
-    // Test 1: Very frequent evaluation (every hour)
-    let hourly_cron = "0 0 * * * *"; // Every hour
-    let season_id_hourly = create_league_season_with_schedule(
-        &app.address,
+    // Test 1: Very short games (1 hour = 60 minutes)
+    let short_game_request = json!({
+        "name": "Short Games Season",
+        "start_date": get_next_date(Weekday::Wed, NaiveTime::from_hms_opt(10, 0, 0).unwrap()).to_rfc3339(),
+        "evaluation_timezone": "UTC",
+        "auto_evaluation_enabled": true,
+        "game_duration_minutes": 60 // 1 hour games
+    });
+
+    let short_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/leagues/{}/seasons", &app.address, league_id),
         &admin_user.token,
-        league_id,
-        "Hourly Evaluation Season",
-        &get_next_date(Weekday::Wed, NaiveTime::from_hms_opt(10, 0, 0).unwrap()).to_rfc3339(),
-        hourly_cron,
-        Some("UTC"),
-        Some(true),
+        Some(short_game_request),
     ).await;
     
-    println!("✅ Created season with hourly evaluation schedule");
+    assert_eq!(short_response.status(), 201);
+    let short_season_data: serde_json::Value = short_response.json().await.unwrap();
+    let season_id_short = short_season_data["data"]["id"].as_str().unwrap();
+    
+    println!("✅ Created season with short 1-hour games");
 
-    // Test 2: Different timezone
-    let season_id_timezone = create_league_season_with_schedule(
-        &app.address,
+    // Test 2: Different timezone with 7-day games
+    let timezone_request = json!({
+        "name": "Tokyo Timezone Season",
+        "start_date": get_next_date(Weekday::Thu, NaiveTime::from_hms_opt(12, 0, 0).unwrap()).to_rfc3339(),
+        "evaluation_timezone": "Asia/Tokyo",
+        "auto_evaluation_enabled": true,
+        "game_duration_minutes": 10080 // 7 days = 10080 minutes
+    });
+
+    let timezone_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/leagues/{}/seasons", &app.address, league_id),
         &admin_user.token,
-        league_id,
-        "Tokyo Timezone Season",
-        &get_next_date(Weekday::Thu, NaiveTime::from_hms_opt(12, 0, 0).unwrap()).to_rfc3339(),
-        "0 0 21 * * MON", // Monday 9 PM
-        Some("Asia/Tokyo"),
-        Some(true),
+        Some(timezone_request),
     ).await;
+    
+    assert_eq!(timezone_response.status(), 201);
+    let timezone_season_data: serde_json::Value = timezone_response.json().await.unwrap();
+    let season_id_timezone = timezone_season_data["data"]["id"].as_str().unwrap();
     
     println!("✅ Created season with Asia/Tokyo timezone");
 
-    // Test 3: Complex cron expression (first Monday of month at 2 PM)
-    let complex_cron = "0 0 14 1-7 * MON"; // First Monday of month at 2 PM
-    let season_id_complex = create_league_season_with_schedule(
-        &app.address,
+    // Test 3: Maximum game duration (30 days = 43200 minutes)
+    let max_duration_request = json!({
+        "name": "Maximum Duration Season",
+        "start_date": get_next_date(Weekday::Fri, NaiveTime::from_hms_opt(15, 0, 0).unwrap()).to_rfc3339(),
+        "evaluation_timezone": "UTC",
+        "auto_evaluation_enabled": true,
+        "game_duration_minutes": 43200 // 30 days = 43200 minutes (maximum allowed)
+    });
+
+    let max_duration_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/leagues/{}/seasons", &app.address, league_id),
         &admin_user.token,
-        league_id,
-        "Monthly Evaluation Season",
-        &get_next_date(Weekday::Fri, NaiveTime::from_hms_opt(15, 0, 0).unwrap()).to_rfc3339(),
-        complex_cron,
-        Some("UTC"),
-        Some(true),
+        Some(max_duration_request),
     ).await;
     
-    println!("✅ Created season with complex monthly schedule");
+    assert_eq!(max_duration_response.status(), 201);
+    let max_duration_data: serde_json::Value = max_duration_response.json().await.unwrap();
+    let season_id_complex = max_duration_data["data"]["id"].as_str().unwrap();
+    
+    println!("✅ Created season with maximum 30-day game duration");
 
     // Verify all seasons were created
     let list_response = make_authenticated_request(
@@ -314,5 +332,5 @@ async fn test_season_scheduling_edge_cases() {
     let seasons = list_data["data"].as_array().unwrap();
     assert_eq!(seasons.len(), 3);
     
-    println!("🎉 Season scheduling edge cases test completed successfully!");
+    println!("🎉 Season scheduling with game durations test completed successfully!");
 }

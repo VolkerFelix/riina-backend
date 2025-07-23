@@ -183,7 +183,7 @@ async fn test_game_evaluation_service_integration() {
     
     // Step 6: Now evaluate the finished games
     println!("🎯 Evaluating finished games...");
-    let evaluation_result = evaluation_service.evaluate_and_update_games_for_date(today).await.unwrap();
+    let evaluation_result = evaluation_service.evaluate_and_update_games().await.unwrap();
     println!("🎮 Evaluation result: {}", evaluation_result);
     
     // Verify evaluation results
