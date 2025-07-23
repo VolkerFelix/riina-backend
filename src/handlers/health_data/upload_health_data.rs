@@ -120,10 +120,14 @@ pub async fn upload_health_data(
     }
 
     // Insert health data into database
+    tracing::info!("💾 Inserting health data into database for user: {} with workout_uuid: {:?}", 
+        claims.username, data.workout_uuid);
     let insert_result = insert_health_data(&pool, user_id, &data).await;
     
     match insert_result {
         Ok(sync_id) => {
+            tracing::info!("✅ Health data inserted successfully with sync_id: {} for user: {}", 
+                sync_id, claims.username);
             // 📊 STORE STAT CHANGES IN DATABASE (linked to this workout)
             let zone_breakdown_json = stat_changes.zone_breakdown.as_ref()
                 .map(|breakdown| serde_json::to_value(breakdown).unwrap_or(serde_json::Value::Null));
@@ -230,6 +234,19 @@ pub async fn upload_health_data(
             )
         }
         Err(e) => {
+            // Check if this is a duplicate workout UUID error
+            if let sqlx::Error::Database(ref db_err) = e {
+                if db_err.code().as_deref() == Some("23505") {
+                    tracing::error!("❌ DUPLICATE WORKOUT UUID: Failed to sync health data for {} due to duplicate workout_uuid: {:?}. This indicates a potential race condition where the duplicate check passed but another request inserted the same UUID before this one.", 
+                        claims.username, data.workout_uuid);
+                    
+                    // Return a more specific error response for duplicate UUIDs
+                    return HttpResponse::Conflict().json(
+                        ApiResponse::<()>::error("Workout UUID already exists - possible race condition detected")
+                    );
+                }
+            }
+            
             tracing::error!("❌ Failed to sync health data for {}: {}", claims.username, e);
             HttpResponse::InternalServerError().json(
                 ApiResponse::<()>::error(format!("Failed to sync health data: {}", e))
