@@ -174,7 +174,7 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     let week_game_service = evolveme_backend::services::WeekGameService::new(app.db_pool.clone());
     
     println!("🔄 Running first game management cycle to start games...");
-    let (started_games, _) = week_game_service.run_game_cycle().await.unwrap();
+    let (_, _, started_games, _) = week_game_service.run_game_cycle().await.unwrap();
     println!("✅ First cycle completed: {} games started", started_games.len());
     
     if started_games.len() > 0 {
@@ -182,7 +182,7 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
         tokio::time::sleep(tokio::time::Duration::from_secs(6)).await;
         
         println!("🔄 Running second game management cycle to finish games...");
-        let (_, finished_games) = week_game_service.run_game_cycle().await.unwrap();
+        let (_, _, _, finished_games) = week_game_service.run_game_cycle().await.unwrap();
         println!("✅ Second cycle completed: {} games finished", finished_games.len());
     }
 
