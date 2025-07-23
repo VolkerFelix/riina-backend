@@ -34,6 +34,17 @@ impl ScheduleService {
             return Err(sqlx::Error::RowNotFound);
         }
 
+        // Get the season's game duration to calculate game end times
+        let season = sqlx::query!(
+            "SELECT game_duration_minutes FROM league_seasons WHERE id = $1",
+            season_id
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        
+        let game_duration_minutes = season.game_duration_minutes;
+        let game_duration = Duration::minutes(game_duration_minutes as i64);
+
 
         let games_per_week = team_count / 2;
         tracing::info!("Generating round-robin schedule for {} teams, {} games per week", team_count, games_per_week);
@@ -72,9 +83,9 @@ impl ScheduleService {
                     week_num, home_team, away_team
                 );
 
-                // Week starts at the scheduled time, ends 6 days later
+                // Week starts at the scheduled time, ends after game duration
                 let week_start = game_time.clone();
-                let week_end = week_start + chrono::Duration::days(6);
+                let week_end = week_start + game_duration;
 
                 sqlx::query!(
                     r#"
@@ -135,9 +146,9 @@ impl ScheduleService {
                     week_num, home_team, away_team
                 );
 
-                // Week starts at the scheduled time, ends 6 days later
+                // Week starts at the scheduled time, ends after game duration
                 let week_start = game_time.clone();
-                let week_end = week_start + chrono::Duration::days(6);
+                let week_end = week_start + game_duration;
 
                 sqlx::query!(
                     r#"

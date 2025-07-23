@@ -6,6 +6,7 @@ use tracing::{info, error, debug, warn};
 use crate::models::live_game::{LiveGame, LiveGameScoreUpdate, LiveGameResponse};
 use crate::models::game_events::GameEvent;
 use crate::db::live_game_queries::LiveGameQueries;
+use crate::services::game_evaluation_service::GameEvaluationService;
 use redis::AsyncCommands;
 
 #[derive(Debug)]
@@ -13,14 +14,17 @@ pub struct LiveGameService {
     pool: PgPool,
     live_game_queries: LiveGameQueries,
     redis_client: Option<redis::Client>,
+    game_evaluation_service: GameEvaluationService,
 }
 
 impl LiveGameService {
     pub fn new(pool: PgPool, redis_client: Option<redis::Client>) -> Self {
+        let redis_arc = redis_client.map(std::sync::Arc::new);
         Self {
             live_game_queries: LiveGameQueries::new(pool.clone()),
+            game_evaluation_service: GameEvaluationService::new_with_redis(pool.clone(), redis_arc.clone()),
             pool,
-            redis_client,
+            redis_client: redis_arc.map(|arc| (*arc).clone()),
         }
     }
 
@@ -263,11 +267,39 @@ impl LiveGameService {
     }
 
     /// Finish a specific live game
-    async fn finish_live_game(&self, live_game_id: Uuid) -> Result<(), Box<dyn std::error::Error>> {
-        self.live_game_queries.finish_live_game(live_game_id).await?;
+    pub async fn finish_live_game(&self, live_game_id: Uuid) -> Result<(), Box<dyn std::error::Error>> {
+        // Get the live game before finishing to get the game_id
+        let live_game = sqlx::query!(
+            "SELECT game_id FROM live_games WHERE id = $1",
+            live_game_id
+        )
+        .fetch_optional(&self.pool)
+        .await?;
 
-        // Could broadcast final scores here if needed
-        info!("Live game {} finished", live_game_id);
+        if let Some(live_game_row) = live_game {
+            let game_id = live_game_row.game_id;
+            
+            // First finish the live game (updates both live_games and league_games tables)
+            self.live_game_queries.finish_live_game(live_game_id).await?;
+            info!("Live game {} finished", live_game_id);
+
+            // Then evaluate the game and update standings
+            match self.game_evaluation_service.evaluate_finished_live_game(game_id).await {
+                Ok(game_stats) => {
+                    info!("✅ Game {} evaluated successfully: {} - {}", 
+                        game_id, game_stats.home_team_score, game_stats.away_team_score);
+                }
+                Err(e) => {
+                    // Log the error but don't fail the entire operation
+                    // The game status has already been updated
+                    warn!("⚠️ Failed to evaluate finished game {}: {}. Game status updated but standings may need manual update.", 
+                        game_id, e);
+                }
+            }
+        } else {
+            warn!("Live game {} not found when trying to finish", live_game_id);
+        }
+
         Ok(())
     }
 

@@ -87,6 +87,42 @@ pub async fn get_league_upcoming_games(
 }
 
 #[tracing::instrument(
+    name = "Get live games",
+    skip(query, pool),
+    fields(
+        season_id = ?query.season_id,
+        limit = ?query.limit
+    )
+)]
+pub async fn get_league_live_games(
+    query: web::Query<UpcomingGamesQuery>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse> {
+    tracing::info!("Getting live games for season: {:?}, limit: {:?}", 
+        query.season_id, query.limit);
+
+    let league_service = LeagueService::new(pool.get_ref().clone());
+    
+    match league_service.get_live_games(query.season_id, query.limit).await {
+        Ok(games) => {
+            tracing::info!("Successfully retrieved {} live games", games.len());
+            Ok(HttpResponse::Ok().json(json!({
+                "success": true,
+                "data": games,
+                "total_count": games.len()
+            })))
+        }
+        Err(e) => {
+            tracing::error!("Failed to get live games: {}", e);
+            Ok(HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "message": "Failed to retrieve live games"
+            })))
+        }
+    }
+}
+
+#[tracing::instrument(
     name = "Get game countdown",
     skip(query, pool),
     fields(

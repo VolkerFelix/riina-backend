@@ -12,6 +12,7 @@ use crate::services::LiveGameService;
 pub struct StartGamesRequest {
     pub season_id: Uuid,
     pub week_number: Option<i32>,
+    pub duration_minutes: Option<i64>, // Duration in minutes (defaults to 10080 for 1 week)
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -78,8 +79,36 @@ pub async fn start_games_now(
     }
 
     let now = Utc::now();
-    let game_end = now + Duration::days(6); // Games last 6 days
+    
+    // Get duration from season if not provided in request
+    let duration_minutes = if let Some(duration) = body.duration_minutes {
+        duration
+    } else {
+        // Get duration from the season configuration
+        let season_duration = sqlx::query!(
+            "SELECT game_duration_minutes FROM league_seasons WHERE id = $1",
+            body.season_id
+        )
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| {
+            error!("Failed to fetch season duration: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to fetch season duration")
+        })?;
+
+        match season_duration {
+            Some(season) => season.game_duration_minutes as i64,
+            None => 8640, // Default: 6 days = 8640 minutes if season not found
+        }
+    };
+
+    let game_end = now + Duration::minutes(duration_minutes);
     let mut games_started = 0;
+    
+    info!("Setting game duration to {} minutes ({} hours, {} days)", 
+        duration_minutes, 
+        duration_minutes / 60, 
+        duration_minutes / (60 * 24));
 
     // Update all games to current time and set to in_progress
     for game in &games {

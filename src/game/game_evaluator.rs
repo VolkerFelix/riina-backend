@@ -129,7 +129,7 @@ impl GameEvaluator {
     }
 
     pub async fn evaluate_todays_games(pool: &PgPool) -> Result<Vec<(Uuid, GameStats)>, sqlx::Error> {
-        // Get all games for today
+        // Get all finished games for today that need evaluation (not yet evaluated)
         let pending_games = sqlx::query!(
             r#"
             SELECT
@@ -139,7 +139,7 @@ impl GameEvaluator {
                 lg.scheduled_time
             FROM league_games lg
             WHERE DATE(lg.scheduled_time) = CURRENT_DATE
-            AND lg.status = 'scheduled'
+            AND lg.status = 'finished'
             ORDER BY lg.scheduled_time
             "#
         )
@@ -319,9 +319,9 @@ impl GameEvaluator {
         })
     }
 
-    pub async fn evaluate_games_for_date(pool: &PgPool, date: chrono::NaiveDate) -> Result<Vec<GameStats>, sqlx::Error> {
-        // Get all games for the specified date
-        let pending_games = sqlx::query!(
+    pub async fn run_game_evaluation(pool: &PgPool) -> Result<Vec<GameStats>, sqlx::Error> {
+        // Get all finished games that need evaluation (not yet evaluated)
+        let finished_games = sqlx::query!(
             r#"
             SELECT
                 lg.id as game_id,
@@ -333,23 +333,26 @@ impl GameEvaluator {
             FROM league_games lg
             JOIN teams ht ON lg.home_team_id = ht.id
             JOIN teams at ON lg.away_team_id = at.id
-            WHERE DATE(lg.scheduled_time) = $1
-            AND lg.status = 'scheduled'
+            WHERE lg.status = 'finished'
             ORDER BY lg.scheduled_time
             "#,
-            date
         )
         .fetch_all(pool)
         .await?;
 
         let mut results = Vec::new();
 
-        for game in pending_games {
-            tracing::info!("🎯 Evaluating game {} for date {}", game.game_id, date);
-            let mut game_stats = Self::evaluate_game(pool, &game.home_team_id, &game.away_team_id).await?;
+        for game in finished_games {
+            tracing::info!("🎯 Evaluating game {}", game.game_id);
+            // Use snapshot-based evaluation to only count improvements during "in_progress" period
+            let mut game_stats = Self::evaluate_game_with_snapshots(
+                pool, 
+                &game.game_id, 
+                &game.home_team_id, 
+                &game.away_team_id
+            ).await?;
             
-            // Add game ID and team names to the stats
-            game_stats.game_id = game.game_id;
+            // Add team names to the stats (game_id already set by evaluate_game_with_snapshots)
             game_stats.home_team_name = game.home_team_name;
             game_stats.away_team_name = game.away_team_name;
             

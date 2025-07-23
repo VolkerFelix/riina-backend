@@ -359,7 +359,19 @@ pub async fn delete_user(
 
     // Delete in the correct order to maintain referential integrity
     
-    // 1. Delete from team_members
+    // 1. Delete from live_player_contributions
+    sqlx::query!(
+        "DELETE FROM live_player_contributions WHERE user_id = $1",
+        user_id
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        eprintln!("Database error deleting live player contributions: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    // 2. Delete from team_members
     sqlx::query!(
         "DELETE FROM team_members WHERE user_id = $1",
         user_id
@@ -371,7 +383,7 @@ pub async fn delete_user(
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
-    // 2. Delete teams owned by this user (and cascade to team_members)
+    // 3. Delete teams owned by this user (and cascade to team_members)
     sqlx::query!(
         "DELETE FROM teams WHERE user_id = $1",
         user_id
@@ -383,10 +395,10 @@ pub async fn delete_user(
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
-    // 3. Delete from league_games (where user is part of home or away team)
+    // 4. Delete from league_games (where user is part of home or away team)
     // This is handled by CASCADE from teams deletion
 
-    // 4. Delete from user_avatars
+    // 5. Delete from user_avatars
     sqlx::query!(
         "DELETE FROM user_avatars WHERE user_id = $1",
         user_id
@@ -398,7 +410,7 @@ pub async fn delete_user(
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
-    // 5. Delete from health_data
+    // 6. Delete from health_data
     sqlx::query!(
         "DELETE FROM health_data WHERE user_id = $1",
         user_id
@@ -410,7 +422,7 @@ pub async fn delete_user(
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
-    // 6. Finally delete the user
+    // 7. Finally delete the user
     let result = sqlx::query!(
         "DELETE FROM users WHERE id = $1",
         user_id

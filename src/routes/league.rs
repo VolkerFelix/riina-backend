@@ -96,6 +96,15 @@ async fn get_upcoming_games(
     game_handler::get_league_upcoming_games(query, pool).await
 }
 
+/// Get live/active games (similar format to upcoming games)
+#[get("/games/live-active")]
+async fn get_live_active_games(
+    query: web::Query<UpcomingGamesQuery>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse> {
+    game_handler::get_league_live_games(query, pool).await
+}
+
 /// Get recent results
 #[get("/games/results")]
 async fn get_recent_results(

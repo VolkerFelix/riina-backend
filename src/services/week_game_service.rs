@@ -14,15 +14,16 @@ impl WeekGameService {
         Self { pool }
     }
 
-    /// Start games that should be in progress (today is within their week window)
+    /// Start games that should be in progress (current time is within their week window)
     pub async fn start_due_games(&self) -> Result<Vec<Uuid>, sqlx::Error> {
-        // First, get games that need to be started with their team info
+        // Get games that need to be started with their team info
+        // Use CURRENT_TIMESTAMP to handle different game durations properly
         let games_to_start = sqlx::query!(
             r#"
             SELECT id, home_team_id, away_team_id
             FROM league_games 
             WHERE status = 'scheduled'
-            AND CURRENT_DATE BETWEEN week_start_date AND week_end_date
+            AND CURRENT_TIMESTAMP BETWEEN week_start_date AND week_end_date
             "#
         )
         .fetch_all(&self.pool)
@@ -73,7 +74,7 @@ impl WeekGameService {
             SELECT id, home_team_id, away_team_id, week_start_date, week_end_date
             FROM league_games 
             WHERE status = 'in_progress'
-            AND CURRENT_DATE > week_end_date
+            AND CURRENT_TIMESTAMP > week_end_date
             "#
         )
         .fetch_all(&self.pool)
@@ -130,7 +131,7 @@ impl WeekGameService {
     }
 
 
-    /// Get all games that are currently in their active week
+    /// Get all games that are currently in their active period
     pub async fn get_active_games(&self) -> Result<Vec<LeagueGame>, sqlx::Error> {
         let games = sqlx::query_as!(
             LeagueGame,
@@ -142,7 +143,7 @@ impl WeekGameService {
                 created_at, updated_at
             FROM league_games
             WHERE status = 'in_progress'
-            AND CURRENT_DATE BETWEEN week_start_date AND week_end_date
+            AND CURRENT_TIMESTAMP BETWEEN week_start_date AND week_end_date
             ORDER BY week_number, scheduled_time
             "#
         )
@@ -152,11 +153,35 @@ impl WeekGameService {
         Ok(games)
     }
 
+    async fn get_pending_games(&self) -> Result<Vec<LeagueGame>, sqlx::Error> {
+        let games = sqlx::query_as!(
+            LeagueGame,
+            r#"
+            SELECT
+                id, season_id, home_team_id, away_team_id, scheduled_time,
+                week_number, is_first_leg, status as "status: GameStatus",
+                home_score, away_score, winner_team_id, week_start_date, week_end_date,
+                created_at, updated_at
+            FROM league_games
+            WHERE status = 'scheduled'
+            AND scheduled_time > CURRENT_TIMESTAMP
+            ORDER BY scheduled_time
+            "#
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(games)
+    }
+
     /// Run the game management cycle (start new games, finish completed ones)
-    pub async fn run_game_cycle(&self) -> Result<(Vec<Uuid>, Vec<Uuid>), sqlx::Error> {
+    pub async fn run_game_cycle(&self) -> Result<(Vec<Uuid>, Vec<Uuid>, Vec<Uuid>, Vec<Uuid>), sqlx::Error> {
+        let pending_games = self.get_pending_games().await?.iter().map(|game| game.id).collect();
+        let live_games = self.get_active_games().await?.iter().map(|game| game.id).collect();
         let started_games = self.start_due_games().await?;
         let finished_games = self.finish_completed_games().await?;
+
         
-        Ok((started_games, finished_games))
+        Ok((pending_games, live_games, started_games, finished_games))
     }
 }

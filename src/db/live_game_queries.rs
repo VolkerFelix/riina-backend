@@ -423,14 +423,37 @@ impl LiveGameQueries {
 
     /// Finish a live game
     pub async fn finish_live_game(&self, live_game_id: Uuid) -> Result<(), sqlx::Error> {
+        // Start a transaction to update both tables atomically
+        let mut tx = self.pool.begin().await?;
+        
+        // Get the game_id from the live_game first
+        let live_game = sqlx::query!(
+            "SELECT game_id FROM live_games WHERE id = $1",
+            live_game_id
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        
+        // Update the live_games table
         sqlx::query!(
             "UPDATE live_games SET is_active = false, updated_at = NOW() WHERE id = $1",
             live_game_id
         )
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        
+        // Update the corresponding league_games status to 'finished'
+        sqlx::query!(
+            "UPDATE league_games SET status = 'finished', updated_at = NOW() WHERE id = $1",
+            live_game.game_id
+        )
+        .execute(&mut *tx)
+        .await?;
+        
+        // Commit the transaction
+        tx.commit().await?;
 
-        info!("Finished live game: {}", live_game_id);
+        info!("Finished live game: {} and updated league game status", live_game_id);
         Ok(())
     }
 

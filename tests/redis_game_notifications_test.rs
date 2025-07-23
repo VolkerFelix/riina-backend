@@ -8,6 +8,7 @@ use uuid::Uuid;
 use chrono::{Weekday, NaiveTime};
 use std::time::Duration;
 use futures_util::StreamExt;
+use sqlx;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, get_next_date};
@@ -159,6 +160,20 @@ async fn test_redis_game_evaluation_notifications() {
     
     println!("✅ Test data setup complete");
     
+    // Update games to current time before evaluation (like other tests)
+    update_games_to_current_time(&app, league_id).await;
+    
+    // Trigger game cycle to start and finish games before evaluation
+    let cycle_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/league/games/manage", &app.address),
+        &admin_user.token,
+        None,
+    ).await;
+    assert_eq!(cycle_response.status(), 200);
+    println!("✅ Game cycle completed");
+    
     // Step 2: Subscribe to user-specific channels
     let user1_channel = format!("game:events:user:{}", user1.user_id);
     let user2_channel = format!("game:events:user:{}", user2.user_id);
@@ -177,8 +192,10 @@ async fn test_redis_game_evaluation_notifications() {
     // Step 3: Trigger game evaluation
     println!("🎮 Triggering game evaluation...");
     
+    // Use today's date since we updated games to current time
+    let today = chrono::Utc::now().date_naive();
     let evaluation_request = json!({
-        "date": start_date.date_naive().to_string()
+        "date": today.to_string()
     });
     
     let evaluation_response = make_authenticated_request(
@@ -306,4 +323,35 @@ async fn test_redis_game_evaluation_notifications() {
     
     println!("✅ Redis pub/sub game evaluation notifications test completed successfully!");
     println!("🎉 All Redis messaging requirements verified!");
+}
+
+async fn update_games_to_current_time(app: &common::utils::TestApp, league_id: &str) {
+    let now = chrono::Utc::now();
+    let today_start = chrono::Utc::now().date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc();
+    let week_end = now + chrono::Duration::seconds(5);
+    let league_uuid = uuid::Uuid::parse_str(league_id).expect("Invalid league ID");
+    
+    // Update all games in the league to current time and set them to finished status for evaluation
+    // Set week_start_date to beginning of today (so CURRENT_DATE BETWEEN works) and week_end_date to 5 seconds later
+    sqlx::query!(
+        r#"
+        UPDATE league_games 
+        SET scheduled_time = $1, week_start_date = $2, week_end_date = $3, status = 'finished'
+        WHERE season_id IN (
+            SELECT id FROM league_seasons WHERE league_id = $4
+        )
+        "#,
+        now,
+        today_start,
+        week_end,
+        league_uuid
+    )
+    .execute(&app.db_pool)
+    .await
+    .expect("Failed to update games to current time");
+    
+    println!("✅ Updated games to current time for evaluation");
+    
+    // Wait a moment for the times to be in the past
+    tokio::time::sleep(tokio::time::Duration::from_secs(6)).await;
 }

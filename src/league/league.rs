@@ -166,6 +166,24 @@ impl LeagueService {
         }
     }
 
+    /// Get currently live games for a season
+    pub async fn get_live_games(&self, season_id: Option<Uuid>, limit: Option<i64>) -> Result<Vec<GameWithTeams>, sqlx::Error> {
+        let active_season = match season_id {
+            Some(id) => self.seasons.get_season(id).await?,
+            None => self.seasons.get_active_season().await?,
+        };
+
+        match active_season {
+            Some(season) => {
+                self.games.get_live_games(season.id, limit).await
+            }
+            None => {
+                // No active season, return empty list
+                Ok(vec![])
+            }
+        }
+    }
+
     /// Update game result
     pub async fn update_game_result(
         &self,
@@ -208,6 +226,7 @@ impl LeagueService {
             name: season_name,
             start_date,
             team_ids,
+            game_duration_minutes: None, // Use default duration
         };
 
         self.create_season(request).await

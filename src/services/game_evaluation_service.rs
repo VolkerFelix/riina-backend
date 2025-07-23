@@ -11,6 +11,7 @@ use crate::models::common::MatchResult;
 use crate::league::standings::StandingsService;
 use crate::models::league::{LeagueGame, GameStatus};
 
+#[derive(Debug)]
 pub struct GameEvaluationService {
     pool: PgPool,
     redis_client: Option<Arc<redis::Client>>,
@@ -99,7 +100,7 @@ impl GameEvaluationService {
 
         // Send WebSocket notifications for successful evaluations
         if result.games_updated > 0 {
-            if let Err(e) = self.broadcast_game_evaluation_results(&result.game_results, chrono::Utc::now().date_naive()).await {
+            if let Err(e) = self.broadcast_game_evaluation_results(&result.game_results, chrono::Utc::now()).await {
                 tracing::error!("Failed to broadcast game evaluation results: {}", e);
                 // Don't fail the entire operation for notification failures
             }
@@ -130,7 +131,7 @@ impl GameEvaluationService {
         // Start a transaction to ensure atomic updates
         let mut tx = self.pool.begin().await?;
 
-        // Update the game result
+        // Update the game result and mark as evaluated
         sqlx::query!(
             r#"
             UPDATE league_games 
@@ -138,7 +139,7 @@ impl GameEvaluationService {
                 home_score = $2,
                 away_score = $3,
                 winner_team_id = $4,
-                status = 'finished',
+                status = 'evaluated',
                 updated_at = $5
             WHERE id = $1
             "#,
@@ -159,7 +160,7 @@ impl GameEvaluationService {
         updated_game.home_score = Some(game_stats.home_team_score as i32);
         updated_game.away_score = Some(game_stats.away_team_score as i32);
         updated_game.winner_team_id = game_stats.winner_team_id;
-        updated_game.status = GameStatus::Finished;
+        updated_game.status = GameStatus::Evaluated;
 
         // Update standings
         self.standings.update_after_game_result(
@@ -203,6 +204,58 @@ impl GameEvaluationService {
                 ).await?;
 
                 tracing::info!("✅ Game {} evaluated: {} - {}", 
+                    game_id, game_stats.home_team_score, game_stats.away_team_score);
+
+                Ok(game_stats)
+            }
+            None => {
+                tracing::error!("❌ Game {} not found", game_id);
+                Err(sqlx::Error::RowNotFound)
+            }
+        }
+    }
+
+    /// Evaluate and update a finished live game
+    pub async fn evaluate_finished_live_game(&self, game_id: Uuid) -> Result<GameStats, sqlx::Error> {
+        tracing::info!("🎯 Evaluating finished live game: {}", game_id);
+
+        // Get the game details
+        let game = sqlx::query!(
+            r#"
+            SELECT home_team_id, away_team_id, status, home_score, away_score
+            FROM league_games 
+            WHERE id = $1
+            "#,
+            game_id
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        match game {
+            Some(game_data) => {
+                // Only evaluate games that are finished and don't already have scores
+                if game_data.status != "finished" {
+                    tracing::warn!("Game {} is not finished (status: {})", game_id, game_data.status);
+                    return Err(sqlx::Error::RowNotFound);
+                }
+
+                // Check if the game already has scores calculated
+                if game_data.home_score.is_some() && game_data.away_score.is_some() {
+                    tracing::info!("Game {} already has scores calculated", game_id);
+                    return Err(sqlx::Error::RowNotFound);
+                }
+
+                // Evaluate the game based on team performance
+                let game_stats = GameEvaluator::evaluate_game(
+                    &self.pool, 
+                    &game_data.home_team_id, 
+                    &game_data.away_team_id
+                ).await?;
+
+                // Update the game result in the database
+                self.update_game_result(game_id, &game_stats).await?;
+
+                tracing::info!("✅ Finished live game {} evaluated and updated: {} - {}", 
                     game_id, game_stats.home_team_score, game_stats.away_team_score);
 
                 Ok(game_stats)
@@ -262,8 +315,9 @@ impl GameEvaluationService {
         })
     }
 
-    pub async fn evaluate_and_update_games_for_date(&self, date: chrono::NaiveDate) -> Result<EvaluationResult, sqlx::Error> {
-        tracing::info!("🎯 Starting game evaluation process for date: {}", date);
+    pub async fn evaluate_and_update_games(&self) -> Result<EvaluationResult, sqlx::Error> {
+        tracing::info!("🎯 Starting game evaluation process");
+        let now = chrono::Utc::now();
         
         let mut result = EvaluationResult {
             games_evaluated: 0,
@@ -272,11 +326,11 @@ impl GameEvaluationService {
             game_results: HashMap::new(),
         };
 
-        // Get all game results for the specific date
-        let game_evaluations = match GameEvaluator::evaluate_games_for_date(&self.pool, date).await {
+        // Get all game results
+        let game_evaluations = match GameEvaluator::run_game_evaluation(&self.pool).await {
             Ok(evaluations) => evaluations,
             Err(e) => {
-                let error_msg = format!("Failed to evaluate games for date {}: {}", date, e);
+                let error_msg = format!("Failed to evaluate games for date {}: {}", now, e);
                 tracing::error!("{}", error_msg);
                 result.errors.push(error_msg);
                 return Ok(result);
@@ -284,11 +338,11 @@ impl GameEvaluationService {
         };
 
         if game_evaluations.is_empty() {
-            tracing::info!("No scheduled games found for date: {}", date);
+            tracing::info!("No scheduled games found for date: {}", now);
             return Ok(result);
         }
 
-        tracing::info!("📊 Found {} scheduled games for evaluation on {}", game_evaluations.len(), date);
+        tracing::info!("📊 Found {} scheduled games for evaluation on {}", game_evaluations.len(), now);
 
         // Process each game evaluation
         for game_eval in game_evaluations {
@@ -319,7 +373,7 @@ impl GameEvaluationService {
 
         // Send WebSocket notifications for successful evaluations
         if result.games_updated > 0 {
-            if let Err(e) = self.broadcast_game_evaluation_results(&result.game_results, date).await {
+            if let Err(e) = self.broadcast_game_evaluation_results(&result.game_results, now).await {
                 tracing::error!("Failed to broadcast game evaluation results: {}", e);
                 // Don't fail the entire operation for notification failures
             }
@@ -332,7 +386,7 @@ impl GameEvaluationService {
     async fn broadcast_game_evaluation_results(
         &self,
         game_results: &HashMap<Uuid, GameStats>,
-        date: chrono::NaiveDate,
+        date: chrono::DateTime<Utc>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!("📡 Broadcasting game evaluation results for {} games on {}", 
             game_results.len(), date);
@@ -413,11 +467,14 @@ impl GameEvaluationService {
 
     /// Send individual notifications to team members about their game results
     async fn send_team_notifications_with_game_info(&self, game_results: &HashMap<Uuid, GameStats>) -> Result<(), Box<dyn std::error::Error>> {
+        tracing::debug!("📨 Sending team notifications for {} games", game_results.len());
         for (game_id, stats) in game_results {
             // Get team IDs from the database for this game
             if let Ok(game_info) = self.get_game_team_info(*game_id).await {
+                tracing::debug!("📨 Processing game {} with teams {} vs {}", game_id, game_info.home_team_id, game_info.away_team_id);
                 // Get all team members for both teams
                 let team_members = self.get_team_members_for_game(game_info.home_team_id, game_info.away_team_id).await?;
+                tracing::debug!("📨 Found {} team members for game {}", team_members.len(), game_id);
                 
                 for member in team_members {
                     let is_home_team = member.team_id == game_info.home_team_id;
@@ -444,6 +501,7 @@ impl GameEvaluationService {
                         created_at: Utc::now(),
                     };
 
+                    tracing::debug!("📨 Sending notification to user {} for game {}", member.user_id, game_id);
                     self.send_user_notification(&member.user_id, &notification).await?;
                 }
             }

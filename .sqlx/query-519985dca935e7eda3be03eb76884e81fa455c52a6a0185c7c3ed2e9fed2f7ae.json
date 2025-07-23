@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT \n            ls.id,\n            ls.league_id,\n            ls.name,\n            ls.start_date,\n            ls.end_date,\n            ls.evaluation_cron,\n            ls.evaluation_timezone,\n            ls.auto_evaluation_enabled,\n            ls.created_at,\n            COUNT(DISTINCT lt.team_id) as total_teams,\n            COUNT(DISTINCT lg.id) as games_count\n        FROM league_seasons ls\n        LEFT JOIN league_teams lt ON ls.id = lt.season_id\n        LEFT JOIN league_games lg ON ls.id = lg.season_id\n        WHERE ls.league_id = $1\n        GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.evaluation_cron, ls.evaluation_timezone, ls.auto_evaluation_enabled, ls.created_at\n        ORDER BY ls.created_at DESC\n        ",
+  "query": "\n        SELECT \n            ls.id,\n            ls.league_id,\n            ls.name,\n            ls.start_date,\n            ls.end_date,\n            ls.evaluation_cron,\n            ls.evaluation_timezone,\n            ls.auto_evaluation_enabled,\n            ls.created_at,\n            COUNT(DISTINCT lt.team_id) as total_teams,\n            COUNT(DISTINCT lg.id) as games_count,\n            ls.game_duration_minutes\n        FROM league_seasons ls\n        LEFT JOIN league_teams lt ON ls.id = lt.season_id\n        LEFT JOIN league_games lg ON ls.id = lg.season_id\n        WHERE ls.league_id = $1\n        GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.evaluation_cron, ls.evaluation_timezone, ls.auto_evaluation_enabled, ls.created_at\n        ORDER BY ls.created_at DESC\n        ",
   "describe": {
     "columns": [
       {
@@ -57,6 +57,11 @@
         "ordinal": 10,
         "name": "games_count",
         "type_info": "Int8"
+      },
+      {
+        "ordinal": 11,
+        "name": "game_duration_minutes",
+        "type_info": "Int4"
       }
     ],
     "parameters": {
@@ -75,8 +80,9 @@
       true,
       false,
       null,
-      null
+      null,
+      false
     ]
   },
-  "hash": "f7b8875c2b48aa04e844208e66b37c720960987c286909718662757686b7ef02"
+  "hash": "519985dca935e7eda3be03eb76884e81fa455c52a6a0185c7c3ed2e9fed2f7ae"
 }

@@ -17,6 +17,7 @@ pub struct LeagueSeason {
     pub evaluation_cron: Option<String>, // Cron expression for when to evaluate games
     pub evaluation_timezone: Option<String>, // Timezone for evaluation (e.g., "UTC", "America/New_York")
     pub auto_evaluation_enabled: Option<bool>, // Whether automatic evaluation is enabled
+    pub game_duration_minutes: i32, // Duration of each game in minutes (default: 8640 = 6 days)
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -50,12 +51,13 @@ pub struct LeagueGame {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, sqlx::Type)]
-#[sqlx(type_name = "varchar", rename_all = "lowercase")]
+#[sqlx(type_name = "varchar", rename_all = "snake_case")]
 pub enum GameStatus {
     Scheduled,
     InProgress,
     Live,
     Finished,
+    Evaluated,
     Postponed,
 }
 
@@ -65,6 +67,7 @@ impl From<String> for GameStatus {
             "in_progress" | "in-progress" => GameStatus::InProgress,
             "live" => GameStatus::Live,
             "finished" => GameStatus::Finished,
+            "evaluated" => GameStatus::Evaluated,
             "postponed" => GameStatus::Postponed,
             _ => GameStatus::Scheduled,
         }
@@ -93,6 +96,7 @@ pub struct CreateSeasonRequest {
     pub name: String,
     pub start_date: DateTime<Utc>,
     pub team_ids: Vec<Uuid>,
+    pub game_duration_minutes: Option<i32>, // Optional, defaults to 8640 minutes (6 days) if not provided
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -196,6 +200,7 @@ impl GameStatus {
             GameStatus::InProgress => "in_progress",
             GameStatus::Live => "live",
             GameStatus::Finished => "finished",
+            GameStatus::Evaluated => "evaluated",
             GameStatus::Postponed => "postponed",
         }
     }
