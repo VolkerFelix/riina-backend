@@ -405,8 +405,23 @@ async fn test_game_evaluation_zero_power_draw() {
     
     println!("✅ Created league with two zero-power teams");
     
-    // Step 3: Update games to current time and set to finished for evaluation  
-    update_games_to_current_time_and_finish(&app, league_id).await;
+    // Step 3: Simulate proper game lifecycle with snapshots
+    // First update games to current time and start them (to take start snapshots)
+    update_games_to_current_time(&app, league_id).await;
+    
+    // Use WeekGameService to properly manage game lifecycle with snapshots
+    let week_game_service = evolveme_backend::services::WeekGameService::new(app.db_pool.clone());
+    
+    // Run game cycle to start games (this takes start snapshots)
+    println!("🔄 Starting games and taking start snapshots...");
+    let (_, _, started_games, _) = week_game_service.run_game_cycle().await.unwrap();
+    assert!(started_games.len() >= 1, "Should have started at least one game");
+    
+    // Wait for games to finish (4 seconds to ensure they're past the 3-second end time)
+    tokio::time::sleep(tokio::time::Duration::from_secs(4)).await;
+    println!("🔄 Finishing games and taking end snapshots...");
+    let (_, _, _, finished_games) = week_game_service.run_game_cycle().await.unwrap();
+    assert!(finished_games.len() >= 1, "Should have finished at least one game");
     
     // Step 4: Trigger game evaluation
     let today = chrono::Utc::now().date_naive();
@@ -535,6 +550,31 @@ async fn test_game_evaluation_zero_power_draw() {
     println!("✅ Zero power draw test completed successfully - both teams got 2 points from 2 draws!");
 }
 
+async fn update_games_to_current_time(app: &common::utils::TestApp, league_id: &str) {
+    let now = chrono::Utc::now();
+    let game_end = now + chrono::Duration::seconds(3); // Very short game duration for testing
+    let league_uuid = Uuid::parse_str(league_id).expect("Invalid league ID");
+    
+    // Update all games in the league to current time but keep them scheduled
+    sqlx::query!(
+        r#"
+        UPDATE league_games 
+        SET scheduled_time = $1, week_start_date = $1, week_end_date = $2
+        WHERE season_id IN (
+            SELECT id FROM league_seasons WHERE league_id = $3
+        )
+        "#,
+        now,
+        game_end,
+        league_uuid
+    )
+    .execute(&app.db_pool)
+    .await
+    .expect("Failed to update games to current time");
+    
+    println!("✅ Updated games to current time (3-second game duration for testing)");
+}
+
 async fn update_games_to_current_time_and_finish(app: &common::utils::TestApp, league_id: &str) {
     let now = chrono::Utc::now();
     let today_start = chrono::Utc::now().date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc();
@@ -563,30 +603,4 @@ async fn update_games_to_current_time_and_finish(app: &common::utils::TestApp, l
     
     // Wait a moment for the times to be in the past
     tokio::time::sleep(tokio::time::Duration::from_secs(6)).await;
-}
-
-async fn update_games_to_current_time(app: &common::utils::TestApp, league_id: &str) {
-    let now = chrono::Utc::now();
-    let today_start = chrono::Utc::now().date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc();
-    let week_end = now + chrono::Duration::seconds(5);
-    let league_uuid = Uuid::parse_str(league_id).expect("Invalid league ID");
-    
-    // Update all games in the league to current time
-    // Set week_start_date to beginning of today (so CURRENT_DATE BETWEEN works) and week_end_date to 5 seconds later
-    sqlx::query!(
-        r#"
-        UPDATE league_games 
-        SET scheduled_time = $1, week_start_date = $2, week_end_date = $3
-        WHERE season_id IN (
-            SELECT id FROM league_seasons WHERE league_id = $4
-        )
-        "#,
-        now,
-        today_start,
-        week_end,
-        league_uuid
-    )
-    .execute(&app.db_pool)
-    .await
-    .expect("Failed to update game times to current time");
 }
