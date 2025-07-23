@@ -66,13 +66,15 @@ impl SchedulerService {
         let evaluation_service = GameEvaluationService::new_with_redis(self.pool.clone(), self.redis_client.clone());
         
         // Run the complete cycle: start due games, finish ended games
-        let (started_games, finished_games) = week_game_service.run_game_cycle().await?;
+        let (pending_games, live_games, started_games, finished_games) = week_game_service.run_game_cycle().await?;
         
         // Then evaluate any finished games
         let result = evaluation_service.evaluate_and_update_todays_games().await?;
         
         Ok(format!(
-            "Game cycle completed: {} games started, {} games finished, {} games evaluated, {} updated successfully",
+            "Game cycle completed: {} pending, {} live, {} started, {} finished, {} games evaluated, {} updated successfully",
+            pending_games.len(),
+            live_games.len(),
             started_games.len(),
             finished_games.len(),
             result.games_evaluated,
@@ -122,9 +124,9 @@ impl SchedulerService {
                 
                 // Step 1: Run complete game cycle (start due games, finish ended games)
                 match week_game_service.run_game_cycle().await {
-                    Ok((started_games, finished_games)) => {
-                        tracing::info!("✅ Season '{}' game cycle: {} started, {} finished", 
-                            season_name, started_games.len(), finished_games.len());
+                    Ok((pending_games, live_games, started_games, finished_games)) => {
+                        tracing::info!("✅ Season '{}' game cycle: {} pending, {} live, {} started, {} finished", 
+                            season_name, pending_games.len(), live_games.len(), started_games.len(), finished_games.len());
                         
                         // Step 2: Evaluate any finished games
                         match evaluation_service.evaluate_and_update_games().await {

@@ -51,7 +51,7 @@ pub struct LeagueGame {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, sqlx::Type)]
-#[sqlx(type_name = "varchar", rename_all = "lowercase")]
+#[sqlx(type_name = "varchar", rename_all = "snake_case")]
 pub enum GameStatus {
     Scheduled,
     InProgress,
