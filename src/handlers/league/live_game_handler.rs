@@ -5,6 +5,8 @@ use serde::Serialize;
 
 use crate::services::WeekGameService;
 use crate::middleware::auth::Claims;
+use crate::db::live_game_queries::LiveGameQueries;
+use crate::models::live_game::LiveScoreEvent;
 
 #[derive(Serialize)]
 pub struct LiveGameScore {
@@ -84,7 +86,7 @@ pub async fn get_game_live_score(
     let live_game = sqlx::query!(
         r#"
         SELECT 
-            lg.home_score, lg.away_score,
+            lg.id, lg.home_score, lg.away_score,
             lg.is_active, lg.game_start_time, lg.game_end_time
         FROM live_games lg
         WHERE lg.game_id = $1 AND lg.is_active = true
@@ -116,7 +118,7 @@ pub async fn get_game_live_score(
     match game {
         Ok(Some(game_data)) => {
             let (home_score, away_score, game_start_time, game_end_time) = 
-                if let Ok(Some(live_data)) = live_game {
+                if let Ok(Some(ref live_data)) = live_game {
                     // Use live game data if available
                     (live_data.home_score as u32, live_data.away_score as u32, 
                      Some(live_data.game_start_time), Some(live_data.game_end_time))
@@ -124,6 +126,15 @@ pub async fn get_game_live_score(
                     // No live game data, return zeros
                     (0, 0, None, None)
                 };
+
+            // Fetch scoring events if we have live game data
+            let mut scoring_events: Vec<LiveScoreEvent> = Vec::new();
+            if let Ok(Some(ref live_data)) = live_game {
+                let live_game_queries = LiveGameQueries::new(pool.get_ref().clone());
+                if let Ok(events) = live_game_queries.get_recent_score_events(live_data.id, 50).await {
+                    scoring_events = events;
+                }
+            }
 
             let mut game_info = serde_json::json!({
                 "game_id": game_id,
@@ -133,6 +144,7 @@ pub async fn get_game_live_score(
                 "away_score": away_score,
                 "week_number": game_data.week_number,
                 "status": game_data.status,
+                "scoring_events": scoring_events
             });
 
             // Add optional game timing fields if we have live data

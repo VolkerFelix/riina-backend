@@ -124,6 +124,9 @@ async fn test_complete_live_game_workflow() {
         .expect("Home user should have contributions");
     assert_eq!(home_contrib.contribution_count, 2, "Home user should have 2 contributions after second upload");
 
+    // Step 10: Test live scoring history API endpoint
+    test_live_scoring_history_api(&test_app, &client, &home_user.token, game_id, &home_user, &away_user_1).await;
+
     println!("✅ Live game integration test completed successfully!");
     println!("Final scores: {} {} - {} {}", 
         after_second_upload.home_team_name, 
@@ -311,6 +314,97 @@ async fn test_live_game_finish_workflow() {
     assert_eq!(post_finish_game.home_score, final_score, "Score should not change after game ends");
 
     println!("✅ Live game finish workflow test completed successfully!");
+}
+
+async fn test_live_scoring_history_api(
+    test_app: &TestApp, 
+    client: &Client, 
+    token: &str, 
+    game_id: Uuid,
+    home_user: &UserRegLoginResponse,
+    away_user: &UserRegLoginResponse
+) {
+    println!("🧪 Testing live scoring history API endpoint...");
+    
+    // Call the live game API endpoint that should include scoring events
+    let url = format!("{}/league/games/{}/live", test_app.address, game_id);
+    let response = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await
+        .expect("Failed to call live game API");
+
+    assert!(response.status().is_success(), "Live game API should return success");
+    
+    let response_data: serde_json::Value = response.json().await.expect("Failed to parse response");
+    assert_eq!(response_data["success"], true, "API response should indicate success");
+    
+    // Verify the response structure matches what the frontend expects
+    let data = response_data["data"].as_object().expect("Data should be an object");
+    
+    // Check required fields
+    assert!(data.contains_key("game_id"), "Should contain game_id");
+    assert!(data.contains_key("home_team_name"), "Should contain home_team_name");
+    assert!(data.contains_key("away_team_name"), "Should contain away_team_name");
+    assert!(data.contains_key("home_score"), "Should contain home_score");
+    assert!(data.contains_key("away_score"), "Should contain away_score");
+    assert!(data.contains_key("status"), "Should contain status");
+    
+    // Most importantly, check scoring_events
+    assert!(data.contains_key("scoring_events"), "Should contain scoring_events array");
+    
+    let scoring_events = data["scoring_events"].as_array().expect("scoring_events should be an array");
+    assert!(!scoring_events.is_empty(), "Should have scoring events from the test uploads");
+    
+    // Verify scoring event structure matches frontend expectations
+    for event in scoring_events {
+        let event_obj = event.as_object().expect("Each scoring event should be an object");
+        
+        // Check all required fields for frontend parsing
+        assert!(event_obj.contains_key("id"), "Event should have id");
+        assert!(event_obj.contains_key("user_id"), "Event should have user_id");
+        assert!(event_obj.contains_key("username"), "Event should have username");
+        assert!(event_obj.contains_key("team_id"), "Event should have team_id");
+        assert!(event_obj.contains_key("team_side"), "Event should have team_side");
+        assert!(event_obj.contains_key("score_points"), "Event should have score_points");
+        assert!(event_obj.contains_key("description"), "Event should have description");
+        assert!(event_obj.contains_key("occurred_at"), "Event should have occurred_at timestamp");
+        
+        // Verify team_side is valid
+        let team_side = event_obj["team_side"].as_str().expect("team_side should be a string");
+        assert!(team_side == "home" || team_side == "away", "team_side should be 'home' or 'away'");
+        
+        // Verify score_points is positive (since our test uploads should generate points)
+        let score_points = event_obj["score_points"].as_i64().expect("score_points should be a number");
+        assert!(score_points > 0, "Test uploads should generate positive points");
+        
+        // Verify the user_id matches one of our test users
+        let event_user_id = event_obj["user_id"].as_str().expect("user_id should be a string");
+        let event_user_uuid = Uuid::parse_str(event_user_id).expect("user_id should be valid UUID");
+        assert!(
+            event_user_uuid == home_user.user_id || event_user_uuid == away_user.user_id,
+            "Event should be from one of our test users"
+        );
+    }
+    
+    // Check that events are ordered by most recent first (as expected by frontend)
+    if scoring_events.len() > 1 {
+        for i in 0..scoring_events.len()-1 {
+            let current_time = scoring_events[i]["occurred_at"].as_str().expect("Should have timestamp");
+            let next_time = scoring_events[i+1]["occurred_at"].as_str().expect("Should have timestamp");
+            
+            let current_dt = chrono::DateTime::parse_from_rfc3339(current_time).expect("Should parse timestamp");
+            let next_dt = chrono::DateTime::parse_from_rfc3339(next_time).expect("Should parse timestamp");
+            
+            assert!(current_dt >= next_dt, "Events should be ordered by most recent first");
+        }
+    }
+    
+    println!("✅ Live scoring history API test passed!");
+    println!("   - Found {} scoring events", scoring_events.len());
+    println!("   - All required fields present and valid");
+    println!("   - Events properly ordered by timestamp");
 }
 
 // Helper functions
