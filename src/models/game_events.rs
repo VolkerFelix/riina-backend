@@ -62,8 +62,8 @@ pub enum GameEvent {
         conquered_at: DateTime<Utc>,
     },
 
-    #[serde(rename = "health_data_processed")]
-    HealthDataProcessed {
+    #[serde(rename = "workout_data_processed")]
+    WorkoutDataProcessed {
         user_id: Uuid,
         sync_id: Uuid,
         stat_changes: StatChanges,

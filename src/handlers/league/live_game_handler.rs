@@ -127,11 +127,11 @@ pub async fn get_game_live_score(
                     (0, 0, None, None)
                 };
 
-            // Fetch scoring events if we have live game data
-            let mut scoring_events: Vec<LiveScoreEvent> = Vec::new();
+            // Fetch scoring events with workout details if we have live game data
+            let mut scoring_events: Vec<serde_json::Value> = Vec::new();
             if let Ok(Some(ref live_data)) = live_game {
                 let live_game_queries = LiveGameQueries::new(pool.get_ref().clone());
-                if let Ok(events) = live_game_queries.get_recent_score_events(live_data.id, 50).await {
+                if let Ok(events) = live_game_queries.get_recent_score_events_with_workout_details(live_data.id, 50).await {
                     scoring_events = events;
                 }
             }

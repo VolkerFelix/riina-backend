@@ -5,7 +5,7 @@ use uuid::Uuid;
 use sqlx::PgPool;
 use chrono::{DateTime, Utc, Duration};
 
-use crate::{middleware::auth::Claims, models::health_data::HeartRateData};
+use crate::{middleware::auth::Claims, models::workout_data::HeartRateData};
 
 #[derive(Debug, Serialize)]
 pub struct WorkoutHistoryItem {
@@ -89,16 +89,16 @@ pub async fn get_workout_history(
             hd.workout_start,
             hd.workout_end,
             hd.created_at,
-            hd.active_energy_burned as calories_burned,
+            hd.calories_burned as calories_burned,
             hd.heart_rate_data,
             -- Get game stats from stat_changes table
             COALESCE(sc.stamina_change, 0) as stamina_gained,
             COALESCE(sc.strength_change, 0) as strength_gained,
             sc.zone_breakdown
-        FROM health_data hd
-        LEFT JOIN stat_changes sc ON sc.health_data_id = hd.id
+        FROM workout_data hd
+        LEFT JOIN stat_changes sc ON sc.workout_data_id = hd.id
         WHERE hd.user_id = $1
-        AND (hd.active_energy_burned > 100 OR hd.heart_rate_data IS NOT NULL)
+        AND (hd.calories_burned > 100 OR hd.heart_rate_data IS NOT NULL)
         ORDER BY COALESCE(hd.workout_start, hd.created_at) DESC
         LIMIT $2 OFFSET $3
         "#,
@@ -149,9 +149,9 @@ pub async fn get_workout_history(
     let total_count = match sqlx::query!(
         r#"
         SELECT COUNT(*) as count
-        FROM health_data
+        FROM workout_data
         WHERE user_id = $1
-        AND (active_energy_burned > 100 OR heart_rate_data IS NOT NULL)
+        AND (calories_burned > 100 OR heart_rate_data IS NOT NULL)
         "#,
         user_id
     )

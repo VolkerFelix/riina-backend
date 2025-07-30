@@ -1,5 +1,5 @@
 use evolveme_backend::game::stats_calculator::StatCalculator;
-use evolveme_backend::models::health_data::{HeartRateData, HealthDataSyncRequest};
+use evolveme_backend::models::workout_data::{HeartRateData, WorkoutDataSyncRequest};
 use chrono::{Duration, Utc};
 use uuid::Uuid;
 
@@ -53,17 +53,17 @@ async fn test_zone_1_active_recovery() {
         });
     }
     
-    let health_data = HealthDataSyncRequest {
+    let workout_data = WorkoutDataSyncRequest {
         workout_uuid: Some(Uuid::new_v4().to_string()),
         device_id: "test".to_string(),
         timestamp: now,
         workout_start: Some(workout_start),
         workout_end: Some(workout_end),
         heart_rate: Some(heart_rate_data),
-        active_energy_burned: Some(150.0),
+        calories_burned: Some(150.0),
     };
 
-    let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &health_data).await;
+    let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
     
     // Around 5 minutes * 2 points per minute ≈ 10 stamina points (9-10 due to rounding)
     assert!(changes.stamina_change >= 9 && changes.stamina_change <= 10);
@@ -120,17 +120,17 @@ async fn test_zone_2_aerobic_base() {
         });
     }
 
-    let health_data = HealthDataSyncRequest {
+    let workout_data = WorkoutDataSyncRequest {
         workout_uuid: Some(Uuid::new_v4().to_string()),
         device_id: "test".to_string(),
         timestamp: now,
         workout_start: Some(workout_start),
         workout_end: Some(workout_end),
         heart_rate: Some(heart_rate_data),
-        active_energy_burned: Some(225.0),
+        calories_burned: Some(225.0),
     };
 
-    let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &health_data).await;
+    let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
     
     // Around 3 minutes * 5 stamina + 1 strength points per minute (14-15 stamina, 2-3 strength due to rounding)
     assert!(changes.stamina_change >= 14 && changes.stamina_change <= 15);
@@ -187,17 +187,17 @@ async fn test_zone_4_lactate_threshold() {
         });
     }
     
-    let health_data = HealthDataSyncRequest {
+    let workout_data = WorkoutDataSyncRequest {
         workout_uuid: Some(Uuid::new_v4().to_string()),
         device_id: "test".to_string(),
         timestamp: now,
         workout_start: Some(workout_start),
         workout_end: Some(workout_end),
         heart_rate: Some(heart_rate_data),
-        active_energy_burned: Some(300.0),
+        calories_burned: Some(300.0),
     };
 
-    let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &health_data).await;
+    let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
     
     // Around 2 minutes * 2 stamina + 5 strength points per minute (3-4 stamina, 9-10 strength due to rounding)
     assert!(changes.stamina_change >= 3 && changes.stamina_change <= 4);
@@ -254,17 +254,17 @@ async fn test_zone_5_neuromuscular_power() {
         });
     }
     
-    let health_data = HealthDataSyncRequest {
+    let workout_data = WorkoutDataSyncRequest {
         workout_uuid: Some(Uuid::new_v4().to_string()),
         device_id: "test".to_string(),
         timestamp: now,
         workout_start: Some(workout_start),
         workout_end: Some(workout_end),
         heart_rate: Some(heart_rate_data),
-        active_energy_burned: Some(400.0),
+        calories_burned: Some(400.0),
     };
 
-    let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &health_data).await;
+    let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
     
     // Around 1.5 minutes * 1 stamina + 8 strength points per minute (1-2 stamina, 11-12 strength due to rounding)
     assert!(changes.stamina_change >= 1 && changes.stamina_change <= 2);
@@ -310,17 +310,17 @@ async fn test_no_heart_rate_no_gains() {
     let workout_start = now - Duration::minutes(30);
     let workout_end = now;
     
-    let health_data = HealthDataSyncRequest {
+    let workout_data = WorkoutDataSyncRequest {
         workout_uuid: Some(Uuid::new_v4().to_string()),
         device_id: "test".to_string(),
         timestamp: now,
         workout_start: Some(workout_start),
         workout_end: Some(workout_end),
         heart_rate: None,
-        active_energy_burned: Some(200.0),
+        calories_burned: Some(200.0),
     };
 
-    let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &health_data).await;
+    let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
     assert_eq!(changes.stamina_change, 0);
     assert_eq!(changes.strength_change, 0);
     assert_eq!(changes.reasoning.len(), 0);

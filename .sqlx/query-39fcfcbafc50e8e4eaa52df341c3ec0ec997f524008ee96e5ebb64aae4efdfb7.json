@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT id FROM health_data \n        WHERE user_id = $1 AND workout_uuid = $2\n        ",
+  "query": "\n        SELECT id FROM workout_data \n        WHERE user_id = $1 AND workout_uuid = $2\n        ",
   "describe": {
     "columns": [
       {
@@ -19,5 +19,5 @@
       false
     ]
   },
-  "hash": "251b91912aa67f8cfa16560b5c77a3dd78e083cd61c2d50f65a4fd3fa9f36600"
+  "hash": "39fcfcbafc50e8e4eaa52df341c3ec0ec997f524008ee96e5ebb64aae4efdfb7"
 }

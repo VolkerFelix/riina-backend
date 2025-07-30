@@ -3,7 +3,7 @@ use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 
 use crate::models::game::*;
-use crate::models::health_data::{HealthDataSyncRequest, HeartRateData, HeartRateZones, ZoneName};
+use crate::models::workout_data::{WorkoutDataSyncRequest, HeartRateData, HeartRateZones, ZoneName};
 use crate::game::helper::{get_user_profile, calc_max_heart_rate};
 use crate::workout::workout_analyzer::WorkoutAnalyzer;
 
@@ -29,7 +29,7 @@ pub struct StatCalculator;
 
 impl StatCalculator {
     /// Calculate stat changes based on HRR zones from heart rate and calories
-    pub async fn calculate_stat_changes(pool: &Pool<Postgres>, user_id: Uuid, health_data: &HealthDataSyncRequest) -> StatChanges {
+    pub async fn calculate_stat_changes(pool: &Pool<Postgres>, user_id: Uuid, workout_data: &WorkoutDataSyncRequest) -> StatChanges {
         let mut changes = StatChanges {
             stamina_change: 0,
             strength_change: 0,
@@ -37,7 +37,7 @@ impl StatCalculator {
             zone_breakdown: None,
         };
 
-        if let Some(heart_rate) = &health_data.heart_rate {
+        if let Some(heart_rate) = &workout_data.heart_rate {
             let stats_changes = Self::calc_stats_hhr_based(pool, user_id, heart_rate).await;
             changes.stamina_change += stats_changes.stamina_change;
             changes.strength_change += stats_changes.strength_change;

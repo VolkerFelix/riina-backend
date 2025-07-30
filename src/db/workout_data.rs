@@ -2,10 +2,10 @@ use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 use serde_json::json;
 
-use crate::models::health_data::HealthDataSyncRequest;
+use crate::models::workout_data::WorkoutDataSyncRequest;
 
 #[tracing::instrument(
-    name = "Insert health data into database",
+    name = "Insert workout data into database",
     skip(pool, data),
     fields(
         user_id = %user_id,
@@ -13,18 +13,18 @@ use crate::models::health_data::HealthDataSyncRequest;
         device_id = %data.device_id
     )
 )]
-pub async fn insert_health_data(
+pub async fn insert_workout_data(
     pool: &Pool<Postgres>,
     user_id: Uuid,
-    data: &HealthDataSyncRequest,
+    data: &WorkoutDataSyncRequest,
 ) -> Result<Uuid, sqlx::Error> {
-    tracing::info!("Attempting to insert health data for user");
+    tracing::info!("Attempting to insert workout data for user");
     
     let record = sqlx::query!(
         r#"
-        INSERT INTO health_data (
+        INSERT INTO workout_data (
             user_id, device_id, heart_rate_data, 
-            active_energy_burned, workout_uuid, workout_start, workout_end
+            calories_burned, workout_uuid, workout_start, workout_end
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING id
@@ -32,7 +32,7 @@ pub async fn insert_health_data(
         user_id,
         &data.device_id,
         json!(data.heart_rate),
-        data.active_energy_burned,
+        data.calories_burned,
         data.workout_uuid.as_deref(),
         data.workout_start,
         data.workout_end
@@ -45,7 +45,7 @@ pub async fn insert_health_data(
             // PostgreSQL unique constraint violation error code is 23505
             if db_err.code().as_deref() == Some("23505") {
                 tracing::error!(
-                    "DUPLICATE WORKOUT UUID ERROR: Failed to insert health data due to duplicate workout_uuid. \
+                    "DUPLICATE WORKOUT UUID ERROR: Failed to insert workout data due to duplicate workout_uuid. \
                     user_id: {}, workout_uuid: {:?}, device_id: {}, \
                     constraint: {}, detail: {:?}, table: {:?}",
                     user_id,
@@ -57,7 +57,7 @@ pub async fn insert_health_data(
                 );
             } else {
                 tracing::error!(
-                    "Database error inserting health data: code={:?}, message={}, \
+                    "Database error inserting workout data: code={:?}, message={}, \
                     constraint={:?}, detail={:?}",
                     db_err.code(),
                     db_err.message(),
@@ -66,12 +66,12 @@ pub async fn insert_health_data(
                 );
             }
         } else {
-            tracing::error!("Non-database error inserting health data: {}", e);
+            tracing::error!("Non-database error inserting workout data: {}", e);
         }
         e
     })?;
     
-    tracing::info!("Successfully inserted health data with id: {}", record.id);
+    tracing::info!("Successfully inserted workout data with id: {}", record.id);
     Ok(record.id)
 }
 
@@ -92,7 +92,7 @@ pub async fn check_workout_uuid_exists(
     
     let record = sqlx::query!(
         r#"
-        SELECT id FROM health_data 
+        SELECT id FROM workout_data 
         WHERE user_id = $1 AND workout_uuid = $2
         "#,
         user_id,

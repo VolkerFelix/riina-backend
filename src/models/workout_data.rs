@@ -6,13 +6,13 @@ use sqlx::FromRow;
 use uuid::Uuid;
 
 #[derive(Debug, FromRow, Serialize)]
-pub struct HealthData {
+pub struct WorkoutData {
     pub id: Uuid,
     pub user_id: Uuid,
     pub device_id: String,
     pub timestamp: DateTime<Utc>,
     pub heart_rate: Option<Vec<HeartRateData>>,
-    pub active_energy_burned: Option<f32>,
+    pub calories_burned: Option<f32>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -23,18 +23,18 @@ pub struct HeartRateData {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct HealthDataSyncRequest {
+pub struct WorkoutDataSyncRequest {
     pub device_id: String,
     pub timestamp: DateTime<Utc>,
     pub heart_rate: Option<Vec<HeartRateData>>,
-    pub active_energy_burned: Option<f32>,
+    pub calories_burned: Option<f32>,
     pub workout_uuid: Option<String>, // Apple Health workout UUID for duplicate prevention
     pub workout_start: Option<DateTime<Utc>>, // Actual workout start time
     pub workout_end: Option<DateTime<Utc>>, // Actual workout end time
 }
 
 #[derive(Debug, Serialize)]
-pub struct HealthDataSyncData {
+pub struct WorkoutDataSyncData {
     pub sync_id: Uuid,
     pub timestamp: DateTime<Utc>,
 }

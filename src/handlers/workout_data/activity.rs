@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc, Duration};
 
 use crate::middleware::auth::Claims;
-use crate::models::health_data::{ActivitySummaryResponse, WeeklyStats, MonthlyTrend};
+use crate::models::workout_data::{ActivitySummaryResponse, WeeklyStats, MonthlyTrend};
 
 #[tracing::instrument(
     name = "Get user activity summary",
@@ -36,10 +36,10 @@ pub async fn get_activity_summary(
     let recent_workouts = match sqlx::query!(
         r#"
         SELECT COUNT(*) as count
-        FROM health_data 
+        FROM workout_data 
         WHERE user_id = $1 
         AND created_at >= $2
-        AND active_energy_burned > 200  -- Only count significant activity
+        AND calories_burned > 200  -- Only count significant activity
         "#,
         user_id,
         week_ago
@@ -58,9 +58,9 @@ pub async fn get_activity_summary(
     let total_sessions = match sqlx::query!(
         r#"
         SELECT COUNT(*) as count
-        FROM health_data 
+        FROM workout_data 
         WHERE user_id = $1
-        AND active_energy_burned > 100  -- Any recorded activity
+        AND calories_burned > 100  -- Any recorded activity
         "#,
         user_id
     )
@@ -81,7 +81,7 @@ pub async fn get_activity_summary(
     let last_sync = match sqlx::query!(
         r#"
         SELECT MAX(created_at) as last_sync
-        FROM health_data 
+        FROM workout_data 
         WHERE user_id = $1
         "#,
         user_id
@@ -129,11 +129,11 @@ async fn calculate_weekly_stats(pool: &PgPool, user_id: Uuid, since: DateTime<Ut
     // Get total calories burned this week
     let total_calories = match sqlx::query!(
         r#"
-        SELECT SUM(active_energy_burned) as total_calories
-        FROM health_data 
+        SELECT SUM(calories_burned) as total_calories
+        FROM workout_data 
         WHERE user_id = $1 
         AND created_at >= $2
-        AND active_energy_burned IS NOT NULL
+        AND calories_burned IS NOT NULL
         "#,
         user_id,
         since
@@ -152,12 +152,12 @@ async fn calculate_weekly_stats(pool: &PgPool, user_id: Uuid, since: DateTime<Ut
     let session_counts = match sqlx::query!(
         r#"
         SELECT 
-            COUNT(CASE WHEN active_energy_burned > 400 THEN 1 END) as high_intensity,
-            COUNT(CASE WHEN active_energy_burned BETWEEN 200 AND 400 THEN 1 END) as moderate_intensity
-        FROM health_data 
+            COUNT(CASE WHEN calories_burned > 400 THEN 1 END) as high_intensity,
+            COUNT(CASE WHEN calories_burned BETWEEN 200 AND 400 THEN 1 END) as moderate_intensity
+        FROM workout_data 
         WHERE user_id = $1 
         AND created_at >= $2
-        AND active_energy_burned > 200
+        AND calories_burned > 200
         "#,
         user_id,
         since
@@ -188,10 +188,10 @@ async fn calculate_monthly_trend(pool: &PgPool, user_id: Uuid, since: DateTime<U
     let activity_count = match sqlx::query!(
         r#"
         SELECT COUNT(*) as count
-        FROM health_data 
+        FROM workout_data 
         WHERE user_id = $1 
         AND created_at >= $2
-        AND active_energy_burned > 200
+        AND calories_burned > 200
         "#,
         user_id,
         since

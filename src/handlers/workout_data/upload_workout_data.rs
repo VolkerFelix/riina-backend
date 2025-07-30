@@ -1,12 +1,12 @@
-// Enhanced src/handlers/health_data/upload_health_data.rs - Now with game stats!
+// Enhanced src/handlers/workout_data/upload_health_data.rs - Now with game stats!
 
 use actix_web::{web, HttpResponse};
 use chrono::Utc;
 use serde_json::json;
 use uuid::Uuid;
 use crate::middleware::auth::Claims;
-use crate::db::health_data::{insert_health_data, check_workout_uuid_exists};
-use crate::models::health_data::HealthDataSyncRequest;
+use crate::db::workout_data::{insert_workout_data, check_workout_uuid_exists};
+use crate::models::workout_data::WorkoutDataSyncRequest;
 use crate::models::common::ApiResponse;
 use crate::game::stats_calculator::StatCalculator;
 use crate::models::game_events::GameEvent;
@@ -15,21 +15,21 @@ use crate::services::live_game_service::LiveGameService;
 use redis::AsyncCommands;
 
 #[tracing::instrument(
-    name = "Upload health data with game stats",
+    name = "Upload workout data with game stats",
     skip(data, pool, redis, live_game_service, claims),
     fields(
         username = %claims.username,
         data_type = %data.device_id
     )
 )]
-pub async fn upload_health_data(
-    data: web::Json<HealthDataSyncRequest>,
+pub async fn upload_workout_data(
+    data: web::Json<WorkoutDataSyncRequest>,
     pool: web::Data<sqlx::PgPool>,
     redis: Option<web::Data<redis::Client>>,
     live_game_service: Option<web::Data<LiveGameService>>,
     claims: web::ReqData<Claims>
 ) -> HttpResponse {
-    tracing::info!("🎮 Processing health data with game mechanics for user: {}", claims.username);
+    tracing::info!("🎮 Processing workout data with game mechanics for user: {}", claims.username);
     
     let user_id = match Uuid::parse_str(&claims.sub) {
         Ok(id) => {
@@ -73,7 +73,7 @@ pub async fn upload_health_data(
         }
     }
 
-    // 🎲 CALCULATE GAME STATS FROM HEALTH DATA
+    // 🎲 CALCULATE GAME STATS FROM WORKOUT DATA
     let stat_changes = StatCalculator::calculate_stat_changes(&pool, user_id, &data).await;
     tracing::info!("📊 Calculated stat changes for {}: +{} stamina, +{} strength", 
         claims.username, 
@@ -119,14 +119,14 @@ pub async fn upload_health_data(
         ).await;
     }
 
-    // Insert health data into database
-    tracing::info!("💾 Inserting health data into database for user: {} with workout_uuid: {:?}", 
+    // Insert workout data into database
+    tracing::info!("💾 Inserting workout data into database for user: {} with workout_uuid: {:?}", 
         claims.username, data.workout_uuid);
-    let insert_result = insert_health_data(&pool, user_id, &data).await;
+    let insert_result = insert_workout_data(&pool, user_id, &data).await;
     
     match insert_result {
         Ok(sync_id) => {
-            tracing::info!("✅ Health data inserted successfully with sync_id: {} for user: {}", 
+            tracing::info!("✅ Workout data inserted successfully with sync_id: {} for user: {}", 
                 sync_id, claims.username);
             // 📊 STORE STAT CHANGES IN DATABASE (linked to this workout)
             let zone_breakdown_json = stat_changes.zone_breakdown.as_ref()
@@ -134,7 +134,7 @@ pub async fn upload_health_data(
 
             let stat_insert_result = sqlx::query!(
                 r#"
-                INSERT INTO stat_changes (health_data_id, user_id, stamina_change, strength_change, reasoning, zone_breakdown)
+                INSERT INTO stat_changes (workout_data_id, user_id, stamina_change, strength_change, reasoning, zone_breakdown)
                 VALUES ($1, $2, $3, $4, $5, $6)
                 "#,
                 sync_id,
@@ -155,7 +155,7 @@ pub async fn upload_health_data(
             }
             // 🎯 PREPARE GAME EVENT FOR REAL-TIME NOTIFICATION
             let game_event = json!({
-                "event_type": "health_data_processed",
+                "event_type": "workout_data_processed",
                 "user_id": user_id.to_string(),
                 "username": claims.username,
                 "sync_id": sync_id.to_string(),
@@ -227,17 +227,17 @@ pub async fn upload_health_data(
                 }
             });
 
-            tracing::info!("✅ Health data processed successfully with game mechanics for {}: {}", 
+            tracing::info!("✅ Workout data processed successfully with game mechanics for {}: {}", 
                 claims.username, sync_id);
             HttpResponse::Ok().json(
-                ApiResponse::success("Health data synced and game stats calculated!", sync_data)
+                ApiResponse::success("Workout data synced and game stats calculated!", sync_data)
             )
         }
         Err(e) => {
             // Check if this is a duplicate workout UUID error
             if let sqlx::Error::Database(ref db_err) = e {
                 if db_err.code().as_deref() == Some("23505") {
-                    tracing::error!("❌ DUPLICATE WORKOUT UUID: Failed to sync health data for {} due to duplicate workout_uuid: {:?}. This indicates a potential race condition where the duplicate check passed but another request inserted the same UUID before this one.", 
+                    tracing::error!("❌ DUPLICATE WORKOUT UUID: Failed to sync workout data for {} due to duplicate workout_uuid: {:?}. This indicates a potential race condition where the duplicate check passed but another request inserted the same UUID before this one.", 
                         claims.username, data.workout_uuid);
                     
                     // Return a more specific error response for duplicate UUIDs
@@ -247,9 +247,9 @@ pub async fn upload_health_data(
                 }
             }
             
-            tracing::error!("❌ Failed to sync health data for {}: {}", claims.username, e);
+            tracing::error!("❌ Failed to sync workout data for {}: {}", claims.username, e);
             HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error(format!("Failed to sync health data: {}", e))
+                ApiResponse::<()>::error(format!("Failed to sync workout data: {}", e))
             )
         }
     }

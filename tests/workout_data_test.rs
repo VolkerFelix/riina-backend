@@ -9,13 +9,13 @@ use common::utils::{spawn_app, create_test_user_and_login};
 use crate::common::utils::make_authenticated_request;
 
 #[tokio::test]
-async fn upload_health_data_working() {
+async fn upload_workout_data_working() {
     let test_app = spawn_app().await;
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
 
-    // Prepare health data with multiple heart rate readings simulating a workout
+    // Prepare workout data with multiple heart rate readings simulating a workout
     let base_time = Utc::now();
     let mut heart_rate_readings = Vec::new();
     
@@ -46,7 +46,7 @@ async fn upload_health_data_working() {
         }));
     }
 
-    let health_data = json!({
+    let workout_data = json!({
         "device_id": "test-device-123",
         "timestamp": base_time,
         "heart_rate": heart_rate_readings,
@@ -56,7 +56,7 @@ async fn upload_health_data_working() {
             "out_bed_time": 1678920000,
             "time_in_bed": 8.0
         },
-        "active_energy_burned": 450.75, // Higher calories for a real workout
+        "calories_burned": 450.75, // Higher calories for a real workout
         "additional_metrics": {
             "blood_oxygen": 98,
             "skin_temperature": 36.6
@@ -69,7 +69,7 @@ async fn upload_health_data_working() {
         reqwest::Method::POST,
         &format!("{}/health/upload_health", &test_app.address),
         &test_user.token,
-        Some(health_data),
+        Some(workout_data),
     ).await;
 
     let status = response.status();
@@ -82,7 +82,7 @@ async fn upload_health_data_working() {
 
     // Verify the data was stored correctly
     let saved = sqlx::query(
-        "SELECT device_id, heart_rate_data, active_energy_burned FROM health_data WHERE device_id = $1"
+        "SELECT device_id, heart_rate_data, calories_burned FROM workout_data WHERE device_id = $1"
     )
     .bind("test-device-123")
     .fetch_one(&test_app.db_pool)
@@ -91,11 +91,11 @@ async fn upload_health_data_working() {
 
     let device_id: String = saved.get("device_id");
     let heart_rate_data: Option<serde_json::Value> = saved.get("heart_rate_data");
-    let active_energy_burned: Option<f32> = saved.get("active_energy_burned");
+    let calories_burned: Option<f32> = saved.get("calories_burned");
 
     assert_eq!(device_id, "test-device-123");
     assert!(heart_rate_data.is_some());
-    assert_eq!(active_energy_burned, Some(450.75));
+    assert_eq!(calories_burned, Some(450.75));
     
     // Verify the heart rate data structure and content
     if let Some(hr_data) = heart_rate_data {
@@ -138,7 +138,7 @@ async fn duplicate_workout_uuid_prevention() {
     let workout_uuid = "apple-health-workout-12345-abcdef";
     let base_time = Utc::now();
     
-    let health_data = json!({
+    let workout_data = json!({
         "device_id": "apple-health-kit",
         "timestamp": base_time,
         "workout_uuid": workout_uuid,
@@ -152,7 +152,7 @@ async fn duplicate_workout_uuid_prevention() {
                 "heart_rate": 130
             }
         ],
-        "active_energy_burned": 250.0
+        "calories_burned": 250.0
     });
 
     // First upload - should succeed
@@ -161,7 +161,7 @@ async fn duplicate_workout_uuid_prevention() {
         reqwest::Method::POST,
         &format!("{}/health/upload_health", &test_app.address),
         &test_user.token,
-        Some(health_data.clone()),
+        Some(workout_data.clone()),
     ).await;
 
     assert!(response1.status().is_success(), "First upload should succeed");
@@ -176,7 +176,7 @@ async fn duplicate_workout_uuid_prevention() {
         reqwest::Method::POST,
         &format!("{}/health/upload_health", &test_app.address),
         &test_user.token,
-        Some(health_data.clone()),
+        Some(workout_data.clone()),
     ).await;
 
     assert!(response2.status().is_success(), "Duplicate response should still be 200 OK");
@@ -189,7 +189,7 @@ async fn duplicate_workout_uuid_prevention() {
 
     // Verify only one record exists in database
     let count = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM health_data WHERE workout_uuid = $1"
+        "SELECT COUNT(*) FROM workout_data WHERE workout_uuid = $1"
     )
     .bind(workout_uuid)
     .fetch_one(&test_app.db_pool)
@@ -200,15 +200,15 @@ async fn duplicate_workout_uuid_prevention() {
 
     // Third upload with different UUID - should succeed
     let different_uuid = "apple-health-workout-67890-fedcba";
-    let mut health_data_different = health_data.clone();
-    health_data_different["workout_uuid"] = json!(different_uuid);
+    let mut workout_data_different = workout_data.clone();
+    workout_data_different["workout_uuid"] = json!(different_uuid);
 
     let response3 = make_authenticated_request(
         &client,
         reqwest::Method::POST,
         &format!("{}/health/upload_health", &test_app.address),
         &test_user.token,
-        Some(health_data_different),
+        Some(workout_data_different),
     ).await;
 
     assert!(response3.status().is_success(), "Different UUID upload should succeed");
@@ -219,7 +219,7 @@ async fn duplicate_workout_uuid_prevention() {
 
     // Verify now we have two records with different UUIDs
     let total_count = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM health_data WHERE workout_uuid IN ($1, $2)"
+        "SELECT COUNT(*) FROM workout_data WHERE workout_uuid IN ($1, $2)"
     )
     .bind(workout_uuid)
     .bind(different_uuid)

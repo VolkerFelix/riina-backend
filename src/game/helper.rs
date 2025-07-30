@@ -1,7 +1,7 @@
 use sqlx::{Pool, Postgres, Error};
 use uuid::Uuid;
 
-use crate::models::health_data::{UserProfile, Gender, HeartRateZones};
+use crate::models::workout_data::{UserProfile, Gender, HeartRateZones};
 
 pub async fn get_user_profile(pool: &Pool<Postgres>, user_id: Uuid) -> Result<UserProfile, Error> {
     tracing::info!("🔍 Fetching health profile for user: {}", user_id);

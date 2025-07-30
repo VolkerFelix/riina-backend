@@ -6,7 +6,7 @@ use uuid::Uuid;
 /// These functions create realistic heart rate data simulating different workout intensities
 
 /// Beginner workout: 8 minutes, Zone 1-2 (110-135 bpm), lower calories
-pub fn create_beginner_health_data() -> serde_json::Value {
+pub fn create_beginner_workout_data() -> serde_json::Value {
     let base_time = Utc::now();
     let mut heart_rate_readings = Vec::new();
     
@@ -36,14 +36,14 @@ pub fn create_beginner_health_data() -> serde_json::Value {
         "device_id": format!("device-{}", Uuid::new_v4()),
         "timestamp": base_time,
         "heart_rate": heart_rate_readings,
-        "active_energy_burned": 180.0, // Lower calories for beginner
+        "calories_burned": 180.0, // Lower calories for beginner
         "workout_start": base_time,
         "workout_end": base_time + Duration::seconds(480)
     })
 }
 
 /// Intermediate workout: 15 minutes, Zone 2-3 (130-155 bpm), moderate calories
-pub fn create_intermediate_health_data() -> serde_json::Value {
+pub fn create_intermediate_workout_data() -> serde_json::Value {
     let base_time = Utc::now();
     let mut heart_rate_readings = Vec::new();
     
@@ -74,14 +74,14 @@ pub fn create_intermediate_health_data() -> serde_json::Value {
         "device_id": format!("device-{}", Uuid::new_v4()),
         "timestamp": base_time,
         "heart_rate": heart_rate_readings,
-        "active_energy_burned": 320.0, // Moderate calories
+        "calories_burned": 320.0, // Moderate calories
         "workout_start": base_time,
         "workout_end": base_time + Duration::seconds(1500)
     })
 }
 
 /// Advanced workout: 25 minutes, Zone 3-4 (150-175 bpm), higher calories with intervals
-pub fn create_advanced_health_data() -> serde_json::Value {
+pub fn create_advanced_workout_data() -> serde_json::Value {
     let base_time = Utc::now();
     let mut heart_rate_readings = Vec::new();
     
@@ -114,14 +114,14 @@ pub fn create_advanced_health_data() -> serde_json::Value {
         "device_id": format!("device-{}", Uuid::new_v4()),
         "timestamp": base_time,
         "heart_rate": heart_rate_readings,
-        "active_energy_burned": 520.0, // Higher calories for advanced
+        "calories_burned": 520.0, // Higher calories for advanced
         "workout_start": base_time,
         "workout_end": base_time + Duration::seconds(2100)
     })
 }
 
 /// Elite workout: 35 minutes, Zone 4-5 (165-185+ bpm), highest calories with intense intervals
-pub fn create_elite_health_data() -> serde_json::Value {
+pub fn create_elite_workout_data() -> serde_json::Value {
     let base_time = Utc::now();
     let mut heart_rate_readings = Vec::new();
     
@@ -154,14 +154,14 @@ pub fn create_elite_health_data() -> serde_json::Value {
         "device_id": format!("device-{}", Uuid::new_v4()),
         "timestamp": base_time,
         "heart_rate": heart_rate_readings,
-        "active_energy_burned": 720.0, // Highest calories for elite
+        "calories_burned": 720.0, // Highest calories for elite
         "workout_start": base_time,
         "workout_end": base_time + Duration::seconds(2100)
     })
 }
 
 /// Helper function to upload health data for a user
-pub async fn upload_health_data_for_user(
+pub async fn upload_workout_data_for_user(
     client: &reqwest::Client,
     app_address: &str,
     token: &str,

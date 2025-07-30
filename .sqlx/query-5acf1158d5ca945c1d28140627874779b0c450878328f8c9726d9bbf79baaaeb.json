@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT \n            hd.id,\n            COALESCE(hd.workout_start, hd.created_at) as workout_date,\n            hd.workout_start,\n            hd.workout_end,\n            hd.created_at,\n            hd.active_energy_burned as calories_burned,\n            hd.heart_rate_data,\n            -- Get game stats from stat_changes table\n            COALESCE(sc.stamina_change, 0) as stamina_gained,\n            COALESCE(sc.strength_change, 0) as strength_gained,\n            sc.zone_breakdown\n        FROM health_data hd\n        LEFT JOIN stat_changes sc ON sc.health_data_id = hd.id\n        WHERE hd.user_id = $1\n        AND (hd.active_energy_burned > 100 OR hd.heart_rate_data IS NOT NULL)\n        ORDER BY COALESCE(hd.workout_start, hd.created_at) DESC\n        LIMIT $2 OFFSET $3\n        ",
+  "query": "\n        SELECT \n            hd.id,\n            COALESCE(hd.workout_start, hd.created_at) as workout_date,\n            hd.workout_start,\n            hd.workout_end,\n            hd.created_at,\n            hd.calories_burned as calories_burned,\n            hd.heart_rate_data,\n            -- Get game stats from stat_changes table\n            COALESCE(sc.stamina_change, 0) as stamina_gained,\n            COALESCE(sc.strength_change, 0) as strength_gained,\n            sc.zone_breakdown\n        FROM workout_data hd\n        LEFT JOIN stat_changes sc ON sc.workout_data_id = hd.id\n        WHERE hd.user_id = $1\n        AND (hd.calories_burned > 100 OR hd.heart_rate_data IS NOT NULL)\n        ORDER BY COALESCE(hd.workout_start, hd.created_at) DESC\n        LIMIT $2 OFFSET $3\n        ",
   "describe": {
     "columns": [
       {
@@ -74,5 +74,5 @@
       true
     ]
   },
-  "hash": "3720177abd9c6c9ac1efe6809afe36bcab8fdde54b743ad72bd2a29758d9bbc2"
+  "hash": "5acf1158d5ca945c1d28140627874779b0c450878328f8c9726d9bbf79baaaeb"
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT COUNT(*) as count\n        FROM health_data\n        WHERE user_id = $1\n        AND (active_energy_burned > 100 OR heart_rate_data IS NOT NULL)\n        ",
+  "query": "\n        SELECT COUNT(*) as count\n        FROM workout_data\n        WHERE user_id = $1\n        AND (calories_burned > 100 OR heart_rate_data IS NOT NULL)\n        ",
   "describe": {
     "columns": [
       {
@@ -18,5 +18,5 @@
       null
     ]
   },
-  "hash": "d670c7b8b1bdd896c23aa8172ece538badc267b7b2386d1788a5bec6d66abd86"
+  "hash": "64fafc9c6381932e5c3efae1583d81560753dffcce40a40cd557351b151ba67a"
 }

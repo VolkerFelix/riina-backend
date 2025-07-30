@@ -9,9 +9,9 @@ use common::{
         create_test_user_and_login,
         make_authenticated_request
     },
-    health_data_helpers::{
-        create_elite_health_data,
-        upload_health_data_for_user}
+    workout_data_helpers::{
+        create_elite_workout_data,
+        upload_workout_data_for_user}
 };
 
 #[tokio::test]
@@ -31,8 +31,8 @@ async fn test_get_league_users_with_stats_success() {
 
     // Step 2: Upload health data for each user
     for user in users.iter() {
-        let health_data = create_elite_health_data();
-        let upload_response = upload_health_data_for_user(&client, &test_app.address, &user.token, health_data).await;
+        let workout_data = create_elite_workout_data();
+        let upload_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, workout_data).await;
         assert!(upload_response.is_ok(), "Failed to upload health data for user: {}", upload_response.err().unwrap());
     }
 

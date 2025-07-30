@@ -13,7 +13,7 @@ use sqlx;
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, get_next_date};
 use common::admin_helpers::{create_admin_user_and_login, create_league_season};
-use common::health_data_helpers::{create_elite_health_data, create_advanced_health_data, upload_health_data_for_user};
+use common::workout_data_helpers::{create_elite_workout_data, create_advanced_workout_data, upload_workout_data_for_user};
 
 use evolveme_backend::config::settings::get_config;
 
@@ -47,8 +47,8 @@ async fn test_redis_game_evaluation_notifications() {
     let user2 = create_test_user_and_login(&app.address).await;
     
     // Upload health data
-    upload_health_data_for_user(&client, &app.address, &user1.token, create_elite_health_data()).await.unwrap();
-    upload_health_data_for_user(&client, &app.address, &user2.token, create_advanced_health_data()).await.unwrap();
+    upload_workout_data_for_user(&client, &app.address, &user1.token, create_elite_workout_data()).await.unwrap();
+    upload_workout_data_for_user(&client, &app.address, &user2.token, create_advanced_workout_data()).await.unwrap();
     
     let unique_suffix = &Uuid::new_v4().to_string()[..8];
     // Create league

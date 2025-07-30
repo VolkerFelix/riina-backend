@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT MAX(created_at) as last_sync\n        FROM health_data \n        WHERE user_id = $1\n        ",
+  "query": "\n        SELECT MAX(created_at) as last_sync\n        FROM workout_data \n        WHERE user_id = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -18,5 +18,5 @@
       null
     ]
   },
-  "hash": "c39cd5df050635462f59111c9168abf19d2a07128d97a07fa6e28f68de2ad7c4"
+  "hash": "3e94d8e034b5e6e39101b5a0591d0ea524f4b47a4c90eff2b2eceefc9b3ff91d"
 }

@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT COUNT(*) as count\n        FROM workout_data \n        WHERE user_id = $1 \n        AND created_at >= $2\n        AND calories_burned > 200  -- Only count significant activity\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "adc008e6f472b763b0ad59dfc41e8ed48f74159a9c99d79a8b1d835d2a9af7b2"
+}

@@ -6,7 +6,7 @@ use chrono::{Weekday, NaiveTime};
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, get_next_date};
 use common::admin_helpers::{create_admin_user_and_login, create_league_season};
-use common::health_data_helpers::{create_elite_health_data, create_advanced_health_data, upload_health_data_for_user};
+use common::workout_data_helpers::{create_elite_workout_data, create_advanced_workout_data, upload_workout_data_for_user};
 
 use evolveme_backend::services::{GameEvaluationService, WeekGameService};
 
@@ -23,10 +23,10 @@ async fn test_game_evaluation_service_integration() {
     let user4 = create_test_user_and_login(&app.address).await; // Advanced
     
     // Step 2: Upload health data to create power differences
-    upload_health_data_for_user(&client, &app.address, &user1.token, create_elite_health_data()).await.unwrap();
-    upload_health_data_for_user(&client, &app.address, &user2.token, create_advanced_health_data()).await.unwrap();
-    upload_health_data_for_user(&client, &app.address, &user3.token, create_elite_health_data()).await.unwrap();
-    upload_health_data_for_user(&client, &app.address, &user4.token, create_advanced_health_data()).await.unwrap();
+    upload_workout_data_for_user(&client, &app.address, &user1.token, create_elite_workout_data()).await.unwrap();
+    upload_workout_data_for_user(&client, &app.address, &user2.token, create_advanced_workout_data()).await.unwrap();
+    upload_workout_data_for_user(&client, &app.address, &user3.token, create_elite_workout_data()).await.unwrap();
+    upload_workout_data_for_user(&client, &app.address, &user4.token, create_advanced_workout_data()).await.unwrap();
     
     // Step 3: Create league and teams
     let league_request = json!({
