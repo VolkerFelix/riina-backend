@@ -47,6 +47,8 @@ pub fn run(
             .allowed_origin("http://localhost:3001")
             .allowed_origin("https://evolveme-fantasy.fly.dev")
             .allowed_origin("https://evolveme-admin.fly.dev")
+            .allowed_origin("https://evolveme-fantasy-dev.fly.dev")
+            .allowed_origin("https://evolveme-admin-dev.fly.dev")
             .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "PATCH"])
             .allowed_headers(vec![
                 http::header::AUTHORIZATION,

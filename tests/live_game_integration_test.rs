@@ -445,6 +445,52 @@ async fn test_live_scoring_history_api(
                 assert!(avg_hr < 300.0, "avg_heart_rate should be reasonable, got: {}", avg_hr);
             }
             
+            // Verify heart rate zones are properly calculated and stored
+            // Our test workouts include heart rate data, so zones should be calculated
+            assert!(
+                !workout_details["heart_rate_zones"].is_null(),
+                "heart_rate_zones should not be null when workout has heart rate data"
+            );
+            
+            if let Some(zones) = workout_details["heart_rate_zones"].as_array() {
+                assert!(!zones.is_empty(), "heart_rate_zones should contain zone data when heart rate is present");
+                
+                // Verify zone structure
+                for zone in zones {
+                    let zone_obj = zone.as_object().expect("Each zone should be an object");
+                    assert!(zone_obj.contains_key("zone"), "Zone should have 'zone' field");
+                    assert!(zone_obj.contains_key("minutes"), "Zone should have 'minutes' field");
+                    assert!(zone_obj.contains_key("stamina_gained"), "Zone should have 'stamina_gained' field");
+                    assert!(zone_obj.contains_key("strength_gained"), "Zone should have 'strength_gained' field");
+                    
+                    // Verify zone has reasonable values
+                    let zone_name = zone_obj["zone"].as_str().expect("zone should be a string");
+                    assert!(
+                        ["Zone1", "Zone2", "Zone3", "Zone4", "Zone5"].contains(&zone_name),
+                        "Zone name should be valid, got: {}", zone_name
+                    );
+                    
+                    let minutes = zone_obj["minutes"].as_f64().expect("minutes should be a number");
+                    assert!(minutes >= 0.0, "Zone minutes should be non-negative, got: {}", minutes);
+                }
+                
+                // Verify that total zone minutes roughly equals workout duration
+                let total_zone_minutes: f64 = zones.iter()
+                    .map(|z| z["minutes"].as_f64().unwrap_or(0.0))
+                    .sum();
+                
+                if let Some(duration) = workout_details["duration_minutes"].as_i64() {
+                    let duration_diff = (total_zone_minutes - duration as f64).abs();
+                    assert!(
+                        duration_diff < 2.0,
+                        "Total zone minutes {} should roughly equal workout duration {}",
+                        total_zone_minutes, duration
+                    );
+                }
+            } else {
+                panic!("heart_rate_zones should be an array when heart rate data is present");
+            }
+            
             println!("✅ Workout details verified for event {}", event_obj["id"].as_str().unwrap_or("unknown"));
         } else {
             panic!("workout_details should be an object, not null");

@@ -80,26 +80,27 @@ pub async fn get_workout_history(
     let limit = query.limit.unwrap_or(20).min(100); // Max 100 items
     let offset = query.offset.unwrap_or(0);
 
-    // Fetch workout history with game stats and zone breakdown
+    // Fetch workout history with all stats from workout_data
     let workouts: Vec<WorkoutHistoryItem> = match sqlx::query!(
         r#"
         SELECT 
-            hd.id,
-            COALESCE(hd.workout_start, hd.created_at) as workout_date,
-            hd.workout_start,
-            hd.workout_end,
-            hd.created_at,
-            hd.calories_burned as calories_burned,
-            hd.heart_rate_data,
-            -- Get game stats from stat_changes table
-            COALESCE(sc.stamina_change, 0) as stamina_gained,
-            COALESCE(sc.strength_change, 0) as strength_gained,
-            sc.zone_breakdown
-        FROM workout_data hd
-        LEFT JOIN stat_changes sc ON sc.workout_data_id = hd.id
-        WHERE hd.user_id = $1
-        AND (hd.calories_burned > 100 OR hd.heart_rate_data IS NOT NULL)
-        ORDER BY COALESCE(hd.workout_start, hd.created_at) DESC
+            wd.id,
+            COALESCE(wd.workout_start, wd.created_at) as workout_date,
+            wd.workout_start,
+            wd.workout_end,
+            wd.created_at,
+            wd.calories_burned as calories_burned,
+            wd.duration_minutes,
+            wd.avg_heart_rate,
+            wd.max_heart_rate,
+            wd.heart_rate_data,
+            wd.heart_rate_zones,
+            COALESCE(wd.stamina_gained, 0) as stamina_gained,
+            COALESCE(wd.strength_gained, 0) as strength_gained
+        FROM workout_data wd
+        WHERE wd.user_id = $1
+        AND (wd.calories_burned > 100 OR wd.heart_rate_data IS NOT NULL)
+        ORDER BY COALESCE(wd.workout_start, wd.created_at) DESC
         LIMIT $2 OFFSET $3
         "#,
         user_id,
@@ -111,16 +112,22 @@ pub async fn get_workout_history(
     {
         Ok(rows) => {
             rows.into_iter().map(|row| {
-                let duration_minutes = calculate_duration_minutes(row.workout_start, row.workout_end);
+                // Use pre-calculated values from database when available
+                let duration_minutes = row.duration_minutes
+                    .or_else(|| calculate_duration_minutes(row.workout_start, row.workout_end));
                 
-                // Parse heart rate data from JSON (JSONB NOT NULL so always present)
-                let heart_rate_data: Vec<HeartRateData> = 
-                    serde_json::from_value(row.heart_rate_data.clone()).unwrap_or_default();
-                
-                let avg_heart_rate = calculate_avg_heart_rate(&heart_rate_data);
-                let max_heart_rate = calculate_max_heart_rate(&heart_rate_data);
-                let stamina = row.stamina_gained.unwrap_or(0) as i32;
-                let strength = row.strength_gained.unwrap_or(0) as i32;
+                // Use pre-calculated heart rate stats or calculate from raw data if needed
+                let (avg_heart_rate, max_heart_rate) = if row.avg_heart_rate.is_some() && row.max_heart_rate.is_some() {
+                    (row.avg_heart_rate, row.max_heart_rate)
+                } else {
+                    // Fallback: calculate from raw data if pre-calculated values missing
+                    let heart_rate_data: Vec<HeartRateData> = 
+                        serde_json::from_value(row.heart_rate_data.clone()).unwrap_or_default();
+                    (
+                        calculate_avg_heart_rate(&heart_rate_data),
+                        calculate_max_heart_rate(&heart_rate_data)
+                    )
+                };
                 
                 WorkoutHistoryItem {
                     id: row.id,
@@ -131,9 +138,9 @@ pub async fn get_workout_history(
                     calories_burned: row.calories_burned,
                     avg_heart_rate,
                     max_heart_rate,
-                    heart_rate_zones: row.zone_breakdown, // Include zone breakdown from stat_changes
-                    stamina_gained: stamina,
-                    strength_gained: strength,
+                    heart_rate_zones: row.heart_rate_zones, // Now directly from workout_data
+                    stamina_gained: row.stamina_gained.unwrap_or(0) as i32,
+                    strength_gained: row.strength_gained.unwrap_or(0) as i32,
                 }
             }).collect()
         },

@@ -1,0 +1,16 @@
+application:
+  host: 0.0.0.0
+  log_level: debug
+database:
+  # Will be overridden by Fly.io environment variables
+  host: localhost
+  port: 5432
+  db_name: evolveme_dev_db
+jwt:
+  # Development JWT secret - different from production
+  secret: "dev_jwt_secret_change_me_in_production"
+  expiration_hours: 24
+redis:
+  # Will be overridden by Fly.io environment variables  
+  host: localhost
+  port: 6379

@@ -117,30 +117,33 @@ pub async fn upload_workout_data(
         Ok(sync_id) => {
             tracing::info!("✅ Workout data inserted successfully with sync_id: {} for user: {}", 
                 sync_id, claims.username);
-            // 📊 STORE STAT CHANGES IN DATABASE (linked to this workout)
+                
+            // 📊 UPDATE WORKOUT DATA WITH CALCULATED STATS
             let zone_breakdown_json = stat_changes.zone_breakdown.as_ref()
                 .map(|breakdown| serde_json::to_value(breakdown).unwrap_or(serde_json::Value::Null));
 
-            let stat_insert_result = sqlx::query!(
+            let update_result = sqlx::query!(
                 r#"
-                INSERT INTO stat_changes (workout_data_id, user_id, stamina_change, strength_change, reasoning, zone_breakdown)
-                VALUES ($1, $2, $3, $4, $5, $6)
+                UPDATE workout_data 
+                SET heart_rate_zones = $1,
+                    stamina_gained = $2,
+                    strength_gained = $3,
+                    total_points_gained = $4
+                WHERE id = $5
                 "#,
-                sync_id,
-                user_id,
+                zone_breakdown_json,
                 stat_changes.stamina_change,
                 stat_changes.strength_change,
-                &stat_changes.reasoning,
-                zone_breakdown_json
+                stat_changes.stamina_change + stat_changes.strength_change,
+                sync_id
             )
             .execute(&**pool)
             .await;
 
-            if let Err(e) = stat_insert_result {
-                tracing::error!("❌ Failed to store stat changes for workout {}: {}", sync_id, e);
-                // Continue processing even if stat storage fails
+            if let Err(e) = update_result {
+                tracing::error!("❌ Failed to update workout data with calculated stats for workout {}: {}", sync_id, e);
             } else {
-                tracing::info!("✅ Successfully stored stat changes for workout {}", sync_id);
+                tracing::info!("✅ Successfully updated workout data with zone breakdown and stat gains for workout {}", sync_id);
             }
 
             // 🏆 CHECK FOR ACTIVE LIVE GAMES AND UPDATE SCORES
