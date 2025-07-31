@@ -17,13 +17,13 @@ pub fn create_beginner_workout_data() -> serde_json::Value {
         
         let heart_rate = if workout_progress < 0.2 {
             // Warmup: 70-110 bpm
-            70.0 + 40.0 * workout_progress * 5.0
+            (70.0 + 40.0 * workout_progress * 5.0) as i32
         } else if workout_progress < 0.8 {
             // Main workout: 110-135 bpm (Zone 1-2)
-            110.0 + 25.0 * (workout_progress - 0.2) / 0.6
+            (110.0 + 25.0 * (workout_progress - 0.2) / 0.6) as i32
         } else {
             // Cooldown: 135-90 bpm
-            135.0 - 45.0 * (workout_progress - 0.8) / 0.2
+            (135.0 - 45.0 * (workout_progress - 0.8) / 0.2) as i32
         };
         
         heart_rate_readings.push(json!({
@@ -36,7 +36,7 @@ pub fn create_beginner_workout_data() -> serde_json::Value {
         "device_id": format!("device-{}", Uuid::new_v4()),
         "timestamp": base_time,
         "heart_rate": heart_rate_readings,
-        "calories_burned": 180.0, // Lower calories for beginner
+        "calories_burned": 180, // Lower calories for beginner
         "workout_start": base_time,
         "workout_end": base_time + Duration::seconds(480)
     })
@@ -54,14 +54,14 @@ pub fn create_intermediate_workout_data() -> serde_json::Value {
         
         let heart_rate = if workout_progress < 0.15 {
             // Warmup: 80-130 bpm
-            80.0 + 50.0 * workout_progress * 6.67
+            (80.0 + 50.0 * workout_progress * 6.67) as i32
         } else if workout_progress < 0.85 {
             // Main workout: 130-155 bpm (Zone 2-3) with some variation
             let base_hr = 130.0 + 25.0 * (workout_progress - 0.15) / 0.7;
-            base_hr + 8.0 * (i as f64 * 0.05).sin()
+            (base_hr + 8.0 * (i as f64 * 0.05).sin()) as i32
         } else {
             // Cooldown: 155-95 bpm
-            155.0 - 60.0 * (workout_progress - 0.85) / 0.15
+            (155.0 - 60.0 * (workout_progress - 0.85) / 0.15) as i32
         };
         
         heart_rate_readings.push(json!({
@@ -74,7 +74,7 @@ pub fn create_intermediate_workout_data() -> serde_json::Value {
         "device_id": format!("device-{}", Uuid::new_v4()),
         "timestamp": base_time,
         "heart_rate": heart_rate_readings,
-        "calories_burned": 320.0, // Moderate calories
+        "calories_burned": 320, // Moderate calories
         "workout_start": base_time,
         "workout_end": base_time + Duration::seconds(1500)
     })
@@ -92,16 +92,16 @@ pub fn create_advanced_workout_data() -> serde_json::Value {
         
         let heart_rate = if workout_progress < 0.1 {
             // Warmup: 85-150 bpm
-            85.0 + 65.0 * workout_progress * 10.0
+            (85.0 + 65.0 * workout_progress * 10.0) as i32
         } else if workout_progress < 0.9 {
             // Main workout: 150-175 bpm (Zone 3-4) with intervals
             let base_hr = 150.0 + 25.0 * (workout_progress - 0.1) / 0.8;
             // Add interval pattern
             let interval_factor = if (i / 120) % 2 == 0 { 1.1 } else { 0.95 };
-            base_hr * interval_factor + 5.0 * (i as f64 * 0.02).sin()
+            (base_hr * interval_factor + 5.0 * (i as f64 * 0.02).sin()) as i32
         } else {
             // Cooldown: 175-100 bpm
-            175.0 - 75.0 * (workout_progress - 0.9) / 0.1
+            (175.0 - 75.0 * (workout_progress - 0.9) / 0.1) as i32
         };
         
         heart_rate_readings.push(json!({
@@ -114,7 +114,7 @@ pub fn create_advanced_workout_data() -> serde_json::Value {
         "device_id": format!("device-{}", Uuid::new_v4()),
         "timestamp": base_time,
         "heart_rate": heart_rate_readings,
-        "calories_burned": 520.0, // Higher calories for advanced
+        "calories_burned": 520, // Higher calories for advanced
         "workout_start": base_time,
         "workout_end": base_time + Duration::seconds(2100)
     })
@@ -132,16 +132,16 @@ pub fn create_elite_workout_data() -> serde_json::Value {
         
         let heart_rate = if workout_progress < 0.08 {
             // Warmup: 90-165 bpm
-            90.0 + 75.0 * workout_progress * 12.5
+            (90.0 + 75.0 * workout_progress * 12.5) as i32
         } else if workout_progress < 0.92 {
             // Main workout: 165-185+ bpm (Zone 4-5) with high intensity intervals
             let base_hr = 165.0 + 20.0 * (workout_progress - 0.08) / 0.84;
             // Elite interval training pattern
             let interval_boost = if (i / 180) % 3 == 0 { 15.0 } else { 0.0 };
-            base_hr + interval_boost + 8.0 * (i as f64 * 0.01).sin()
+            (base_hr + interval_boost + 8.0 * (i as f64 * 0.01).sin()) as i32
         } else {
             // Cooldown: 185-105 bpm
-            185.0 - 80.0 * (workout_progress - 0.92) / 0.08
+            (185.0 - 80.0 * (workout_progress - 0.92) / 0.08) as i32
         };
         
         heart_rate_readings.push(json!({
@@ -154,7 +154,7 @@ pub fn create_elite_workout_data() -> serde_json::Value {
         "device_id": format!("device-{}", Uuid::new_v4()),
         "timestamp": base_time,
         "heart_rate": heart_rate_readings,
-        "calories_burned": 720.0, // Highest calories for elite
+        "calories_burned": 720, // Highest calories for elite
         "workout_start": base_time,
         "workout_end": base_time + Duration::seconds(2100)
     })

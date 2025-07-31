@@ -311,8 +311,8 @@ impl LiveGameQueries {
             INSERT INTO live_score_events (
                 id, live_game_id, user_id, username, team_id, team_side,
                 score_points, power_contribution, stamina_gained, strength_gained,
-                description, occurred_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+                description, workout_data_id, occurred_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
             "#,
             event_id,
             live_game_id,
@@ -324,7 +324,8 @@ impl LiveGameQueries {
             update.power_increase,
             update.stamina_gained,
             update.strength_gained,
-            update.description
+            update.description,
+            update.workout_data_id
         )
         .execute(&self.pool)
         .await?;
@@ -446,10 +447,7 @@ impl LiveGameQueries {
                 wd.strength_gained as "workout_strength_gained?",
                 wd.total_points_gained as "total_points_gained?"
             FROM live_score_events lse
-            LEFT JOIN workout_data wd ON (
-                lse.user_id = wd.user_id 
-                AND ABS(EXTRACT(EPOCH FROM (lse.occurred_at - wd.created_at))) < 300  -- Within 5 minutes
-            )
+            LEFT JOIN workout_data wd ON lse.workout_data_id = wd.id
             WHERE lse.live_game_id = $1
             ORDER BY lse.occurred_at DESC
             LIMIT $2

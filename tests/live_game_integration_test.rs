@@ -386,6 +386,69 @@ async fn test_live_scoring_history_api(
             event_user_uuid == home_user.user_id || event_user_uuid == away_user.user_id,
             "Event should be from one of our test users"
         );
+
+        // Verify workout_details are present and properly structured
+        assert!(event_obj.contains_key("workout_details"), "Event should have workout_details");
+        
+        if let Some(workout_details) = event_obj["workout_details"].as_object() {
+            // Check that essential workout detail fields are present
+            assert!(workout_details.contains_key("id"), "workout_details should have id");
+            assert!(workout_details.contains_key("workout_date"), "workout_details should have workout_date");
+            assert!(workout_details.contains_key("workout_start"), "workout_details should have workout_start");
+            assert!(workout_details.contains_key("workout_end"), "workout_details should have workout_end");
+            assert!(workout_details.contains_key("stamina_gained"), "workout_details should have stamina_gained");
+            assert!(workout_details.contains_key("strength_gained"), "workout_details should have strength_gained");
+            
+            // For our test data that includes heart rate, verify those fields are present
+            assert!(workout_details.contains_key("duration_minutes"), "workout_details should have duration_minutes");
+            assert!(workout_details.contains_key("avg_heart_rate"), "workout_details should have avg_heart_rate");
+            assert!(workout_details.contains_key("max_heart_rate"), "workout_details should have max_heart_rate");
+            assert!(workout_details.contains_key("heart_rate_zones"), "workout_details should have heart_rate_zones");
+            
+            // Verify that the workout_details have actual values (not all null)
+            // Our test workouts should have duration since they have start/end times
+            if let (Some(start), Some(end)) = (workout_details["workout_start"].as_str(), workout_details["workout_end"].as_str()) {
+                let workout_start = chrono::DateTime::parse_from_rfc3339(start).expect("Should parse workout_start");
+                let workout_end = chrono::DateTime::parse_from_rfc3339(end).expect("Should parse workout_end");
+                let expected_duration_minutes = (workout_end - workout_start).num_minutes();
+                
+                if expected_duration_minutes > 0 {
+                    // The database should have the calculated duration, not null
+                    assert!(
+                        !workout_details["duration_minutes"].is_null(),
+                        "workout_details.duration_minutes should not be null when workout has start/end times"
+                    );
+                    
+                    let actual_duration = workout_details["duration_minutes"].as_i64()
+                        .expect("duration_minutes should be a number, not null");
+                    assert!(
+                        actual_duration > 0,
+                        "workout_details should have calculated duration_minutes > 0, got: {}",
+                        actual_duration
+                    );
+                    
+                    // Verify the calculated duration is reasonable (within 1 minute of expected)
+                    let duration_diff = (actual_duration - expected_duration_minutes).abs();
+                    assert!(
+                        duration_diff <= 1,
+                        "Calculated duration {} should be close to expected {}", 
+                        actual_duration, expected_duration_minutes
+                    );
+                }
+            }
+            
+            // Also verify heart rate data is properly calculated if present
+            if workout_details.contains_key("avg_heart_rate") && !workout_details["avg_heart_rate"].is_null() {
+                let avg_hr = workout_details["avg_heart_rate"].as_f64()
+                    .expect("avg_heart_rate should be a number if not null");
+                assert!(avg_hr > 0.0, "avg_heart_rate should be positive, got: {}", avg_hr);
+                assert!(avg_hr < 300.0, "avg_heart_rate should be reasonable, got: {}", avg_hr);
+            }
+            
+            println!("✅ Workout details verified for event {}", event_obj["id"].as_str().unwrap_or("unknown"));
+        } else {
+            panic!("workout_details should be an object, not null");
+        }
     }
     
     // Check that events are ordered by most recent first (as expected by frontend)

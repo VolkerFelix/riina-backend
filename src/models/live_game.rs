@@ -153,6 +153,7 @@ pub struct LiveGameScoreUpdate {
     pub stamina_gained: i32,
     pub strength_gained: i32,
     pub description: String,
+    pub workout_data_id: Option<Uuid>,
 }
 
 /// Live game summary for API responses

@@ -4,9 +4,7 @@ use chrono::{Utc, Duration};
 use sqlx::Row;
 
 mod common;
-use common::utils::{spawn_app, create_test_user_and_login};
-
-use crate::common::utils::make_authenticated_request;
+use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request};
 
 #[tokio::test]
 async fn upload_workout_data_working() {
@@ -27,17 +25,17 @@ async fn upload_workout_data_working() {
         // Simulate workout: resting -> warmup -> high intensity -> cooldown
         let heart_rate = if workout_progress < 0.1 {
             // Resting phase (0-1 min): 65-70 bpm
-            65.0 + 5.0 * workout_progress * 10.0
+            (65.0 + 5.0 * workout_progress * 10.0) as i32
         } else if workout_progress < 0.3 {
             // Warmup phase (1-3 min): 70-120 bpm
-            70.0 + 50.0 * (workout_progress - 0.1) / 0.2
+            (70.0 + 50.0 * (workout_progress - 0.1) / 0.2) as i32
         } else if workout_progress < 0.8 {
             // High intensity phase (3-8 min): 120-160 bpm with variation
             let base_hr = 120.0 + 40.0 * (workout_progress - 0.3) / 0.5;
-            base_hr + 10.0 * (i as f64 * 0.1).sin() // Add some variation
+            (base_hr + 10.0 * (i as f64 * 0.1).sin()) as i32 // Add some variation
         } else {
             // Cooldown phase (8-10 min): 160-80 bpm
-            160.0 - 80.0 * (workout_progress - 0.8) / 0.2
+            (160.0 - 80.0 * (workout_progress - 0.8) / 0.2) as i32
         };
         
         heart_rate_readings.push(json!({
@@ -56,7 +54,7 @@ async fn upload_workout_data_working() {
             "out_bed_time": 1678920000,
             "time_in_bed": 8.0
         },
-        "calories_burned": 450.75, // Higher calories for a real workout
+        "calories_burned": 450, // Higher calories for a real workout
         "additional_metrics": {
             "blood_oxygen": 98,
             "skin_temperature": 36.6
@@ -91,11 +89,11 @@ async fn upload_workout_data_working() {
 
     let device_id: String = saved.get("device_id");
     let heart_rate_data: Option<serde_json::Value> = saved.get("heart_rate_data");
-    let calories_burned: Option<f32> = saved.get("calories_burned");
+    let calories_burned: Option<i32> = saved.get("calories_burned");
 
     assert_eq!(device_id, "test-device-123");
     assert!(heart_rate_data.is_some());
-    assert_eq!(calories_burned, Some(450.75));
+    assert_eq!(calories_burned, Some(450));
     
     // Verify the heart rate data structure and content
     if let Some(hr_data) = heart_rate_data {
@@ -106,22 +104,22 @@ async fn upload_workout_data_working() {
         assert_eq!(hr_array.len(), 600);
         
         // Verify structure of first reading
-        assert!(hr_array[0]["heart_rate"].as_f64().is_some());
+        assert!(hr_array[0]["heart_rate"].as_i64().is_some());
         assert!(hr_array[0]["timestamp"].as_str().is_some());
         
         // Verify structure of last reading
-        assert!(hr_array[599]["heart_rate"].as_f64().is_some());
+        assert!(hr_array[599]["heart_rate"].as_i64().is_some());
         assert!(hr_array[599]["timestamp"].as_str().is_some());
         
         // Verify heart rate progression makes sense
-        let first_hr = hr_array[0]["heart_rate"].as_f64().unwrap();
-        let mid_hr = hr_array[300]["heart_rate"].as_f64().unwrap(); // Middle of workout
-        let last_hr = hr_array[599]["heart_rate"].as_f64().unwrap();
+        let first_hr = hr_array[0]["heart_rate"].as_i64().unwrap();
+        let mid_hr = hr_array[300]["heart_rate"].as_i64().unwrap(); // Middle of workout
+        let last_hr = hr_array[599]["heart_rate"].as_i64().unwrap();
         
         // First should be resting (65-70), middle should be high intensity (>120), last should be cooling down
-        assert!(first_hr >= 65.0 && first_hr <= 70.0, "Resting HR should be 65-70 bpm, got {}", first_hr);
-        assert!(mid_hr > 120.0, "Peak HR should be >120 bpm, got {}", mid_hr);
-        assert!(last_hr < first_hr + 50.0, "Cooldown HR should not be too high, got {}", last_hr);
+        assert!(first_hr >= 65 && first_hr <= 70, "Resting HR should be 65-70 bpm, got {}", first_hr);
+        assert!(mid_hr > 120, "Peak HR should be >120 bpm, got {}", mid_hr);
+        assert!(last_hr < first_hr + 50, "Cooldown HR should not be too high, got {}", last_hr);
         
         println!("Heart rate progression: start={:.1}, peak={:.1}, end={:.1}", first_hr, mid_hr, last_hr);
     }
@@ -135,7 +133,7 @@ async fn duplicate_workout_uuid_prevention() {
     let test_user = create_test_user_and_login(&test_app.address).await;
 
     // Create workout data with a specific UUID
-    let workout_uuid = "apple-health-workout-12345-abcdef";
+    let workout_uuid = "apple-health-workout-67890-abcdef";
     let base_time = Utc::now();
     
     let workout_data = json!({
@@ -152,7 +150,7 @@ async fn duplicate_workout_uuid_prevention() {
                 "heart_rate": 130
             }
         ],
-        "calories_burned": 250.0
+        "calories_burned": 250
     });
 
     // First upload - should succeed

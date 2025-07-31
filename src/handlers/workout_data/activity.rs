@@ -141,12 +141,12 @@ async fn calculate_weekly_stats(pool: &PgPool, user_id: Uuid, since: DateTime<Ut
     .fetch_one(pool)
     .await
     {
-        Ok(row) => row.total_calories.unwrap_or(0.0),
-        Err(_) => 0.0,
+        Ok(row) => row.total_calories.unwrap_or(0),
+        Err(_) => 0,
     };
 
     // Estimate exercise time (very simplified - 1 calorie = ~1 minute)
-    let total_exercise_time = (total_calories / 5.0) as i32; // More realistic ratio
+    let total_exercise_time = total_calories / 5; // More realistic ratio
 
     // Count different session types (simplified based on calorie burn)
     let session_counts = match sqlx::query!(
@@ -173,8 +173,8 @@ async fn calculate_weekly_stats(pool: &PgPool, user_id: Uuid, since: DateTime<Ut
     };
 
     WeeklyStats {
-        total_calories,
-        total_exercise_time,
+        total_calories: total_calories as i32,
+        total_exercise_time: total_exercise_time as i32,
         strength_sessions: session_counts.0, // High intensity assumed as strength
         cardio_sessions: session_counts.1,   // Moderate intensity assumed as cardio
     }

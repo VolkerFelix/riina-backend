@@ -31,7 +31,7 @@
       {
         "ordinal": 5,
         "name": "calories_burned",
-        "type_info": "Float4"
+        "type_info": "Int4"
       },
       {
         "ordinal": 6,

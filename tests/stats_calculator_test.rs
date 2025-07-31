@@ -49,7 +49,7 @@ async fn test_zone_1_active_recovery() {
     for i in 0..300 { // 300 seconds = 5 minutes
         heart_rate_data.push(HeartRateData {
             timestamp: base_time + Duration::seconds(i),
-            heart_rate: 130.0, // Zone 1 for 25-year-old male (resting 60, max ~190)
+            heart_rate: 130, // Zone 1 for 25-year-old male (resting 60, max ~190)
         });
     }
     
@@ -60,7 +60,7 @@ async fn test_zone_1_active_recovery() {
         workout_start: Some(workout_start),
         workout_end: Some(workout_end),
         heart_rate: Some(heart_rate_data),
-        calories_burned: Some(150.0),
+        calories_burned: Some(150),
     };
 
     let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
@@ -116,7 +116,7 @@ async fn test_zone_2_aerobic_base() {
     for i in 0..180 { // 180 seconds = 3 minutes
         heart_rate_data.push(HeartRateData {
             timestamp: base_time + Duration::seconds(i),
-            heart_rate: 145.0, // Zone 2 for 25-year-old male (60-70% HRR)
+            heart_rate: 145, // Zone 2 for 25-year-old male (60-70% HRR)
         });
     }
 
@@ -127,7 +127,7 @@ async fn test_zone_2_aerobic_base() {
         workout_start: Some(workout_start),
         workout_end: Some(workout_end),
         heart_rate: Some(heart_rate_data),
-        calories_burned: Some(225.0),
+        calories_burned: Some(225),
     };
 
     let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
@@ -183,7 +183,7 @@ async fn test_zone_4_lactate_threshold() {
     for i in 0..120 { // 120 seconds = 2 minutes
         heart_rate_data.push(HeartRateData {
             timestamp: base_time + Duration::seconds(i),
-            heart_rate: 170.0, // Zone 4 for 25-year-old male (80-90% HRR, 164-177 bpm)
+            heart_rate: 170, // Zone 4 for 25-year-old male (80-90% HRR, 164-177 bpm)
         });
     }
     
@@ -194,7 +194,7 @@ async fn test_zone_4_lactate_threshold() {
         workout_start: Some(workout_start),
         workout_end: Some(workout_end),
         heart_rate: Some(heart_rate_data),
-        calories_burned: Some(300.0),
+        calories_burned: Some(300),
     };
 
     let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
@@ -250,7 +250,7 @@ async fn test_zone_5_neuromuscular_power() {
     for i in 0..90 { // 90 seconds = 1.5 minutes
         heart_rate_data.push(HeartRateData {
             timestamp: base_time + Duration::seconds(i),
-            heart_rate: 180.0, // Zone 5 for 25-year-old male (90%+ HRR, need >177 bpm)
+            heart_rate: 180, // Zone 5 for 25-year-old male (90%+ HRR, need >177 bpm)
         });
     }
     
@@ -261,7 +261,7 @@ async fn test_zone_5_neuromuscular_power() {
         workout_start: Some(workout_start),
         workout_end: Some(workout_end),
         heart_rate: Some(heart_rate_data),
-        calories_burned: Some(400.0),
+        calories_burned: Some(400),
     };
 
     let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
@@ -317,7 +317,7 @@ async fn test_no_heart_rate_no_gains() {
         workout_start: Some(workout_start),
         workout_end: Some(workout_end),
         heart_rate: None,
-        calories_burned: Some(200.0),
+        calories_burned: Some(200),
     };
 
     let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;

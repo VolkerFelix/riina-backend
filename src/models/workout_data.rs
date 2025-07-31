@@ -12,14 +12,14 @@ pub struct WorkoutData {
     pub device_id: String,
     pub timestamp: DateTime<Utc>,
     pub heart_rate: Option<Vec<HeartRateData>>,
-    pub calories_burned: Option<f32>,
+    pub calories_burned: Option<i32>,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct HeartRateData {
     pub timestamp: DateTime<Utc>,
-    pub heart_rate: f32,
+    pub heart_rate: i32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -27,7 +27,7 @@ pub struct WorkoutDataSyncRequest {
     pub device_id: String,
     pub timestamp: DateTime<Utc>,
     pub heart_rate: Option<Vec<HeartRateData>>,
-    pub calories_burned: Option<f32>,
+    pub calories_burned: Option<i32>,
     pub workout_uuid: Option<String>, // Apple Health workout UUID for duplicate prevention
     pub workout_start: Option<DateTime<Utc>>, // Actual workout start time
     pub workout_end: Option<DateTime<Utc>>, // Actual workout end time
@@ -169,7 +169,7 @@ pub struct ActivitySummaryResponse {
 
 #[derive(serde::Serialize)]
 pub struct WeeklyStats {
-    pub total_calories: f32,
+    pub total_calories: i32,
     pub total_exercise_time: i32, // in minutes
     pub strength_sessions: i32,
     pub cardio_sessions: i32,

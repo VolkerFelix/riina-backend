@@ -14,9 +14,9 @@ pub struct WorkoutHistoryItem {
     pub workout_start: Option<DateTime<Utc>>,
     pub workout_end: Option<DateTime<Utc>>,
     pub duration_minutes: Option<i32>,
-    pub calories_burned: Option<f32>,
-    pub avg_heart_rate: Option<f32>,
-    pub max_heart_rate: Option<f32>,
+    pub calories_burned: Option<i32>,
+    pub avg_heart_rate: Option<i32>,
+    pub max_heart_rate: Option<i32>,
     pub heart_rate_zones: Option<serde_json::Value>,
     // Game stats gained from this workout
     pub stamina_gained: i32,
@@ -44,17 +44,17 @@ fn calculate_duration_minutes(start: Option<DateTime<Utc>>, end: Option<DateTime
     }
 }
 
-fn calculate_avg_heart_rate(heart_rate_data: &Vec<HeartRateData>) -> Option<f32> {
+fn calculate_avg_heart_rate(heart_rate_data: &Vec<HeartRateData>) -> Option<i32> {
     if heart_rate_data.is_empty() {
         return None;
     }
-    let sum: f32 = heart_rate_data.iter().map(|hr| hr.heart_rate).sum();
-    let count = heart_rate_data.len() as f32;
-    Some(sum / count)
+    let sum: i32 = heart_rate_data.iter().map(|hr| hr.heart_rate).sum();
+    let count = heart_rate_data.len() as i32;
+    Some((sum / count) as i32)
 }
 
-fn calculate_max_heart_rate(heart_rate_data: &Vec<HeartRateData>) -> Option<f32> {
-    heart_rate_data.iter().map(|hr| hr.heart_rate).reduce(f32::max)
+fn calculate_max_heart_rate(heart_rate_data: &Vec<HeartRateData>) -> Option<i32> {
+    heart_rate_data.iter().map(|hr| hr.heart_rate).reduce(i32::max)
 }
 
 #[tracing::instrument(

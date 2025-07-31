@@ -45,11 +45,11 @@ impl WorkoutAnalyzer {
             let hr = hr_data.heart_rate;
 
             // Statistics
-            hr_sum += hr;
-            analyzer.peak_heart_rate = analyzer.peak_heart_rate.max(hr);
+            hr_sum += hr as f32;
+            analyzer.peak_heart_rate = analyzer.peak_heart_rate.max(hr as f32);
             hr_values_for_hrv.push(hr);
 
-            let zone = zones.get_zone(hr);
+            let zone = zones.get_zone(hr as f32);
             // Calc duration for this sample
             let duration_sec = if index == 0 {
                 0.0
@@ -88,14 +88,14 @@ impl WorkoutAnalyzer {
     }
 }
 
-fn calc_hrv(hr_values: &Vec<f32>) -> f32 {
+fn calc_hrv(hr_values: &Vec<i32>) -> f32 {
     if hr_values.len() < 2 {
         return 0.0;
     }
 
-    let mean = hr_values.iter().sum::<f32>() / hr_values.len() as f32;
+    let mean = hr_values.iter().sum::<i32>() as f32 / hr_values.len() as f32;
     let variance = hr_values.iter()
-        .map(|hr| (hr - mean).powi(2))
+        .map(|hr| (*hr as f32 - mean).powf(2.0))
         .sum::<f32>() / hr_values.len() as f32;
     
     variance.sqrt()

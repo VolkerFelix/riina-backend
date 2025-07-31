@@ -77,11 +77,11 @@ impl StatCalculator {
         
         tracing::info!("📊 Processing {} heart rate data points", heart_rate.len());
         if !heart_rate.is_empty() {
-            let avg_hr: f32 = heart_rate.iter().map(|hr| hr.heart_rate).sum::<f32>() / heart_rate.len() as f32;
+            let avg_hr: i32 = heart_rate.iter().map(|hr| hr.heart_rate).sum::<i32>() / heart_rate.len() as i32;
             tracing::info!("💗 Heart rate range: avg={:.1}, min={:.1}, max={:.1}", 
                 avg_hr,
-                heart_rate.iter().map(|hr| hr.heart_rate).fold(f32::INFINITY, f32::min),
-                heart_rate.iter().map(|hr| hr.heart_rate).fold(0.0, f32::max)
+                heart_rate.iter().map(|hr| hr.heart_rate).fold(i32::MAX, i32::min),
+                heart_rate.iter().map(|hr| hr.heart_rate).fold(0, i32::max)
             );
         }
         

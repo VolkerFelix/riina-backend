@@ -108,18 +108,7 @@ pub async fn upload_workout_data(
         }
     }
 
-    // 🏆 CHECK FOR ACTIVE LIVE GAMES AND UPDATE SCORES
-    if let Some(live_service) = &live_game_service {
-        check_and_update_live_games(
-            user_id, 
-            &claims.username,
-            &stat_changes,
-            live_service,
-            &pool
-        ).await;
-    }
-
-    // Insert workout data into database
+    // Insert workout data into database first to get the ID
     tracing::info!("💾 Inserting workout data into database for user: {} with workout_uuid: {:?}", 
         claims.username, data.workout_uuid);
     let insert_result = insert_workout_data(&pool, user_id, &data).await;
@@ -152,6 +141,18 @@ pub async fn upload_workout_data(
                 // Continue processing even if stat storage fails
             } else {
                 tracing::info!("✅ Successfully stored stat changes for workout {}", sync_id);
+            }
+
+            // 🏆 CHECK FOR ACTIVE LIVE GAMES AND UPDATE SCORES
+            if let Some(live_service) = &live_game_service {
+                check_and_update_live_games(
+                    user_id, 
+                    &claims.username,
+                    sync_id, // Now we have the workout_data_id
+                    &stat_changes,
+                    live_service,
+                    &pool
+                ).await;
             }
             // 🎯 PREPARE GAME EVENT FOR REAL-TIME NOTIFICATION
             let game_event = json!({
@@ -259,6 +260,7 @@ pub async fn upload_workout_data(
 async fn check_and_update_live_games(
     user_id: Uuid,
     username: &str,
+    workout_data_id: Uuid,
     stat_changes: &crate::game::stats_calculator::StatChanges,
     live_game_service: &LiveGameService,
     pool: &sqlx::PgPool,
@@ -309,6 +311,7 @@ async fn check_and_update_live_games(
                     strength_gained: stat_changes.strength_change,
                     description: format!("Workout upload: +{} stamina, +{} strength", 
                         stat_changes.stamina_change, stat_changes.strength_change),
+                    workout_data_id: Some(workout_data_id),
                 };
 
                 // Apply the score update
