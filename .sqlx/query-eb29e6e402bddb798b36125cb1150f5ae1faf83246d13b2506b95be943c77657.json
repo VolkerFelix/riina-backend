@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                UPDATE league_games \n                SET home_score = $1, \n                    away_score = $2, \n                    status = 'finished',\n                    winner_team_id = CASE \n                        WHEN $3 = 'home_team_id' THEN home_team_id\n                        ELSE away_team_id\n                    END,\n                    updated_at = NOW()\n                WHERE id = $4\n                RETURNING *\n                ",
+  "query": "\n                UPDATE league_games \n                SET home_score_final = $1, \n                    away_score_final = $2, \n                    status = 'finished',\n                    winner_team_id = NULL,\n                    updated_at = NOW()\n                WHERE id = $3\n                RETURNING *\n                ",
   "describe": {
     "columns": [
       {
@@ -50,12 +50,12 @@
       },
       {
         "ordinal": 9,
-        "name": "home_score",
+        "name": "home_score_final",
         "type_info": "Int4"
       },
       {
         "ordinal": 10,
-        "name": "away_score",
+        "name": "away_score_final",
         "type_info": "Int4"
       },
       {
@@ -83,7 +83,6 @@
       "Left": [
         "Int4",
         "Int4",
-        "Text",
         "Uuid"
       ]
     },
@@ -105,5 +104,5 @@
       true
     ]
   },
-  "hash": "92471d69b6f1f40f07f8c893fd5511ce9dfd8e5ff9b8df84ac6b998674e239d1"
+  "hash": "eb29e6e402bddb798b36125cb1150f5ae1faf83246d13b2506b95be943c77657"
 }

@@ -3,7 +3,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 use serde::Serialize;
 
-use crate::services::WeekGameService;
+use crate::services::ManageGameService;
 use crate::middleware::auth::Claims;
 use crate::db::live_game_queries::LiveGameQueries;
 use crate::models::live_game::LiveScoreEvent;
@@ -39,7 +39,7 @@ pub async fn get_live_scores(
     pool: web::Data<PgPool>,
     _claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
-    let week_game_service = WeekGameService::new(pool.get_ref().clone());
+    let week_game_service = ManageGameService::new(pool.get_ref().clone());
     
     match week_game_service.get_active_games().await {
         Ok(games) => {
@@ -180,7 +180,7 @@ pub async fn get_game_live_score(
 pub async fn manage_games(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse> {
-    let week_game_service = WeekGameService::new(pool.get_ref().clone());
+    let week_game_service = ManageGameService::new(pool.get_ref().clone());
     
     match week_game_service.run_game_cycle().await {
         Ok((pending_games, live_games, started_games, finished_games)) => {
@@ -216,7 +216,7 @@ pub async fn get_active_games(
     pool: web::Data<PgPool>,
     _claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
-    let week_game_service = WeekGameService::new(pool.get_ref().clone());
+    let week_game_service = ManageGameService::new(pool.get_ref().clone());
     
     match week_game_service.get_active_games().await {
         Ok(games) => {

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT \n                id, season_id, home_team_id, away_team_id, scheduled_time,\n                week_number, is_first_leg, status as \"status: GameStatus\",\n                home_score, away_score, winner_team_id, week_start_date, week_end_date,\n                created_at, updated_at\n            FROM league_games\n            WHERE status = 'in_progress'\n            AND CURRENT_TIMESTAMP BETWEEN week_start_date AND week_end_date\n            ORDER BY week_number, scheduled_time\n            ",
+  "query": "\n                UPDATE league_games \n                SET home_score_final = $1, \n                    away_score_final = $2, \n                    status = 'finished',\n                    winner_team_id = CASE \n                        WHEN $3 = 'home_team_id' THEN home_team_id\n                        ELSE away_team_id\n                    END,\n                    updated_at = NOW()\n                WHERE id = $4\n                RETURNING *\n                ",
   "describe": {
     "columns": [
       {
@@ -40,47 +40,52 @@
       },
       {
         "ordinal": 7,
-        "name": "status: GameStatus",
+        "name": "status",
         "type_info": "Varchar"
       },
       {
         "ordinal": 8,
-        "name": "home_score",
-        "type_info": "Int4"
-      },
-      {
-        "ordinal": 9,
-        "name": "away_score",
-        "type_info": "Int4"
-      },
-      {
-        "ordinal": 10,
         "name": "winner_team_id",
         "type_info": "Uuid"
       },
       {
+        "ordinal": 9,
+        "name": "home_score_final",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 10,
+        "name": "away_score_final",
+        "type_info": "Int4"
+      },
+      {
         "ordinal": 11,
-        "name": "week_start_date",
-        "type_info": "Timestamptz"
-      },
-      {
-        "ordinal": 12,
-        "name": "week_end_date",
-        "type_info": "Timestamptz"
-      },
-      {
-        "ordinal": 13,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 14,
+        "ordinal": 12,
         "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "week_start_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 14,
+        "name": "week_end_date",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
-      "Left": []
+      "Left": [
+        "Int4",
+        "Int4",
+        "Text",
+        "Uuid"
+      ]
     },
     "nullable": [
       false,
@@ -94,11 +99,11 @@
       true,
       true,
       true,
-      true,
-      true,
       false,
-      false
+      false,
+      true,
+      true
     ]
   },
-  "hash": "17e0e7f829de0513b2476a9ceca6767f9407b246a2d2b16efdcfcebed9001892"
+  "hash": "2bdc9b893d339fd90b367a87e6159b8cdd872aa314619cd848e29b4901713723"
 }

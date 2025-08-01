@@ -5,11 +5,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use redis::AsyncCommands;
 
-use crate::game::game_evaluator::{GameEvaluator, GameStats};
 use crate::models::game_events::{GameEvent, GameResult, NotificationType};
 use crate::models::common::MatchResult;
 use crate::league::standings::StandingsService;
 use crate::models::league::{LeagueGame, GameStatus};
+use crate::game::game_evaluator::GameStats;
 
 #[derive(Debug)]
 pub struct GameEvaluationService {
@@ -27,86 +27,12 @@ pub struct EvaluationResult {
 }
 
 impl GameEvaluationService {
-    pub fn new(pool: PgPool) -> Self {
-        Self { 
-            standings: StandingsService::new(pool.clone()),
-            pool,
-            redis_client: None,
-        }
-    }
-
     pub fn new_with_redis(pool: PgPool, redis_client: Option<Arc<redis::Client>>) -> Self {
         Self { 
             standings: StandingsService::new(pool.clone()),
             pool,
             redis_client,
         }
-    }
-
-    /// Evaluate all scheduled games and update their results in the database
-    pub async fn evaluate_and_update_todays_games(&self) -> Result<EvaluationResult, sqlx::Error> {
-        tracing::info!("🎯 Starting game evaluation process");
-        
-        let mut result = EvaluationResult {
-            games_evaluated: 0,
-            games_updated: 0,
-            errors: Vec::new(),
-            game_results: HashMap::new(),
-        };
-
-        // Get all game results
-        let game_evaluations = match GameEvaluator::evaluate_todays_games(&self.pool).await {
-            Ok(evaluations) => evaluations,
-            Err(e) => {
-                let error_msg = format!("Failed to evaluate today's games: {}", e);
-                tracing::error!("{}", error_msg);
-                result.errors.push(error_msg);
-                return Ok(result);
-            }
-        };
-
-        result.games_evaluated = game_evaluations.len();
-        tracing::info!("📊 {} games evaluated", result.games_evaluated);
-
-        // Save the game results
-        for (game_id, game_stats) in game_evaluations {
-            tracing::info!("🎮 Saving game {} result: {} - {}", 
-                game_id, game_stats.home_team_score, game_stats.away_team_score);
-
-            // Update the game result in database
-            match self.update_game_result(game_id, &game_stats).await {
-                Ok(_) => {
-                    result.games_updated += 1;
-                    tracing::info!("✅ Successfully updated game {} result", game_id);
-                    result.game_results.insert(game_id, game_stats.clone());
-                }
-                Err(e) => {
-                    let error_msg = format!("Failed to save game {} in database: {}", game_id, e);
-                    tracing::error!("{}", error_msg);
-                    result.errors.push(error_msg);
-                }
-            }
-        }
-
-        tracing::info!("🏁 Game evaluation completed: {}/{} games stored successfully", 
-            result.games_updated, result.games_evaluated);
-
-        if !result.errors.is_empty() {
-            tracing::warn!("⚠️  {} errors occurred during evaluation", result.errors.len());
-            for error in &result.errors {
-                tracing::warn!("   - {}", error);
-            }
-        }
-
-        // Send WebSocket notifications for successful evaluations
-        if result.games_updated > 0 {
-            if let Err(e) = self.broadcast_game_evaluation_results(&result.game_results, chrono::Utc::now()).await {
-                tracing::error!("Failed to broadcast game evaluation results: {}", e);
-                // Don't fail the entire operation for notification failures
-            }
-        }
-
-        Ok(result)
     }
 
     /// Update a specific game's result in the database and update standings
@@ -118,7 +44,7 @@ impl GameEvaluationService {
             SELECT 
                 id, season_id, home_team_id, away_team_id, scheduled_time, 
                 week_number, is_first_leg, status as "status: GameStatus", 
-                home_score, away_score, winner_team_id, week_start_date, week_end_date,
+                home_score_final, away_score_final, winner_team_id, week_start_date, week_end_date,
                 created_at, updated_at
             FROM league_games 
             WHERE id = $1
@@ -136,8 +62,8 @@ impl GameEvaluationService {
             r#"
             UPDATE league_games 
             SET 
-                home_score = $2,
-                away_score = $3,
+                home_score_final = $2,
+                away_score_final = $3,
                 winner_team_id = $4,
                 status = 'evaluated',
                 updated_at = $5
@@ -157,8 +83,8 @@ impl GameEvaluationService {
 
         // Update standings with the updated game record
         let mut updated_game = game_record;
-        updated_game.home_score = Some(game_stats.home_team_score as i32);
-        updated_game.away_score = Some(game_stats.away_team_score as i32);
+        updated_game.home_score_final = Some(game_stats.home_team_score as i32);
+        updated_game.away_score_final = Some(game_stats.away_team_score as i32);
         updated_game.winner_team_id = game_stats.winner_team_id;
         updated_game.status = GameStatus::Evaluated;
 
@@ -175,211 +101,98 @@ impl GameEvaluationService {
         Ok(())
     }
 
-    /// Evaluate a specific game (for testing or manual evaluation)
-    pub async fn evaluate_specific_game(&self, game_id: Uuid) -> Result<GameStats, sqlx::Error> {
-        tracing::info!("🎯 Evaluating specific game: {}", game_id);
+    /// Evaluate and update finished live games
+    pub async fn evaluate_finished_live_games(&self, game_ids: Vec<Uuid>) -> Result<Vec<GameStats>, sqlx::Error> {
+        if game_ids.is_empty() {
+            tracing::info!("🎯 No games to evaluate");
+            return Ok(Vec::new());
+        }
+        tracing::info!("🎯 Evaluating finished live games: {:?}", game_ids);
 
         // Get the game details
-        let game = sqlx::query!(
+        let games = sqlx::query!(
             r#"
-            SELECT home_team_id, away_team_id, status
+            SELECT id, home_team_id, away_team_id
             FROM league_games 
-            WHERE id = $1
+            WHERE id = ANY($1) and status = 'finished'
             "#,
-            game_id
+            &game_ids
         )
-        .fetch_optional(&self.pool)
+        .fetch_all(&self.pool)
         .await?;
 
-        match game {
-            Some(game_data) => {
-                if game_data.status != "scheduled" {
-                    return Err(sqlx::Error::RowNotFound);
+        let mut results = Vec::new();
+
+        for game_data in games {
+            let game_id = game_data.id;
+
+            // Get the scores from live_games table and set later as final scores in league games table
+            let live_game_scores = sqlx::query!(
+                r#"
+                SELECT home_score, away_score
+                FROM live_games
+                WHERE game_id = $1
+                ORDER BY created_at DESC
+                LIMIT 1
+                "#,
+                game_id
+            )
+            .fetch_optional(&self.pool)
+            .await?;
+
+            let game_stats = if let Some(live_scores) = live_game_scores {
+                let winner_team_id = if live_scores.home_score > live_scores.away_score {
+                    Some(game_data.home_team_id)
+                } else if live_scores.away_score > live_scores.home_score {
+                    Some(game_data.away_team_id)
+                } else {
+                    None
+                };
+
+                GameStats {
+                    game_id,
+                    home_team_name: String::new(),
+                    away_team_name: String::new(),
+                    home_team_score: live_scores.home_score as u32,
+                    away_team_score: live_scores.away_score as u32,
+                    home_team_result: if live_scores.home_score > live_scores.away_score { 
+                        MatchResult::Win 
+                    } else if live_scores.home_score < live_scores.away_score { 
+                        MatchResult::Loss 
+                    } else { 
+                        MatchResult::Draw 
+                    },
+                    away_team_result: if live_scores.away_score > live_scores.home_score { 
+                        MatchResult::Win 
+                    } else if live_scores.away_score < live_scores.home_score { 
+                        MatchResult::Loss 
+                    } else { 
+                        MatchResult::Draw 
+                    },
+                    winner_team_id,
+                    home_score: live_scores.home_score as u32,
+                    away_score: live_scores.away_score as u32,
                 }
+            } else {
+                // This should not happen if all games are live games
+                tracing::error!("❌ No live game data found for finished game {}", game_id);
+                continue;
+            };
 
-                let game_stats = GameEvaluator::evaluate_game(
-                    &self.pool, 
-                    &game_data.home_team_id, 
-                    &game_data.away_team_id
-                ).await?;
-
-                tracing::info!("✅ Game {} evaluated: {} - {}", 
-                    game_id, game_stats.home_team_score, game_stats.away_team_score);
-
-                Ok(game_stats)
-            }
-            None => {
-                tracing::error!("❌ Game {} not found", game_id);
-                Err(sqlx::Error::RowNotFound)
-            }
-        }
-    }
-
-    /// Evaluate and update a finished live game
-    pub async fn evaluate_finished_live_game(&self, game_id: Uuid) -> Result<GameStats, sqlx::Error> {
-        tracing::info!("🎯 Evaluating finished live game: {}", game_id);
-
-        // Get the game details
-        let game = sqlx::query!(
-            r#"
-            SELECT home_team_id, away_team_id, status, home_score, away_score
-            FROM league_games 
-            WHERE id = $1
-            "#,
-            game_id
-        )
-        .fetch_optional(&self.pool)
-        .await?;
-
-        match game {
-            Some(game_data) => {
-                // Only evaluate games that are finished and don't already have scores
-                if game_data.status != "finished" {
-                    tracing::warn!("Game {} is not finished (status: {})", game_id, game_data.status);
-                    return Err(sqlx::Error::RowNotFound);
-                }
-
-                // Check if the game already has scores calculated
-                if game_data.home_score.is_some() && game_data.away_score.is_some() {
-                    tracing::info!("Game {} already has scores calculated", game_id);
-                    return Err(sqlx::Error::RowNotFound);
-                }
-
-                // Evaluate the game based on team performance
-                let game_stats = GameEvaluator::evaluate_game(
-                    &self.pool, 
-                    &game_data.home_team_id, 
-                    &game_data.away_team_id
-                ).await?;
-
-                // Update the game result in the database
-                self.update_game_result(game_id, &game_stats).await?;
-
-                tracing::info!("✅ Finished live game {} evaluated and updated: {} - {}", 
-                    game_id, game_stats.home_team_score, game_stats.away_team_score);
-
-                Ok(game_stats)
-            }
-            None => {
-                tracing::error!("❌ Game {} not found", game_id);
-                Err(sqlx::Error::RowNotFound)
-            }
-        }
-    }
-
-    /// Get summary of today's scheduled games
-    pub async fn get_todays_game_summary(&self) -> Result<GameSummary, sqlx::Error> {
-        let summary = sqlx::query!(
-            r#"
-            SELECT 
-                COUNT(*) as total_games,
-                COUNT(CASE WHEN status = 'scheduled' THEN 1 END) as scheduled_games,
-                COUNT(CASE WHEN status = 'finished' THEN 1 END) as finished_games,
-                COUNT(CASE WHEN status = 'postponed' THEN 1 END) as postponed_games
-            FROM league_games 
-            WHERE DATE(scheduled_time) = CURRENT_DATE
-            "#
-        )
-        .fetch_one(&self.pool)
-        .await?;
-
-        Ok(GameSummary {
-            total_games: summary.total_games.unwrap_or(0) as usize,
-            scheduled_games: summary.scheduled_games.unwrap_or(0) as usize,
-            finished_games: summary.finished_games.unwrap_or(0) as usize,
-            postponed_games: summary.postponed_games.unwrap_or(0) as usize,
-        })
-    }
-
-    pub async fn get_games_summary_for_date(&self, date: chrono::NaiveDate) -> Result<GameSummary, sqlx::Error> {
-        let summary = sqlx::query!(
-            r#"
-            SELECT 
-                COUNT(*) as total_games,
-                COUNT(CASE WHEN status = 'scheduled' THEN 1 END) as scheduled_games,
-                COUNT(CASE WHEN status = 'finished' THEN 1 END) as finished_games,
-                COUNT(CASE WHEN status = 'postponed' THEN 1 END) as postponed_games
-            FROM league_games 
-            WHERE DATE(scheduled_time) = $1
-            "#,
-            date
-        )
-        .fetch_one(&self.pool)
-        .await?;
-
-        Ok(GameSummary {
-            total_games: summary.total_games.unwrap_or(0) as usize,
-            scheduled_games: summary.scheduled_games.unwrap_or(0) as usize,
-            finished_games: summary.finished_games.unwrap_or(0) as usize,
-            postponed_games: summary.postponed_games.unwrap_or(0) as usize,
-        })
-    }
-
-    pub async fn evaluate_and_update_games(&self) -> Result<EvaluationResult, sqlx::Error> {
-        tracing::info!("🎯 Starting game evaluation process");
-        let now = chrono::Utc::now();
-        
-        let mut result = EvaluationResult {
-            games_evaluated: 0,
-            games_updated: 0,
-            errors: Vec::new(),
-            game_results: HashMap::new(),
-        };
-
-        // Get all game results
-        let game_evaluations = match GameEvaluator::run_game_evaluation(&self.pool).await {
-            Ok(evaluations) => evaluations,
-            Err(e) => {
-                let error_msg = format!("Failed to evaluate games for date {}: {}", now, e);
-                tracing::error!("{}", error_msg);
-                result.errors.push(error_msg);
-                return Ok(result);
-            }
-        };
-
-        if game_evaluations.is_empty() {
-            tracing::info!("No scheduled games found for date: {}", now);
-            return Ok(result);
-        }
-
-        tracing::info!("📊 Found {} scheduled games for evaluation on {}", game_evaluations.len(), now);
-
-        // Process each game evaluation
-        for game_eval in game_evaluations {
-            result.games_evaluated += 1;
-            
-            match self.update_game_result(game_eval.game_id, &game_eval).await {
+            // Update the game result in the database
+            match self.update_game_result(game_id, &game_stats).await {
                 Ok(_) => {
-                    result.games_updated += 1;
-                    result.game_results.insert(game_eval.game_id, game_eval.clone());
-                    tracing::info!("✅ Updated game {} result: {} vs {} = {}-{}", 
-                        game_eval.game_id, 
-                        game_eval.home_team_name, 
-                        game_eval.away_team_name,
-                        game_eval.home_score, 
-                        game_eval.away_score
-                    );
+                    tracing::info!("✅ Finished live game {} evaluated and updated: {} - {}", 
+                        game_id, game_stats.home_team_score, game_stats.away_team_score);
+                    results.push(game_stats);
                 }
                 Err(e) => {
-                    let error_msg = format!("Failed to update game {}: {}", game_eval.game_id, e);
-                    tracing::error!("{}", error_msg);
-                    result.errors.push(error_msg);
+                    tracing::error!("❌ Failed to update game {}: {}", game_id, e);
                 }
             }
         }
 
-        tracing::info!("🏁 Game evaluation completed: {}/{} games updated successfully", 
-            result.games_updated, result.games_evaluated);
-
-        // Send WebSocket notifications for successful evaluations
-        if result.games_updated > 0 {
-            if let Err(e) = self.broadcast_game_evaluation_results(&result.game_results, now).await {
-                tracing::error!("Failed to broadcast game evaluation results: {}", e);
-                // Don't fail the entire operation for notification failures
-            }
-        }
-
-        Ok(result)
+        Ok(results)
     }
 
     /// Broadcast game evaluation results to all league participants via WebSocket

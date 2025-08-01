@@ -26,7 +26,7 @@ pub fn run(
     listener: TcpListener,
     db_pool: PgPool,
     jwt_settings: JwtSettings,
-    redis_client: Option<redis::Client>,
+    redis_client: Option<Arc<redis::Client>>,
     scheduler_service: Arc<SchedulerService>
 ) -> Result<Server, std::io::Error> {
     // Wrap using web::Data, which boils down to an Arc smart pointer

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT \n                lg.id,\n                lg.season_id,\n                lg.home_team_id,\n                lg.away_team_id,\n                lg.scheduled_time,\n                lg.week_number,\n                lg.is_first_leg,\n                lg.status,\n                lg.winner_team_id,\n                lg.home_score,\n                lg.away_score,\n                lg.created_at,\n                lg.updated_at,\n                ht.team_name as home_team_name,\n                at.team_name as away_team_name,\n                ht.team_color as home_team_color,\n                at.team_color as away_team_color\n            FROM league_games lg\n            JOIN teams ht ON lg.home_team_id = ht.id\n            JOIN teams at ON lg.away_team_id = at.id\n            WHERE lg.season_id = $1\n            ORDER BY lg.scheduled_time, lg.week_number\n            ",
+  "query": "\n            SELECT \n                lg.id,\n                lg.season_id,\n                lg.home_team_id,\n                lg.away_team_id,\n                lg.scheduled_time,\n                lg.week_number,\n                lg.is_first_leg,\n                lg.status,\n                lg.winner_team_id,\n                lg.home_score_final,\n                lg.away_score_final,\n                lg.created_at,\n                lg.updated_at,\n                ht.team_name as home_team_name,\n                at.team_name as away_team_name,\n                ht.team_color as home_team_color,\n                at.team_color as away_team_color\n            FROM league_games lg\n            JOIN teams ht ON lg.home_team_id = ht.id\n            JOIN teams at ON lg.away_team_id = at.id\n            WHERE lg.season_id = $1\n            ORDER BY lg.scheduled_time, lg.week_number\n            ",
   "describe": {
     "columns": [
       {
@@ -50,12 +50,12 @@
       },
       {
         "ordinal": 9,
-        "name": "home_score",
+        "name": "home_score_final",
         "type_info": "Int4"
       },
       {
         "ordinal": 10,
-        "name": "away_score",
+        "name": "away_score_final",
         "type_info": "Int4"
       },
       {
@@ -114,5 +114,5 @@
       false
     ]
   },
-  "hash": "400e8f2b895a4dd0183049f297ef4828bbb48723efca55ca5a7e032974463bc1"
+  "hash": "d13e7c79e87b057068a229b796e3c1ee944ed83dac4064f588e3d13d329ab8ee"
 }

@@ -8,7 +8,7 @@ use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_re
 use common::admin_helpers::{create_admin_user_and_login, create_league_season};
 use common::workout_data_helpers::{create_elite_workout_data, create_advanced_workout_data, upload_workout_data_for_user};
 
-use evolveme_backend::services::{GameEvaluationService, WeekGameService};
+use evolveme_backend::services::{GameEvaluationService, ManageGameService};
 
 #[tokio::test]
 async fn test_game_evaluation_service_integration() {
@@ -151,7 +151,7 @@ async fn test_game_evaluation_service_integration() {
     
     // Step 5a: Run the complete game workflow  
     let evaluation_service = GameEvaluationService::new(app.db_pool.clone());
-    let week_game_service = WeekGameService::new(app.db_pool.clone());
+    let week_game_service = ManageGameService::new(app.db_pool.clone());
     
     // Get game summary for today before the workflow (since we updated games to current time)
     let today = chrono::Utc::now().date_naive();
@@ -409,8 +409,8 @@ async fn test_game_evaluation_zero_power_draw() {
     // First update games to current time and start them (to take start snapshots)
     update_games_to_current_time(&app, league_id).await;
     
-    // Use WeekGameService to properly manage game lifecycle with snapshots
-    let week_game_service = evolveme_backend::services::WeekGameService::new(app.db_pool.clone());
+    // Use ManageGameService to properly manage game lifecycle with snapshots
+    let week_game_service = evolveme_backend::services::ManageGameService::new(app.db_pool.clone());
     
     // Run game cycle to start games (this takes start snapshots)
     println!("🔄 Starting games and taking start snapshots...");

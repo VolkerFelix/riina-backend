@@ -2,6 +2,7 @@ use chrono::Utc;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 use tracing::{info, error, debug, warn};
+use std::sync::Arc;
 
 use crate::models::live_game::{LiveGame, LiveGameScoreUpdate, LiveGameResponse};
 use crate::models::game_events::GameEvent;
@@ -13,18 +14,17 @@ use redis::AsyncCommands;
 pub struct LiveGameService {
     pool: PgPool,
     live_game_queries: LiveGameQueries,
-    redis_client: Option<redis::Client>,
+    redis_client: Option<Arc<redis::Client>>,
     game_evaluation_service: GameEvaluationService,
 }
 
 impl LiveGameService {
-    pub fn new(pool: PgPool, redis_client: Option<redis::Client>) -> Self {
-        let redis_arc = redis_client.map(std::sync::Arc::new);
+    pub fn new(pool: PgPool, redis_client: Option<Arc<redis::Client>>) -> Self {
         Self {
             live_game_queries: LiveGameQueries::new(pool.clone()),
-            game_evaluation_service: GameEvaluationService::new_with_redis(pool.clone(), redis_arc.clone()),
+            game_evaluation_service: GameEvaluationService::new_with_redis(pool.clone(), redis_client.clone()),
             pool,
-            redis_client: redis_arc.map(|arc| (*arc).clone()),
+            redis_client,
         }
     }
 
@@ -68,7 +68,7 @@ impl LiveGameService {
     }
 
     /// Initialize a live game for a specific game
-    pub async fn initialize_live_game(&self, game_id: Uuid) -> Result<LiveGame, Box<dyn std::error::Error>> {
+    pub async fn initialize_live_game(&self, game_id: Uuid) -> Result<LiveGame, sqlx::Error> {
         info!("Initializing live game for game_id: {}", game_id);
 
         // Check if live game already exists
@@ -98,14 +98,21 @@ impl LiveGameService {
                 last_updated: Utc::now(),
             };
 
-            let mut conn = redis.get_async_connection().await?;
-            let message = serde_json::to_string(&event)?;
-            
-            let global_channel = "game:events:global";
-            let result: Result<i32, redis::RedisError> = conn.publish(global_channel, message).await;
-            
-            if let Err(e) = result {
-                error!("Failed to broadcast game started event: {}", e);
+            match redis.get_async_connection().await {
+                Ok(mut conn) => {
+                    match serde_json::to_string(&event) {
+                        Ok(message) => {
+                            let global_channel = "game:events:global";
+                            let result: Result<i32, redis::RedisError> = conn.publish(global_channel, message).await;
+                            
+                            if let Err(e) = result {
+                                error!("Failed to broadcast game started event: {}", e);
+                            }
+                        }
+                        Err(e) => error!("Failed to serialize game started event: {}", e),
+                    }
+                }
+                Err(e) => error!("Failed to get Redis connection: {}", e),
             }
         }
 
@@ -131,18 +138,6 @@ impl LiveGameService {
                 self.initialize_live_game(game_id).await?
             }
         };
-
-        // Check if game is still active
-        if !live_game.is_active || live_game.should_finish() {
-            warn!("Attempted to update score for inactive game {}", game_id);
-            
-            // Mark game as finished if time is up
-            if live_game.should_finish() {
-                self.finish_live_game(live_game.id).await?;
-            }
-            
-            return Err("Game is not active".into());
-        }
 
         // Update the live game score
         let updated_game = self.live_game_queries
@@ -230,75 +225,10 @@ impl LiveGameService {
         Ok(response)
     }
 
-    /// Finish live games that have ended
-    pub async fn finish_ended_games(&self) -> Result<Vec<Uuid>, Box<dyn std::error::Error>> {
-        info!("Checking for live games that should be finished");
-
-        let ended_games_query = "
-            SELECT id, game_id 
-            FROM live_games 
-            WHERE is_active = true 
-            AND game_end_time <= NOW()
-        ";
-
-        let ended_rows = sqlx::query(ended_games_query)
-            .fetch_all(&self.pool)
-            .await?;
-
-        let mut finished_games = Vec::new();
-
-        for row in ended_rows {
-            let live_game_id: Uuid = row.get("id");
-            let game_id: Uuid = row.get("game_id");
-
-            match self.finish_live_game(live_game_id).await {
-                Ok(_) => {
-                    info!("Successfully finished live game {}", game_id);
-                    finished_games.push(game_id);
-                }
-                Err(e) => {
-                    error!("Failed to finish live game {}: {}", game_id, e);
-                }
-            }
-        }
-
-        info!("Finished {} live games", finished_games.len());
-        Ok(finished_games)
-    }
-
     /// Finish a specific live game
-    pub async fn finish_live_game(&self, live_game_id: Uuid) -> Result<(), Box<dyn std::error::Error>> {
-        // Get the live game before finishing to get the game_id
-        let live_game = sqlx::query!(
-            "SELECT game_id FROM live_games WHERE id = $1",
-            live_game_id
-        )
-        .fetch_optional(&self.pool)
-        .await?;
-
-        if let Some(live_game_row) = live_game {
-            let game_id = live_game_row.game_id;
-            
-            // First finish the live game (updates both live_games and league_games tables)
-            self.live_game_queries.finish_live_game(live_game_id).await?;
-            info!("Live game {} finished", live_game_id);
-
-            // Then evaluate the game and update standings
-            match self.game_evaluation_service.evaluate_finished_live_game(game_id).await {
-                Ok(game_stats) => {
-                    info!("✅ Game {} evaluated successfully: {} - {}", 
-                        game_id, game_stats.home_team_score, game_stats.away_team_score);
-                }
-                Err(e) => {
-                    // Log the error but don't fail the entire operation
-                    // The game status has already been updated
-                    warn!("⚠️ Failed to evaluate finished game {}: {}. Game status updated but standings may need manual update.", 
-                        game_id, e);
-                }
-            }
-        } else {
-            warn!("Live game {} not found when trying to finish", live_game_id);
-        }
+    pub async fn finish_live_game(&self, live_game_id: Uuid) -> Result<(), sqlx::Error> {
+        self.live_game_queries.finish_live_game(live_game_id).await?;
+        info!("Live game {} finished", live_game_id);
 
         Ok(())
     }

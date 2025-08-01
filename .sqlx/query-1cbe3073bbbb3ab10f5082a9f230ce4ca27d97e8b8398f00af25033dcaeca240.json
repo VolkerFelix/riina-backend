@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT \n                id, season_id, home_team_id, away_team_id, scheduled_time, \n                week_number, is_first_leg, status as \"status: GameStatus\", \n                home_score, away_score, winner_team_id, week_start_date, week_end_date,\n                created_at, updated_at\n            FROM league_games \n            WHERE id = $1\n            ",
+  "query": "\n            SELECT\n                id, season_id, home_team_id, away_team_id, scheduled_time,\n                week_number, is_first_leg, status as \"status: GameStatus\",\n                home_score_final, away_score_final, winner_team_id, week_start_date, week_end_date,\n                created_at, updated_at\n            FROM league_games\n            WHERE status = 'scheduled'\n            AND scheduled_time > CURRENT_TIMESTAMP\n            ORDER BY scheduled_time\n            ",
   "describe": {
     "columns": [
       {
@@ -45,12 +45,12 @@
       },
       {
         "ordinal": 8,
-        "name": "home_score",
+        "name": "home_score_final",
         "type_info": "Int4"
       },
       {
         "ordinal": 9,
-        "name": "away_score",
+        "name": "away_score_final",
         "type_info": "Int4"
       },
       {
@@ -80,9 +80,7 @@
       }
     ],
     "parameters": {
-      "Left": [
-        "Uuid"
-      ]
+      "Left": []
     },
     "nullable": [
       false,
@@ -102,5 +100,5 @@
       false
     ]
   },
-  "hash": "a93b61ad6d21b4c0d11484e3e9a89929218e454c7654444844d33e9c7e04f98f"
+  "hash": "1cbe3073bbbb3ab10f5082a9f230ce4ca27d97e8b8398f00af25033dcaeca240"
 }

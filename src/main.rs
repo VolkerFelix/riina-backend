@@ -36,9 +36,8 @@ async fn main() -> std::io::Result<()> {
             std::process::exit(1);
         }
     };
-    
-    // Create Arc version for scheduler
-    let redis_client_arc = redis_client_raw.as_ref().map(|client| Arc::new(client.clone()));
+    // Create Arc version to be thread safe
+    let redis_client_arc = redis_client_raw.map(|client| Arc::new(client));
     // Only try to establish connection when actually used
     let conection_pool = PgPoolOptions::new()
         .acquire_timeout(Duration::from_secs(2))
@@ -73,7 +72,7 @@ async fn main() -> std::io::Result<()> {
         listener,
         conection_pool,
         jwt_settings,
-        redis_client_raw,
+        redis_client_arc,
         scheduler_service
     )?.await
 }
