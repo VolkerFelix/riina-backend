@@ -109,25 +109,7 @@ async fn test_redis_game_evaluation_notifications() {
     let team_b_data = team_b_response.json::<serde_json::Value>().await.unwrap();
     let team_b_id = team_b_data["data"]["id"].as_str().unwrap();
     
-    // Add users to teams
-    let add_user1 = json!({"user_id": user1.user_id, "role": "member"});
-    let add_user2 = json!({"user_id": user2.user_id, "role": "member"});
-    
-    make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/teams/{}/members", &app.address, team_a_id),
-        &admin_user.token,
-        Some(add_user1),
-    ).await;
-    
-    make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/teams/{}/members", &app.address, team_b_id),
-        &admin_user.token,
-        Some(add_user2),
-    ).await;
+    // Note: user1 and user2 are already team members since they are the owners of their respective teams
     
     // Assign teams to league
     make_authenticated_request(
@@ -164,6 +146,7 @@ async fn test_redis_game_evaluation_notifications() {
     update_games_to_current_time(&app, league_id).await;
     
     // Trigger game cycle to start and finish games before evaluation
+    println!("🔄 Running game management cycle...");
     let cycle_response = make_authenticated_request(
         &client,
         reqwest::Method::POST,
@@ -172,7 +155,53 @@ async fn test_redis_game_evaluation_notifications() {
         None,
     ).await;
     assert_eq!(cycle_response.status(), 200);
-    println!("✅ Game cycle completed");
+    let cycle_result = cycle_response.json::<serde_json::Value>().await.unwrap();
+    println!("✅ Game cycle completed: {:?}", cycle_result);
+    
+    // Check game statuses after cycle
+    let games_after_cycle = sqlx::query!(
+        "SELECT id, status FROM league_games WHERE season_id IN (SELECT id FROM league_seasons WHERE league_id = $1)",
+        Uuid::parse_str(league_id).expect("Invalid league ID")
+    )
+    .fetch_all(&app.db_pool)
+    .await
+    .expect("Failed to check game statuses after cycle");
+    
+    println!("📋 Game statuses after cycle:");
+    for game in &games_after_cycle {
+        println!("   Game {}: status='{}'", game.id, game.status);
+    }
+    
+    // Wait for games to finish (their end time should be passed now)
+    println!("⏳ Waiting for games to expire...");
+    tokio::time::sleep(tokio::time::Duration::from_secs(12)).await;
+    
+    // Run game cycle again to finish expired games
+    println!("🔄 Running game management cycle again to finish expired games...");
+    let finish_cycle_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/league/games/manage", &app.address),
+        &admin_user.token,
+        None,
+    ).await;
+    assert_eq!(finish_cycle_response.status(), 200);
+    let finish_cycle_result = finish_cycle_response.json::<serde_json::Value>().await.unwrap();
+    println!("✅ Finish cycle completed: {:?}", finish_cycle_result);
+    
+    // Check final game statuses
+    let games_final = sqlx::query!(
+        "SELECT id, status FROM league_games WHERE season_id IN (SELECT id FROM league_seasons WHERE league_id = $1)",
+        Uuid::parse_str(league_id).expect("Invalid league ID")
+    )
+    .fetch_all(&app.db_pool)
+    .await
+    .expect("Failed to check final game statuses");
+    
+    println!("📋 Final game statuses:");
+    for game in &games_final {
+        println!("   Game {}: status='{}'", game.id, game.status);
+    }
     
     // Step 2: Subscribe to user-specific channels
     let user1_channel = format!("game:events:user:{}", user1.user_id);
@@ -189,6 +218,18 @@ async fn test_redis_game_evaluation_notifications() {
     
     println!("✅ Subscribed to user-specific Redis channels");
     
+    // Clean up old finished games without live game data to avoid noise
+    let cleanup_result = sqlx::query!(
+        "DELETE FROM league_games WHERE status = 'finished' AND id NOT IN (SELECT DISTINCT game_id FROM live_games WHERE game_id IS NOT NULL)"
+    )
+    .execute(&app.db_pool)
+    .await
+    .expect("Failed to clean up old games");
+    
+    if cleanup_result.rows_affected() > 0 {
+        println!("🧹 Cleaned up {} old finished games without live game data", cleanup_result.rows_affected());
+    }
+
     // Step 3: Trigger game evaluation
     println!("🎮 Triggering game evaluation...");
     
@@ -210,7 +251,12 @@ async fn test_redis_game_evaluation_notifications() {
     let eval_result = evaluation_response.json::<serde_json::Value>().await.unwrap();
     assert!(eval_result["success"].as_bool().unwrap_or(false));
     
-    println!("✅ Game evaluation completed");
+    let games_evaluated = eval_result["games_evaluated"].as_u64().unwrap_or(0);
+    println!("✅ Game evaluation completed: {} games evaluated", games_evaluated);
+    
+    if games_evaluated == 0 {
+        println!("⚠️  No games were evaluated - checking for finished games in database");
+    }
     
     // Step 4: Listen for Redis messages
     println!("🔍 Listening for Redis messages...");
@@ -328,15 +374,15 @@ async fn test_redis_game_evaluation_notifications() {
 async fn update_games_to_current_time(app: &common::utils::TestApp, league_id: &str) {
     let now = chrono::Utc::now();
     let today_start = chrono::Utc::now().date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc();
-    let week_end = now + chrono::Duration::seconds(5);
+    let week_end = now + chrono::Duration::seconds(10); // Give more time for processing
     let league_uuid = uuid::Uuid::parse_str(league_id).expect("Invalid league ID");
     
-    // Update all games in the league to current time and set them to finished status for evaluation
+    // Update all games in the league to current time for natural game cycle processing
     // Set week_start_date to beginning of today (so CURRENT_DATE BETWEEN works) and week_end_date to 5 seconds later
     sqlx::query!(
         r#"
         UPDATE league_games 
-        SET scheduled_time = $1, week_start_date = $2, week_end_date = $3, status = 'finished'
+        SET scheduled_time = $1, week_start_date = $2, week_end_date = $3
         WHERE season_id IN (
             SELECT id FROM league_seasons WHERE league_id = $4
         )
@@ -344,14 +390,29 @@ async fn update_games_to_current_time(app: &common::utils::TestApp, league_id: &
         now,
         today_start,
         week_end,
-        league_uuid
+        league_uuid.clone()
     )
     .execute(&app.db_pool)
     .await
     .expect("Failed to update games to current time");
     
-    println!("✅ Updated games to current time for evaluation");
+    println!("✅ Updated games to current time - will be processed by game cycle");
+    
+    // Check game statuses right after update
+    let games_check = sqlx::query!(
+        "SELECT id, status, scheduled_time, week_start_date, week_end_date FROM league_games WHERE season_id IN (SELECT id FROM league_seasons WHERE league_id = $1)",
+        league_uuid
+    )
+    .fetch_all(&app.db_pool)
+    .await
+    .expect("Failed to check game statuses");
+    
+    println!("📋 Game statuses after update:");
+    for game in &games_check {
+        println!("   Game {}: status='{}', scheduled={:?}, start={:?}, end={:?}", 
+            game.id, game.status, game.scheduled_time, game.week_start_date, game.week_end_date);
+    }
     
     // Wait a moment for the times to be in the past
-    tokio::time::sleep(tokio::time::Duration::from_secs(6)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 }

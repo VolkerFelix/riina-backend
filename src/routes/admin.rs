@@ -92,5 +92,9 @@ pub fn init_admin_routes(cfg: &mut web::ServiceConfig) {
                 web::resource("/games/status/{season_id}")
                     .route(web::get().to(game_management_handler::get_games_status))
             )
+            .service(
+                web::resource("/games/evaluate")
+                    .route(web::post().to(game_management_handler::evaluate_games_for_date))
+            )
     );
 }

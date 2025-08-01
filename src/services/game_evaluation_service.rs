@@ -27,6 +27,13 @@ pub struct EvaluationResult {
 }
 
 impl GameEvaluationService {
+    pub fn new(pool: PgPool) -> Self {
+        Self { 
+            standings: StandingsService::new(pool.clone()),
+            pool,
+            redis_client: None,
+        }
+    }
     pub fn new_with_redis(pool: PgPool, redis_client: Option<Arc<redis::Client>>) -> Self {
         Self { 
             standings: StandingsService::new(pool.clone()),
@@ -189,6 +196,18 @@ impl GameEvaluationService {
                 Err(e) => {
                     tracing::error!("❌ Failed to update game {}: {}", game_id, e);
                 }
+            }
+        }
+
+        // Send WebSocket notifications if we have results
+        if !results.is_empty() {
+            let game_results_map: HashMap<Uuid, GameStats> = results.iter()
+                .map(|stats| (stats.game_id, stats.clone()))
+                .collect();
+            
+            if let Err(e) = self.broadcast_game_evaluation_results(&game_results_map, chrono::Utc::now()).await {
+                tracing::error!("Failed to broadcast game evaluation results: {}", e);
+                // Don't fail the entire operation for notification failures
             }
         }
 

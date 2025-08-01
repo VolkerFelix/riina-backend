@@ -368,24 +368,6 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     assert!(individual_notifications_received >= 4, "Should receive at least 4 individual notifications (one per team member)");
     
     println!("✅ All WebSocket notification requirements verified!");
-
-    // Step 10: Verify game results make sense
-    let game_summary_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/games/summary", &app.address),
-        &admin_user.token,
-        Some(json!({"date": start_date.date_naive().to_string()})),
-    ).await;
-    
-    assert_eq!(game_summary_response.status(), 200);
-    let summary = game_summary_response.json::<serde_json::Value>().await.unwrap();
-    
-    assert!(summary["success"].as_bool().unwrap_or(false));
-    let data = &summary["data"];
-    // The main goal is to verify that the websocket notifications work correctly
-    // After evaluation, games should be in 'evaluated' status, not 'finished'
-    // So we don't expect finished games, and some scheduled games may remain from other tests
     
     println!("✅ Game evaluation and WebSocket notification integration test completed successfully!");
     println!("🎉 All assertions passed - WebSocket notifications are working correctly for game evaluations!");

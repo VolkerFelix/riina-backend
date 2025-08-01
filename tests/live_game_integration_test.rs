@@ -31,7 +31,6 @@ async fn test_complete_live_game_workflow() {
     assert_eq!(live_game.away_power, 0);
     assert!(live_game.is_active);
 
-    // Step 4: Verify the game appears in the live games API endpoint
     // Get season ID for the API call
     let season_id = get_season_id_for_game(&test_app, game_id).await;
     
@@ -49,7 +48,6 @@ async fn test_complete_live_game_workflow() {
     assert!(api_game["home_team_name"].is_string(), "Should have home team name");
     assert!(api_game["away_team_name"].is_string(), "Should have away team name");
 
-    // Step 5: Test score updates through health data uploads
     // Home team user uploads workout data
     upload_workout_data(&test_app, &client, &home_user, "intense_workout").await;
     // Verify live game was updated
@@ -79,7 +77,7 @@ async fn test_complete_live_game_workflow() {
     assert!(final_live_game.home_score > 0, "Home team should have score");
     assert!(final_live_game.away_score > 0, "Away team should have score after uploads");
 
-    // Step 6: Test player contributions tracking
+    // Test player contributions tracking
     let (home_contributions, away_contributions) = get_player_contributions(&test_app, final_live_game.id).await;
     
     // Verify home team contribution - filter to only the user we're testing
