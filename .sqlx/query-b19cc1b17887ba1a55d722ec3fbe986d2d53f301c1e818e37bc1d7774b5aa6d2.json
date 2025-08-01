@@ -1,0 +1,167 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT \n                lse.id, lse.live_game_id, lse.user_id, lse.username, lse.team_id, lse.team_side,\n                lse.score_points, lse.power_contribution, lse.stamina_gained, lse.strength_gained,\n                lse.description, lse.occurred_at,\n                wd.id as \"workout_id?\",\n                wd.created_at as \"workout_date?\",\n                wd.workout_start as \"workout_start?\",\n                wd.workout_end as \"workout_end?\",\n                wd.duration_minutes as \"duration_minutes?\",\n                wd.calories_burned as \"calories_burned?\",\n                wd.avg_heart_rate as \"avg_heart_rate?\",\n                wd.max_heart_rate as \"max_heart_rate?\",\n                wd.min_heart_rate as \"min_heart_rate?\",\n                wd.heart_rate_zones as \"heart_rate_zones?\",\n                wd.stamina_gained as \"workout_stamina_gained?\",\n                wd.strength_gained as \"workout_strength_gained?\",\n                wd.total_points_gained as \"total_points_gained?\"\n            FROM live_score_events lse\n            LEFT JOIN workout_data wd ON lse.workout_data_id = wd.id\n            WHERE lse.live_game_id = $1\n            ORDER BY lse.occurred_at DESC\n            LIMIT $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "live_game_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "username",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "team_side",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "score_points",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "power_contribution",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "stamina_gained",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 9,
+        "name": "strength_gained",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 10,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "occurred_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "workout_id?",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 13,
+        "name": "workout_date?",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 14,
+        "name": "workout_start?",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 15,
+        "name": "workout_end?",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 16,
+        "name": "duration_minutes?",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 17,
+        "name": "calories_burned?",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 18,
+        "name": "avg_heart_rate?",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 19,
+        "name": "max_heart_rate?",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 20,
+        "name": "min_heart_rate?",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 21,
+        "name": "heart_rate_zones?",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 22,
+        "name": "workout_stamina_gained?",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 23,
+        "name": "workout_strength_gained?",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 24,
+        "name": "total_points_gained?",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "b19cc1b17887ba1a55d722ec3fbe986d2d53f301c1e818e37bc1d7774b5aa6d2"
+}

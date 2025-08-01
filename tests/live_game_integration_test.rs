@@ -31,7 +31,6 @@ async fn test_complete_live_game_workflow() {
     assert_eq!(live_game.away_power, 0);
     assert!(live_game.is_active);
 
-    // Step 4: Verify the game appears in the live games API endpoint
     // Get season ID for the API call
     let season_id = get_season_id_for_game(&test_app, game_id).await;
     
@@ -49,7 +48,6 @@ async fn test_complete_live_game_workflow() {
     assert!(api_game["home_team_name"].is_string(), "Should have home team name");
     assert!(api_game["away_team_name"].is_string(), "Should have away team name");
 
-    // Step 5: Test score updates through health data uploads
     // Home team user uploads workout data
     upload_workout_data(&test_app, &client, &home_user, "intense_workout").await;
     // Verify live game was updated
@@ -79,7 +77,7 @@ async fn test_complete_live_game_workflow() {
     assert!(final_live_game.home_score > 0, "Home team should have score");
     assert!(final_live_game.away_score > 0, "Away team should have score after uploads");
 
-    // Step 6: Test player contributions tracking
+    // Test player contributions tracking
     let (home_contributions, away_contributions) = get_player_contributions(&test_app, final_live_game.id).await;
     
     // Verify home team contribution - filter to only the user we're testing
@@ -123,6 +121,9 @@ async fn test_complete_live_game_workflow() {
         .find(|c| c.user_id == home_user.user_id)
         .expect("Home user should have contributions");
     assert_eq!(home_contrib.contribution_count, 2, "Home user should have 2 contributions after second upload");
+
+    // Step 10: Test live scoring history API endpoint
+    test_live_scoring_history_api(&test_app, &client, &home_user.token, game_id, &home_user, &away_user_1).await;
 
     println!("✅ Live game integration test completed successfully!");
     println!("Final scores: {} {} - {} {}", 
@@ -311,6 +312,206 @@ async fn test_live_game_finish_workflow() {
     assert_eq!(post_finish_game.home_score, final_score, "Score should not change after game ends");
 
     println!("✅ Live game finish workflow test completed successfully!");
+}
+
+async fn test_live_scoring_history_api(
+    test_app: &TestApp, 
+    client: &Client, 
+    token: &str, 
+    game_id: Uuid,
+    home_user: &UserRegLoginResponse,
+    away_user: &UserRegLoginResponse
+) {
+    println!("🧪 Testing live scoring history API endpoint...");
+    
+    // Call the live game API endpoint that should include scoring events
+    let url = format!("{}/league/games/{}/live", test_app.address, game_id);
+    let response = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await
+        .expect("Failed to call live game API");
+
+    assert!(response.status().is_success(), "Live game API should return success");
+    
+    let response_data: serde_json::Value = response.json().await.expect("Failed to parse response");
+    assert_eq!(response_data["success"], true, "API response should indicate success");
+    
+    // Verify the response structure matches what the frontend expects
+    let data = response_data["data"].as_object().expect("Data should be an object");
+    
+    // Check required fields
+    assert!(data.contains_key("game_id"), "Should contain game_id");
+    assert!(data.contains_key("home_team_name"), "Should contain home_team_name");
+    assert!(data.contains_key("away_team_name"), "Should contain away_team_name");
+    assert!(data.contains_key("home_score"), "Should contain home_score");
+    assert!(data.contains_key("away_score"), "Should contain away_score");
+    assert!(data.contains_key("status"), "Should contain status");
+    
+    // Most importantly, check scoring_events
+    assert!(data.contains_key("scoring_events"), "Should contain scoring_events array");
+    
+    let scoring_events = data["scoring_events"].as_array().expect("scoring_events should be an array");
+    assert!(!scoring_events.is_empty(), "Should have scoring events from the test uploads");
+    
+    // Verify scoring event structure matches frontend expectations
+    for event in scoring_events {
+        let event_obj = event.as_object().expect("Each scoring event should be an object");
+        
+        // Check all required fields for frontend parsing
+        assert!(event_obj.contains_key("id"), "Event should have id");
+        assert!(event_obj.contains_key("user_id"), "Event should have user_id");
+        assert!(event_obj.contains_key("username"), "Event should have username");
+        assert!(event_obj.contains_key("team_id"), "Event should have team_id");
+        assert!(event_obj.contains_key("team_side"), "Event should have team_side");
+        assert!(event_obj.contains_key("score_points"), "Event should have score_points");
+        assert!(event_obj.contains_key("description"), "Event should have description");
+        assert!(event_obj.contains_key("occurred_at"), "Event should have occurred_at timestamp");
+        
+        // Verify team_side is valid
+        let team_side = event_obj["team_side"].as_str().expect("team_side should be a string");
+        assert!(team_side == "home" || team_side == "away", "team_side should be 'home' or 'away'");
+        
+        // Verify score_points is positive (since our test uploads should generate points)
+        let score_points = event_obj["score_points"].as_i64().expect("score_points should be a number");
+        assert!(score_points > 0, "Test uploads should generate positive points");
+        
+        // Verify the user_id matches one of our test users
+        let event_user_id = event_obj["user_id"].as_str().expect("user_id should be a string");
+        let event_user_uuid = Uuid::parse_str(event_user_id).expect("user_id should be valid UUID");
+        assert!(
+            event_user_uuid == home_user.user_id || event_user_uuid == away_user.user_id,
+            "Event should be from one of our test users"
+        );
+
+        // Verify workout_details are present and properly structured
+        assert!(event_obj.contains_key("workout_details"), "Event should have workout_details");
+        
+        if let Some(workout_details) = event_obj["workout_details"].as_object() {
+            // Check that essential workout detail fields are present
+            assert!(workout_details.contains_key("id"), "workout_details should have id");
+            assert!(workout_details.contains_key("workout_date"), "workout_details should have workout_date");
+            assert!(workout_details.contains_key("workout_start"), "workout_details should have workout_start");
+            assert!(workout_details.contains_key("workout_end"), "workout_details should have workout_end");
+            assert!(workout_details.contains_key("stamina_gained"), "workout_details should have stamina_gained");
+            assert!(workout_details.contains_key("strength_gained"), "workout_details should have strength_gained");
+            
+            // For our test data that includes heart rate, verify those fields are present
+            assert!(workout_details.contains_key("duration_minutes"), "workout_details should have duration_minutes");
+            assert!(workout_details.contains_key("avg_heart_rate"), "workout_details should have avg_heart_rate");
+            assert!(workout_details.contains_key("max_heart_rate"), "workout_details should have max_heart_rate");
+            assert!(workout_details.contains_key("heart_rate_zones"), "workout_details should have heart_rate_zones");
+            
+            // Verify that the workout_details have actual values (not all null)
+            // Our test workouts should have duration since they have start/end times
+            if let (Some(start), Some(end)) = (workout_details["workout_start"].as_str(), workout_details["workout_end"].as_str()) {
+                let workout_start = chrono::DateTime::parse_from_rfc3339(start).expect("Should parse workout_start");
+                let workout_end = chrono::DateTime::parse_from_rfc3339(end).expect("Should parse workout_end");
+                let expected_duration_minutes = (workout_end - workout_start).num_minutes();
+                
+                if expected_duration_minutes > 0 {
+                    // The database should have the calculated duration, not null
+                    assert!(
+                        !workout_details["duration_minutes"].is_null(),
+                        "workout_details.duration_minutes should not be null when workout has start/end times"
+                    );
+                    
+                    let actual_duration = workout_details["duration_minutes"].as_i64()
+                        .expect("duration_minutes should be a number, not null");
+                    assert!(
+                        actual_duration > 0,
+                        "workout_details should have calculated duration_minutes > 0, got: {}",
+                        actual_duration
+                    );
+                    
+                    // Verify the calculated duration is reasonable (within 1 minute of expected)
+                    let duration_diff = (actual_duration - expected_duration_minutes).abs();
+                    assert!(
+                        duration_diff <= 1,
+                        "Calculated duration {} should be close to expected {}", 
+                        actual_duration, expected_duration_minutes
+                    );
+                }
+            }
+            
+            // Also verify heart rate data is properly calculated if present
+            if workout_details.contains_key("avg_heart_rate") && !workout_details["avg_heart_rate"].is_null() {
+                let avg_hr = workout_details["avg_heart_rate"].as_f64()
+                    .expect("avg_heart_rate should be a number if not null");
+                assert!(avg_hr > 0.0, "avg_heart_rate should be positive, got: {}", avg_hr);
+                assert!(avg_hr < 300.0, "avg_heart_rate should be reasonable, got: {}", avg_hr);
+            }
+            
+            // Verify heart rate zones are properly calculated and stored
+            // Our test workouts include heart rate data, so zones should be calculated
+            assert!(
+                !workout_details["heart_rate_zones"].is_null(),
+                "heart_rate_zones should not be null when workout has heart rate data"
+            );
+            
+            if let Some(zones) = workout_details["heart_rate_zones"].as_array() {
+                assert!(!zones.is_empty(), "heart_rate_zones should contain zone data when heart rate is present");
+                
+                // Verify zone structure
+                for zone in zones {
+                    let zone_obj = zone.as_object().expect("Each zone should be an object");
+                    assert!(zone_obj.contains_key("zone"), "Zone should have 'zone' field");
+                    assert!(zone_obj.contains_key("minutes"), "Zone should have 'minutes' field");
+                    assert!(zone_obj.contains_key("stamina_gained"), "Zone should have 'stamina_gained' field");
+                    assert!(zone_obj.contains_key("strength_gained"), "Zone should have 'strength_gained' field");
+                    
+                    // Verify zone has reasonable values
+                    let zone_name = zone_obj["zone"].as_str().expect("zone should be a string");
+                    assert!(
+                        ["Zone1", "Zone2", "Zone3", "Zone4", "Zone5"].contains(&zone_name),
+                        "Zone name should be valid, got: {}", zone_name
+                    );
+                    
+                    let minutes = zone_obj["minutes"].as_f64().expect("minutes should be a number");
+                    assert!(minutes >= 0.0, "Zone minutes should be non-negative, got: {}", minutes);
+                }
+                
+                // Verify that total zone minutes roughly equals workout duration
+                let total_zone_minutes: f64 = zones.iter()
+                    .map(|z| z["minutes"].as_f64().unwrap_or(0.0))
+                    .sum();
+                
+                if let Some(duration) = workout_details["duration_minutes"].as_i64() {
+                    let duration_diff = (total_zone_minutes - duration as f64).abs();
+                    assert!(
+                        duration_diff < 2.0,
+                        "Total zone minutes {} should roughly equal workout duration {}",
+                        total_zone_minutes, duration
+                    );
+                }
+            } else {
+                panic!("heart_rate_zones should be an array when heart rate data is present");
+            }
+            
+            println!("✅ Workout details verified for event {}", event_obj["id"].as_str().unwrap_or("unknown"));
+        } else {
+            panic!("workout_details should be an object, not null");
+        }
+    }
+    
+    // Check that events are ordered by most recent first (as expected by frontend)
+    if scoring_events.len() > 1 {
+        for i in 0..scoring_events.len()-1 {
+            let current_time = scoring_events[i]["occurred_at"].as_str().expect("Should have timestamp");
+            let next_time = scoring_events[i+1]["occurred_at"].as_str().expect("Should have timestamp");
+            
+            let current_dt = chrono::DateTime::parse_from_rfc3339(current_time).expect("Should parse timestamp");
+            let next_dt = chrono::DateTime::parse_from_rfc3339(next_time).expect("Should parse timestamp");
+            
+            assert!(current_dt >= next_dt, "Events should be ordered by most recent first");
+        }
+    }
+    
+    println!("✅ Live scoring history API test passed!");
+    println!("   - Found {} scoring events", scoring_events.len());
+    println!("   - All required fields present and valid");
+    println!("   - Events properly ordered by timestamp");
 }
 
 // Helper functions

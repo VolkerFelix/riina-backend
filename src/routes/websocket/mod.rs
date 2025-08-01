@@ -8,6 +8,7 @@ use crate::middleware::auth::Claims;
 use crate::config::jwt::JwtSettings;
 use uuid::Uuid;
 use tracing;
+use std::sync::Arc;
 
 pub use connection::GameConnection;
 pub use messages::TokenQuery;
@@ -19,7 +20,7 @@ pub async fn game_ws_route(
     stream: web::Payload,
     query: Option<web::Query<TokenQuery>>,
     claims: Option<web::ReqData<Claims>>,
-    redis: Option<web::Data<redis::Client>>,
+    redis: Option<web::Data<Arc<redis::Client>>>,
     jwt_settings: web::Data<JwtSettings>,
 ) -> Result<HttpResponse, Error> {
     tracing::info!("🔗 New game WebSocket connection request");

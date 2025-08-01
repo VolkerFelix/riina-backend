@@ -286,7 +286,7 @@ async fn websocket_redis_pubsub_working() {
 
     // NOW publish our test message
     let test_message = json!({
-        "event_type": "health_data_processed",
+        "event_type": "workout_data_processed",
         "user_id": user_id.clone(),
         "username": username.clone(),
         "sync_id": Uuid::new_v4().to_string(),
@@ -333,7 +333,7 @@ async fn websocket_redis_pubsub_working() {
                             
                             // Check if this is our test message
                             if let Some(event_type) = parsed.get("event_type").and_then(|v| v.as_str()) {
-                                if event_type == "health_data_processed" {
+                                if event_type == "workout_data_processed" {
                                     if let Some(msg_user_id) = parsed.get("user_id").and_then(|v| v.as_str()) {
                                         if msg_user_id == user_id {
                                             received_our_message = true;
@@ -343,7 +343,7 @@ async fn websocket_redis_pubsub_working() {
                                             println!("   ❌ User ID mismatch: got {}, expected {}", msg_user_id, user_id);
                                         }
                                     } else {
-                                        println!("   ❌ No user_id in health_data_processed message");
+                                        println!("   ❌ No user_id in workout_data_processed message");
                                     }
                                 } else {
                                     println!("   ℹ️  Other event type: {}", event_type);
@@ -369,7 +369,7 @@ async fn websocket_redis_pubsub_working() {
     if !received_our_message {
         println!("\n🔍 DEBUGGING INFO:");
         println!("Expected user_id: {}", user_id);
-        println!("Expected message to contain: health_data_processed");
+        println!("Expected message to contain: workout_data_processed");
         println!("Published message: {}", test_message);
         println!("Channel used: {}", user_channel);
         

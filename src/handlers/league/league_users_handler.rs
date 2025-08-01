@@ -129,10 +129,12 @@ pub async fn get_league_users_with_stats(
         r#"
         WITH user_rankings AS (
             SELECT 
-                ua.user_id,
-                ua.stamina + ua.strength as total_stats,
-                ROW_NUMBER() OVER (ORDER BY (ua.stamina + ua.strength) DESC) as rank
-            FROM user_avatars ua
+                u.id as user_id,
+                COALESCE(ua.stamina + ua.strength, 0) as total_stats,
+                ROW_NUMBER() OVER (ORDER BY COALESCE(ua.stamina + ua.strength, 0) DESC) as rank
+            FROM users u
+            INNER JOIN team_members tm ON u.id = tm.user_id AND tm.status = 'active'
+            LEFT JOIN user_avatars ua ON u.id = ua.user_id
         )
         SELECT 
             u.id as user_id,

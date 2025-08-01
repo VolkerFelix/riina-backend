@@ -50,12 +50,12 @@
       },
       {
         "ordinal": 9,
-        "name": "home_score",
+        "name": "home_score_final",
         "type_info": "Int4"
       },
       {
         "ordinal": 10,
-        "name": "away_score",
+        "name": "away_score_final",
         "type_info": "Int4"
       },
       {

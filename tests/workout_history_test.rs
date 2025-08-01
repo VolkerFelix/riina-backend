@@ -7,9 +7,9 @@ mod common;
 use common::utils::spawn_app;
 
 use crate::common::{
-    health_data_helpers::{
-        create_advanced_health_data,
-        create_elite_health_data,
+    workout_data_helpers::{
+        create_advanced_workout_data,
+        create_elite_workout_data,
     },
     utils::create_test_user_and_login,
 };
@@ -51,12 +51,12 @@ async fn test_workout_history_with_data() {
     let test_user = create_test_user_and_login(&test_app.address).await;
     let token = test_user.token;
 
-    let health_data = create_advanced_health_data();
+    let workout_data = create_advanced_workout_data();
 
     let health_response = client
         .post(&format!("{}/health/upload_health", &test_app.address))
         .header("Authorization", format!("Bearer {}", token))
-        .json(&health_data)
+        .json(&workout_data)
         .send()
         .await
         .expect("Failed to execute health upload request.");
@@ -116,12 +116,12 @@ async fn test_workout_history_pagination() {
 
     // Upload multiple health data entries
     for _ in 0..5 {
-        let health_data = create_advanced_health_data();
+        let workout_data = create_advanced_workout_data();
 
         let health_response = client
             .post(&format!("{}/health/upload_health", &test_app.address))
             .header("Authorization", format!("Bearer {}", token))
-            .json(&health_data)
+            .json(&workout_data)
             .send()
             .await
             .expect("Failed to execute health upload request.");
@@ -207,13 +207,13 @@ async fn test_workout_history_with_stats() {
     let test_user = create_test_user_and_login(&test_app.address).await;
     let token = test_user.token;
 
-    // Upload health data with high intensity to generate stats
-    let health_data = create_elite_health_data();
+    // Upload workout data with high intensity to generate stats
+    let workout_data = create_elite_workout_data();
 
     let health_response = client
         .post(&format!("{}/health/upload_health", &test_app.address))
         .header("Authorization", format!("Bearer {}", token))
-        .json(&health_data)
+        .json(&workout_data)
         .send()
         .await
         .expect("Failed to execute health upload request.");
@@ -271,13 +271,13 @@ async fn test_workout_history_zone_breakdown() {
     let test_user = create_test_user_and_login(&test_app.address).await;
     let token = test_user.token;
 
-    // Upload health data with high intensity to generate zone breakdown
-    let health_data = create_elite_health_data();
+    // Upload workout data with high intensity to generate zone breakdown
+    let workout_data = create_elite_workout_data();
 
     let health_response = client
         .post(&format!("{}/health/upload_health", &test_app.address))
         .header("Authorization", format!("Bearer {}", token))
-        .json(&health_data)
+        .json(&workout_data)
         .send()
         .await
         .expect("Failed to execute health upload request.");

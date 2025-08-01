@@ -1,5 +1,5 @@
 use evolveme_backend::game::stats_calculator::StatCalculator;
-use evolveme_backend::models::health_data::{HeartRateData, HealthDataSyncRequest};
+use evolveme_backend::models::workout_data::{HeartRateData, WorkoutDataSyncRequest};
 use chrono::{Duration, Utc};
 use uuid::Uuid;
 
@@ -49,21 +49,21 @@ async fn test_zone_1_active_recovery() {
     for i in 0..300 { // 300 seconds = 5 minutes
         heart_rate_data.push(HeartRateData {
             timestamp: base_time + Duration::seconds(i),
-            heart_rate: 130.0, // Zone 1 for 25-year-old male (resting 60, max ~190)
+            heart_rate: 130, // Zone 1 for 25-year-old male (resting 60, max ~190)
         });
     }
     
-    let health_data = HealthDataSyncRequest {
+    let workout_data = WorkoutDataSyncRequest {
         workout_uuid: Some(Uuid::new_v4().to_string()),
         device_id: "test".to_string(),
         timestamp: now,
         workout_start: Some(workout_start),
         workout_end: Some(workout_end),
         heart_rate: Some(heart_rate_data),
-        active_energy_burned: Some(150.0),
+        calories_burned: Some(150),
     };
 
-    let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &health_data).await;
+    let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
     
     // Around 5 minutes * 2 points per minute ≈ 10 stamina points (9-10 due to rounding)
     assert!(changes.stamina_change >= 9 && changes.stamina_change <= 10);
@@ -116,21 +116,21 @@ async fn test_zone_2_aerobic_base() {
     for i in 0..180 { // 180 seconds = 3 minutes
         heart_rate_data.push(HeartRateData {
             timestamp: base_time + Duration::seconds(i),
-            heart_rate: 145.0, // Zone 2 for 25-year-old male (60-70% HRR)
+            heart_rate: 145, // Zone 2 for 25-year-old male (60-70% HRR)
         });
     }
 
-    let health_data = HealthDataSyncRequest {
+    let workout_data = WorkoutDataSyncRequest {
         workout_uuid: Some(Uuid::new_v4().to_string()),
         device_id: "test".to_string(),
         timestamp: now,
         workout_start: Some(workout_start),
         workout_end: Some(workout_end),
         heart_rate: Some(heart_rate_data),
-        active_energy_burned: Some(225.0),
+        calories_burned: Some(225),
     };
 
-    let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &health_data).await;
+    let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
     
     // Around 3 minutes * 5 stamina + 1 strength points per minute (14-15 stamina, 2-3 strength due to rounding)
     assert!(changes.stamina_change >= 14 && changes.stamina_change <= 15);
@@ -183,21 +183,21 @@ async fn test_zone_4_lactate_threshold() {
     for i in 0..120 { // 120 seconds = 2 minutes
         heart_rate_data.push(HeartRateData {
             timestamp: base_time + Duration::seconds(i),
-            heart_rate: 170.0, // Zone 4 for 25-year-old male (80-90% HRR, 164-177 bpm)
+            heart_rate: 170, // Zone 4 for 25-year-old male (80-90% HRR, 164-177 bpm)
         });
     }
     
-    let health_data = HealthDataSyncRequest {
+    let workout_data = WorkoutDataSyncRequest {
         workout_uuid: Some(Uuid::new_v4().to_string()),
         device_id: "test".to_string(),
         timestamp: now,
         workout_start: Some(workout_start),
         workout_end: Some(workout_end),
         heart_rate: Some(heart_rate_data),
-        active_energy_burned: Some(300.0),
+        calories_burned: Some(300),
     };
 
-    let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &health_data).await;
+    let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
     
     // Around 2 minutes * 2 stamina + 5 strength points per minute (3-4 stamina, 9-10 strength due to rounding)
     assert!(changes.stamina_change >= 3 && changes.stamina_change <= 4);
@@ -250,21 +250,21 @@ async fn test_zone_5_neuromuscular_power() {
     for i in 0..90 { // 90 seconds = 1.5 minutes
         heart_rate_data.push(HeartRateData {
             timestamp: base_time + Duration::seconds(i),
-            heart_rate: 180.0, // Zone 5 for 25-year-old male (90%+ HRR, need >177 bpm)
+            heart_rate: 180, // Zone 5 for 25-year-old male (90%+ HRR, need >177 bpm)
         });
     }
     
-    let health_data = HealthDataSyncRequest {
+    let workout_data = WorkoutDataSyncRequest {
         workout_uuid: Some(Uuid::new_v4().to_string()),
         device_id: "test".to_string(),
         timestamp: now,
         workout_start: Some(workout_start),
         workout_end: Some(workout_end),
         heart_rate: Some(heart_rate_data),
-        active_energy_burned: Some(400.0),
+        calories_burned: Some(400),
     };
 
-    let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &health_data).await;
+    let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
     
     // Around 1.5 minutes * 1 stamina + 8 strength points per minute (1-2 stamina, 11-12 strength due to rounding)
     assert!(changes.stamina_change >= 1 && changes.stamina_change <= 2);
@@ -310,17 +310,17 @@ async fn test_no_heart_rate_no_gains() {
     let workout_start = now - Duration::minutes(30);
     let workout_end = now;
     
-    let health_data = HealthDataSyncRequest {
+    let workout_data = WorkoutDataSyncRequest {
         workout_uuid: Some(Uuid::new_v4().to_string()),
         device_id: "test".to_string(),
         timestamp: now,
         workout_start: Some(workout_start),
         workout_end: Some(workout_end),
         heart_rate: None,
-        active_energy_burned: Some(200.0),
+        calories_burned: Some(200),
     };
 
-    let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &health_data).await;
+    let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
     assert_eq!(changes.stamina_change, 0);
     assert_eq!(changes.strength_change, 0);
     assert_eq!(changes.reasoning.len(), 0);

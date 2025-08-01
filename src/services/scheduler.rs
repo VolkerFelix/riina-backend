@@ -1,11 +1,12 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 use tokio::sync::Mutex;
-use tokio_cron_scheduler::{Job, JobScheduler};
+use tokio_cron_scheduler::{Job, JobScheduler, JobSchedulerError};
 use sqlx::PgPool;
 use uuid::Uuid;
+use std::error::Error;
 use crate::services::game_evaluation_service::GameEvaluationService;
-use crate::services::week_game_service::WeekGameService;
+use crate::services::manage_game_service::ManageGameService;
 
 pub struct SchedulerService {
     scheduler: Arc<Mutex<JobScheduler>>,
@@ -16,18 +17,7 @@ pub struct SchedulerService {
 }
 
 impl SchedulerService {
-    pub async fn new(pool: PgPool) -> Result<Self, Box<dyn std::error::Error>> {
-        let scheduler = JobScheduler::new().await?;
-        
-        Ok(Self {
-            scheduler: Arc::new(Mutex::new(scheduler)),
-            pool,
-            redis_client: None,
-            active_jobs: Arc::new(Mutex::new(HashMap::new())),
-        })
-    }
-
-    pub async fn new_with_redis(pool: PgPool, redis_client: Option<Arc<redis::Client>>) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn new_with_redis(pool: PgPool, redis_client: Option<Arc<redis::Client>>) -> Result<Self, Box<dyn Error>> {
         let scheduler = JobScheduler::new().await?;
         
         Ok(Self {
@@ -38,7 +28,7 @@ impl SchedulerService {
         })
     }
 
-    pub async fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn start(&self) -> Result<(), Box<dyn Error>> {
         let scheduler = self.scheduler.lock().await;
         
         // For now, just start the scheduler without loading from DB
@@ -49,7 +39,7 @@ impl SchedulerService {
         Ok(())
     }
 
-    pub async fn stop(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn stop(&self) -> Result<(), Box<dyn Error>> {
         let mut scheduler = self.scheduler.lock().await;
         scheduler.shutdown().await?;
         
@@ -57,50 +47,9 @@ impl SchedulerService {
         Ok(())
     }
 
-
-    // Manual trigger for testing or admin use
-    pub async fn trigger_game_cycle(&self) -> Result<String, Box<dyn std::error::Error>> {
-        tracing::info!("🎮 Manually triggering complete game management cycle");
-        
-        let week_game_service = WeekGameService::new(self.pool.clone());
-        let evaluation_service = GameEvaluationService::new_with_redis(self.pool.clone(), self.redis_client.clone());
-        
-        // Run the complete cycle: start due games, finish ended games
-        let (pending_games, live_games, started_games, finished_games) = week_game_service.run_game_cycle().await?;
-        
-        // Then evaluate any finished games
-        let result = evaluation_service.evaluate_and_update_todays_games().await?;
-        
-        Ok(format!(
-            "Game cycle completed: {} pending, {} live, {} started, {} finished, {} games evaluated, {} updated successfully",
-            pending_games.len(),
-            live_games.len(),
-            started_games.len(),
-            finished_games.len(),
-            result.games_evaluated,
-            result.games_updated
-        ))
-    }
-
-    // Evaluate games for a specific date
-    pub async fn trigger_game_evaluation_for_date(&self, date: chrono::NaiveDate) -> Result<String, Box<dyn std::error::Error>> {
-        tracing::info!("🎮 Manually triggering game evaluation for date: {}", date);
-        
-        let evaluation_service = GameEvaluationService::new_with_redis(self.pool.clone(), self.redis_client.clone());
-        
-        let result = evaluation_service.evaluate_and_update_games().await?;
-        
-        Ok(format!(
-            "Game evaluation completed for {}: {} games evaluated, {} updated successfully",
-            date,
-            result.games_evaluated,
-            result.games_updated
-        ))
-    }
-
     /// Schedule complete game management cycle for a new season
     /// Uses every-minute schedule to handle all game durations efficiently
-    pub async fn schedule_season(&self, season_id: Uuid, season_name: String) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn schedule_season(&self, season_id: Uuid, season_name: String) -> Result<(), JobSchedulerError> {
         let cron_expr = "0 * * * * *".to_string(); // Every minute
         
         let scheduler = self.scheduler.lock().await;
@@ -119,34 +68,30 @@ impl SchedulerService {
             Box::pin(async move {
                 tracing::info!("🎮 Running scheduled game management cycle for season '{}'", season_name);
                 
-                let week_game_service = WeekGameService::new(pool.clone());
-                let evaluation_service = GameEvaluationService::new_with_redis(pool, redis_client);
+                let manage_games = ManageGameService::new_with_redis(pool.clone(), redis_client.clone());
+                let evaluate_games = GameEvaluationService::new_with_redis(pool, redis_client);
                 
                 // Step 1: Run complete game cycle (start due games, finish ended games)
-                match week_game_service.run_game_cycle().await {
+                match manage_games.run_game_cycle().await {
                     Ok((pending_games, live_games, started_games, finished_games)) => {
                         tracing::info!("✅ Season '{}' game cycle: {} pending, {} live, {} started, {} finished", 
                             season_name, pending_games.len(), live_games.len(), started_games.len(), finished_games.len());
                         
                         // Step 2: Evaluate any finished games
-                        match evaluation_service.evaluate_and_update_games().await {
+                        let finished_games_clone = finished_games.clone();
+                        match evaluate_games.evaluate_finished_live_games(finished_games).await {
                             Ok(result) => {
-                                tracing::info!("✅ Season '{}' evaluation completed: {}", season_name, result);
-                                
-                                // Log any errors that occurred during evaluation
-                                if !result.errors.is_empty() {
-                                    for error in &result.errors {
-                                        tracing::error!("Season '{}' evaluation error: {}", season_name, error);
-                                    }
-                                }
+                                tracing::info!("✅ Game day completed. Calculated final scores for {} games", result.len());
                             }
                             Err(e) => {
-                                tracing::error!("❌ Season '{}' evaluation failed: {}", season_name, e);
+                                let error_msg = e.to_string();
+                                tracing::error!("❌ Game day evaluation failed for games: {:?} - {}", finished_games_clone, error_msg);
                             }
                         }
                     }
                     Err(e) => {
-                        tracing::error!("❌ Season '{}' game cycle failed: {}", season_name, e);
+                        let error_msg = e.to_string();
+                        tracing::error!("❌ Season '{}' game cycle failed: {}", season_name, error_msg);
                     }
                 }
             })
@@ -165,7 +110,7 @@ impl SchedulerService {
     }
 
     /// Remove scheduling for a season (when season is deleted)
-    pub async fn unschedule_season(&self, season_id: Uuid) -> Result<(), Box<dyn std::error::Error>> {
+        pub async fn unschedule_season(&self, season_id: Uuid) -> Result<(), Box<dyn Error>> {
         let mut active_jobs = self.active_jobs.lock().await;
         
         if let Some(job_id) = active_jobs.remove(&season_id) {

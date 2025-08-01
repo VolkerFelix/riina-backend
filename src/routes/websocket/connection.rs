@@ -8,6 +8,7 @@ use actix_web::web;
 use uuid::Uuid;
 use chrono::Utc;
 use tracing;
+use std::sync::Arc;
 
 use crate::models::game_events::GameEvent;
 
@@ -21,7 +22,7 @@ pub struct GameConnection {
     heartbeat: Instant,
     user_id: Uuid,
     username: String,
-    redis: Option<web::Data<redis::Client>>,
+    redis: Option<web::Data<Arc<redis::Client>>>,
     session_id: Uuid,
 }
 
@@ -46,7 +47,7 @@ impl Actor for GameConnection {
 }
 
 impl GameConnection {
-    pub fn new(user_id: Uuid, username: String, redis: Option<web::Data<redis::Client>>) -> Self {
+    pub fn new(user_id: Uuid, username: String, redis: Option<web::Data<Arc<redis::Client>>>) -> Self {
         let session_id = Uuid::new_v4();
         tracing::info!("🆕 Creating new GameConnection for user {} ({}) - session: {}", 
             user_id, username, session_id);

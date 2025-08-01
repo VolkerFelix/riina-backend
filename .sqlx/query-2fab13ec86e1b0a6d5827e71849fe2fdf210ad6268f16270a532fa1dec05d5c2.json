@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT home_score, away_score\n                FROM live_games\n                WHERE game_id = $1\n                ORDER BY created_at DESC\n                LIMIT 1\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "home_score",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "away_score",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "2fab13ec86e1b0a6d5827e71849fe2fdf210ad6268f16270a532fa1dec05d5c2"
+}

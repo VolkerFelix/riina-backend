@@ -69,7 +69,7 @@ pub async fn spawn_app() -> TestApp {
     // Create scheduler service for tests
     let redis_client_arc = redis_client.as_ref().map(|client| Arc::new(client.clone()));
     let scheduler_service = Arc::new(
-        SchedulerService::new_with_redis(connection_pool.clone(), redis_client_arc)
+        SchedulerService::new_with_redis(connection_pool.clone(), redis_client_arc.clone())
             .await
             .expect("Failed to create scheduler service for tests")
     );
@@ -78,7 +78,7 @@ pub async fn spawn_app() -> TestApp {
         listener, 
         connection_pool.clone(), 
         jwt_settings,
-        redis_client,
+        redis_client_arc,
         scheduler_service,
     )
         .expect("Failed to bind address");

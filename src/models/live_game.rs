@@ -123,18 +123,8 @@ pub struct LiveScoreEvent {
     pub power_contribution: i32,
     pub stamina_gained: i32,
     pub strength_gained: i32,
-    pub event_type: LiveScoreEventType,
     pub description: String,
     pub occurred_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
-#[sqlx(type_name = "live_score_event_type", rename_all = "snake_case")]
-pub enum LiveScoreEventType {
-    WorkoutUpload,
-    PowerBoost,
-    TeamBonus,
-    Milestone,
 }
 
 /// Request to create a new live game
@@ -163,6 +153,7 @@ pub struct LiveGameScoreUpdate {
     pub stamina_gained: i32,
     pub strength_gained: i32,
     pub description: String,
+    pub workout_data_id: Option<Uuid>,
 }
 
 /// Live game summary for API responses

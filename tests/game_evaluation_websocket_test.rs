@@ -14,7 +14,7 @@ use std::collections::HashMap;
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, get_next_date};
 use common::admin_helpers::{create_admin_user_and_login, create_league_season};
-use common::health_data_helpers::{create_elite_health_data, create_advanced_health_data, upload_health_data_for_user};
+use common::workout_data_helpers::{create_elite_workout_data, create_advanced_workout_data, upload_workout_data_for_user};
 
 use evolveme_backend::services::GameEvaluationService;
 
@@ -35,10 +35,10 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     println!("✅ Created 4 users + 1 admin");
 
     // Step 2: Upload health data to create power differences
-    upload_health_data_for_user(&client, &app.address, &user1.token, create_elite_health_data()).await.unwrap();
-    upload_health_data_for_user(&client, &app.address, &user2.token, create_advanced_health_data()).await.unwrap();
-    upload_health_data_for_user(&client, &app.address, &user3.token, create_elite_health_data()).await.unwrap();
-    upload_health_data_for_user(&client, &app.address, &user4.token, create_advanced_health_data()).await.unwrap();
+    upload_workout_data_for_user(&client, &app.address, &user1.token, create_elite_workout_data()).await.unwrap();
+    upload_workout_data_for_user(&client, &app.address, &user2.token, create_advanced_workout_data()).await.unwrap();
+    upload_workout_data_for_user(&client, &app.address, &user3.token, create_elite_workout_data()).await.unwrap();
+    upload_workout_data_for_user(&client, &app.address, &user4.token, create_advanced_workout_data()).await.unwrap();
     
     println!("✅ Uploaded health data for all users");
 
@@ -171,7 +171,7 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     update_games_to_current_time(&app, league_id).await;
     
     // Wait for games to complete their lifecycle (start → finish)
-    let week_game_service = evolveme_backend::services::WeekGameService::new(app.db_pool.clone());
+    let week_game_service = evolveme_backend::services::ManageGameService::new(app.db_pool.clone());
     
     println!("🔄 Running first game management cycle to start games...");
     let (_, _, started_games, _) = week_game_service.run_game_cycle().await.unwrap();
@@ -368,24 +368,6 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     assert!(individual_notifications_received >= 4, "Should receive at least 4 individual notifications (one per team member)");
     
     println!("✅ All WebSocket notification requirements verified!");
-
-    // Step 10: Verify game results make sense
-    let game_summary_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/games/summary", &app.address),
-        &admin_user.token,
-        Some(json!({"date": start_date.date_naive().to_string()})),
-    ).await;
-    
-    assert_eq!(game_summary_response.status(), 200);
-    let summary = game_summary_response.json::<serde_json::Value>().await.unwrap();
-    
-    assert!(summary["success"].as_bool().unwrap_or(false));
-    let data = &summary["data"];
-    // The main goal is to verify that the websocket notifications work correctly
-    // After evaluation, games should be in 'evaluated' status, not 'finished'
-    // So we don't expect finished games, and some scheduled games may remain from other tests
     
     println!("✅ Game evaluation and WebSocket notification integration test completed successfully!");
     println!("🎉 All assertions passed - WebSocket notifications are working correctly for game evaluations!");

@@ -5,7 +5,7 @@ use sqlx::PgPool;
 
 use crate::middleware::auth::Claims;
 use crate::models::profile::{HealthProfileResponse, UpdateHealthProfileRequest};
-use crate::models::health_data::{HeartRateZones, ZoneName};
+use crate::models::workout_data::{HeartRateZones, ZoneName};
 
 #[tracing::instrument(
     name = "Get health profile",

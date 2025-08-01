@@ -410,9 +410,9 @@ pub async fn delete_user(
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
-    // 6. Delete from health_data
+    // 6. Delete from workout_data
     sqlx::query!(
-        "DELETE FROM health_data WHERE user_id = $1",
+        "DELETE FROM workout_data WHERE user_id = $1",
         user_id
     )
     .execute(&mut *tx)

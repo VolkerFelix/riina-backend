@@ -4,9 +4,10 @@ use sqlx::PgPool;
 use uuid::Uuid;
 use chrono::{Utc, Duration};
 use tracing::{info, error};
+use std::sync::Arc;
 
 use crate::models::common::ApiResponse;
-use crate::services::LiveGameService;
+use crate::services::{LiveGameService, GameEvaluationService};
 
 #[derive(Debug, Deserialize)]
 pub struct StartGamesRequest {
@@ -272,4 +273,95 @@ pub async fn get_games_status(
     };
 
     Ok(HttpResponse::Ok().json(ApiResponse::success("Games status retrieved successfully", response_data)))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct EvaluateGamesRequest {
+    pub date: String, // Date in YYYY-MM-DD format
+}
+
+#[derive(Debug, Serialize)]
+pub struct EvaluateGamesResponse {
+    pub games_evaluated: usize,
+    pub games_updated: usize,
+    pub success: bool,
+    pub message: String,
+}
+
+/// POST /admin/games/evaluate - Evaluate finished games for a specific date
+pub async fn evaluate_games_for_date(
+    pool: web::Data<PgPool>,
+    body: web::Json<EvaluateGamesRequest>,
+    redis: Option<web::Data<Arc<redis::Client>>>,
+) -> Result<HttpResponse> {
+    info!("Evaluating games for date: {}", body.date);
+
+    // Parse the date
+    let date = chrono::NaiveDate::parse_from_str(&body.date, "%Y-%m-%d")
+        .map_err(|e| {
+            error!("Invalid date format: {}", e);
+            actix_web::error::ErrorBadRequest("Invalid date format. Use YYYY-MM-DD")
+        })?;
+
+    // Get all finished games for the specified date
+    let finished_games = sqlx::query!(
+        r#"
+        SELECT id
+        FROM league_games
+        WHERE DATE(scheduled_time) = $1
+        AND status = 'finished'
+        AND (home_score_final IS NULL OR away_score_final IS NULL)
+        "#,
+        date
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(|e| {
+        error!("Failed to fetch finished games: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    if finished_games.is_empty() {
+        return Ok(HttpResponse::Ok().json(EvaluateGamesResponse {
+            games_evaluated: 0,
+            games_updated: 0,
+            success: true,
+            message: format!("No finished games found for date {}", date),
+        }));
+    }
+
+    let game_ids: Vec<uuid::Uuid> = finished_games.iter().map(|g| g.id).collect();
+    
+    // Create the evaluation service with Redis for WebSocket notifications
+    let evaluation_service = GameEvaluationService::new_with_redis(
+        pool.get_ref().clone(), 
+        redis.map(|r| r.get_ref().clone())
+    );
+    
+    match evaluation_service.evaluate_finished_live_games(game_ids).await {
+        Ok(results) => {
+            let games_updated = results.len();
+            let message = format!("Successfully evaluated {} games for date {}", games_updated, date);
+            
+            info!("{}", message);
+            
+            Ok(HttpResponse::Ok().json(EvaluateGamesResponse {
+                games_evaluated: games_updated,
+                games_updated,
+                success: true,
+                message,
+            }))
+        }
+        Err(e) => {
+            let error_msg = format!("Failed to evaluate games: {}", e);
+            error!("{}", error_msg);
+            
+            Ok(HttpResponse::InternalServerError().json(EvaluateGamesResponse {
+                games_evaluated: 0,
+                games_updated: 0,
+                success: false,
+                message: error_msg,
+            }))
+        }
+    }
 }

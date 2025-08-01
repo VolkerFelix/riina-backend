@@ -1,0 +1,108 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                UPDATE league_games \n                SET home_score_final = $1, \n                    away_score_final = $2, \n                    status = 'finished',\n                    winner_team_id = NULL,\n                    updated_at = NOW()\n                WHERE id = $3\n                RETURNING *\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "season_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "home_team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "away_team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "scheduled_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "week_number",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "is_first_leg",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 7,
+        "name": "status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "winner_team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 9,
+        "name": "home_score_final",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 10,
+        "name": "away_score_final",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 11,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "week_start_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 14,
+        "name": "week_end_date",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Int4",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "eb29e6e402bddb798b36125cb1150f5ae1faf83246d13b2506b95be943c77657"
+}

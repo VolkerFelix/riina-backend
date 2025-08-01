@@ -4,7 +4,7 @@ use uuid::Uuid;
 use tracing::{info, debug};
 
 use crate::models::live_game::{
-    LiveGame, LivePlayerContribution, LiveScoreEvent, LiveScoreEventType,
+    LiveGame, LivePlayerContribution, LiveScoreEvent,
     LiveGameResponse, LiveGameScoreUpdate, LiveGameSummary, TeamSummary,
     PlayerSummary, ScorerInfo, LiveGameStats
 };
@@ -311,7 +311,7 @@ impl LiveGameQueries {
             INSERT INTO live_score_events (
                 id, live_game_id, user_id, username, team_id, team_side,
                 score_points, power_contribution, stamina_gained, strength_gained,
-                event_type, description, occurred_at
+                description, workout_data_id, occurred_at
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
             "#,
             event_id,
@@ -324,8 +324,8 @@ impl LiveGameQueries {
             update.power_increase,
             update.stamina_gained,
             update.strength_gained,
-            LiveScoreEventType::WorkoutUpload as LiveScoreEventType,
-            update.description
+            update.description,
+            update.workout_data_id
         )
         .execute(&self.pool)
         .await?;
@@ -406,7 +406,7 @@ impl LiveGameQueries {
             SELECT 
                 id, live_game_id, user_id, username, team_id, team_side,
                 score_points, power_contribution, stamina_gained, strength_gained,
-                event_type as "event_type: LiveScoreEventType", description, occurred_at
+                description, occurred_at
             FROM live_score_events 
             WHERE live_game_id = $1
             ORDER BY occurred_at DESC
@@ -419,6 +419,85 @@ impl LiveGameQueries {
         .await?;
 
         Ok(events)
+    }
+
+    /// Get recent score events with workout details for a live game
+    pub async fn get_recent_score_events_with_workout_details(
+        &self,
+        live_game_id: Uuid,
+        limit: i32,
+    ) -> Result<Vec<serde_json::Value>, sqlx::Error> {
+        let events = sqlx::query!(
+            r#"
+            SELECT 
+                lse.id, lse.live_game_id, lse.user_id, lse.username, lse.team_id, lse.team_side,
+                lse.score_points, lse.power_contribution, lse.stamina_gained, lse.strength_gained,
+                lse.description, lse.occurred_at,
+                wd.id as "workout_id?",
+                wd.created_at as "workout_date?",
+                wd.workout_start as "workout_start?",
+                wd.workout_end as "workout_end?",
+                wd.duration_minutes as "duration_minutes?",
+                wd.calories_burned as "calories_burned?",
+                wd.avg_heart_rate as "avg_heart_rate?",
+                wd.max_heart_rate as "max_heart_rate?",
+                wd.min_heart_rate as "min_heart_rate?",
+                wd.heart_rate_zones as "heart_rate_zones?",
+                wd.stamina_gained as "workout_stamina_gained?",
+                wd.strength_gained as "workout_strength_gained?",
+                wd.total_points_gained as "total_points_gained?"
+            FROM live_score_events lse
+            LEFT JOIN workout_data wd ON lse.workout_data_id = wd.id
+            WHERE lse.live_game_id = $1
+            ORDER BY lse.occurred_at DESC
+            LIMIT $2
+            "#,
+            live_game_id,
+            limit as i64
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        // Convert to JSON objects with workout details
+        let events_with_workouts: Vec<serde_json::Value> = events.into_iter().map(|row| {
+            let mut event = serde_json::json!({
+                "id": row.id,
+                "live_game_id": row.live_game_id,
+                "user_id": row.user_id,
+                "username": row.username,
+                "team_id": row.team_id,
+                "team_side": row.team_side,
+                "score_points": row.score_points,
+                "power_contribution": row.power_contribution,
+                "stamina_gained": row.stamina_gained,
+                "strength_gained": row.strength_gained,
+                "description": row.description,
+                "occurred_at": row.occurred_at
+            });
+
+            // Add workout details if available
+            if let Some(workout_id) = row.workout_id {
+                event["workout_details"] = serde_json::json!({
+                    "id": workout_id.to_string(),
+                    "workout_date": row.workout_date,
+                    "workout_start": row.workout_start,
+                    "workout_end": row.workout_end,
+                    "duration_minutes": row.duration_minutes,
+                    "calories_burned": row.calories_burned,
+                    "avg_heart_rate": row.avg_heart_rate,
+                    "max_heart_rate": row.max_heart_rate,
+                    "min_heart_rate": row.min_heart_rate,
+                    "heart_rate_zones": row.heart_rate_zones,
+                    "stamina_gained": row.workout_stamina_gained.unwrap_or(row.stamina_gained),
+                    "strength_gained": row.workout_strength_gained.unwrap_or(row.strength_gained),
+                    "total_points_gained": row.total_points_gained.unwrap_or(row.score_points)
+                });
+            }
+
+            event
+        }).collect();
+
+        Ok(events_with_workouts)
     }
 
     /// Finish a live game
