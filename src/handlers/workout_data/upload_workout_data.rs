@@ -13,6 +13,7 @@ use crate::models::game_events::GameEvent;
 use crate::models::live_game::LiveGameScoreUpdate;
 use crate::services::live_game_service::LiveGameService;
 use redis::AsyncCommands;
+use std::sync::Arc;
 
 #[tracing::instrument(
     name = "Upload workout data with game stats",
@@ -25,7 +26,7 @@ use redis::AsyncCommands;
 pub async fn upload_workout_data(
     data: web::Json<WorkoutDataSyncRequest>,
     pool: web::Data<sqlx::PgPool>,
-    redis: Option<web::Data<redis::Client>>,
+    redis: Option<web::Data<Arc<redis::Client>>>,
     live_game_service: Option<web::Data<LiveGameService>>,
     claims: web::ReqData<Claims>
 ) -> HttpResponse {
