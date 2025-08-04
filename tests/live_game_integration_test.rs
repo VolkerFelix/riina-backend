@@ -4,6 +4,30 @@ use chrono::{Utc, Duration, Weekday, NaiveTime, DateTime};
 use uuid::Uuid;
 
 mod common;
+
+// Helper function to create test user with health profile for heart rate zone calculations
+async fn create_test_user_with_health_profile(test_app: &TestApp, client: &Client) -> UserRegLoginResponse {
+    let user = create_test_user_and_login(&test_app.address).await;
+    
+    // Create health profile using API
+    let health_profile_data = json!({
+        "age": 25,
+        "gender": "male",
+        "resting_heart_rate": 60
+    });
+    
+    let response = make_authenticated_request(
+        client,
+        reqwest::Method::PUT,
+        &format!("{}/profile/health_profile", test_app.address),
+        &user.token,
+        Some(health_profile_data),
+    ).await;
+    
+    assert!(response.status().is_success(), "Failed to create health profile");
+    
+    user
+}
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, TestApp, get_next_date, UserRegLoginResponse};
 use common::admin_helpers::{create_admin_user_and_login, create_league_season, create_teams_for_test, create_league, add_team_to_league, add_user_to_team};
 
@@ -49,9 +73,12 @@ async fn test_complete_live_game_workflow() {
     assert!(api_game["away_team_name"].is_string(), "Should have away team name");
 
     // Home team user uploads workout data
-    upload_workout_data(&test_app, &client, &home_user, "intense_workout").await;
+    let (stamina, strength) = upload_workout_data(&test_app, &client, &home_user, WorkoutType::Intense).await;
+    println!("DEBUG: Home user workout generated stamina: {}, strength: {}", stamina, strength);
+    
     // Verify live game was updated
     let updated_live_game = get_live_game_state(&test_app, game_id).await;
+    println!("DEBUG: Updated live game - home_score: {}, home_power: {}", updated_live_game.home_score, updated_live_game.home_power);
     
     assert!(updated_live_game.home_score > 0, "Home team score should increase after workout upload");
     assert!(updated_live_game.home_power > 0, "Home team power should increase");
@@ -63,8 +90,8 @@ async fn test_complete_live_game_workflow() {
     assert_eq!(updated_live_game.last_scorer_team, Some("home".to_string()));
 
     // Away team users upload workout data
-    upload_workout_data(&test_app, &client, &away_user_1, "moderate_workout").await;
-    upload_workout_data(&test_app, &client, &away_user_2, "light_workout").await;
+    upload_workout_data(&test_app, &client, &away_user_1, WorkoutType::Moderate).await;
+    upload_workout_data(&test_app, &client, &away_user_2, WorkoutType::Light).await;
     
     // Verify live game reflects both team activities
     let final_live_game = get_live_game_state(&test_app, game_id).await;
@@ -92,24 +119,25 @@ async fn test_complete_live_game_workflow() {
     let away_active_contributions: Vec<&PlayerContribution> = away_contributions.iter()
         .filter(|c| c.total_score_contribution > 0)
         .collect();
-    assert_eq!(away_active_contributions.len(), 1, "Only away_user_1 should have non-zero contribution");
+    assert_eq!(away_active_contributions.len(), 2, "Both away users should have non-zero contributions");
     assert!(away_active_contributions.iter().any(|c| c.user_id == away_user_1.user_id));
+    assert!(away_active_contributions.iter().any(|c| c.user_id == away_user_2.user_id));
 
     // Step 7: Test score events logging
     let score_events = get_recent_score_events(&test_app, final_live_game.id).await;
-    assert_eq!(score_events.len(), 2, "Should have 2 score events (only for users with > 0 stats)");
+    assert_eq!(score_events.len(), 3, "Should have 3 score events (all users generated stats)");
     
     // Verify events are properly logged
     assert!(score_events.iter().any(|e| e.user_id == home_user.user_id && e.team_side == "home"));
     assert!(score_events.iter().any(|e| e.user_id == away_user_1.user_id && e.team_side == "away"));
-    // Away user 2 should not have a score event since their workout generated 0 points
+    assert!(score_events.iter().any(|e| e.user_id == away_user_2.user_id && e.team_side == "away"));
 
     // Step 8: Test game progress and time calculations
     assert!(final_live_game.game_progress() >= 0.0 && final_live_game.game_progress() <= 100.0);
     assert!(final_live_game.time_remaining().is_some());
 
     // Step 9: Test multiple uploads from same user
-    upload_workout_data(&test_app, &client, &home_user, "second_workout").await;
+    upload_workout_data(&test_app, &client, &home_user, WorkoutType::Second).await;
     
     let after_second_upload = get_live_game_state(&test_app, game_id).await;
     assert!(after_second_upload.home_score > final_live_game.home_score, 
@@ -123,7 +151,7 @@ async fn test_complete_live_game_workflow() {
     assert_eq!(home_contrib.contribution_count, 2, "Home user should have 2 contributions after second upload");
 
     // Step 10: Test live scoring history API endpoint
-    test_live_scoring_history_api(&test_app, &client, &home_user.token, game_id, &home_user, &away_user_1).await;
+    test_live_scoring_history_api(&test_app, &client, &home_user.token, game_id, &home_user, &away_user_1, &away_user_2).await;
 
     println!("✅ Live game integration test completed successfully!");
     println!("Final scores: {} {} - {} {}", 
@@ -143,7 +171,7 @@ async fn test_live_game_edge_cases() {
     let test_user = create_test_user_and_login(&test_app.address).await;
     
     // This should not crash or cause errors
-    upload_workout_data(&test_app, &client, &test_user, "no_game_workout").await;
+    upload_workout_data(&test_app, &client, &test_user, WorkoutType::NoGame).await;
 
     // Test 2: Multiple initializations of same live game
     let (_, _, _, game_id) = 
@@ -272,7 +300,7 @@ async fn test_live_game_finish_workflow() {
     let live_game = initialize_live_game(&test_app, game_id).await;
     
     // Upload some data while game is active
-    upload_workout_data(&test_app, &client, &home_user, "last_minute_workout").await;
+    upload_workout_data(&test_app, &client, &home_user, WorkoutType::LastMinute).await;
     
     let active_game = get_live_game_state(&test_app, game_id).await;
     assert!(active_game.is_active);
@@ -306,7 +334,7 @@ async fn test_live_game_finish_workflow() {
     
     // Try to upload data after game ended - should not affect scores
     let final_score = finished_game.home_score;
-    upload_workout_data(&test_app, &client, &home_user, "after_game_workout").await;
+    upload_workout_data(&test_app, &client, &home_user, WorkoutType::AfterGame).await;
     
     let post_finish_game = get_live_game_state(&test_app, game_id).await;
     assert_eq!(post_finish_game.home_score, final_score, "Score should not change after game ends");
@@ -320,7 +348,8 @@ async fn test_live_scoring_history_api(
     token: &str, 
     game_id: Uuid,
     home_user: &UserRegLoginResponse,
-    away_user: &UserRegLoginResponse
+    away_user_1: &UserRegLoginResponse,
+    away_user_2: &UserRegLoginResponse
 ) {
     println!("🧪 Testing live scoring history API endpoint...");
     
@@ -381,7 +410,7 @@ async fn test_live_scoring_history_api(
         let event_user_id = event_obj["user_id"].as_str().expect("user_id should be a string");
         let event_user_uuid = Uuid::parse_str(event_user_id).expect("user_id should be valid UUID");
         assert!(
-            event_user_uuid == home_user.user_id || event_user_uuid == away_user.user_id,
+            event_user_uuid == home_user.user_id || event_user_uuid == away_user_1.user_id || event_user_uuid == away_user_2.user_id,
             "Event should be from one of our test users"
         );
 
@@ -519,6 +548,7 @@ async fn test_live_scoring_history_api(
 async fn setup_live_game_environment(
     test_app: &TestApp, 
 ) -> (UserRegLoginResponse, UserRegLoginResponse, UserRegLoginResponse, Uuid) {
+    let client = Client::new();
     let admin_session = create_admin_user_and_login(&test_app.address).await;
     // Create league
     let league_id = create_league(&test_app.address, &admin_session.token, 2).await;
@@ -528,10 +558,10 @@ async fn setup_live_game_environment(
     let home_team_id = team_ids[0].clone();
     let away_team_id = team_ids[1].clone();
 
-    // Create additional users and add them to teams
-    let home_user = create_test_user_and_login(&test_app.address).await;
-    let away_user_1 = create_test_user_and_login(&test_app.address).await;
-    let away_user_2 = create_test_user_and_login(&test_app.address).await;
+    // Create additional users with health profiles and add them to teams
+    let home_user = create_test_user_with_health_profile(&test_app, &client).await;
+    let away_user_1 = create_test_user_with_health_profile(&test_app, &client).await;
+    let away_user_2 = create_test_user_with_health_profile(&test_app, &client).await;
 
     // Add users to teams
     add_user_to_team(&test_app.address, &admin_session.token, &home_team_id, home_user.user_id).await;
@@ -736,32 +766,18 @@ async fn upload_workout_data(
     test_app: &TestApp, 
     client: &Client, 
     user: &common::utils::UserRegLoginResponse, 
-    workout_type: &str
+    workout_type: WorkoutType
 ) -> (i32, i32) {
-    let heart_rate_data = match workout_type {
-        "intense_workout" => generate_intense_workout_data(),
-        "moderate_workout" => generate_moderate_workout_data(),
-        "light_workout" => generate_light_workout_data(),
-        "second_workout" => generate_moderate_workout_data(),
-        "last_minute_workout" => generate_intense_workout_data(),
-        "after_game_workout" => generate_light_workout_data(),
-        "no_game_workout" => generate_light_workout_data(),
-        _ => generate_light_workout_data(),
-    };
 
-    let health_data = json!({
-        "device_id": format!("test-device-{}", user.username),
-        "timestamp": Utc::now(),
-        "heart_rate": heart_rate_data,
-        "active_energy_burned": Option::<f64>::None
-    });
+    let workout_data = WorkoutData::new(workout_type, 30);
+
 
     let response = make_authenticated_request(
         client,
         reqwest::Method::POST,
         &format!("{}/health/upload_health", test_app.address),
         &user.token,
-        Some(health_data),
+        Some(workout_data.to_json()),
     ).await;
 
     assert!(response.status().is_success(), "Health data upload should succeed");
@@ -851,26 +867,26 @@ async fn finish_live_game(test_app: &TestApp, live_game_id: Uuid) {
 }
 
 // Helper functions for generating workout data
-fn generate_intense_workout_data() -> Vec<serde_json::Value> {
-    let base_time = Utc::now();
-    (0..300).map(|i| json!({
-        "timestamp": base_time + Duration::seconds(i * 2),
-        "heart_rate": 140 + (i % 30) // High intensity heart rate
+fn generate_intense_workout_data(start_time: DateTime<Utc>, duration_minutes: i64) -> Vec<serde_json::Value> {
+    // Need duration_minutes + 1 points to get duration_minutes intervals
+    (0..=(duration_minutes)).map(|i| json!({
+        "timestamp": start_time + Duration::minutes(i),
+        "heart_rate": 150 + (i % 25) as i32 // High intensity heart rate
     })).collect()
 }
 
-fn generate_moderate_workout_data() -> Vec<serde_json::Value> {
-    let base_time = Utc::now();
-    (0..200).map(|i| json!({
-        "timestamp": base_time + Duration::seconds(i * 3),
+fn generate_moderate_workout_data(start_time: DateTime<Utc>, duration_minutes: i64) -> Vec<serde_json::Value> {
+    // Need duration_minutes + 1 points to get duration_minutes intervals
+    (0..=(duration_minutes)).map(|i| json!({
+        "timestamp": start_time + Duration::minutes(i),
         "heart_rate": 110 + (i % 20) // Moderate intensity
     })).collect()
 }
 
-fn generate_light_workout_data() -> Vec<serde_json::Value> {
-    let base_time = Utc::now();
-    (0..100).map(|i| json!({
-        "timestamp": base_time + Duration::seconds(i * 5),
+fn generate_light_workout_data(start_time: DateTime<Utc>, duration_minutes: i64) -> Vec<serde_json::Value> {
+    // Need duration_minutes + 1 points to get duration_minutes intervals
+    (0..=(duration_minutes)).map(|i| json!({
+        "timestamp": start_time + Duration::minutes(i),
         "heart_rate": 90 + (i % 15) // Light intensity
     })).collect()
 }
@@ -960,4 +976,73 @@ struct ScoreEvent {
     team_side: String,
     score_points: i32,
     occurred_at: chrono::DateTime<Utc>,
+}
+
+enum WorkoutType {
+    Intense,
+    Moderate,
+    Light,
+    Second,
+    LastMinute,
+    AfterGame,
+    NoGame,
+    Default,
+}
+
+struct WorkoutData {
+    workout_uuid: String,
+    workout_start: DateTime<Utc>,
+    workout_end: DateTime<Utc>,
+    calories_burned: i32,
+    heart_rate: Vec<serde_json::Value>,
+    device_id: String,
+    timestamp: DateTime<Utc>,
+}
+impl WorkoutData {
+    fn new(workout_type: WorkoutType, duration_minutes: i64) -> Self {
+        let workout_start = Utc::now();
+        let heart_rate_data = match workout_type {
+            WorkoutType::Intense => generate_intense_workout_data(workout_start, duration_minutes),
+            WorkoutType::Moderate => generate_moderate_workout_data(workout_start, duration_minutes),
+            WorkoutType::Light => generate_light_workout_data(workout_start, duration_minutes),
+            WorkoutType::Second => generate_moderate_workout_data(workout_start, duration_minutes),
+            WorkoutType::LastMinute => generate_intense_workout_data(workout_start, duration_minutes),
+            WorkoutType::AfterGame => generate_light_workout_data(workout_start, duration_minutes),
+            WorkoutType::NoGame => generate_light_workout_data(workout_start, duration_minutes),
+            _ => generate_light_workout_data(workout_start, duration_minutes),
+        };
+        let workout_uuid = Uuid::new_v4().to_string();
+        let workout_end = workout_start + Duration::minutes(duration_minutes as i64);
+        let calories_burned = match workout_type {
+            WorkoutType::Intense => 450,
+            WorkoutType::Moderate => 300,
+            WorkoutType::Light => 180,
+            WorkoutType::Second => 300,
+            WorkoutType::LastMinute => 450,
+            WorkoutType::AfterGame => 180,
+            WorkoutType::NoGame => 180,
+            _ => 180,
+        };
+        Self {
+            workout_uuid,
+            workout_start,
+            workout_end,
+            calories_burned,
+            heart_rate: heart_rate_data,
+            device_id: format!("test-device-{}", &Uuid::new_v4().to_string()[..8]),
+            timestamp: Utc::now(),
+        }
+    }
+
+    fn to_json(&self) -> serde_json::Value {
+        json!({
+            "workout_uuid": self.workout_uuid,
+            "workout_start": self.workout_start,
+            "workout_end": self.workout_end,
+            "calories_burned": self.calories_burned,
+            "heart_rate": self.heart_rate,
+            "device_id": self.device_id,
+            "timestamp": self.timestamp,
+        })
+    }
 }

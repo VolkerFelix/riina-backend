@@ -50,16 +50,20 @@ impl WorkoutAnalyzer {
             hr_values_for_hrv.push(hr);
 
             let zone = zones.get_zone(hr as f32);
-            // Calc duration for this sample
+            // Calc duration for this sample - use interval between first and second point for the first point
             let duration_sec = if index == 0 {
-                0.0
+                if sorted_data.len() > 1 {
+                    (sorted_data[1].timestamp - sorted_data[0].timestamp).num_seconds() as f32
+                } else {
+                    0.0 // Single data point workout
+                }
             } else {
                 (hr_data.timestamp - sorted_data[index - 1].timestamp).num_seconds() as f32
             };
 
             let duration_min = duration_sec / 60.0;
 
-            // Process zone data
+            // Process zone data - now all heart rates should fall into a zone since Zone1 starts at 0
             if let Some(zone_name) = zone {
                 *analyzer.zone_durations.entry(zone_name).or_insert(0.0) += duration_min;
                 // Count time in aerobic zones

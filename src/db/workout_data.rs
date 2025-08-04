@@ -83,7 +83,7 @@ pub async fn insert_workout_data(
         &data.device_id,
         json!(data.heart_rate),
         data.calories_burned,
-        data.workout_uuid.as_deref(),
+        data.workout_uuid,
         data.workout_start,
         data.workout_end,
         duration_minutes,

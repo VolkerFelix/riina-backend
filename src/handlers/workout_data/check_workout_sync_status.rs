@@ -47,7 +47,7 @@ pub async fn check_workout_sync_status(
     let workout_uuids = &request.workout_uuids;
 
     // Query to find which workout UUIDs already exist for this user
-    let existing_uuids: Vec<Option<String>> = match sqlx::query_scalar!(
+    let existing_uuids = match sqlx::query_scalar!(
         r#"
         SELECT workout_uuid 
         FROM workout_data 
@@ -68,12 +68,8 @@ pub async fn check_workout_sync_status(
         }
     };
 
-    // Separate synced and unsynced workouts
-    // Filter out None values and convert to Vec<String>
-    let synced_workouts: Vec<String> = existing_uuids
-        .into_iter()
-        .filter_map(|uuid| uuid)
-        .collect();
+    // Since workout_uuid is now NOT NULL, we can directly use the results
+    let synced_workouts: Vec<String> = existing_uuids;
     
     let unsynced_workouts: Vec<String> = workout_uuids
         .iter()

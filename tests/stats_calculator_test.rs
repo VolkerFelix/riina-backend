@@ -54,7 +54,7 @@ async fn test_zone_1_active_recovery() {
     }
     
     let workout_data = WorkoutDataSyncRequest {
-        workout_uuid: Some(Uuid::new_v4().to_string()),
+        workout_uuid: Uuid::new_v4().to_string(),
         device_id: "test".to_string(),
         timestamp: now,
         workout_start: Some(workout_start),
@@ -121,7 +121,7 @@ async fn test_zone_2_aerobic_base() {
     }
 
     let workout_data = WorkoutDataSyncRequest {
-        workout_uuid: Some(Uuid::new_v4().to_string()),
+        workout_uuid: Uuid::new_v4().to_string(),
         device_id: "test".to_string(),
         timestamp: now,
         workout_start: Some(workout_start),
@@ -188,7 +188,7 @@ async fn test_zone_4_lactate_threshold() {
     }
     
     let workout_data = WorkoutDataSyncRequest {
-        workout_uuid: Some(Uuid::new_v4().to_string()),
+        workout_uuid: Uuid::new_v4().to_string(),
         device_id: "test".to_string(),
         timestamp: now,
         workout_start: Some(workout_start),
@@ -255,7 +255,7 @@ async fn test_zone_5_neuromuscular_power() {
     }
     
     let workout_data = WorkoutDataSyncRequest {
-        workout_uuid: Some(Uuid::new_v4().to_string()),
+        workout_uuid: Uuid::new_v4().to_string(),
         device_id: "test".to_string(),
         timestamp: now,
         workout_start: Some(workout_start),
@@ -311,7 +311,7 @@ async fn test_no_heart_rate_no_gains() {
     let workout_end = now;
     
     let workout_data = WorkoutDataSyncRequest {
-        workout_uuid: Some(Uuid::new_v4().to_string()),
+        workout_uuid: Uuid::new_v4().to_string(),
         device_id: "test".to_string(),
         timestamp: now,
         workout_start: Some(workout_start),

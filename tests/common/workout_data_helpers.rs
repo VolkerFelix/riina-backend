@@ -38,7 +38,8 @@ pub fn create_beginner_workout_data() -> serde_json::Value {
         "heart_rate": heart_rate_readings,
         "calories_burned": 180, // Lower calories for beginner
         "workout_start": base_time,
-        "workout_end": base_time + Duration::seconds(480)
+        "workout_end": base_time + Duration::seconds(480),
+        "workout_uuid": &Uuid::new_v4().to_string()[..8]
     })
 }
 
@@ -76,7 +77,8 @@ pub fn create_intermediate_workout_data() -> serde_json::Value {
         "heart_rate": heart_rate_readings,
         "calories_burned": 320, // Moderate calories
         "workout_start": base_time,
-        "workout_end": base_time + Duration::seconds(1500)
+        "workout_end": base_time + Duration::seconds(1500),
+        "workout_uuid": &Uuid::new_v4().to_string()[..8]
     })
 }
 
@@ -116,7 +118,8 @@ pub fn create_advanced_workout_data() -> serde_json::Value {
         "heart_rate": heart_rate_readings,
         "calories_burned": 520, // Higher calories for advanced
         "workout_start": base_time,
-        "workout_end": base_time + Duration::seconds(2100)
+        "workout_end": base_time + Duration::seconds(2100),
+        "workout_uuid": &Uuid::new_v4().to_string()[..8]
     })
 }
 
@@ -156,7 +159,8 @@ pub fn create_elite_workout_data() -> serde_json::Value {
         "heart_rate": heart_rate_readings,
         "calories_burned": 720, // Highest calories for elite
         "workout_start": base_time,
-        "workout_end": base_time + Duration::seconds(2100)
+        "workout_end": base_time + Duration::seconds(2100),
+        "workout_uuid": &Uuid::new_v4().to_string()[..8]
     })
 }
 
