@@ -30,6 +30,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .service(health_activity::get_activity_sum)
             .service(health_activity::get_zone_ana)
             .service(health_activity::get_workout_hist)
+            .service(health_activity::check_sync_status)
     );
     // Profile routes (require authentication)
     cfg.service(
