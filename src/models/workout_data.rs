@@ -16,7 +16,7 @@ pub struct WorkoutData {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow, sqlx::Decode)]
 pub struct HeartRateData {
     pub timestamp: DateTime<Utc>,
     pub heart_rate: i32,
