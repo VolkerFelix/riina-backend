@@ -5,6 +5,7 @@ use sqlx::Row;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request};
+use uuid::Uuid;
 
 #[tokio::test]
 async fn upload_workout_data_working() {
@@ -47,6 +48,7 @@ async fn upload_workout_data_working() {
     let workout_data = json!({
         "device_id": "test-device-123",
         "timestamp": base_time,
+        "workout_uuid": &Uuid::new_v4().to_string()[..8],
         "heart_rate": heart_rate_readings,
         "sleep": {
             "total_sleep_hours": 7.5,
@@ -133,7 +135,7 @@ async fn duplicate_workout_uuid_prevention() {
     let test_user = create_test_user_and_login(&test_app.address).await;
 
     // Create workout data with a specific UUID
-    let workout_uuid = "apple-health-workout-67890-abcdef";
+    let workout_uuid = &Uuid::new_v4().to_string()[..8];
     let base_time = Utc::now();
     
     let workout_data = json!({
@@ -168,7 +170,7 @@ async fn duplicate_workout_uuid_prevention() {
     assert_eq!(response1_body["success"], true);
     assert!(response1_body["data"]["game_stats"].is_object(), "Should contain game stats");
 
-    // Second upload with same UUID - should be detected as duplicate
+    // Second upload with same UUID - should be rejected as duplicate
     let response2 = make_authenticated_request(
         &client,
         reqwest::Method::POST,
@@ -177,13 +179,13 @@ async fn duplicate_workout_uuid_prevention() {
         Some(workout_data.clone()),
     ).await;
 
-    assert!(response2.status().is_success(), "Duplicate response should still be 200 OK");
+    assert!(!response2.status().is_success(), "Duplicate upload should return an error");
+    assert_eq!(response2.status(), 409, "Duplicate upload should return 409 Conflict");
     
     let response2_body: serde_json::Value = response2.json().await.expect("Failed to parse duplicate response");
-    assert_eq!(response2_body["success"], true);
-    assert_eq!(response2_body["data"]["duplicate"], true);
-    assert_eq!(response2_body["data"]["workout_uuid"], workout_uuid);
-    assert!(response2_body["message"].as_str().unwrap().contains("already processed"));
+    assert_eq!(response2_body["success"], false);
+    assert!(response2_body["error"].as_str().unwrap().contains("duplicate") || 
+            response2_body["error"].as_str().unwrap().contains("already exists"));
 
     // Verify only one record exists in database
     let count = sqlx::query_scalar::<_, i64>(
@@ -197,7 +199,7 @@ async fn duplicate_workout_uuid_prevention() {
     assert_eq!(count, 1, "Should have exactly one record with this workout UUID");
 
     // Third upload with different UUID - should succeed
-    let different_uuid = "apple-health-workout-67890-fedcba";
+    let different_uuid = &Uuid::new_v4().to_string()[..8];
     let mut workout_data_different = workout_data.clone();
     workout_data_different["workout_uuid"] = json!(different_uuid);
 
@@ -213,7 +215,7 @@ async fn duplicate_workout_uuid_prevention() {
     
     let response3_body: serde_json::Value = response3.json().await.expect("Failed to parse third response");
     assert_eq!(response3_body["success"], true);
-    assert!(response3_body["data"]["duplicate"].is_null() || response3_body["data"]["duplicate"] == false);
+    assert!(response3_body["data"]["game_stats"].is_object(), "Should contain game stats for new workout");
 
     // Verify now we have two records with different UUIDs
     let total_count = sqlx::query_scalar::<_, i64>(

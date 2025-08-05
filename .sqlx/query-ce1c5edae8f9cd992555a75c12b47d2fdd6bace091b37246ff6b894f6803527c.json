@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT workout_uuid \n        FROM workout_data \n        WHERE user_id = $1 \n        AND workout_uuid = ANY($2)\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "workout_uuid",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "ce1c5edae8f9cd992555a75c12b47d2fdd6bace091b37246ff6b894f6803527c"
+}

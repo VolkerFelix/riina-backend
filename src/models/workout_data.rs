@@ -16,7 +16,7 @@ pub struct WorkoutData {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow, sqlx::Decode)]
 pub struct HeartRateData {
     pub timestamp: DateTime<Utc>,
     pub heart_rate: i32,
@@ -28,7 +28,7 @@ pub struct WorkoutDataSyncRequest {
     pub timestamp: DateTime<Utc>,
     pub heart_rate: Option<Vec<HeartRateData>>,
     pub calories_burned: Option<i32>,
-    pub workout_uuid: Option<String>, // Apple Health workout UUID for duplicate prevention
+    pub workout_uuid: String, // Required: Apple Health workout UUID for duplicate prevention
     pub workout_start: Option<DateTime<Utc>>, // Actual workout start time
     pub workout_end: Option<DateTime<Utc>>, // Actual workout end time
 }
@@ -78,7 +78,7 @@ pub struct HeartRateZones {
 impl HeartRateZones {
     pub fn new(hhr: i32, resting_heart_rate: i32, max_heart_rate: i32) -> Self {
         let zone_1 = ZoneRange {
-            low: resting_heart_rate + (hhr as f32 * 0.5) as i32,
+            low: 0, // Zone 1 starts from 0 bpm to capture all heart rates including below resting
             high: resting_heart_rate + (hhr as f32 * 0.6) as i32 - 1,
         };
         let zone_2 = ZoneRange {
@@ -117,7 +117,7 @@ impl HeartRateZones {
         zone_5_max: i32,
     ) -> Self {
         let zone_1 = ZoneRange {
-            low: resting_heart_rate + ((zone_1_max - resting_heart_rate) as f32 * 0.5) as i32,
+            low: 0, // Zone 1 starts from 0 bpm to capture all heart rates
             high: zone_1_max,
         };
         let zone_2 = ZoneRange {

@@ -5,6 +5,7 @@ use crate::handlers::admin::{
     team_handler,
     league_handler,
     game_management_handler,
+    workout_handler,
 };
 use crate::middleware::admin::AdminMiddleware;
 
@@ -95,6 +96,21 @@ pub fn init_admin_routes(cfg: &mut web::ServiceConfig) {
             .service(
                 web::resource("/games/evaluate")
                     .route(web::post().to(game_management_handler::evaluate_games_for_date))
+            )
+            
+            // Workout management routes
+            .service(
+                web::resource("/workouts")
+                    .route(web::get().to(workout_handler::get_all_workouts))
+            )
+            .service(
+                web::resource("/workouts/bulk-delete")
+                    .route(web::post().to(workout_handler::bulk_delete_workouts))
+            )
+            .service(
+                web::resource("/workouts/{id}")
+                    .route(web::get().to(workout_handler::get_workout_detail))
+                    .route(web::delete().to(workout_handler::delete_workout))
             )
     );
 }

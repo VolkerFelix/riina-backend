@@ -40,7 +40,10 @@ async fn main() -> std::io::Result<()> {
     let redis_client_arc = redis_client_raw.map(|client| Arc::new(client));
     // Only try to establish connection when actually used
     let conection_pool = PgPoolOptions::new()
-        .acquire_timeout(Duration::from_secs(2))
+        .max_connections(32)
+        .acquire_timeout(Duration::from_secs(10))
+        .idle_timeout(Duration::from_secs(600))
+        .max_lifetime(Duration::from_secs(1800))
         .connect_lazy(
             &config.database.connection_string().expose_secret()
         )

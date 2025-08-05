@@ -1,7 +1,6 @@
 // Comprehensive integration test for WebSocket notifications in game evaluations
 
 use futures_util::{SinkExt, StreamExt};
-use redis::AsyncCommands;
 use reqwest::Client;
 use serde_json::json;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
@@ -15,8 +14,6 @@ mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, get_next_date};
 use common::admin_helpers::{create_admin_user_and_login, create_league_season};
 use common::workout_data_helpers::{create_elite_workout_data, create_advanced_workout_data, upload_workout_data_for_user};
-
-use evolveme_backend::services::GameEvaluationService;
 
 #[tokio::test]
 async fn test_game_evaluation_websocket_notifications_comprehensive() {
