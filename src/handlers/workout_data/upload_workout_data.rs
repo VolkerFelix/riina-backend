@@ -9,7 +9,6 @@ use crate::db::workout_data::insert_workout_data;
 use crate::models::workout_data::WorkoutDataSyncRequest;
 use crate::models::common::ApiResponse;
 use crate::game::stats_calculator::StatCalculator;
-use crate::models::game_events::GameEvent;
 use crate::models::live_game::LiveGameScoreUpdate;
 use crate::services::live_game_service::LiveGameService;
 use redis::AsyncCommands;

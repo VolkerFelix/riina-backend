@@ -1,9 +1,9 @@
 use chrono::{TimeZone, Utc, Datelike, Timelike, Weekday};
-use evolveme_backend::league::countdown::{CountdownService, UrgencyLevel};
+use evolveme_backend::league::timing::{TimingService, UrgencyLevel};
 
 #[test]
 fn test_next_game_time_is_saturday() {
-    let service = CountdownService::new();
+    let service = TimingService::new();
     let next_game = service.get_next_game_time();
     assert_eq!(next_game.weekday(), Weekday::Sat);
     assert_eq!(next_game.hour(), 22);
@@ -12,7 +12,7 @@ fn test_next_game_time_is_saturday() {
 
 #[test]
 fn test_countdown_formatting() {
-    let service = CountdownService::new();
+    let service = TimingService::new();
     assert_eq!(service.format_countdown(0), "Game time!");
     assert_eq!(service.format_countdown(30), "30s");
     assert_eq!(service.format_countdown(90), "1m 30s");
@@ -22,7 +22,7 @@ fn test_countdown_formatting() {
 
 #[test]
 fn test_urgency_levels() {
-    let service = CountdownService::new();
+    let service = TimingService::new();
     assert_eq!(service.get_urgency_level(0), UrgencyLevel::GameTime);
     assert_eq!(service.get_urgency_level(1800), UrgencyLevel::Critical);
     assert_eq!(service.get_urgency_level(10800), UrgencyLevel::High);

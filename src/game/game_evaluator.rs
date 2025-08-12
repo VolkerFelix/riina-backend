@@ -1,9 +1,6 @@
 use uuid::Uuid;
 use sqlx::PgPool;
 use crate::models::common::MatchResult;
-use chrono::{DateTime, Utc};
-
-// Using MatchResult from common module instead of duplicate GameResult enum
 
 #[derive(Debug, Clone)]
 pub struct GameStats {

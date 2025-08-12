@@ -3,7 +3,7 @@ use uuid::Uuid;
 use crate::league::schedule::ScheduleService;
 use crate::league::games::GameService;
 use crate::league::seasons::SeasonService;
-use crate::league::countdown::CountdownService;
+use crate::league::timing::TimingService;
 use crate::league::validation::LeagueValidator;
 use crate::league::standings::StandingsService;
 use crate::models::league::*;
@@ -15,7 +15,7 @@ pub struct LeagueService {
     standings: StandingsService,
     games: GameService,
     seasons: SeasonService,
-    countdown: CountdownService,
+    timing: TimingService,
     validator: LeagueValidator,
 }
 
@@ -27,7 +27,7 @@ impl LeagueService {
             standings: StandingsService::new(pool.clone()),
             games: GameService::new(pool.clone()),
             seasons: SeasonService::new(pool.clone()),
-            countdown: CountdownService::new(),
+            timing: TimingService::new(),
             validator: LeagueValidator::new(),
         }
     }
@@ -65,7 +65,7 @@ impl LeagueService {
                 
                 // Only calculate countdown if there's actually a next game
                 let countdown_seconds = if next_game.is_some() {
-                    Some(self.countdown.seconds_until_next_game())
+                    Some(self.timing.seconds_until_next_game())
                 } else {
                     None
                 };
@@ -219,7 +219,7 @@ impl LeagueService {
             format!("Fantasy Island League {}", chrono::Utc::now().format("%Y"))
         });
 
-        let start_date = self.countdown.get_next_game_time();
+        let start_date = self.timing.get_next_game_time();
 
         let request = CreateSeasonRequest {
             league_id,

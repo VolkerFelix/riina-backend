@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
-use crate::models::workout_data::{WorkoutData, HeartRateData};
+use crate::models::workout_data::HeartRateData;
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
 struct AdminWorkoutData {

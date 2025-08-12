@@ -3,19 +3,19 @@ use sqlx::PgPool;
 use uuid::Uuid;
 use crate::models::league::*;
 use crate::utils::team_power;
-use super::countdown::CountdownService;
+use super::timing::TimingService;
 
 /// Service responsible for league schedule management
 pub struct ScheduleService {
     pool: PgPool,
-    countdown: CountdownService,
+    timing: TimingService,
 }
 
 impl ScheduleService {
     pub fn new(pool: PgPool) -> Self {
         Self {
             pool,
-            countdown: CountdownService::new(),
+            timing: TimingService::new(),
         }
     }
 
@@ -26,7 +26,7 @@ impl ScheduleService {
         &self,
         season_id: Uuid,
         team_ids: &[Uuid],
-        start_date: DateTime<Utc>,
+        season_start_date: DateTime<Utc>,
     ) -> Result<i32, sqlx::Error> {
         let team_count = team_ids.len();
         if team_count < 2 {
@@ -46,8 +46,8 @@ impl ScheduleService {
         let game_duration = Duration::minutes(game_duration_minutes as i64);
 
 
-        let games_per_week = team_count / 2;
-        tracing::info!("Generating round-robin schedule for {} teams, {} games per week", team_count, games_per_week);
+        let games_per_round = team_count / 2;
+        tracing::info!("Generating round-robin schedule for {} teams, {} games per round", team_count, games_per_round);
 
         let mut tx = self.pool.begin().await?;
         let mut games_created = 0;
@@ -61,11 +61,11 @@ impl ScheduleService {
         
         // FIRST LEG: Generate N-1 rounds
         for round in 0..(team_count - 1) {
-            let week_num = round + 1;
-            let game_time = self.countdown.calculate_game_time_for_week(start_date, week_num as i32);
+            let game_round = round + 1;
+            let game_start_time = self.timing.calculate_game_start_time(season_start_date, game_round, game_duration)?;
             
             // Generate pairings for this round
-            for i in 0..games_per_week {
+            for i in 0..games_per_round {
                 let home_idx = if i == 0 {
                     // First team stays fixed
                     0
@@ -79,13 +79,12 @@ impl ScheduleService {
                 let away_team = team_ids[away_idx];
                 
                 tracing::debug!(
-                    "First leg - Week {}: {} (home) vs {} (away)",
-                    week_num, home_team, away_team
+                    "First leg - Round {}: {} (home) vs {} (away)",
+                    game_round, home_team, away_team
                 );
 
-                // Week starts at the scheduled time, ends after game duration
-                let week_start = game_time.clone();
-                let week_end = week_start + game_duration;
+                // Round starts at the scheduled time, ends after game duration
+                let game_end_time = game_start_time.clone() + game_duration;
 
                 sqlx::query!(
                     r#"
@@ -97,10 +96,10 @@ impl ScheduleService {
                     season_id,
                     home_team,
                     away_team,
-                    game_time,
-                    week_num as i32,
-                    week_start,
-                    week_end
+                    game_start_time,
+                    game_round as i32,
+                    game_start_time,
+                    game_end_time
                 )
                 .execute(&mut *tx)
                 .await?;
@@ -120,11 +119,11 @@ impl ScheduleService {
         
         // SECOND LEG: Generate N-1 rounds with home/away swapped
         for round in 0..(team_count - 1) {
-            let week_num = (team_count - 1) + round + 1;
-            let game_time = self.countdown.calculate_game_time_for_week(start_date, week_num as i32);
+            let game_round = (team_count - 1) + round + 1;
+            let game_start_time = self.timing.calculate_game_start_time(season_start_date, game_round, game_duration)?;
             
             // Generate pairings for this round (with home/away swapped)
-            for i in 0..games_per_week {
+            for i in 0..games_per_round {
                 let home_idx = if i == 0 {
                     // First team stays fixed but now plays away
                     teams[team_count - 1 - i]
@@ -142,13 +141,12 @@ impl ScheduleService {
                 let away_team = team_ids[away_idx];
                 
                 tracing::debug!(
-                    "Second leg - Week {}: {} (home) vs {} (away)",
-                    week_num, home_team, away_team
+                    "Second leg - Round {}: {} (home) vs {} (away)",
+                    game_round, home_team, away_team
                 );
 
                 // Week starts at the scheduled time, ends after game duration
-                let week_start = game_time.clone();
-                let week_end = week_start + game_duration;
+                let game_end_time = game_start_time.clone() + game_duration;
 
                 sqlx::query!(
                     r#"
@@ -160,10 +158,10 @@ impl ScheduleService {
                     season_id,
                     home_team,
                     away_team,
-                    game_time,
-                    week_num as i32,
-                    week_start,
-                    week_end
+                    game_start_time,
+                    game_round as i32,
+                    game_start_time,
+                    game_end_time
                 )
                 .execute(&mut *tx)
                 .await?;
@@ -176,16 +174,16 @@ impl ScheduleService {
             teams.insert(1, last);
         }
         
-        tracing::info!("Completed second leg: {} total games in {} weeks", games_created, 2 * (team_count - 1));
+        tracing::info!("Completed second leg: {} total games in {} rounds", games_created, 2 * (team_count - 1));
 
         tx.commit().await?;
 
         let total_weeks = 2 * (team_count - 1);
         tracing::info!(
-            "Schedule generation complete: {} total games over {} weeks ({} games per week)",
+            "Schedule generation complete: {} total games over {} rounds ({} games per round)",
             games_created,
             total_weeks,
-            games_per_week
+            games_per_round
         );
 
         Ok(games_created)
@@ -214,7 +212,7 @@ impl ScheduleService {
         // Log info about games found
         tracing::info!("Found {} games for season {}, total weeks: {}", games_with_teams.len(), season_id, total_weeks);
         
-        let next_game_time = self.countdown.get_next_game_time();
+        let next_game_time = self.timing.get_next_game_time();
 
         Ok(LeagueScheduleResponse {
             season,
@@ -256,7 +254,7 @@ impl ScheduleService {
 
         let game_time = games_query[0].scheduled_time;
         let now = Utc::now();
-        let next_saturday = self.countdown.get_next_game_time();
+        let next_saturday = self.timing.get_next_game_time();
         let is_current_week = (game_time - next_saturday).abs() < Duration::days(7);
         
         let countdown_seconds = if is_current_week && game_time > now {
