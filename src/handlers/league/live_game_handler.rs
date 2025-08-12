@@ -6,7 +6,6 @@ use serde::Serialize;
 use crate::services::ManageGameService;
 use crate::middleware::auth::Claims;
 use crate::db::live_game_queries::LiveGameQueries;
-use crate::models::live_game::LiveScoreEvent;
 
 #[derive(Serialize)]
 pub struct LiveGameScore {

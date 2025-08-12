@@ -1,13 +1,15 @@
-use chrono::{DateTime, Utc, Datelike, Duration, Weekday, Timelike};
-pub struct CountdownService;
+use std::{io::Error, io::ErrorKind};
 
-impl Default for CountdownService {
+use chrono::{DateTime, Utc, Datelike, Duration, Weekday, Timelike};
+pub struct TimingService;
+
+impl Default for TimingService {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl CountdownService {
+impl TimingService {
     pub fn new() -> Self {
         Self
     }
@@ -48,25 +50,22 @@ impl CountdownService {
 
     /// Calculate game time for a specific week number
     /// Games are scheduled at weekly intervals from the start date
-    pub fn calculate_game_time_for_week(&self, start_date: DateTime<Utc>, week_number: i32) -> DateTime<Utc> {
-        // Validate inputs
-        if week_number < 1 {
-            tracing::warn!("Invalid week number: {}, defaulting to week 1", week_number);
-            return start_date;
+    pub fn calculate_game_start_time(&self, season_start_date: DateTime<Utc>, round: usize, game_duration: Duration) -> Result<DateTime<Utc>, Error> {
+        if round < 1 {
+            tracing::error!("Invalid round number: {}, defaulting to round 1", round);
+            return Err(Error::new(ErrorKind::InvalidInput, "Invalid round number"));
         }
 
-        // Calculate target date - simply add weeks to the start date
-        let weeks_to_add = (week_number - 1) as i64;
-        let result = start_date + Duration::weeks(weeks_to_add);
+        let game_start_time = season_start_date + Duration::minutes(game_duration.num_minutes() * round as i64);
         
         tracing::debug!(
-            "Calculated game time for week {}: {} ({})",
-            week_number,
-            result,
-            result.format("%A, %B %d at %H:%M UTC")
+            "Calculated game start time for round {}: {} ({})",
+            round,
+            game_start_time,
+            game_start_time.format("%A, %B %d at %H:%M UTC")
         );
         
-        result
+        Ok(game_start_time)
     }
 
     /// Check if we're currently within game time (Saturday evening)

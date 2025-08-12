@@ -1,5 +1,5 @@
 use chrono::{TimeZone, Utc, Datelike, Timelike, Weekday};
-use evolveme_backend::league::countdown::{CountdownService, UrgencyLevel};
+use evolveme_backend::league::timing::{CountdownService, UrgencyLevel};
 
 #[test]
 fn test_next_game_time_is_saturday() {

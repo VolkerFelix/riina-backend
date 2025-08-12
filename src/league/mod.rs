@@ -1,5 +1,5 @@
 pub mod league;
-pub mod countdown;
+pub mod timing;
 pub mod schedule;
 pub mod validation;
 pub mod games;

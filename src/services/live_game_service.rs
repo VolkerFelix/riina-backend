@@ -235,22 +235,6 @@ impl LiveGameService {
 
     /// Check if a user is participating in any active live games
     pub async fn get_user_active_games(&self, user_id: Uuid) -> Result<Vec<LiveGame>, Box<dyn std::error::Error>> {
-        let user_games_query = "
-            SELECT DISTINCT 
-                lg.id, lg.game_id, lg.home_team_id, lg.home_team_name, lg.away_team_id, lg.away_team_name,
-                lg.home_score, lg.away_score, lg.home_power, lg.away_power,
-                lg.game_start_time, lg.game_end_time, lg.last_score_time, lg.last_scorer_id,
-                lg.last_scorer_name, lg.last_scorer_team, lg.is_active, lg.created_at, lg.updated_at
-            FROM live_games lg
-            JOIN live_player_contributions lpc ON lg.id = lpc.live_game_id
-            JOIN league_games g ON lg.game_id = g.id
-            WHERE lpc.user_id = $1 
-            AND lg.is_active = true
-            AND g.status = 'in_progress'
-            AND lg.game_start_time <= NOW()
-            AND lg.game_end_time > NOW()
-        ";
-
         let games = sqlx::query_as!(
             LiveGame,
             r#"
