@@ -430,3 +430,139 @@ async fn test_season_creation_with_proper_round_robin_schedule() {
 
     println!("✅ Season creation test passed - Perfect round-robin schedule generated!");
 }
+
+#[tokio::test]
+async fn test_first_game_starts_on_season_start_date() {
+    // Arrange
+    let test_app = spawn_app().await;
+    let client = Client::new();
+    let admin = create_admin_user_and_login(&test_app.address).await;
+
+    // Create a league
+    let league_request = json!({
+        "name": "Test League for Start Date",
+        "description": "Testing first game starts on season start date",
+        "max_teams": 4
+    });
+
+    let league_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/leagues", test_app.address),
+        &admin.token,
+        Some(league_request),
+    ).await;
+
+    assert_eq!(201, league_response.status().as_u16());
+    let league_body: serde_json::Value = league_response.json().await.expect("Failed to parse league response");
+    let league_id = league_body["data"]["id"].as_str().expect("League ID not found").to_string();
+
+    // Create exactly 4 teams
+    let team_ids = create_teams_for_test(&test_app.address, &admin.token, 4).await;
+    
+    // Assign teams to league
+    for team_id in &team_ids {
+        let assign_request = json!({
+            "team_id": team_id
+        });
+
+        let assign_response = make_authenticated_request(
+            &client,
+            reqwest::Method::POST,
+            &format!("{}/admin/leagues/{}/teams", test_app.address, league_id),
+            &admin.token,
+            Some(assign_request),
+        ).await;
+
+        assert_eq!(201, assign_response.status().as_u16());
+    }
+
+    // Create season with specific start date and 7-day game duration
+    let start_date = get_next_date(Weekday::Sat, NaiveTime::from_hms_opt(22, 0, 0).unwrap());
+    
+    let season_request = json!({
+        "name": "Test Season",
+        "start_date": start_date.to_rfc3339(),
+        "evaluation_cron": "0 0 22 * * SAT",
+        "game_duration_minutes": 10080  // 7 days = 10080 minutes
+    });
+
+    let season_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/leagues/{}/seasons", test_app.address, league_id),
+        &admin.token,
+        Some(season_request),
+    ).await;
+
+    assert_eq!(201, season_response.status().as_u16());
+    let season_body: serde_json::Value = season_response.json().await.expect("Failed to parse season response");
+    let season_id = season_body["data"]["id"].as_str().expect("Season ID not found").to_string();
+
+    // Get the schedule
+    let schedule_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/seasons/{}/schedule", test_app.address, season_id),
+        &admin.token,
+        None,
+    ).await;
+
+    assert_eq!(200, schedule_response.status().as_u16());
+    let schedule_body: serde_json::Value = schedule_response.json().await.expect("Failed to parse schedule response");
+    
+    let games = schedule_body["data"]["games"].as_array().expect("Games not found");
+    
+    // Find all week 1 games (first round games)
+    let week_1_games: Vec<_> = games.iter()
+        .filter(|g| g["game"]["week_number"].as_i64().unwrap() == 1)
+        .collect();
+    
+    assert!(!week_1_games.is_empty(), "Should have games in week 1");
+    
+    // Get the scheduled time of the first week's games
+    let first_game_time_str = week_1_games[0]["game"]["scheduled_time"]
+        .as_str()
+        .expect("Scheduled time not found");
+    
+    let first_game_time = chrono::DateTime::parse_from_rfc3339(first_game_time_str)
+        .expect("Failed to parse scheduled time")
+        .with_timezone(&Utc);
+    
+    // The first game should start exactly on the season start date
+    // Allow for small time differences due to processing
+    let time_diff = (first_game_time - start_date).num_seconds().abs();
+    
+    assert!(
+        time_diff < 60, 
+        "First game should start on season start date. Expected: {}, Got: {}, Difference: {} seconds",
+        start_date.to_rfc3339(),
+        first_game_time.to_rfc3339(),
+        time_diff
+    );
+    
+    // Also verify that week 2 games are exactly 1 week later
+    let week_2_games: Vec<_> = games.iter()
+        .filter(|g| g["game"]["week_number"].as_i64().unwrap() == 2)
+        .collect();
+    
+    if !week_2_games.is_empty() {
+        let second_week_time_str = week_2_games[0]["game"]["scheduled_time"]
+            .as_str()
+            .expect("Scheduled time not found");
+        
+        let second_week_time = chrono::DateTime::parse_from_rfc3339(second_week_time_str)
+            .expect("Failed to parse scheduled time")
+            .with_timezone(&Utc);
+        
+        let week_diff = (second_week_time - first_game_time).num_days();
+        
+        assert_eq!(
+            7, week_diff,
+            "Week 2 games should be exactly 7 days after week 1. Got {} days difference",
+            week_diff
+        );
+    }
+
+    println!("✅ First game starts on season start date - Test passed!");
+}

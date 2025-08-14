@@ -49,18 +49,14 @@ impl TimingService {
     }
 
     /// Calculate game time for a specific week number
-    /// Games are scheduled at weekly intervals from the start date
+    /// Games are scheduled based on the round number and the game duration
+    /// Round 0 is the first game
     pub fn calculate_game_start_time(&self, season_start_date: DateTime<Utc>, round: usize, game_duration: Duration) -> Result<DateTime<Utc>, Error> {
-        if round < 1 {
-            tracing::error!("Invalid round number: {}, defaulting to round 1", round);
-            return Err(Error::new(ErrorKind::InvalidInput, "Invalid round number"));
-        }
-
         let game_start_time = season_start_date + Duration::minutes(game_duration.num_minutes() * round as i64);
         
         tracing::debug!(
             "Calculated game start time for round {}: {} ({})",
-            round,
+            round + 1,
             game_start_time,
             game_start_time.format("%A, %B %d at %H:%M UTC")
         );
