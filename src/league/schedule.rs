@@ -61,8 +61,8 @@ impl ScheduleService {
         
         // FIRST LEG: Generate N-1 rounds
         for round in 0..(team_count - 1) {
-            let game_round = round + 1;
-            let game_start_time = self.timing.calculate_game_start_time(season_start_date, game_round, game_duration)?;
+            let round_counter_for_readability = round + 1;
+            let game_start_time = self.timing.calculate_game_start_time(season_start_date, round, game_duration)?;
             
             // Generate pairings for this round
             for i in 0..games_per_round {
@@ -80,7 +80,7 @@ impl ScheduleService {
                 
                 tracing::debug!(
                     "First leg - Round {}: {} (home) vs {} (away)",
-                    game_round, home_team, away_team
+                    round_counter_for_readability, home_team, away_team
                 );
 
                 // Round starts at the scheduled time, ends after game duration
@@ -97,7 +97,7 @@ impl ScheduleService {
                     home_team,
                     away_team,
                     game_start_time,
-                    game_round as i32,
+                    round_counter_for_readability as i32,
                     game_start_time,
                     game_end_time
                 )
@@ -119,7 +119,8 @@ impl ScheduleService {
         
         // SECOND LEG: Generate N-1 rounds with home/away swapped
         for round in 0..(team_count - 1) {
-            let game_round = (team_count - 1) + round + 1;
+            let game_round = (team_count - 1) + round;
+            let round_counter_for_readability = game_round + 1;
             let game_start_time = self.timing.calculate_game_start_time(season_start_date, game_round, game_duration)?;
             
             // Generate pairings for this round (with home/away swapped)
@@ -142,7 +143,7 @@ impl ScheduleService {
                 
                 tracing::debug!(
                     "Second leg - Round {}: {} (home) vs {} (away)",
-                    game_round, home_team, away_team
+                    game_round + 1, home_team, away_team
                 );
 
                 // Week starts at the scheduled time, ends after game duration
@@ -159,7 +160,7 @@ impl ScheduleService {
                     home_team,
                     away_team,
                     game_start_time,
-                    game_round as i32,
+                    round_counter_for_readability as i32,
                     game_start_time,
                     game_end_time
                 )
