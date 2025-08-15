@@ -342,6 +342,141 @@ async fn test_live_game_finish_workflow() {
     println!("✅ Live game finish workflow test completed successfully!");
 }
 
+#[tokio::test]
+async fn test_workout_timing_validation_for_live_games() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    println!("🧪 Testing workout timing validation for live games...");
+
+    // Setup test environment
+    let (home_user, away_user, _, game_id) = setup_live_game_environment(&test_app).await;
+    
+    // Update game times for precise testing
+    update_game_times_to_now(&test_app, game_id).await;
+    start_test_game(&test_app, game_id).await;
+    
+    let live_game = initialize_live_game(&test_app, game_id).await;
+    let game_start = live_game.game_start_time;
+    let game_end = live_game.game_end_time;
+    
+    println!("📅 Game window: {} to {}", game_start, game_end);
+    
+    // Test 1: Workout BEFORE game start - should NOT count
+    println!("\n🔬 Test 1: Uploading workout from before game start...");
+    let before_game_workout = WorkoutData::new_with_custom_time(
+        WorkoutType::BeforeGameStart, 
+        30, 
+        game_start - Duration::hours(2)
+    );
+    
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/upload_health", test_app.address),
+        &home_user.token,
+        Some(before_game_workout.to_json()),
+    ).await;
+    assert!(response.status().is_success(), "Workout upload should succeed");
+    
+    // Check that score didn't increase
+    let game_state_1 = get_live_game_state(&test_app, game_id).await;
+    assert_eq!(game_state_1.home_score, 0, "Score should not increase for workout before game start");
+    println!("✅ Workout before game start correctly ignored");
+    
+    // Test 2: Workout DURING game - should count
+    println!("\n🔬 Test 2: Uploading workout during game window...");
+    let during_game_workout = WorkoutData::new_with_custom_time(
+        WorkoutType::DuringGame, 
+        30, 
+        game_start + Duration::hours(1)
+    );
+    
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/upload_health", test_app.address),
+        &home_user.token,
+        Some(during_game_workout.to_json()),
+    ).await;
+    assert!(response.status().is_success(), "Workout upload should succeed");
+    
+    // Check that score increased
+    let game_state_2 = get_live_game_state(&test_app, game_id).await;
+    assert!(game_state_2.home_score > 0, "Score should increase for workout during game");
+    let score_during_game = game_state_2.home_score;
+    println!("✅ Workout during game correctly counted: +{} points", score_during_game);
+    
+    // Test 3: Workout AFTER game end - should NOT count
+    println!("\n🔬 Test 3: Uploading workout from after game end...");
+    let after_game_workout = WorkoutData::new_with_custom_time(
+        WorkoutType::AfterGameEnd, 
+        30, 
+        game_end + Duration::hours(1)
+    );
+    
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/upload_health", test_app.address),
+        &home_user.token,
+        Some(after_game_workout.to_json()),
+    ).await;
+    assert!(response.status().is_success(), "Workout upload should succeed");
+    
+    // Check that score didn't increase further
+    let game_state_3 = get_live_game_state(&test_app, game_id).await;
+    assert_eq!(game_state_3.home_score, score_during_game, "Score should not increase for workout after game end");
+    println!("✅ Workout after game end correctly ignored");
+    
+    // Test 4: Workout exactly at game start - should count
+    println!("\n🔬 Test 4: Uploading workout exactly at game start...");
+    let at_start_workout = WorkoutData::new_with_custom_time(
+        WorkoutType::Intense, 
+        30, 
+        game_start
+    );
+    
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/upload_health", test_app.address),
+        &away_user.token,
+        Some(at_start_workout.to_json()),
+    ).await;
+    assert!(response.status().is_success(), "Workout upload should succeed");
+    
+    // Check that away team score increased
+    let game_state_4 = get_live_game_state(&test_app, game_id).await;
+    assert!(game_state_4.away_score > 0, "Score should increase for workout at game start");
+    println!("✅ Workout at game start correctly counted: +{} points", game_state_4.away_score);
+    
+    // Test 5: Workout exactly at game end - should count
+    println!("\n🔬 Test 5: Uploading workout exactly at game end...");
+    let at_end_workout = WorkoutData::new_with_custom_time(
+        WorkoutType::Moderate, 
+        30, 
+        game_end
+    );
+    
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/upload_health", test_app.address),
+        &away_user.token,
+        Some(at_end_workout.to_json()),
+    ).await;
+    assert!(response.status().is_success(), "Workout upload should succeed");
+    
+    // Check that away team score increased
+    let game_state_5 = get_live_game_state(&test_app, game_id).await;
+    assert!(game_state_5.away_score > game_state_4.away_score, "Score should increase for workout at game end");
+    println!("✅ Workout at game end correctly counted: +{} points", game_state_5.away_score - game_state_4.away_score);
+    
+    println!("\n🎉 All workout timing validation tests passed!");
+    println!("Final scores - Home: {}, Away: {}", game_state_5.home_score, game_state_5.away_score);
+}
+
 async fn test_live_scoring_history_api(
     test_app: &TestApp, 
     client: &Client, 
@@ -867,28 +1002,34 @@ async fn finish_live_game(test_app: &TestApp, live_game_id: Uuid) {
 }
 
 // Helper functions for generating workout data
-fn generate_intense_workout_data(start_time: DateTime<Utc>, duration_minutes: i64) -> Vec<serde_json::Value> {
+fn generate_intense_workout_data(start_time: DateTime<Utc>, duration_minutes: i64) -> (Vec<serde_json::Value>, i32) {
     // Need duration_minutes + 1 points to get duration_minutes intervals
-    (0..=(duration_minutes)).map(|i| json!({
+    let heart_rate_data = (0..=(duration_minutes)).map(|i| json!({
         "timestamp": start_time + Duration::minutes(i),
         "heart_rate": 150 + (i % 25) as i32 // High intensity heart rate
-    })).collect()
+    })).collect();
+    let calories = 450; // High intensity burns more calories
+    (heart_rate_data, calories)
 }
 
-fn generate_moderate_workout_data(start_time: DateTime<Utc>, duration_minutes: i64) -> Vec<serde_json::Value> {
+fn generate_moderate_workout_data(start_time: DateTime<Utc>, duration_minutes: i64) -> (Vec<serde_json::Value>, i32) {
     // Need duration_minutes + 1 points to get duration_minutes intervals
-    (0..=(duration_minutes)).map(|i| json!({
+    let heart_rate_data = (0..=(duration_minutes)).map(|i| json!({
         "timestamp": start_time + Duration::minutes(i),
         "heart_rate": 110 + (i % 20) // Moderate intensity
-    })).collect()
+    })).collect();
+    let calories = 300; // Moderate intensity
+    (heart_rate_data, calories)
 }
 
-fn generate_light_workout_data(start_time: DateTime<Utc>, duration_minutes: i64) -> Vec<serde_json::Value> {
+fn generate_light_workout_data(start_time: DateTime<Utc>, duration_minutes: i64) -> (Vec<serde_json::Value>, i32) {
     // Need duration_minutes + 1 points to get duration_minutes intervals
-    (0..=(duration_minutes)).map(|i| json!({
+    let heart_rate_data = (0..=(duration_minutes)).map(|i| json!({
         "timestamp": start_time + Duration::minutes(i),
         "heart_rate": 90 + (i % 15) // Light intensity
-    })).collect()
+    })).collect();
+    let calories = 180; // Light intensity
+    (heart_rate_data, calories)
 }
 
 // Test data structures
@@ -987,6 +1128,9 @@ enum WorkoutType {
     AfterGame,
     NoGame,
     Default,
+    BeforeGameStart,  // For testing workout before game window
+    DuringGame,       // For testing workout during game window
+    AfterGameEnd,     // For testing workout after game window
 }
 
 struct WorkoutData {
@@ -1001,7 +1145,7 @@ struct WorkoutData {
 impl WorkoutData {
     fn new(workout_type: WorkoutType, duration_minutes: i64) -> Self {
         let workout_start = Utc::now();
-        let heart_rate_data = match workout_type {
+        let (heart_rate_data, calories_burned) = match workout_type {
             WorkoutType::Intense => generate_intense_workout_data(workout_start, duration_minutes),
             WorkoutType::Moderate => generate_moderate_workout_data(workout_start, duration_minutes),
             WorkoutType::Light => generate_light_workout_data(workout_start, duration_minutes),
@@ -1009,23 +1153,39 @@ impl WorkoutData {
             WorkoutType::LastMinute => generate_intense_workout_data(workout_start, duration_minutes),
             WorkoutType::AfterGame => generate_light_workout_data(workout_start, duration_minutes),
             WorkoutType::NoGame => generate_light_workout_data(workout_start, duration_minutes),
+            WorkoutType::BeforeGameStart => generate_moderate_workout_data(workout_start, duration_minutes),
+            WorkoutType::DuringGame => generate_intense_workout_data(workout_start, duration_minutes),
+            WorkoutType::AfterGameEnd => generate_light_workout_data(workout_start, duration_minutes),
             _ => generate_light_workout_data(workout_start, duration_minutes),
         };
         let workout_uuid = Uuid::new_v4().to_string();
         let workout_end = workout_start + Duration::minutes(duration_minutes as i64);
-        let calories_burned = match workout_type {
-            WorkoutType::Intense => 450,
-            WorkoutType::Moderate => 300,
-            WorkoutType::Light => 180,
-            WorkoutType::Second => 300,
-            WorkoutType::LastMinute => 450,
-            WorkoutType::AfterGame => 180,
-            WorkoutType::NoGame => 180,
-            _ => 180,
-        };
         Self {
             workout_uuid,
             workout_start,
+            workout_end,
+            calories_burned,
+            heart_rate: heart_rate_data,
+            device_id: format!("test-device-{}", &Uuid::new_v4().to_string()[..8]),
+            timestamp: Utc::now(),
+        }
+    }
+    
+    fn new_with_custom_time(workout_type: WorkoutType, duration_minutes: i64, custom_start: DateTime<Utc>) -> Self {
+        let (heart_rate_data, calories_burned) = match workout_type {
+            WorkoutType::Intense => generate_intense_workout_data(custom_start, duration_minutes),
+            WorkoutType::Moderate => generate_moderate_workout_data(custom_start, duration_minutes),
+            WorkoutType::Light => generate_light_workout_data(custom_start, duration_minutes),
+            WorkoutType::BeforeGameStart => generate_moderate_workout_data(custom_start, duration_minutes),
+            WorkoutType::DuringGame => generate_intense_workout_data(custom_start, duration_minutes),
+            WorkoutType::AfterGameEnd => generate_light_workout_data(custom_start, duration_minutes),
+            _ => generate_light_workout_data(custom_start, duration_minutes),
+        };
+        let workout_uuid = Uuid::new_v4().to_string();
+        let workout_end = custom_start + Duration::minutes(duration_minutes as i64);
+        Self {
+            workout_uuid,
+            workout_start: custom_start,
             workout_end,
             calories_burned,
             heart_rate: heart_rate_data,
