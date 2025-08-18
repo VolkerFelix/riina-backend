@@ -160,8 +160,13 @@ impl LiveGameService {
         Ok(updated_game)
     }
 
+    /// Get a live game by its ID
+    pub async fn get_live_game_by_id(&self, live_game_id: Uuid) -> Result<Option<LiveGame>, sqlx::Error> {
+        self.live_game_queries.get_live_game_by_id(live_game_id).await
+    }
+
     /// Broadcast live score update to WebSocket clients
-    async fn broadcast_live_score_update(
+    pub async fn broadcast_live_score_update(
         &self,
         live_game: &LiveGame,
     ) -> Result<(), Box<dyn std::error::Error>> {

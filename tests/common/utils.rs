@@ -224,3 +224,26 @@ pub async fn make_authenticated_request(
         .await
         .expect("Failed to execute request")
 }
+
+pub async fn create_test_user_with_health_profile(test_app: &TestApp, client: &Client) -> UserRegLoginResponse {
+    let user = create_test_user_and_login(&test_app.address).await;
+    
+    // Create health profile using API
+    let health_profile_data = json!({
+        "age": 25,
+        "gender": "male",
+        "resting_heart_rate": 60
+    });
+    
+    let response = make_authenticated_request(
+        client,
+        reqwest::Method::PUT,
+        &format!("{}/profile/health_profile", test_app.address),
+        &user.token,
+        Some(health_profile_data),
+    ).await;
+    
+    assert!(response.status().is_success(), "Failed to create health profile");
+    
+    user
+}
