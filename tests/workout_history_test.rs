@@ -8,8 +8,8 @@ use common::utils::spawn_app;
 
 use crate::common::{
     workout_data_helpers::{
-        create_advanced_workout_data,
-        create_elite_workout_data,
+        WorkoutData,
+        WorkoutType,
     },
     utils::create_test_user_and_login,
 };
@@ -51,7 +51,7 @@ async fn test_workout_history_with_data() {
     let test_user = create_test_user_and_login(&test_app.address).await;
     let token = test_user.token;
 
-    let workout_data = create_advanced_workout_data();
+    let workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
 
     let health_response = client
         .post(&format!("{}/health/upload_health", &test_app.address))
@@ -116,7 +116,7 @@ async fn test_workout_history_pagination() {
 
     // Upload multiple health data entries
     for _ in 0..5 {
-        let workout_data = create_advanced_workout_data();
+        let workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
 
         let health_response = client
             .post(&format!("{}/health/upload_health", &test_app.address))
@@ -208,7 +208,7 @@ async fn test_workout_history_with_stats() {
     let token = test_user.token;
 
     // Upload workout data with high intensity to generate stats
-    let workout_data = create_elite_workout_data();
+    let workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
 
     let health_response = client
         .post(&format!("{}/health/upload_health", &test_app.address))
@@ -272,7 +272,7 @@ async fn test_workout_history_zone_breakdown() {
     let token = test_user.token;
 
     // Upload workout data with high intensity to generate zone breakdown
-    let workout_data = create_elite_workout_data();
+    let workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
 
     let health_response = client
         .post(&format!("{}/health/upload_health", &test_app.address))

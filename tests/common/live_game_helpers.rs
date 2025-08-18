@@ -2,10 +2,11 @@ use reqwest::Client;
 use serde_json::json;
 use chrono::{Utc, Duration, Weekday, NaiveTime, DateTime};
 use uuid::Uuid;
+use serde::{Serialize, Deserialize};
 
 use crate::common::utils::*;
 use crate::common::admin_helpers::*;
-
+use crate::common::workout_data_helpers::*;
 
 pub async fn test_live_scoring_history_api(
     test_app: &TestApp, 
@@ -210,9 +211,21 @@ pub async fn test_live_scoring_history_api(
 
 // Helper functions
 
+pub struct LiveGameEnvironmentResult {
+    pub admin_session: UserRegLoginResponse,
+    pub league_id: String,
+    pub home_team_id: String,
+    pub away_team_id: String,
+    pub home_user: UserRegLoginResponse,
+    pub away_user_1: UserRegLoginResponse,
+    pub away_user_2: UserRegLoginResponse,
+    pub season_id: String,
+    pub first_game_id: Uuid,
+}
+
 pub async fn setup_live_game_environment(
     test_app: &TestApp, 
-) -> (UserRegLoginResponse, UserRegLoginResponse, UserRegLoginResponse, Uuid) {
+) -> LiveGameEnvironmentResult {
     let client = Client::new();
     let admin_session = create_admin_user_and_login(&test_app.address).await;
     // Create league
@@ -220,37 +233,62 @@ pub async fn setup_live_game_environment(
 
     // Create teams
     let team_ids = create_teams_for_test(&test_app.address, &admin_session.token, 2).await;
-    let home_team_id = team_ids[0].clone();
-    let away_team_id = team_ids[1].clone();
+    let team1_id = team_ids[0].clone();
+    let team2_id = team_ids[1].clone();
 
-    // Create additional users with health profiles and add them to teams
+    // Add teams to league BEFORE creating the season so games are auto-generated
+    add_team_to_league(&test_app.address, &admin_session.token, &league_id, &team1_id).await;
+    add_team_to_league(&test_app.address, &admin_session.token, &league_id, &team2_id).await;
+
+    let start_date = get_next_date(Weekday::Sat, NaiveTime::from_hms_opt(22, 0, 0).unwrap());
+    let season_id = create_league_season(
+        &test_app.address,
+        &admin_session.token,
+        &league_id,
+        &format!("Test Season - {}", start_date.to_rfc3339()),
+        &start_date.to_rfc3339()
+    ).await;
+    
+    // Get the auto-generated game and find out which team is actually home vs away
+    let (first_game_id, actual_home_team_id, actual_away_team_id) = get_first_game_for_teams(
+        &test_app, 
+        Uuid::parse_str(&season_id).unwrap(), 
+        Uuid::parse_str(&team1_id).unwrap(), 
+        Uuid::parse_str(&team2_id).unwrap()
+    ).await;
+    
+    // Assign team IDs based on actual game configuration
+    let home_team_id = actual_home_team_id.to_string();
+    let away_team_id = actual_away_team_id.to_string();
+
+    // Create additional users with health profiles and add them to the correct teams
     let home_user = create_test_user_with_health_profile(&test_app, &client).await;
     let away_user_1 = create_test_user_with_health_profile(&test_app, &client).await;
     let away_user_2 = create_test_user_with_health_profile(&test_app, &client).await;
 
-    // Add users to teams
+    // Add users to teams based on actual home/away assignments
     add_user_to_team(&test_app.address, &admin_session.token, &home_team_id, home_user.user_id).await;
     add_user_to_team(&test_app.address, &admin_session.token, &away_team_id, away_user_1.user_id).await;
     add_user_to_team(&test_app.address, &admin_session.token, &away_team_id, away_user_2.user_id).await;
 
-    // Add teams to league BEFORE creating the season so games are auto-generated
-    add_team_to_league(&test_app.address, &admin_session.token, &league_id, &home_team_id).await;
-    add_team_to_league(&test_app.address, &admin_session.token, &league_id, &away_team_id).await;
-
-    let start_date = get_next_date(Weekday::Sat, NaiveTime::from_hms_opt(22, 0, 0).unwrap());
-    let season_id = create_league_season(&test_app.address, &admin_session.token, &league_id, "Test Season", &start_date.to_rfc3339()).await;
-    
-    // Get the auto-generated game ID
-    let game_id = get_first_game_for_teams(&test_app, Uuid::parse_str(&season_id).unwrap(), Uuid::parse_str(&home_team_id).unwrap(), Uuid::parse_str(&away_team_id).unwrap()).await;
-
-    (home_user, away_user_1, away_user_2, game_id)
+    LiveGameEnvironmentResult {
+        admin_session,
+        league_id,
+        home_team_id,
+        away_team_id,
+        home_user,
+        away_user_1,
+        away_user_2,
+        season_id,
+        first_game_id,
+    }
 }
 
-pub async fn get_first_game_for_teams(test_app: &TestApp, season_id: Uuid, home_team_id: Uuid, away_team_id: Uuid) -> Uuid {
-    // Get the auto-generated game between these teams
+pub async fn get_first_game_for_teams(test_app: &TestApp, season_id: Uuid, team1_id: Uuid, team2_id: Uuid) -> (Uuid, Uuid, Uuid) {
+    // Get the auto-generated game between these teams and return actual home/away assignments
     let game = sqlx::query!(
         r#"
-        SELECT id 
+        SELECT id, home_team_id, away_team_id
         FROM league_games 
         WHERE season_id = $1 
         AND ((home_team_id = $2 AND away_team_id = $3) OR (home_team_id = $3 AND away_team_id = $2))
@@ -258,17 +296,17 @@ pub async fn get_first_game_for_teams(test_app: &TestApp, season_id: Uuid, home_
         LIMIT 1
         "#,
         season_id,
-        home_team_id,
-        away_team_id
+        team1_id,
+        team2_id
     )
     .fetch_one(&test_app.db_pool)
     .await
     .expect("Failed to find auto-generated game");
     
-    game.id
+    (game.id, game.home_team_id, game.away_team_id)
 }
 
-pub async fn create_test_game(test_app: &TestApp, client: &Client, home_team_id: Uuid, away_team_id: Uuid, season_id: Uuid) -> Uuid {
+pub async fn create_test_game(test_app: &TestApp, home_team_id: Uuid, away_team_id: Uuid, season_id: Uuid) -> Uuid {
     let game_start = Utc::now();
     let game_end = game_start + Duration::hours(2);
 
@@ -434,7 +472,7 @@ pub async fn upload_workout_data(
     workout_type: WorkoutType
 ) -> (i32, i32) {
 
-    let workout_data = WorkoutData::new(workout_type, 30);
+    let workout_data = WorkoutData::new(workout_type, Utc::now(), 30);
 
 
     let response = make_authenticated_request(
@@ -531,39 +569,8 @@ pub async fn finish_live_game(test_app: &TestApp, live_game_id: Uuid) {
         .expect("Failed to finish live game using service");
 }
 
-// Helper functions for generating workout data
-fn generate_intense_workout_data(start_time: DateTime<Utc>, duration_minutes: i64) -> (Vec<serde_json::Value>, i32) {
-    // Need duration_minutes + 1 points to get duration_minutes intervals
-    let heart_rate_data = (0..=(duration_minutes)).map(|i| json!({
-        "timestamp": start_time + Duration::minutes(i),
-        "heart_rate": 150 + (i % 25) as i32 // High intensity heart rate
-    })).collect();
-    let calories = 450; // High intensity burns more calories
-    (heart_rate_data, calories)
-}
-
-fn generate_moderate_workout_data(start_time: DateTime<Utc>, duration_minutes: i64) -> (Vec<serde_json::Value>, i32) {
-    // Need duration_minutes + 1 points to get duration_minutes intervals
-    let heart_rate_data = (0..=(duration_minutes)).map(|i| json!({
-        "timestamp": start_time + Duration::minutes(i),
-        "heart_rate": 110 + (i % 20) // Moderate intensity
-    })).collect();
-    let calories = 300; // Moderate intensity
-    (heart_rate_data, calories)
-}
-
-fn generate_light_workout_data(start_time: DateTime<Utc>, duration_minutes: i64) -> (Vec<serde_json::Value>, i32) {
-    // Need duration_minutes + 1 points to get duration_minutes intervals
-    let heart_rate_data = (0..=(duration_minutes)).map(|i| json!({
-        "timestamp": start_time + Duration::minutes(i),
-        "heart_rate": 90 + (i % 15) // Light intensity
-    })).collect();
-    let calories = 180; // Light intensity
-    (heart_rate_data, calories)
-}
-
 // Test data structures
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LiveGameRow {
     pub id: Uuid,
     pub game_id: Uuid,
@@ -647,92 +654,4 @@ pub struct ScoreEvent {
     pub team_side: String,
     pub score_points: i32,
     pub occurred_at: chrono::DateTime<Utc>,
-}
-
-pub enum WorkoutType {
-    Intense,
-    Moderate,
-    Light,
-    Second,
-    LastMinute,
-    AfterGame,
-    NoGame,
-    Default,
-    BeforeGameStart,  // For testing workout before game window
-    DuringGame,       // For testing workout during game window
-    AfterGameEnd,     // For testing workout after game window
-}
-
-pub struct WorkoutData {
-    workout_uuid: String,
-    workout_start: DateTime<Utc>,
-    workout_end: DateTime<Utc>,
-    calories_burned: i32,
-    heart_rate: Vec<serde_json::Value>,
-    device_id: String,
-    timestamp: DateTime<Utc>,
-}
-impl WorkoutData {
-    pub fn new(workout_type: WorkoutType, duration_minutes: i64) -> Self {
-        let workout_start = Utc::now();
-        let (heart_rate_data, calories_burned) = match workout_type {
-            WorkoutType::Intense => generate_intense_workout_data(workout_start, duration_minutes),
-            WorkoutType::Moderate => generate_moderate_workout_data(workout_start, duration_minutes),
-            WorkoutType::Light => generate_light_workout_data(workout_start, duration_minutes),
-            WorkoutType::Second => generate_moderate_workout_data(workout_start, duration_minutes),
-            WorkoutType::LastMinute => generate_intense_workout_data(workout_start, duration_minutes),
-            WorkoutType::AfterGame => generate_light_workout_data(workout_start, duration_minutes),
-            WorkoutType::NoGame => generate_light_workout_data(workout_start, duration_minutes),
-            WorkoutType::BeforeGameStart => generate_moderate_workout_data(workout_start, duration_minutes),
-            WorkoutType::DuringGame => generate_intense_workout_data(workout_start, duration_minutes),
-            WorkoutType::AfterGameEnd => generate_light_workout_data(workout_start, duration_minutes),
-            _ => generate_light_workout_data(workout_start, duration_minutes),
-        };
-        let workout_uuid = Uuid::new_v4().to_string();
-        let workout_end = workout_start + Duration::minutes(duration_minutes as i64);
-        Self {
-            workout_uuid,
-            workout_start,
-            workout_end,
-            calories_burned,
-            heart_rate: heart_rate_data,
-            device_id: format!("test-device-{}", &Uuid::new_v4().to_string()[..8]),
-            timestamp: Utc::now(),
-        }
-    }
-    
-    pub fn new_with_custom_time(workout_type: WorkoutType, duration_minutes: i64, custom_start: DateTime<Utc>) -> Self {
-        let (heart_rate_data, calories_burned) = match workout_type {
-            WorkoutType::Intense => generate_intense_workout_data(custom_start, duration_minutes),
-            WorkoutType::Moderate => generate_moderate_workout_data(custom_start, duration_minutes),
-            WorkoutType::Light => generate_light_workout_data(custom_start, duration_minutes),
-            WorkoutType::BeforeGameStart => generate_moderate_workout_data(custom_start, duration_minutes),
-            WorkoutType::DuringGame => generate_intense_workout_data(custom_start, duration_minutes),
-            WorkoutType::AfterGameEnd => generate_light_workout_data(custom_start, duration_minutes),
-            _ => generate_light_workout_data(custom_start, duration_minutes),
-        };
-        let workout_uuid = Uuid::new_v4().to_string();
-        let workout_end = custom_start + Duration::minutes(duration_minutes as i64);
-        Self {
-            workout_uuid,
-            workout_start: custom_start,
-            workout_end,
-            calories_burned,
-            heart_rate: heart_rate_data,
-            device_id: format!("test-device-{}", &Uuid::new_v4().to_string()[..8]),
-            timestamp: Utc::now(),
-        }
-    }
-
-    pub fn to_json(&self) -> serde_json::Value {
-        json!({
-            "workout_uuid": self.workout_uuid,
-            "workout_start": self.workout_start,
-            "workout_end": self.workout_end,
-            "calories_burned": self.calories_burned,
-            "heart_rate": self.heart_rate,
-            "device_id": self.device_id,
-            "timestamp": self.timestamp,
-        })
-    }
 }

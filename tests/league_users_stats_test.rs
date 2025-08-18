@@ -1,6 +1,7 @@
 use reqwest::Client;
 use serde_json::json;
 use uuid::Uuid;
+use chrono::Utc;
 
 mod common;
 use common::{
@@ -10,7 +11,8 @@ use common::{
         make_authenticated_request
     },
     workout_data_helpers::{
-        create_elite_workout_data,
+        WorkoutData,
+        WorkoutType,
         upload_workout_data_for_user}
 };
 
@@ -31,8 +33,8 @@ async fn test_get_league_users_with_stats_success() {
 
     // Step 2: Upload health data for each user
     for user in users.iter() {
-        let workout_data = create_elite_workout_data();
-        let upload_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, workout_data).await;
+        let workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+        let upload_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, &workout_data).await;
         assert!(upload_response.is_ok(), "Failed to upload health data for user: {}", upload_response.err().unwrap());
     }
 

@@ -7,13 +7,13 @@ use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use std::time::Duration;
 use uuid::Uuid;
-use chrono::{Weekday, NaiveTime};
+use chrono::{Weekday, NaiveTime, Utc};
 use std::collections::HashMap;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, get_next_date};
 use common::admin_helpers::{create_admin_user_and_login, create_league_season};
-use common::workout_data_helpers::{create_elite_workout_data, create_advanced_workout_data, upload_workout_data_for_user};
+use common::workout_data_helpers::{upload_workout_data_for_user, WorkoutData, WorkoutType};
 
 #[tokio::test]
 async fn test_game_evaluation_websocket_notifications_comprehensive() {
@@ -32,10 +32,10 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     println!("✅ Created 4 users + 1 admin");
 
     // Step 2: Upload health data to create power differences
-    upload_workout_data_for_user(&client, &app.address, &user1.token, create_elite_workout_data()).await.unwrap();
-    upload_workout_data_for_user(&client, &app.address, &user2.token, create_advanced_workout_data()).await.unwrap();
-    upload_workout_data_for_user(&client, &app.address, &user3.token, create_elite_workout_data()).await.unwrap();
-    upload_workout_data_for_user(&client, &app.address, &user4.token, create_advanced_workout_data()).await.unwrap();
+    upload_workout_data_for_user(&client, &app.address, &user1.token, &WorkoutData::new(WorkoutType::Intense, Utc::now(), 30)).await.unwrap();
+    upload_workout_data_for_user(&client, &app.address, &user2.token, &WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30)).await.unwrap();
+    upload_workout_data_for_user(&client, &app.address, &user3.token, &WorkoutData::new(WorkoutType::Intense, Utc::now(), 30)).await.unwrap();
+    upload_workout_data_for_user(&client, &app.address, &user4.token, &WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30)).await.unwrap();
     
     println!("✅ Uploaded health data for all users");
 
