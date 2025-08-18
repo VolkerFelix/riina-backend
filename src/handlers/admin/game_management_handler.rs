@@ -222,6 +222,8 @@ pub struct GameStatusInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub week_end_date: Option<chrono::DateTime<Utc>>,
     pub has_live_game: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub live_game_id: Option<Uuid>,
 }
 
 /// GET /admin/games/status/{season_id} - Get status of all games in a season
@@ -275,6 +277,7 @@ pub async fn get_games_status(
             scheduled_time: game.scheduled_time,
             week_end_date: game.week_end_date,
             has_live_game: game.live_game_id.is_some(),
+            live_game_id: game.live_game_id,
         };
 
         match game.status.as_str() {
