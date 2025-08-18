@@ -1,4 +1,4 @@
-use std::{io::Error, io::ErrorKind};
+use std::io::Error;
 
 use chrono::{DateTime, Utc, Datelike, Duration, Weekday, Timelike};
 pub struct TimingService;

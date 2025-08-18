@@ -6,7 +6,6 @@ use serde_json::json;
 use uuid::Uuid;
 use redis::AsyncCommands;
 use std::sync::Arc;
-use crate::game::helper::get_user_profile;
 use crate::middleware::auth::Claims;
 use crate::db::workout_data::insert_workout_data;
 use crate::models::workout_data::WorkoutDataSyncRequest;

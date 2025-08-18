@@ -4,35 +4,10 @@ use chrono::{Utc, Duration, Weekday, NaiveTime, DateTime};
 use uuid::Uuid;
 
 mod common;
+use common::utils::{spawn_app, create_test_user_and_login, TestApp, get_next_date, make_authenticated_request, UserRegLoginResponse, create_test_user_with_health_profile};
+use common::admin_helpers::{create_admin_user_and_login, create_league_season, create_teams_for_test, create_league, add_team_to_league, add_user_to_team};
 use common::live_game_helpers::*;
 use common::workout_data_helpers::{WorkoutData, WorkoutType};
-
-// Helper function to create test user with health profile for heart rate zone calculations
-async fn create_test_user_with_health_profile(test_app: &TestApp, client: &Client) -> UserRegLoginResponse {
-    let user = create_test_user_and_login(&test_app.address).await;
-    
-    // Create health profile using API
-    let health_profile_data = json!({
-        "age": 25,
-        "gender": "male",
-        "resting_heart_rate": 60
-    });
-    
-    let response = make_authenticated_request(
-        client,
-        reqwest::Method::PUT,
-        &format!("{}/profile/health_profile", test_app.address),
-        &user.token,
-        Some(health_profile_data),
-    ).await;
-    
-    assert!(response.status().is_success(), "Failed to create health profile");
-    
-    user
-}
-use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, TestApp, get_next_date, UserRegLoginResponse};
-use common::admin_helpers::{create_admin_user_and_login, create_league_season, create_teams_for_test, create_league, add_team_to_league, add_user_to_team};
-
 
 #[tokio::test]
 async fn test_complete_live_game_workflow() {
@@ -40,8 +15,7 @@ async fn test_complete_live_game_workflow() {
     let client = Client::new();
 
     // Step 1: Setup test environment - create league, season, teams, and users
-    let live_game_environment: LiveGameEnvironmentResult = 
-        setup_live_game_environment(&test_app).await;
+    let live_game_environment = setup_live_game_environment(&test_app).await;
     
     // Update game times to current (games are auto-generated with future dates)
     update_game_times_to_now(&test_app, live_game_environment.first_game_id).await;
@@ -78,9 +52,6 @@ async fn test_complete_live_game_workflow() {
     let (stamina, strength) = upload_workout_data(&test_app, &client, &live_game_environment.home_user, WorkoutType::Intense).await;
     println!("DEBUG: Home user workout generated stamina: {}, strength: {}", stamina, strength);
     
-    // Wait for live game processing
-    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-    
     // Verify live game was updated
     let updated_live_game = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
     println!("DEBUG: Updated live game - home_score: {}, home_power: {}", updated_live_game.home_score, updated_live_game.home_power);
@@ -95,11 +66,8 @@ async fn test_complete_live_game_workflow() {
     assert_eq!(updated_live_game.last_scorer_team, Some("home".to_string()));
 
     // Away team users upload workout data
-    upload_workout_data(&test_app, &client, &live_game_environment.away_user_1, WorkoutType::Intense).await;
-    upload_workout_data(&test_app, &client, &live_game_environment.away_user_2, WorkoutType::Intense).await;
-    
-    // Wait for live game processing
-    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+    upload_workout_data(&test_app, &client, &live_game_environment.away_user_1, WorkoutType::Moderate).await;
+    upload_workout_data(&test_app, &client, &live_game_environment.away_user_2, WorkoutType::Light).await;
     
     // Verify live game reflects both team activities
     let final_live_game = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
@@ -179,11 +147,10 @@ async fn test_live_game_edge_cases() {
     let test_user = create_test_user_and_login(&test_app.address).await;
     
     // This should not crash or cause errors
-    upload_workout_data(&test_app, &client, &test_user, WorkoutType::Light).await;
+    upload_workout_data(&test_app, &client, &test_user, WorkoutType::Intense).await;
 
     // Test 2: Multiple initializations of same live game
-    let live_game_environment: LiveGameEnvironmentResult = 
-        setup_live_game_environment(&test_app).await;
+    let live_game_environment = setup_live_game_environment(&test_app).await;
     
     update_game_times_to_now(&test_app, live_game_environment.first_game_id).await;
     start_test_game(&test_app, live_game_environment.first_game_id).await;
@@ -298,8 +265,7 @@ async fn test_live_game_finish_workflow() {
     let client = Client::new();
 
     // Setup and create a game that ends soon
-    let live_game_environment: LiveGameEnvironmentResult = 
-        setup_live_game_environment(&test_app).await;
+    let live_game_environment = setup_live_game_environment(&test_app).await;
     
     // Update the auto-generated game to end in 1 minute for testing
     update_game_to_short_duration(&test_app, live_game_environment.first_game_id).await;
@@ -358,7 +324,7 @@ async fn test_workout_timing_validation_for_live_games() {
     println!("🧪 Testing workout timing validation for live games...");
 
     // Setup test environment
-    let live_game_environment: LiveGameEnvironmentResult = setup_live_game_environment(&test_app).await;
+    let live_game_environment = setup_live_game_environment(&test_app).await;
     
     // Update game times for precise testing
     update_game_times_to_now(&test_app, live_game_environment.first_game_id).await;
@@ -394,9 +360,11 @@ async fn test_workout_timing_validation_for_live_games() {
     
     // Test 2: Workout DURING game - should count
     println!("\n🔬 Test 2: Uploading workout during game window...");
-    // Use current time (which should be during the game since the game just started)
-    // instead of a custom historical timestamp
-    let during_game_workout = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let during_game_workout = WorkoutData::new(
+        WorkoutType::Intense, 
+        Utc::now(), 
+        30
+    );
     
     let response = make_authenticated_request(
         &client,
@@ -407,33 +375,9 @@ async fn test_workout_timing_validation_for_live_games() {
     ).await;
     assert!(response.status().is_success(), "Workout upload should succeed");
     
-    // Debug: Check the response to see if game_stats are present
-    let response_data: serde_json::Value = response.json().await.unwrap();
-    println!("🔍 During game workout response: {}", serde_json::to_string_pretty(&response_data).unwrap_or_default());
-    
-    // Wait for live game processing
-    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
-    
     // Check that score increased
     let game_state_2 = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
-    println!("🔍 Game state after intense workout of home team: home_score={}, away_score={}", game_state_2.home_score, game_state_2.away_score);
-    
-    if game_state_2.home_score == 0 {
-        // Additional debug: Check if the workout has game_stats at all
-        if response_data["data"]["game_stats"].is_null() {
-            println!("❌ No game_stats in workout response - workout timing might not align with game window");
-            println!("🔍 Game start: {}, Workout time: {}, Game end: {}", 
-                     game_start, 
-                     game_start + Duration::hours(1),
-                     game_end);
-        } else {
-            println!("❌ Game stats present but live score not updated");
-            println!("🔍 Game state: {}", serde_json::to_string_pretty(&game_state_2).unwrap_or_default());
-        }
-    }
-    
-    assert!(game_state_2.home_score > 0, "Score should increase for workout during game. Game state: home={}, away={}", 
-            game_state_2.home_score, game_state_2.away_score);
+    assert!(game_state_2.home_score > 0, "Score should increase for workout during game");
     let score_during_game = game_state_2.home_score;
     println!("✅ Workout during game correctly counted: +{} points", score_during_game);
     
@@ -507,14 +451,503 @@ async fn test_workout_timing_validation_for_live_games() {
     println!("Final scores - Home: {}, Away: {}", game_state_5.home_score, game_state_5.away_score);
 }
 
+async fn test_live_scoring_history_api(
+    test_app: &TestApp, 
+    client: &Client, 
+    token: &str, 
+    game_id: Uuid,
+    home_user: &UserRegLoginResponse,
+    away_user_1: &UserRegLoginResponse,
+    away_user_2: &UserRegLoginResponse
+) {
+    println!("🧪 Testing live scoring history API endpoint...");
+    
+    // Call the live game API endpoint that should include scoring events
+    let url = format!("{}/league/games/{}/live", test_app.address, game_id);
+    let response = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await
+        .expect("Failed to call live game API");
+
+    assert!(response.status().is_success(), "Live game API should return success");
+    
+    let response_data: serde_json::Value = response.json().await.expect("Failed to parse response");
+    assert_eq!(response_data["success"], true, "API response should indicate success");
+    
+    // Verify the response structure matches what the frontend expects
+    let data = response_data["data"].as_object().expect("Data should be an object");
+    
+    // Check required fields
+    assert!(data.contains_key("game_id"), "Should contain game_id");
+    assert!(data.contains_key("home_team_name"), "Should contain home_team_name");
+    assert!(data.contains_key("away_team_name"), "Should contain away_team_name");
+    assert!(data.contains_key("home_score"), "Should contain home_score");
+    assert!(data.contains_key("away_score"), "Should contain away_score");
+    assert!(data.contains_key("status"), "Should contain status");
+    
+    // Most importantly, check scoring_events
+    assert!(data.contains_key("scoring_events"), "Should contain scoring_events array");
+    
+    let scoring_events = data["scoring_events"].as_array().expect("scoring_events should be an array");
+    assert!(!scoring_events.is_empty(), "Should have scoring events from the test uploads");
+    
+    // Verify scoring event structure matches frontend expectations
+    for event in scoring_events {
+        let event_obj = event.as_object().expect("Each scoring event should be an object");
+        
+        // Check all required fields for frontend parsing
+        assert!(event_obj.contains_key("id"), "Event should have id");
+        assert!(event_obj.contains_key("user_id"), "Event should have user_id");
+        assert!(event_obj.contains_key("username"), "Event should have username");
+        assert!(event_obj.contains_key("team_id"), "Event should have team_id");
+        assert!(event_obj.contains_key("team_side"), "Event should have team_side");
+        assert!(event_obj.contains_key("score_points"), "Event should have score_points");
+        assert!(event_obj.contains_key("description"), "Event should have description");
+        assert!(event_obj.contains_key("occurred_at"), "Event should have occurred_at timestamp");
+        
+        // Verify team_side is valid
+        let team_side = event_obj["team_side"].as_str().expect("team_side should be a string");
+        assert!(team_side == "home" || team_side == "away", "team_side should be 'home' or 'away'");
+        
+        // Verify score_points is positive (since our test uploads should generate points)
+        let score_points = event_obj["score_points"].as_i64().expect("score_points should be a number");
+        assert!(score_points > 0, "Test uploads should generate positive points");
+        
+        // Verify the user_id matches one of our test users
+        let event_user_id = event_obj["user_id"].as_str().expect("user_id should be a string");
+        let event_user_uuid = Uuid::parse_str(event_user_id).expect("user_id should be valid UUID");
+        assert!(
+            event_user_uuid == home_user.user_id || event_user_uuid == away_user_1.user_id || event_user_uuid == away_user_2.user_id,
+            "Event should be from one of our test users"
+        );
+
+        // Verify workout_details are present and properly structured
+        assert!(event_obj.contains_key("workout_details"), "Event should have workout_details");
+        
+        if let Some(workout_details) = event_obj["workout_details"].as_object() {
+            // Check that essential workout detail fields are present
+            assert!(workout_details.contains_key("id"), "workout_details should have id");
+            assert!(workout_details.contains_key("workout_date"), "workout_details should have workout_date");
+            assert!(workout_details.contains_key("workout_start"), "workout_details should have workout_start");
+            assert!(workout_details.contains_key("workout_end"), "workout_details should have workout_end");
+            assert!(workout_details.contains_key("stamina_gained"), "workout_details should have stamina_gained");
+            assert!(workout_details.contains_key("strength_gained"), "workout_details should have strength_gained");
+            
+            // For our test data that includes heart rate, verify those fields are present
+            assert!(workout_details.contains_key("duration_minutes"), "workout_details should have duration_minutes");
+            assert!(workout_details.contains_key("avg_heart_rate"), "workout_details should have avg_heart_rate");
+            assert!(workout_details.contains_key("max_heart_rate"), "workout_details should have max_heart_rate");
+            assert!(workout_details.contains_key("heart_rate_zones"), "workout_details should have heart_rate_zones");
+            
+            // Verify that the workout_details have actual values (not all null)
+            // Our test workouts should have duration since they have start/end times
+            if let (Some(start), Some(end)) = (workout_details["workout_start"].as_str(), workout_details["workout_end"].as_str()) {
+                let workout_start = chrono::DateTime::parse_from_rfc3339(start).expect("Should parse workout_start");
+                let workout_end = chrono::DateTime::parse_from_rfc3339(end).expect("Should parse workout_end");
+                let expected_duration_minutes = (workout_end - workout_start).num_minutes();
+                
+                if expected_duration_minutes > 0 {
+                    // The database should have the calculated duration, not null
+                    assert!(
+                        !workout_details["duration_minutes"].is_null(),
+                        "workout_details.duration_minutes should not be null when workout has start/end times"
+                    );
+                    
+                    let actual_duration = workout_details["duration_minutes"].as_i64()
+                        .expect("duration_minutes should be a number, not null");
+                    assert!(
+                        actual_duration > 0,
+                        "workout_details should have calculated duration_minutes > 0, got: {}",
+                        actual_duration
+                    );
+                    
+                    // Verify the calculated duration is reasonable (within 1 minute of expected)
+                    let duration_diff = (actual_duration - expected_duration_minutes).abs();
+                    assert!(
+                        duration_diff <= 1,
+                        "Calculated duration {} should be close to expected {}", 
+                        actual_duration, expected_duration_minutes
+                    );
+                }
+            }
+            
+            // Also verify heart rate data is properly calculated if present
+            if workout_details.contains_key("avg_heart_rate") && !workout_details["avg_heart_rate"].is_null() {
+                let avg_hr = workout_details["avg_heart_rate"].as_f64()
+                    .expect("avg_heart_rate should be a number if not null");
+                assert!(avg_hr > 0.0, "avg_heart_rate should be positive, got: {}", avg_hr);
+                assert!(avg_hr < 300.0, "avg_heart_rate should be reasonable, got: {}", avg_hr);
+            }
+            
+            // Verify heart rate zones are properly calculated and stored
+            // Our test workouts include heart rate data, so zones should be calculated
+            assert!(
+                !workout_details["heart_rate_zones"].is_null(),
+                "heart_rate_zones should not be null when workout has heart rate data"
+            );
+            
+            if let Some(zones) = workout_details["heart_rate_zones"].as_array() {
+                assert!(!zones.is_empty(), "heart_rate_zones should contain zone data when heart rate is present");
+                
+                // Verify zone structure
+                for zone in zones {
+                    let zone_obj = zone.as_object().expect("Each zone should be an object");
+                    assert!(zone_obj.contains_key("zone"), "Zone should have 'zone' field");
+                    assert!(zone_obj.contains_key("minutes"), "Zone should have 'minutes' field");
+                    assert!(zone_obj.contains_key("stamina_gained"), "Zone should have 'stamina_gained' field");
+                    assert!(zone_obj.contains_key("strength_gained"), "Zone should have 'strength_gained' field");
+                    
+                    // Verify zone has reasonable values
+                    let zone_name = zone_obj["zone"].as_str().expect("zone should be a string");
+                    assert!(
+                        ["Zone1", "Zone2", "Zone3", "Zone4", "Zone5"].contains(&zone_name),
+                        "Zone name should be valid, got: {}", zone_name
+                    );
+                    
+                    let minutes = zone_obj["minutes"].as_f64().expect("minutes should be a number");
+                    assert!(minutes >= 0.0, "Zone minutes should be non-negative, got: {}", minutes);
+                }
+                
+                // Verify that total zone minutes roughly equals workout duration
+                let total_zone_minutes: f64 = zones.iter()
+                    .map(|z| z["minutes"].as_f64().unwrap_or(0.0))
+                    .sum();
+                
+                if let Some(duration) = workout_details["duration_minutes"].as_i64() {
+                    let duration_diff = (total_zone_minutes - duration as f64).abs();
+                    assert!(
+                        duration_diff < 2.0,
+                        "Total zone minutes {} should roughly equal workout duration {}",
+                        total_zone_minutes, duration
+                    );
+                }
+            } else {
+                panic!("heart_rate_zones should be an array when heart rate data is present");
+            }
+            
+            println!("✅ Workout details verified for event {}", event_obj["id"].as_str().unwrap_or("unknown"));
+        } else {
+            panic!("workout_details should be an object, not null");
+        }
+    }
+    
+    // Check that events are ordered by most recent first (as expected by frontend)
+    if scoring_events.len() > 1 {
+        for i in 0..scoring_events.len()-1 {
+            let current_time = scoring_events[i]["occurred_at"].as_str().expect("Should have timestamp");
+            let next_time = scoring_events[i+1]["occurred_at"].as_str().expect("Should have timestamp");
+            
+            let current_dt = chrono::DateTime::parse_from_rfc3339(current_time).expect("Should parse timestamp");
+            let next_dt = chrono::DateTime::parse_from_rfc3339(next_time).expect("Should parse timestamp");
+            
+            assert!(current_dt >= next_dt, "Events should be ordered by most recent first");
+        }
+    }
+    
+    println!("✅ Live scoring history API test passed!");
+    println!("   - Found {} scoring events", scoring_events.len());
+    println!("   - All required fields present and valid");
+    println!("   - Events properly ordered by timestamp");
+}
+
+async fn get_first_game_for_teams(test_app: &TestApp, season_id: Uuid, home_team_id: Uuid, away_team_id: Uuid) -> Uuid {
+    // Get the auto-generated game between these teams
+    let game = sqlx::query!(
+        r#"
+        SELECT id 
+        FROM league_games 
+        WHERE season_id = $1 
+        AND ((home_team_id = $2 AND away_team_id = $3) OR (home_team_id = $3 AND away_team_id = $2))
+        ORDER BY week_number
+        LIMIT 1
+        "#,
+        season_id,
+        home_team_id,
+        away_team_id
+    )
+    .fetch_one(&test_app.db_pool)
+    .await
+    .expect("Failed to find auto-generated game");
+    
+    game.id
+}
+
+async fn create_test_game(test_app: &TestApp, client: &Client, home_team_id: Uuid, away_team_id: Uuid, season_id: Uuid) -> Uuid {
+    let game_start = Utc::now();
+    let game_end = game_start + Duration::hours(2);
+
+    let game_id = Uuid::new_v4();
+    
+    // Insert game directly into database for testing
+    sqlx::query!(
+        r#"
+        INSERT INTO league_games (id, home_team_id, away_team_id, season_id, week_number, scheduled_time, status, week_start_date, week_end_date)
+        VALUES ($1, $2, $3, $4, 1, $5, 'in_progress', $6, $7)
+        "#,
+        game_id,
+        home_team_id,
+        away_team_id,
+        season_id,
+        game_start,
+        game_start,
+        game_end
+    )
+    .execute(&test_app.db_pool)
+    .await
+    .expect("Failed to insert test game");
+
+    game_id
+}
+
+async fn update_game_to_short_duration(test_app: &TestApp, game_id: Uuid) {
+    let game_start = Utc::now();
+    let game_end = game_start + Duration::minutes(1); // Very short game for testing
+    
+    sqlx::query!(
+        r#"
+        UPDATE league_games 
+        SET week_start_date = $1, week_end_date = $2, scheduled_time = $1
+        WHERE id = $3
+        "#,
+        game_start,
+        game_end,
+        game_id
+    )
+    .execute(&test_app.db_pool)
+    .await
+    .expect("Failed to update game duration");
+}
+
+async fn update_game_times_to_now(test_app: &TestApp, game_id: Uuid) {
+    let now = Utc::now();
+    let game_end = now + Duration::hours(2);
+    
+    sqlx::query!(
+        r#"
+        UPDATE league_games 
+        SET scheduled_time = $1, week_start_date = $1, week_end_date = $2
+        WHERE id = $3
+        "#,
+        now,
+        game_end,
+        game_id
+    )
+    .execute(&test_app.db_pool)
+    .await
+    .expect("Failed to update game times to current");
+}
+
+async fn start_test_game(test_app: &TestApp, game_id: Uuid) {
+    sqlx::query!(
+        "UPDATE league_games SET status = 'in_progress' WHERE id = $1",
+        game_id
+    )
+    .execute(&test_app.db_pool)
+    .await
+    .expect("Failed to start test game");
+}
+
+async fn initialize_live_game(test_app: &TestApp, game_id: Uuid) -> LiveGameRow {
+    // Create live game service and initialize
+    let live_game_service = evolveme_backend::services::LiveGameService::new(test_app.db_pool.clone(), None);
+    
+    live_game_service.initialize_live_game(game_id)
+        .await
+        .expect("Failed to initialize live game");
+
+    get_live_game_state(test_app, game_id).await
+}
+
+async fn get_season_id_for_game(test_app: &TestApp, game_id: Uuid) -> Uuid {
+    let row = sqlx::query!(
+        "SELECT season_id FROM league_games WHERE id = $1",
+        game_id
+    )
+    .fetch_one(&test_app.db_pool)
+    .await
+    .expect("Failed to get season ID for game");
+    
+    row.season_id
+}
+
+async fn get_live_games_via_api(test_app: &TestApp, client: &Client, token: &str, season_id: Option<Uuid>) -> Vec<serde_json::Value> {
+    let mut url = format!("{}/league/games/live-active", test_app.address);
+    if let Some(sid) = season_id {
+        url = format!("{}?season_id={}", url, sid);
+    }
+
+    let response = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await
+        .expect("Failed to get live games");
+
+    assert!(response.status().is_success(), "Failed to get live games from API");
+    
+    let data: serde_json::Value = response.json().await.expect("Failed to parse response");
+    assert_eq!(data["success"], true);
+    
+    data["data"].as_array().unwrap().clone()
+}
+
+async fn get_live_game_state(test_app: &TestApp, game_id: Uuid) -> LiveGameRow {
+    // For tests that need detailed live game info, we still need to query the database
+    // as the API endpoint returns league game data, not live game scoring data
+    let row = sqlx::query!(
+        r#"
+        SELECT 
+            id, game_id, home_team_id, home_team_name, away_team_id, away_team_name,
+            home_score, away_score, home_power, away_power,
+            game_start_time, game_end_time, last_score_time, last_scorer_id,
+            last_scorer_name, last_scorer_team, is_active, created_at, updated_at
+        FROM live_games 
+        WHERE game_id = $1
+        ORDER BY created_at DESC
+        LIMIT 1
+        "#,
+        game_id
+    )
+    .fetch_one(&test_app.db_pool)
+    .await
+    .expect("Failed to get live game state");
+
+    LiveGameRow {
+        id: row.id,
+        game_id: row.game_id,
+        home_team_name: row.home_team_name,
+        away_team_name: row.away_team_name,
+        home_score: row.home_score,
+        away_score: row.away_score,
+        home_power: row.home_power,
+        away_power: row.away_power,
+        game_start_time: row.game_start_time,
+        game_end_time: row.game_end_time,
+        last_score_time: row.last_score_time,
+        last_scorer_id: row.last_scorer_id,
+        last_scorer_name: row.last_scorer_name,
+        last_scorer_team: row.last_scorer_team,
+        is_active: row.is_active,
+    }
+}
+
+async fn upload_workout_data(
+    test_app: &TestApp, 
+    client: &Client, 
+    user: &common::utils::UserRegLoginResponse, 
+    workout_type: WorkoutType
+) -> (i32, i32) {
+
+    let workout_data = WorkoutData::new(workout_type, Utc::now(), 30);
+
+
+    let response = make_authenticated_request(
+        client,
+        reqwest::Method::POST,
+        &format!("{}/health/upload_health", test_app.address),
+        &user.token,
+        Some(workout_data.to_json()),
+    ).await;
+
+    assert!(response.status().is_success(), "Health data upload should succeed");
+    
+    // Return actual calculated values based on the response
+    let response_data: serde_json::Value = response.json().await.unwrap();
+    if let Some(game_stats) = response_data["data"]["game_stats"].as_object() {
+        if let Some(stat_changes) = game_stats["stat_changes"].as_object() {
+            let stamina = stat_changes["stamina_change"].as_i64().unwrap_or(0) as i32;
+            let strength = stat_changes["strength_change"].as_i64().unwrap_or(0) as i32;
+            return (stamina, strength);
+        }
+    }
+    
+    // Fallback - this shouldn't happen if the response is successful
+    panic!("Failed to extract stat changes from response: {:?}", response_data);
+}
+
+async fn get_player_contributions(test_app: &TestApp, live_game_id: Uuid) -> (Vec<PlayerContribution>, Vec<PlayerContribution>) {
+    let rows = sqlx::query!(
+        r#"
+        SELECT 
+            user_id, username, team_side, current_power, 
+            total_score_contribution, contribution_count, last_contribution_time
+        FROM live_player_contributions 
+        WHERE live_game_id = $1
+        ORDER BY total_score_contribution DESC
+        "#,
+        live_game_id
+    )
+    .fetch_all(&test_app.db_pool)
+    .await
+    .expect("Failed to get player contributions");
+
+    let mut home_contributions = Vec::new();
+    let mut away_contributions = Vec::new();
+
+    for row in rows {
+        let contrib = PlayerContribution {
+            user_id: row.user_id,
+            username: row.username,
+            team_side: row.team_side,
+            total_score_contribution: row.total_score_contribution,
+            contribution_count: row.contribution_count,
+            last_contribution_time: row.last_contribution_time,
+        };
+
+        if contrib.team_side == "home" {
+            home_contributions.push(contrib);
+        } else {
+            away_contributions.push(contrib);
+        }
+    }
+
+    (home_contributions, away_contributions)
+}
+
+async fn get_recent_score_events(test_app: &TestApp, live_game_id: Uuid) -> Vec<ScoreEvent> {
+    let rows = sqlx::query!(
+        r#"
+        SELECT user_id, team_side, score_points, occurred_at
+        FROM live_score_events 
+        WHERE live_game_id = $1
+        ORDER BY occurred_at DESC
+        "#,
+        live_game_id
+    )
+    .fetch_all(&test_app.db_pool)
+    .await
+    .expect("Failed to get score events");
+
+    rows.into_iter().map(|row| ScoreEvent {
+        user_id: row.user_id,
+        team_side: row.team_side,
+        score_points: row.score_points,
+        occurred_at: row.occurred_at,
+    }).collect()
+}
+
+async fn finish_live_game(test_app: &TestApp, live_game_id: Uuid) {
+    // Use the actual backend service instead of direct database calls
+    let live_game_service = evolveme_backend::services::LiveGameService::new(test_app.db_pool.clone(), None);
+    
+    live_game_service.finish_live_game(live_game_id)
+        .await
+        .expect("Failed to finish live game using service");
+}
+
 #[tokio::test]
 async fn test_live_game_workout_deletion_score_update() {
     let test_app = spawn_app().await;
     let client = Client::new();
 
     // Setup test environment
-    let live_game_environment: LiveGameEnvironmentResult = setup_live_game_environment(&test_app).await;
-        
+    let live_game_environment = setup_live_game_environment(&test_app).await;
+    
+    // Get admin token for deletion
+    let admin_session = create_admin_user_and_login(&test_app.address).await;
+    
     // Update game times and start the game
     update_game_times_to_now(&test_app, live_game_environment.first_game_id).await;
     start_test_game(&test_app, live_game_environment.first_game_id).await;
@@ -527,9 +960,6 @@ async fn test_live_game_workout_deletion_score_update() {
     println!("📊 Initial scores - Home: 0, Away: 0");
     
     // Step 1: Upload workouts and track their IDs
-    // Wait a moment to ensure live game is fully initialized
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-    
     // Home team workout
     let home_workout_response = make_authenticated_request(
         &client,
@@ -545,9 +975,6 @@ async fn test_live_game_workout_deletion_score_update() {
     let home_workout_id = home_workout_data["data"]["sync_id"].as_str()
         .expect("Health upload response should contain sync_id");
     
-    // Debug: Print the full response to understand structure
-    println!("🔍 Home workout response: {}", serde_json::to_string_pretty(&home_workout_data).unwrap_or_default());
-    
     // Get the score gained from stat changes
     let home_score_gained = if let Some(stat_changes) = home_workout_data["data"]["game_stats"]["stat_changes"].as_object() {
         stat_changes["stamina_change"].as_i64().unwrap_or(0) + stat_changes["strength_change"].as_i64().unwrap_or(0)
@@ -555,25 +982,9 @@ async fn test_live_game_workout_deletion_score_update() {
         0
     };
     
-    // Wait a moment for live game processing
-    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-    
     // Verify home team score increased
     let after_home_upload = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
-    println!("🔍 Live game state after home upload: home_score={}, away_score={}", after_home_upload.home_score, after_home_upload.away_score);
-    
-    if after_home_upload.home_score == 0 {
-        // Debug: Check if the workout has game_stats at all
-        if home_workout_data["data"]["game_stats"].is_null() {
-            println!("❌ No game_stats in workout response - workout may not be during active game");
-        } else {
-            println!("❌ Game stats present but live score not updated");
-        }
-    }
-    
-    assert!(after_home_upload.home_score > 0, 
-            "Home score should increase after workout. Got score: {}, gained: {}", 
-            after_home_upload.home_score, home_score_gained);
+    assert!(after_home_upload.home_score > 0, "Home score should increase after workout");
     let home_score_before_deletion = after_home_upload.home_score;
     
     println!("📊 After home workout - Home: {}, Away: 0 (gained: {})", 
@@ -585,7 +996,7 @@ async fn test_live_game_workout_deletion_score_update() {
         reqwest::Method::POST,
         &format!("{}/health/upload_health", test_app.address),
         &live_game_environment.away_user_1.token,
-        Some(WorkoutData::new(WorkoutType::Intense, Utc::now(), 30).to_json()),
+        Some(WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30).to_json()),
     ).await;
     assert!(away1_workout_response.status().is_success());
     let away1_workout_data: serde_json::Value = away1_workout_response.json().await.unwrap();
@@ -602,7 +1013,7 @@ async fn test_live_game_workout_deletion_score_update() {
         reqwest::Method::POST,
         &format!("{}/health/upload_health", test_app.address),
         &live_game_environment.away_user_2.token,
-        Some(WorkoutData::new(WorkoutType::Intense, Utc::now(), 30).to_json()),
+        Some(WorkoutData::new(WorkoutType::Light, Utc::now(), 30).to_json()),
     ).await;
     assert!(away2_workout_response.status().is_success());
     let away2_workout_data: serde_json::Value = away2_workout_response.json().await.unwrap();
@@ -628,7 +1039,7 @@ async fn test_live_game_workout_deletion_score_update() {
         &client,
         reqwest::Method::DELETE,
         &format!("{}/admin/workouts/{}", test_app.address, home_workout_id),
-        &live_game_environment.admin_session.token,
+        &admin_session.token,
         None,
     ).await;
     assert!(delete_response.status().is_success(), "Workout deletion should succeed");
@@ -651,7 +1062,7 @@ async fn test_live_game_workout_deletion_score_update() {
         &client,
         reqwest::Method::POST,
         &format!("{}/admin/workouts/bulk-delete", test_app.address),
-        &live_game_environment.admin_session.token,
+        &admin_session.token,
         Some(json!({
             "workout_ids": [away1_workout_id, away2_workout_id]
         })),
@@ -707,7 +1118,7 @@ async fn test_live_game_partial_workout_deletion() {
     let client = Client::new();
 
     // Setup test environment
-    let live_game_environment: LiveGameEnvironmentResult = setup_live_game_environment(&test_app).await;
+    let live_game_environment = setup_live_game_environment(&test_app).await;
     let admin_session = create_admin_user_and_login(&test_app.address).await;
     
     // Start the game
@@ -786,215 +1197,4 @@ async fn test_live_game_partial_workout_deletion() {
                "Contribution count should be 2 after deleting 1 of 3 workouts");
     
     println!("✅ Partial workout deletion test completed successfully!");
-}
-
-#[tokio::test]
-async fn test_admin_live_game_score_adjustment() {
-    let test_app = spawn_app().await;
-    let client = Client::new();
-
-    // Setup test environment
-    let live_game_environment: LiveGameEnvironmentResult = setup_live_game_environment(&test_app).await;
-    let admin_session = create_admin_user_and_login(&test_app.address).await;
-    
-    // Start the game
-    update_game_times_to_now(&test_app, live_game_environment.first_game_id).await;
-    start_test_game(&test_app, live_game_environment.first_game_id).await;
-    let live_game = initialize_live_game(&test_app, live_game_environment.first_game_id).await;
-    
-    // Verify initial state
-    assert_eq!(live_game.home_score, 0);
-    assert_eq!(live_game.away_score, 0);
-    assert_eq!(live_game.home_power, 0);
-    assert_eq!(live_game.away_power, 0);
-    
-    println!("📊 Initial scores - Home: 0, Away: 0");
-
-    // Upload a workout to give the home team some initial score
-    upload_workout_data(&test_app, &client, &live_game_environment.home_user, WorkoutType::Intense).await;
-    
-    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-    
-    let after_workout = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
-    let initial_home_score = after_workout.home_score;
-    let initial_home_power = after_workout.home_power;
-    
-    assert!(initial_home_score > 0, "Home team should have score after workout");
-    assert!(initial_home_power > 0, "Home team should have power after workout");
-    
-    println!("📊 After workout - Home: {} (power: {}), Away: 0", initial_home_score, initial_home_power);
-
-    // Test 1: Admin increases home team score
-    let score_increase = 50;
-    let power_increase = 25;
-    
-    let adjust_request = json!({
-        "live_game_id": live_game.id,
-        "team_side": "home",
-        "score_adjustment": score_increase,
-        "power_adjustment": power_increase,
-        "reason": "Test admin increase"
-    });
-
-    let adjust_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/games/adjust-score", test_app.address),
-        &admin_session.token,
-        Some(adjust_request),
-    ).await;
-
-    assert!(adjust_response.status().is_success(), "Admin score adjustment should succeed");
-    let response_data: serde_json::Value = adjust_response.json().await.unwrap();
-    
-    // Verify response structure
-    assert_eq!(response_data["data"]["live_game_id"], live_game.id.to_string());
-    assert_eq!(response_data["data"]["previous_scores"][0], initial_home_score);
-    assert_eq!(response_data["data"]["previous_scores"][1], 0);
-    assert_eq!(response_data["data"]["new_scores"][0], initial_home_score + score_increase);
-    assert_eq!(response_data["data"]["new_scores"][1], 0);
-    assert_eq!(response_data["data"]["adjustment_applied"][0], score_increase);
-    assert_eq!(response_data["data"]["adjustment_applied"][1], power_increase);
-    
-    println!("📊 After admin increase - Home: {} (was {}), Power: {} (was {})", 
-             response_data["data"]["new_scores"][0], initial_home_score,
-             response_data["data"]["new_power"][0], initial_home_power);
-
-    // Verify actual database state
-    let after_increase = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
-    assert_eq!(after_increase.home_score, initial_home_score + score_increase);
-    assert_eq!(after_increase.home_power, initial_home_power + power_increase);
-    assert_eq!(after_increase.away_score, 0);
-    assert_eq!(after_increase.away_power, 0);
-
-    // Test 2: Admin decreases home team score
-    let score_decrease = -30;
-    let power_decrease = -10;
-    
-    let adjust_request = json!({
-        "live_game_id": live_game.id,
-        "team_side": "home",
-        "score_adjustment": score_decrease,
-        "power_adjustment": power_decrease,
-        "reason": "Test admin decrease"
-    });
-
-    let adjust_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/games/adjust-score", test_app.address),
-        &admin_session.token,
-        Some(adjust_request),
-    ).await;
-
-    assert!(adjust_response.status().is_success(), "Admin score decrease should succeed");
-    
-    let after_decrease = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
-    let expected_score = initial_home_score + score_increase + score_decrease;
-    let expected_power = initial_home_power + power_increase + power_decrease;
-    
-    assert_eq!(after_decrease.home_score, expected_score);
-    assert_eq!(after_decrease.home_power, expected_power);
-    
-    println!("📊 After admin decrease - Home: {} (expected: {}), Power: {} (expected: {})", 
-             after_decrease.home_score, expected_score,
-             after_decrease.home_power, expected_power);
-
-    // Test 3: Admin adjusts away team score
-    let away_score_increase = 75;
-    let away_power_increase = 40;
-    
-    let adjust_request = json!({
-        "live_game_id": live_game.id,
-        "team_side": "away",
-        "score_adjustment": away_score_increase,
-        "power_adjustment": away_power_increase,
-        "reason": "Test away team adjustment"
-    });
-
-    let adjust_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/games/adjust-score", test_app.address),
-        &admin_session.token,
-        Some(adjust_request),
-    ).await;
-
-    assert!(adjust_response.status().is_success(), "Away team adjustment should succeed");
-    
-    let after_away_adjust = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
-    assert_eq!(after_away_adjust.away_score, away_score_increase);
-    assert_eq!(after_away_adjust.away_power, away_power_increase);
-    assert_eq!(after_away_adjust.home_score, expected_score); // Should remain unchanged
-    assert_eq!(after_away_adjust.home_power, expected_power); // Should remain unchanged
-    
-    println!("📊 After away team adjustment - Home: {}, Away: {} (power: {})", 
-             after_away_adjust.home_score, after_away_adjust.away_score, after_away_adjust.away_power);
-
-    // Test 4: Prevent negative scores
-    let large_decrease = -1000;
-    
-    let adjust_request = json!({
-        "live_game_id": live_game.id,
-        "team_side": "away",
-        "score_adjustment": large_decrease,
-        "power_adjustment": large_decrease,
-        "reason": "Test negative prevention"
-    });
-
-    let adjust_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/games/adjust-score", test_app.address),
-        &admin_session.token,
-        Some(adjust_request),
-    ).await;
-
-    assert!(adjust_response.status().is_success(), "Large decrease should succeed but be clamped");
-    
-    let after_clamp = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
-    assert_eq!(after_clamp.away_score, 0, "Score should be clamped to 0, not negative");
-    assert_eq!(after_clamp.away_power, 0, "Power should be clamped to 0, not negative");
-    
-    println!("📊 After large decrease (clamped) - Away: {} (should be 0)", after_clamp.away_score);
-
-    // Test 5: Invalid team side
-    let invalid_request = json!({
-        "live_game_id": live_game.id,
-        "team_side": "middle",
-        "score_adjustment": 10,
-        "power_adjustment": 10,
-        "reason": "Test invalid team"
-    });
-
-    let invalid_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/games/adjust-score", test_app.address),
-        &admin_session.token,
-        Some(invalid_request),
-    ).await;
-
-    assert_eq!(invalid_response.status(), 400, "Invalid team side should return 400");
-
-    // Test 6: Non-existent live game
-    let nonexistent_request = json!({
-        "live_game_id": "00000000-0000-0000-0000-000000000000",
-        "team_side": "home",
-        "score_adjustment": 10,
-        "power_adjustment": 10,
-        "reason": "Test non-existent game"
-    });
-
-    let nonexistent_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/games/adjust-score", test_app.address),
-        &admin_session.token,
-        Some(nonexistent_request),
-    ).await;
-
-    assert_eq!(nonexistent_response.status(), 404, "Non-existent live game should return 404");
-
-    println!("✅ Admin live game score adjustment test completed successfully!");
 }

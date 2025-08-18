@@ -31,6 +31,26 @@ pub struct StartGamesResponse {
     pub message: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct AdjustLiveGameScoreRequest {
+    pub live_game_id: Uuid,
+    pub team_side: String, // "home" or "away"
+    pub score_adjustment: i32, // Positive to increase, negative to decrease
+    pub power_adjustment: i32, // Positive to increase, negative to decrease
+    pub reason: String, // Admin reason for the adjustment
+}
+
+#[derive(Debug, Serialize)]
+pub struct AdjustLiveGameScoreResponse {
+    pub live_game_id: Uuid,
+    pub previous_scores: (i32, i32), // (home_score, away_score)
+    pub new_scores: (i32, i32), // (home_score, away_score)
+    pub previous_power: (i32, i32), // (home_power, away_power)
+    pub new_power: (i32, i32), // (home_power, away_power)
+    pub adjustment_applied: (i32, i32), // (score_adjustment, power_adjustment)
+    pub message: String,
+}
+
 /// POST /admin/games/start-now - Start games immediately for testing
 /// Moves specified games to current time and sets them to "in_progress"
 pub async fn start_games_now(
@@ -202,6 +222,8 @@ pub struct GameStatusInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub week_end_date: Option<chrono::DateTime<Utc>>,
     pub has_live_game: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub live_game_id: Option<Uuid>,
 }
 
 /// GET /admin/games/status/{season_id} - Get status of all games in a season
@@ -255,6 +277,7 @@ pub async fn get_games_status(
             scheduled_time: game.scheduled_time,
             week_end_date: game.week_end_date,
             has_live_game: game.live_game_id.is_some(),
+            live_game_id: game.live_game_id,
         };
 
         match game.status.as_str() {
@@ -364,4 +387,163 @@ pub async fn evaluate_games_for_date(
             }))
         }
     }
+}
+
+/// POST /admin/games/adjust-score - Manually adjust live game scores
+/// Allows admin to directly modify live game scores and power for special circumstances
+pub async fn adjust_live_game_score(
+    pool: web::Data<PgPool>,
+    body: web::Json<AdjustLiveGameScoreRequest>,
+    redis_client: Option<web::Data<Arc<redis::Client>>>,
+) -> Result<HttpResponse> {
+    info!("Admin adjusting live game {} score for {} team by {} score, {} power. Reason: {}", 
+        body.live_game_id, body.team_side, body.score_adjustment, body.power_adjustment, body.reason);
+
+    // Validate team_side
+    if body.team_side != "home" && body.team_side != "away" {
+        return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+            "team_side must be either 'home' or 'away'"
+        )));
+    }
+
+    // Validate that the live game exists and is active
+    let live_game = sqlx::query!(
+        r#"
+        SELECT id, home_score, away_score, home_power, away_power, is_active,
+               home_team_name, away_team_name, game_id
+        FROM live_games 
+        WHERE id = $1
+        "#,
+        body.live_game_id
+    )
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(|e| {
+        error!("Failed to fetch live game: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    let live_game = match live_game {
+        Some(game) => game,
+        None => {
+            return Ok(HttpResponse::NotFound().json(ApiResponse::<()>::error(
+                "Live game not found"
+            )));
+        }
+    };
+
+    if !live_game.is_active {
+        return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+            "Cannot adjust scores for inactive live game"
+        )));
+    }
+
+    let previous_scores = (live_game.home_score, live_game.away_score);
+    let previous_power = (live_game.home_power, live_game.away_power);
+
+    // Calculate new scores with GREATEST(0, x) to prevent negative values
+    let (new_home_score, new_away_score, new_home_power, new_away_power) = if body.team_side == "home" {
+        (
+            std::cmp::max(0, live_game.home_score + body.score_adjustment),
+            live_game.away_score,
+            std::cmp::max(0, live_game.home_power + body.power_adjustment),
+            live_game.away_power
+        )
+    } else {
+        (
+            live_game.home_score,
+            std::cmp::max(0, live_game.away_score + body.score_adjustment),
+            live_game.home_power,
+            std::cmp::max(0, live_game.away_power + body.power_adjustment)
+        )
+    };
+
+    // Update the live game scores
+    let updated_game = sqlx::query!(
+        r#"
+        UPDATE live_games 
+        SET 
+            home_score = $1,
+            away_score = $2,
+            home_power = $3,
+            away_power = $4,
+            updated_at = NOW()
+        WHERE id = $5
+        RETURNING home_score, away_score, home_power, away_power
+        "#,
+        new_home_score,
+        new_away_score,
+        new_home_power,
+        new_away_power,
+        body.live_game_id
+    )
+    .fetch_one(pool.get_ref())
+    .await
+    .map_err(|e| {
+        error!("Failed to update live game scores: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to update scores")
+    })?;
+
+    // Log the admin action for audit purposes
+    info!("Admin score adjustment completed for live game {}: {} vs {} | Scores: {}-{} (was {}-{}) | Power: {}-{} (was {}-{}) | Reason: {}", 
+        body.live_game_id,
+        live_game.home_team_name,
+        live_game.away_team_name,
+        updated_game.home_score,
+        updated_game.away_score,
+        previous_scores.0,
+        previous_scores.1,
+        updated_game.home_power,
+        updated_game.away_power,
+        previous_power.0,
+        previous_power.1,
+        body.reason
+    );
+
+    // Broadcast WebSocket update if Redis is available
+    if let Some(redis) = redis_client {
+        if let Ok(mut conn) = redis.get_multiplexed_async_connection().await {
+            let update_message = serde_json::json!({
+                "type": "live_score_update",
+                "game_id": live_game.game_id,
+                "live_game_id": body.live_game_id,
+                "home_team_name": live_game.home_team_name,
+                "away_team_name": live_game.away_team_name,
+                "home_score": updated_game.home_score,
+                "away_score": updated_game.away_score,
+                "home_power": updated_game.home_power,
+                "away_power": updated_game.away_power,
+                "admin_adjustment": true,
+                "reason": body.reason
+            });
+            
+            let channel = format!("live_game:{}", live_game.game_id);
+            if let Err(e) = redis::cmd("PUBLISH")
+                .arg(&channel)
+                .arg(update_message.to_string())
+                .query_async::<redis::aio::MultiplexedConnection, ()>(&mut conn)
+                .await
+            {
+                error!("Failed to broadcast admin score adjustment: {}", e);
+            } else {
+                info!("Broadcasted admin score adjustment to channel: {}", channel);
+            }
+        }
+    }
+
+    let new_scores = (updated_game.home_score, updated_game.away_score);
+    let new_power = (updated_game.home_power, updated_game.away_power);
+
+    let response = AdjustLiveGameScoreResponse {
+        live_game_id: body.live_game_id,
+        previous_scores,
+        new_scores,
+        previous_power,
+        new_power,
+        adjustment_applied: (body.score_adjustment, body.power_adjustment),
+        message: format!("Successfully adjusted {} team scores by {} score, {} power", 
+                        body.team_side, body.score_adjustment, body.power_adjustment),
+    };
+
+    Ok(HttpResponse::Ok().json(ApiResponse::success(response.message.clone(), response)))
 }
