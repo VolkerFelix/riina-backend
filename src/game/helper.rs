@@ -31,7 +31,6 @@ pub async fn get_user_profile(pool: &Pool<Postgres>, user_id: Uuid) -> Result<Us
             let stored_heart_rate_zones = if let (Some(zone_1_max), Some(zone_2_max), Some(zone_3_max), Some(zone_4_max), Some(zone_5_max)) = 
                 (row.hr_zone_1_max, row.hr_zone_2_max, row.hr_zone_3_max, row.hr_zone_4_max, row.hr_zone_5_max) {
                 Some(HeartRateZones::from_stored_zones(
-                    resting_heart_rate,
                     zone_1_max,
                     zone_2_max,
                     zone_3_max,

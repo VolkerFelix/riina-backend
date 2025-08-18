@@ -23,7 +23,7 @@ struct AdminWorkoutData {
 }
 
 #[derive(Debug, Serialize)]
-struct AdminWorkoutDetail {
+pub struct AdminWorkoutDetail {
     pub id: Uuid,
     pub user_id: Uuid,
     pub username: String,

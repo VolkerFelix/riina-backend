@@ -113,7 +113,6 @@ impl HeartRateZones {
     }
 
     pub fn from_stored_zones(
-        resting_heart_rate: i32,
         zone_1_max: i32,
         zone_2_max: i32,
         zone_3_max: i32,

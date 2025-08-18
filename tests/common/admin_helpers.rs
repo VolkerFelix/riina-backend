@@ -1,4 +1,3 @@
-use evolveme_backend::league::league;
 use reqwest::Client;
 use serde_json::json;
 use uuid::Uuid;

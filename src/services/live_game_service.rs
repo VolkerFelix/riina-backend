@@ -7,7 +7,6 @@ use std::sync::Arc;
 use crate::models::live_game::{LiveGame, LiveGameScoreUpdate, LiveGameResponse};
 use crate::models::game_events::GameEvent;
 use crate::db::live_game_queries::LiveGameQueries;
-use crate::services::game_evaluation_service::GameEvaluationService;
 use redis::AsyncCommands;
 
 #[derive(Debug)]
@@ -15,14 +14,12 @@ pub struct LiveGameService {
     pool: PgPool,
     live_game_queries: LiveGameQueries,
     redis_client: Option<Arc<redis::Client>>,
-    game_evaluation_service: GameEvaluationService,
 }
 
 impl LiveGameService {
     pub fn new(pool: PgPool, redis_client: Option<Arc<redis::Client>>) -> Self {
         Self {
             live_game_queries: LiveGameQueries::new(pool.clone()),
-            game_evaluation_service: GameEvaluationService::new_with_redis(pool.clone(), redis_client.clone()),
             pool,
             redis_client,
         }

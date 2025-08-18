@@ -7,7 +7,7 @@ use reqwest::Client;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request};
-use common::workout_data_helpers;
+use common::workout_data_helpers::{WorkoutData, WorkoutType};
 use common::admin_helpers::create_admin_user_and_login;
 
 #[tokio::test]
@@ -20,7 +20,7 @@ async fn test_admin_can_delete_workout() {
     let user = create_test_user_and_login(&test_app.address).await;
 
     // Create a workout for the user using workout data helpers
-    let workout_data = workout_data_helpers::create_advanced_workout_data();
+    let workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
 
     let workout_response = client
     .post(&format!("{}/health/upload_health", &test_app.address))
@@ -66,9 +66,9 @@ async fn test_admin_can_bulk_delete_workouts() {
     let user = create_test_user_and_login(&test_app.address).await;
 
     // Create multiple workouts
-    let workout1 = workout_data_helpers::create_advanced_workout_data();
-    let workout2 = workout_data_helpers::create_advanced_workout_data();
-    let workout3 = workout_data_helpers::create_advanced_workout_data();
+    let workout1 = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let workout2 = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let workout3 = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
 
     let workout_response1 = client
         .post(&format!("{}/health/upload_health", &test_app.address))
@@ -176,7 +176,7 @@ async fn test_non_admin_cannot_delete_workouts() {
     let user = create_test_user_and_login(&test_app.address).await;
 
     // Create a workout
-    let workout_data = workout_data_helpers::create_advanced_workout_data();
+    let workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
 
     let workout_response = client
         .post(&format!("{}/health/upload_health", &test_app.address))
@@ -223,8 +223,8 @@ async fn test_admin_can_list_workouts() {
     let user2 = create_test_user_and_login(&test_app.address).await;
 
     // Create workouts for both users
-    let workout1 = workout_data_helpers::create_advanced_workout_data();
-    let workout2 = workout_data_helpers::create_advanced_workout_data();
+    let workout1 = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let workout2 = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
 
     let workout_response1 = client
         .post(&format!("{}/health/upload_health", &test_app.address))
@@ -287,7 +287,7 @@ async fn test_admin_can_view_workout_details() {
     // Create a user and workout
     let user = create_test_user_and_login(&test_app.address).await;
 
-    let workout_data = workout_data_helpers::create_advanced_workout_data();
+    let workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
 
     let workout_response = client
         .post(&format!("{}/health/upload_health", &test_app.address))
@@ -317,8 +317,8 @@ async fn test_admin_can_view_workout_details() {
     assert_eq!(body["id"], sync_id1);
     assert_eq!(body["user_id"], user.user_id.to_string());
     assert_eq!(body["username"], user.username);
-    assert_eq!(body["device_id"], workout_data["device_id"].as_str().unwrap());
-    assert_eq!(body["calories_burned"], 520);
+    assert_eq!(body["device_id"], workout_data.device_id);
+    assert_eq!(body["calories_burned"], 300);
     assert!(body["heart_rate"].is_array());
     assert!(body["heart_rate"].as_array().unwrap().len() > 0);
 }
@@ -333,7 +333,7 @@ async fn test_workout_cascade_deletes_with_user() {
     let user = create_test_user_and_login(&test_app.address).await;
 
     // Create workouts
-    let workout_data = workout_data_helpers::create_advanced_workout_data();
+    let workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
 
     let workout_response = client
         .post(&format!("{}/health/upload_health", &test_app.address))

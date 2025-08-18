@@ -16,17 +16,15 @@ use common::utils::{
 };
 use common::admin_helpers::{create_admin_user_and_login, create_league_season};
 use common::workout_data_helpers::{
-    create_beginner_workout_data, 
-    create_intermediate_workout_data, 
-    create_advanced_workout_data, 
-    create_elite_workout_data,
+    WorkoutData,
+    WorkoutType,
     upload_workout_data_for_user
 };
 use serde_json::json;
 use uuid::Uuid;
 use rand::prelude::*;
 use reqwest::Client;
-use chrono::{Weekday, NaiveTime};
+use chrono::{Weekday, NaiveTime, Utc};
 
 #[tokio::test]
 async fn simulate_complete_season_with_4_players_2_teams() {
@@ -190,8 +188,8 @@ async fn simulate_complete_season_with_4_players_2_teams() {
     println!("🏃 Uploading health data to build user stats...");
     
     // User1 (Team1 Owner): Elite athlete
-    let user1_health = create_elite_workout_data();
-    let user1_upload = upload_workout_data_for_user(&client, &app.address, &user1.token, user1_health).await;
+    let user1_health = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let user1_upload = upload_workout_data_for_user(&client, &app.address, &user1.token, &user1_health).await;
     match user1_upload {
         Ok(response) => {
             println!("   ✅ User1 (Fire Dragons Owner): Elite fitness data uploaded");
@@ -201,8 +199,8 @@ async fn simulate_complete_season_with_4_players_2_teams() {
     }
     
     // User2 (Team1 Member): Advanced athlete  
-    let user2_health = create_advanced_workout_data();
-    let user2_upload = upload_workout_data_for_user(&client, &app.address, &user2.token, user2_health).await;
+    let user2_health = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let user2_upload = upload_workout_data_for_user(&client, &app.address, &user2.token, &user2_health).await;
     match user2_upload {
         Ok(response) => {
             println!("   ✅ User2 (Fire Dragons Member): Advanced fitness data uploaded");
@@ -212,16 +210,16 @@ async fn simulate_complete_season_with_4_players_2_teams() {
     }
     
     // User3 (Team2 Owner): Intermediate athlete
-    let user3_health = create_intermediate_workout_data();
-    let user3_upload = upload_workout_data_for_user(&client, &app.address, &user3.token, user3_health).await;
+    let user3_health = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let user3_upload = upload_workout_data_for_user(&client, &app.address, &user3.token, &user3_health).await;
     if let Err(e) = user3_upload {
         panic!("Failed to upload health data for user3: {}", e);
     }
     println!("   ✅ User3 (Ice Warriors Owner): Intermediate fitness data uploaded");
     
     // User4 (Team2 Member): Beginner athlete
-    let user4_health = create_beginner_workout_data();
-    let user4_upload = upload_workout_data_for_user(&client, &app.address, &user4.token, user4_health).await;
+    let user4_health = WorkoutData::new(WorkoutType::Light, Utc::now(), 30);
+    let user4_upload = upload_workout_data_for_user(&client, &app.address, &user4.token, & user4_health).await;
     if let Err(e) = user4_upload {
         panic!("Failed to upload health data for user4: {}", e);
     }

@@ -1,5 +1,4 @@
 use uuid::Uuid;
-use sqlx::PgPool;
 use crate::models::common::MatchResult;
 
 #[derive(Debug, Clone)]
