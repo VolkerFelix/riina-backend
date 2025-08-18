@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, home_score, away_score, home_power, away_power, is_active,\n               home_team_name, away_team_name, game_id\n        FROM live_games \n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "home_score",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "away_score",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "home_power",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 4,
+        "name": "away_power",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "is_active",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "home_team_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "away_team_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "game_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "e5836801bfb901794d0a7f3cb3562ca288aaeb679a634cd3f4d2ea78003abc7f"
+}

@@ -787,3 +787,214 @@ async fn test_live_game_partial_workout_deletion() {
     
     println!("✅ Partial workout deletion test completed successfully!");
 }
+
+#[tokio::test]
+async fn test_admin_live_game_score_adjustment() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    // Setup test environment
+    let live_game_environment: LiveGameEnvironmentResult = setup_live_game_environment(&test_app).await;
+    let admin_session = create_admin_user_and_login(&test_app.address).await;
+    
+    // Start the game
+    update_game_times_to_now(&test_app, live_game_environment.first_game_id).await;
+    start_test_game(&test_app, live_game_environment.first_game_id).await;
+    let live_game = initialize_live_game(&test_app, live_game_environment.first_game_id).await;
+    
+    // Verify initial state
+    assert_eq!(live_game.home_score, 0);
+    assert_eq!(live_game.away_score, 0);
+    assert_eq!(live_game.home_power, 0);
+    assert_eq!(live_game.away_power, 0);
+    
+    println!("📊 Initial scores - Home: 0, Away: 0");
+
+    // Upload a workout to give the home team some initial score
+    upload_workout_data(&test_app, &client, &live_game_environment.home_user, WorkoutType::Intense).await;
+    
+    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+    
+    let after_workout = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
+    let initial_home_score = after_workout.home_score;
+    let initial_home_power = after_workout.home_power;
+    
+    assert!(initial_home_score > 0, "Home team should have score after workout");
+    assert!(initial_home_power > 0, "Home team should have power after workout");
+    
+    println!("📊 After workout - Home: {} (power: {}), Away: 0", initial_home_score, initial_home_power);
+
+    // Test 1: Admin increases home team score
+    let score_increase = 50;
+    let power_increase = 25;
+    
+    let adjust_request = json!({
+        "live_game_id": live_game.id,
+        "team_side": "home",
+        "score_adjustment": score_increase,
+        "power_adjustment": power_increase,
+        "reason": "Test admin increase"
+    });
+
+    let adjust_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/games/adjust-score", test_app.address),
+        &admin_session.token,
+        Some(adjust_request),
+    ).await;
+
+    assert!(adjust_response.status().is_success(), "Admin score adjustment should succeed");
+    let response_data: serde_json::Value = adjust_response.json().await.unwrap();
+    
+    // Verify response structure
+    assert_eq!(response_data["data"]["live_game_id"], live_game.id.to_string());
+    assert_eq!(response_data["data"]["previous_scores"][0], initial_home_score);
+    assert_eq!(response_data["data"]["previous_scores"][1], 0);
+    assert_eq!(response_data["data"]["new_scores"][0], initial_home_score + score_increase);
+    assert_eq!(response_data["data"]["new_scores"][1], 0);
+    assert_eq!(response_data["data"]["adjustment_applied"][0], score_increase);
+    assert_eq!(response_data["data"]["adjustment_applied"][1], power_increase);
+    
+    println!("📊 After admin increase - Home: {} (was {}), Power: {} (was {})", 
+             response_data["data"]["new_scores"][0], initial_home_score,
+             response_data["data"]["new_power"][0], initial_home_power);
+
+    // Verify actual database state
+    let after_increase = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
+    assert_eq!(after_increase.home_score, initial_home_score + score_increase);
+    assert_eq!(after_increase.home_power, initial_home_power + power_increase);
+    assert_eq!(after_increase.away_score, 0);
+    assert_eq!(after_increase.away_power, 0);
+
+    // Test 2: Admin decreases home team score
+    let score_decrease = -30;
+    let power_decrease = -10;
+    
+    let adjust_request = json!({
+        "live_game_id": live_game.id,
+        "team_side": "home",
+        "score_adjustment": score_decrease,
+        "power_adjustment": power_decrease,
+        "reason": "Test admin decrease"
+    });
+
+    let adjust_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/games/adjust-score", test_app.address),
+        &admin_session.token,
+        Some(adjust_request),
+    ).await;
+
+    assert!(adjust_response.status().is_success(), "Admin score decrease should succeed");
+    
+    let after_decrease = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
+    let expected_score = initial_home_score + score_increase + score_decrease;
+    let expected_power = initial_home_power + power_increase + power_decrease;
+    
+    assert_eq!(after_decrease.home_score, expected_score);
+    assert_eq!(after_decrease.home_power, expected_power);
+    
+    println!("📊 After admin decrease - Home: {} (expected: {}), Power: {} (expected: {})", 
+             after_decrease.home_score, expected_score,
+             after_decrease.home_power, expected_power);
+
+    // Test 3: Admin adjusts away team score
+    let away_score_increase = 75;
+    let away_power_increase = 40;
+    
+    let adjust_request = json!({
+        "live_game_id": live_game.id,
+        "team_side": "away",
+        "score_adjustment": away_score_increase,
+        "power_adjustment": away_power_increase,
+        "reason": "Test away team adjustment"
+    });
+
+    let adjust_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/games/adjust-score", test_app.address),
+        &admin_session.token,
+        Some(adjust_request),
+    ).await;
+
+    assert!(adjust_response.status().is_success(), "Away team adjustment should succeed");
+    
+    let after_away_adjust = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
+    assert_eq!(after_away_adjust.away_score, away_score_increase);
+    assert_eq!(after_away_adjust.away_power, away_power_increase);
+    assert_eq!(after_away_adjust.home_score, expected_score); // Should remain unchanged
+    assert_eq!(after_away_adjust.home_power, expected_power); // Should remain unchanged
+    
+    println!("📊 After away team adjustment - Home: {}, Away: {} (power: {})", 
+             after_away_adjust.home_score, after_away_adjust.away_score, after_away_adjust.away_power);
+
+    // Test 4: Prevent negative scores
+    let large_decrease = -1000;
+    
+    let adjust_request = json!({
+        "live_game_id": live_game.id,
+        "team_side": "away",
+        "score_adjustment": large_decrease,
+        "power_adjustment": large_decrease,
+        "reason": "Test negative prevention"
+    });
+
+    let adjust_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/games/adjust-score", test_app.address),
+        &admin_session.token,
+        Some(adjust_request),
+    ).await;
+
+    assert!(adjust_response.status().is_success(), "Large decrease should succeed but be clamped");
+    
+    let after_clamp = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
+    assert_eq!(after_clamp.away_score, 0, "Score should be clamped to 0, not negative");
+    assert_eq!(after_clamp.away_power, 0, "Power should be clamped to 0, not negative");
+    
+    println!("📊 After large decrease (clamped) - Away: {} (should be 0)", after_clamp.away_score);
+
+    // Test 5: Invalid team side
+    let invalid_request = json!({
+        "live_game_id": live_game.id,
+        "team_side": "middle",
+        "score_adjustment": 10,
+        "power_adjustment": 10,
+        "reason": "Test invalid team"
+    });
+
+    let invalid_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/games/adjust-score", test_app.address),
+        &admin_session.token,
+        Some(invalid_request),
+    ).await;
+
+    assert_eq!(invalid_response.status(), 400, "Invalid team side should return 400");
+
+    // Test 6: Non-existent live game
+    let nonexistent_request = json!({
+        "live_game_id": "00000000-0000-0000-0000-000000000000",
+        "team_side": "home",
+        "score_adjustment": 10,
+        "power_adjustment": 10,
+        "reason": "Test non-existent game"
+    });
+
+    let nonexistent_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/games/adjust-score", test_app.address),
+        &admin_session.token,
+        Some(nonexistent_request),
+    ).await;
+
+    assert_eq!(nonexistent_response.status(), 404, "Non-existent live game should return 404");
+
+    println!("✅ Admin live game score adjustment test completed successfully!");
+}
