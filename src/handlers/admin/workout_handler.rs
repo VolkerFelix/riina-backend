@@ -201,11 +201,14 @@ pub async fn delete_workout(
 ) -> Result<HttpResponse, actix_web::Error> {
     let workout_id = workout_id.into_inner();
 
-    // First check if workout exists and get associated live game info
+    // First check if workout exists and get associated live game and stat change info
     let workout_info = sqlx::query(
         r#"
         SELECT 
             wd.id,
+            wd.user_id as workout_user_id,
+            wd.stamina_gained as workout_stamina_gained,
+            wd.strength_gained as workout_strength_gained,
             lse.live_game_id,
             lse.team_side,
             lse.score_points,
@@ -229,11 +232,40 @@ pub async fn delete_workout(
     }
 
     let workout_row = workout_info.unwrap();
+    let workout_user_id: Uuid = workout_row.get("workout_user_id");
+    let stamina_gained: Option<i32> = workout_row.try_get("workout_stamina_gained").ok();
+    let strength_gained: Option<i32> = workout_row.try_get("workout_strength_gained").ok();
     let live_game_id: Option<Uuid> = workout_row.try_get("live_game_id").ok();
     let team_side: Option<String> = workout_row.try_get("team_side").ok();
     let score_points: Option<i32> = workout_row.try_get("score_points").ok();
     let power_contribution: Option<i32> = workout_row.try_get("power_contribution").ok();
     let user_id: Option<Uuid> = workout_row.try_get("user_id").ok();
+
+    // Reverse stat changes from user's avatar if they exist
+    if let (Some(stamina_gained), Some(strength_gained)) = (stamina_gained, strength_gained) {
+        if stamina_gained != 0 || strength_gained != 0 {
+            tracing::info!("Reversing stat changes for user {}: -{} stamina, -{} strength", 
+                         workout_user_id, stamina_gained, strength_gained);
+            
+            sqlx::query!(
+                r#"
+                UPDATE user_avatars 
+                SET stamina = GREATEST(0, stamina - $1), 
+                    strength = GREATEST(0, strength - $2)
+                WHERE user_id = $3
+                "#,
+                stamina_gained,
+                strength_gained,
+                workout_user_id
+            )
+            .execute(pool.get_ref())
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to reverse user stat changes: {}", e);
+                actix_web::error::ErrorInternalServerError("Failed to reverse stat changes")
+            })?;
+        }
+    }
 
     // Delete the workout (this will cascade delete the live_score_events)
     sqlx::query("DELETE FROM workout_data WHERE id = $1")
@@ -348,6 +380,9 @@ pub async fn bulk_delete_workouts(
         r#"
         SELECT 
             wd.id as workout_id,
+            wd.user_id as workout_user_id,
+            wd.stamina_gained as workout_stamina_gained,
+            wd.strength_gained as workout_strength_gained,
             lse.live_game_id,
             lse.team_side,
             lse.score_points,
@@ -401,6 +436,47 @@ pub async fn bulk_delete_workouts(
             user_contrib.0 += score;
             user_contrib.1 += power;
         }
+    }
+
+    // Group and reverse stat changes by user
+    let mut user_stat_changes: HashMap<Uuid, (i32, i32)> = HashMap::new(); // user_id -> (stamina, strength)
+    
+    for row in &workout_infos {
+        let workout_user_id: Uuid = row.get("workout_user_id");
+        if let (Ok(Some(stamina_gained)), Ok(Some(strength_gained))) = (
+            row.try_get::<Option<i32>, _>("workout_stamina_gained"),
+            row.try_get::<Option<i32>, _>("workout_strength_gained"),
+        ) {
+            if stamina_gained != 0 || strength_gained != 0 {
+                let user_stats = user_stat_changes.entry(workout_user_id).or_default();
+                user_stats.0 += stamina_gained;
+                user_stats.1 += strength_gained;
+            }
+        }
+    }
+    
+    // Reverse all user stat changes
+    for (user_id, (stamina_to_subtract, strength_to_subtract)) in user_stat_changes {
+        tracing::info!("Reversing bulk stat changes for user {}: -{} stamina, -{} strength", 
+                     user_id, stamina_to_subtract, strength_to_subtract);
+        
+        sqlx::query!(
+            r#"
+            UPDATE user_avatars 
+            SET stamina = GREATEST(0, stamina - $1), 
+                strength = GREATEST(0, strength - $2)
+            WHERE user_id = $3
+            "#,
+            stamina_to_subtract,
+            strength_to_subtract,
+            user_id
+        )
+        .execute(pool.get_ref())
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to reverse bulk user stat changes for {}: {}", user_id, e);
+            actix_web::error::ErrorInternalServerError("Failed to reverse stat changes")
+        })?;
     }
 
     // Delete all workouts in the list (this will cascade delete live_score_events)

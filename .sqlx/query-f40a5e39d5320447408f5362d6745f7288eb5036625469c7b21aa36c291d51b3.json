@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE user_avatars \n            SET stamina = GREATEST(0, stamina - $1), \n                strength = GREATEST(0, strength - $2)\n            WHERE user_id = $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Int4",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f40a5e39d5320447408f5362d6745f7288eb5036625469c7b21aa36c291d51b3"
+}

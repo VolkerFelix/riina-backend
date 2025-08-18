@@ -368,3 +368,213 @@ async fn test_workout_cascade_deletes_with_user() {
 
     assert_eq!(get_response.status(), 404);
 }
+
+#[tokio::test]
+async fn test_workout_deletion_reverses_user_stats() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+    let admin = create_admin_user_and_login(&test_app.address).await;
+
+    // Create a regular user
+    let user = create_test_user_and_login(&test_app.address).await;
+
+    // Get initial user stats
+    let initial_stats_response = client
+        .get(&format!("{}/profile/user", &test_app.address))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Failed to get initial user stats");
+    
+    assert!(initial_stats_response.status().is_success());
+    let initial_stats: serde_json::Value = initial_stats_response.json().await.unwrap();
+    let initial_stamina = initial_stats["data"]["stats"]["stamina"].as_i64().unwrap_or(0);
+    let initial_strength = initial_stats["data"]["stats"]["strength"].as_i64().unwrap_or(0);
+    
+    println!("Initial stats - Stamina: {}, Strength: {}", initial_stamina, initial_strength);
+
+    // Upload a workout (this should increase user stats)
+    let workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 45);
+
+    let workout_response = client
+        .post(&format!("{}/health/upload_health", &test_app.address))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&workout_data)
+        .send()
+        .await
+        .expect("Failed to execute health upload request.");
+
+    assert!(workout_response.status().is_success(), "Workout upload should succeed");
+
+    let response_data = workout_response.json::<serde_json::Value>().await.unwrap();
+    let sync_id = response_data["data"]["sync_id"].as_str().unwrap();
+    
+    // Extract the stat changes from the workout response
+    let stamina_gained = response_data["data"]["game_stats"]["stat_changes"]["stamina_change"].as_i64().unwrap_or(0);
+    let strength_gained = response_data["data"]["game_stats"]["stat_changes"]["strength_change"].as_i64().unwrap_or(0);
+    
+    println!("Workout gave - Stamina: {}, Strength: {}", stamina_gained, strength_gained);
+    
+    // Verify stats increased
+    let after_workout_stats_response = client
+        .get(&format!("{}/profile/user", &test_app.address))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Failed to get user stats after workout");
+    
+    assert!(after_workout_stats_response.status().is_success());
+    let after_workout_stats: serde_json::Value = after_workout_stats_response.json().await.unwrap();
+    let after_stamina = after_workout_stats["data"]["stats"]["stamina"].as_i64().unwrap_or(0);
+    let after_strength = after_workout_stats["data"]["stats"]["strength"].as_i64().unwrap_or(0);
+    
+    println!("After workout stats - Stamina: {}, Strength: {}", after_stamina, after_strength);
+    
+    // Verify stats increased
+    assert_eq!(after_stamina, initial_stamina + stamina_gained, "Stamina should have increased by workout amount");
+    assert_eq!(after_strength, initial_strength + strength_gained, "Strength should have increased by workout amount");
+
+    // Admin deletes the workout
+    let delete_response = client
+        .delete(&format!("{}/admin/workouts/{}", &test_app.address, sync_id))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Failed to execute workout delete request.");
+
+    assert!(delete_response.status().is_success(), "Workout delete should succeed");
+
+    // Verify stats were decreased back to original levels
+    let final_stats_response = client
+        .get(&format!("{}/profile/user", &test_app.address))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Failed to get final user stats");
+    
+    assert!(final_stats_response.status().is_success());
+    let final_stats: serde_json::Value = final_stats_response.json().await.unwrap();
+    let final_stamina = final_stats["data"]["stats"]["stamina"].as_i64().unwrap_or(0);
+    let final_strength = final_stats["data"]["stats"]["strength"].as_i64().unwrap_or(0);
+    
+    println!("Final stats - Stamina: {}, Strength: {}", final_stamina, final_strength);
+    
+    // Verify stats returned to original levels (or as close as possible with GREATEST(0, x))
+    assert_eq!(final_stamina, initial_stamina, "Stamina should return to original level after workout deletion");
+    assert_eq!(final_strength, initial_strength, "Strength should return to original level after workout deletion");
+}
+
+#[tokio::test]
+async fn test_bulk_workout_deletion_reverses_user_stats() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+    let admin = create_admin_user_and_login(&test_app.address).await;
+
+    // Create a regular user
+    let user = create_test_user_and_login(&test_app.address).await;
+
+    // Get initial user stats
+    let initial_stats_response = client
+        .get(&format!("{}/profile/user", &test_app.address))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Failed to get initial user stats");
+    
+    assert!(initial_stats_response.status().is_success());
+    let initial_stats: serde_json::Value = initial_stats_response.json().await.unwrap();
+    let initial_stamina = initial_stats["data"]["stats"]["stamina"].as_i64().unwrap_or(0);
+    let initial_strength = initial_stats["data"]["stats"]["strength"].as_i64().unwrap_or(0);
+    
+    println!("Initial stats - Stamina: {}, Strength: {}", initial_stamina, initial_strength);
+
+    // Upload multiple workouts
+    let mut workout_ids = Vec::new();
+    let mut total_stamina_gained = 0;
+    let mut total_strength_gained = 0;
+    
+    for i in 0..3 {
+        let workout_type = match i {
+            0 => WorkoutType::Intense,
+            1 => WorkoutType::Moderate,
+            _ => WorkoutType::Light,
+        };
+        
+        let workout_data = WorkoutData::new(workout_type, Utc::now(), 30);
+
+        let workout_response = client
+            .post(&format!("{}/health/upload_health", &test_app.address))
+            .header("Authorization", format!("Bearer {}", user.token))
+            .json(&workout_data)
+            .send()
+            .await
+            .expect("Failed to execute health upload request.");
+
+        assert!(workout_response.status().is_success(), "Workout upload should succeed");
+
+        let response_data = workout_response.json::<serde_json::Value>().await.unwrap();
+        let sync_id = response_data["data"]["sync_id"].as_str().unwrap();
+        workout_ids.push(sync_id.to_string());
+        
+        // Extract the stat changes from the workout response
+        let stamina_gained = response_data["data"]["game_stats"]["stat_changes"]["stamina_change"].as_i64().unwrap_or(0);
+        let strength_gained = response_data["data"]["game_stats"]["stat_changes"]["strength_change"].as_i64().unwrap_or(0);
+        
+        total_stamina_gained += stamina_gained;
+        total_strength_gained += strength_gained;
+        
+        println!("Workout {} gave - Stamina: {}, Strength: {}", i + 1, stamina_gained, strength_gained);
+    }
+    
+    // Verify stats increased after all workouts
+    let after_workouts_stats_response = client
+        .get(&format!("{}/profile/user", &test_app.address))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Failed to get user stats after workouts");
+    
+    assert!(after_workouts_stats_response.status().is_success());
+    let after_workouts_stats: serde_json::Value = after_workouts_stats_response.json().await.unwrap();
+    let after_stamina = after_workouts_stats["data"]["stats"]["stamina"].as_i64().unwrap_or(0);
+    let after_strength = after_workouts_stats["data"]["stats"]["strength"].as_i64().unwrap_or(0);
+    
+    println!("After all workouts stats - Stamina: {}, Strength: {}", after_stamina, after_strength);
+    println!("Total gains - Stamina: {}, Strength: {}", total_stamina_gained, total_strength_gained);
+    
+    // Verify stats increased
+    assert_eq!(after_stamina, initial_stamina + total_stamina_gained, "Stamina should have increased by total workout amount");
+    assert_eq!(after_strength, initial_strength + total_strength_gained, "Strength should have increased by total workout amount");
+
+    // Admin bulk deletes all workouts
+    let delete_response = client
+        .post(&format!("{}/admin/workouts/bulk-delete", &test_app.address))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "workout_ids": workout_ids
+        }))
+        .send()
+        .await
+        .expect("Failed to execute bulk workout delete request.");
+
+    assert!(delete_response.status().is_success(), "Bulk workout delete should succeed");
+
+    // Verify stats were decreased back to original levels
+    let final_stats_response = client
+        .get(&format!("{}/profile/user", &test_app.address))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Failed to get final user stats");
+    
+    assert!(final_stats_response.status().is_success());
+    let final_stats: serde_json::Value = final_stats_response.json().await.unwrap();
+    let final_stamina = final_stats["data"]["stats"]["stamina"].as_i64().unwrap_or(0);
+    let final_strength = final_stats["data"]["stats"]["strength"].as_i64().unwrap_or(0);
+    
+    println!("Final stats after bulk deletion - Stamina: {}, Strength: {}", final_stamina, final_strength);
+    
+    // Verify stats returned to original levels
+    assert_eq!(final_stamina, initial_stamina, "Stamina should return to original level after bulk workout deletion");
+    assert_eq!(final_strength, initial_strength, "Strength should return to original level after bulk workout deletion");
+}
