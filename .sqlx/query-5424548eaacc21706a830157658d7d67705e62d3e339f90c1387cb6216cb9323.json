@@ -1,0 +1,130 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT \n                id, game_id, home_team_id, home_team_name, away_team_id, away_team_name,\n                home_score, away_score, home_power, away_power,\n                game_start_time, game_end_time, last_score_time, last_scorer_id,\n                last_scorer_name, last_scorer_team, is_active, created_at, updated_at\n            FROM live_games \n            WHERE id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "game_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "home_team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "home_team_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "away_team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "away_team_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "home_score",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "away_score",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "home_power",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 9,
+        "name": "away_power",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 10,
+        "name": "game_start_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "game_end_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "last_score_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "last_scorer_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 14,
+        "name": "last_scorer_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 15,
+        "name": "last_scorer_team",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 16,
+        "name": "is_active",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 17,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 18,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "5424548eaacc21706a830157658d7d67705e62d3e339f90c1387cb6216cb9323"
+}

@@ -173,6 +173,30 @@ impl LiveGameQueries {
         Ok(live_game)
     }
 
+    /// Get a live game by its ID
+    pub async fn get_live_game_by_id(
+        &self,
+        live_game_id: Uuid,
+    ) -> Result<Option<LiveGame>, sqlx::Error> {
+        let live_game = sqlx::query_as!(
+            LiveGame,
+            r#"
+            SELECT 
+                id, game_id, home_team_id, home_team_name, away_team_id, away_team_name,
+                home_score, away_score, home_power, away_power,
+                game_start_time, game_end_time, last_score_time, last_scorer_id,
+                last_scorer_name, last_scorer_team, is_active, created_at, updated_at
+            FROM live_games 
+            WHERE id = $1
+            "#,
+            live_game_id
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(live_game)
+    }
+
     /// Update live game scores when a player contributes
     pub async fn update_live_game_score(
         &self,
