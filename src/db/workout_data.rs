@@ -191,7 +191,7 @@ pub async fn check_duplicate_workout_by_time(
     };
     
     tracing::info!(
-        "Checking for duplicate workouts with time tolerance. Start: {} ± 15s, End: {} ± 15s",
+        "Checking for duplicate workouts with time tolerance against non-duplicate workouts only. Start: {} ± 15s, End: {} ± 15s",
         workout_start, workout_end
     );
     
@@ -206,6 +206,7 @@ pub async fn check_duplicate_workout_by_time(
         WHERE user_id = $1
         AND workout_start IS NOT NULL
         AND workout_end IS NOT NULL
+        AND is_duplicate = false
         AND ABS(EXTRACT(EPOCH FROM (workout_start - $2))) <= 15
         AND ABS(EXTRACT(EPOCH FROM (workout_end - $3))) <= 15
         AND workout_uuid != $4

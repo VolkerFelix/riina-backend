@@ -268,7 +268,6 @@ async fn test_duplicate_workout_detection_by_time() {
     // Second upload with different UUID but same time (within tolerance) - should be accepted but marked as duplicate
     let mut duplicate_workout = workout_data.clone();
     duplicate_workout["workout_uuid"] = json!(Uuid::new_v4().to_string()); // Different UUID
-    duplicate_workout["device_id"] = json!("apple-health"); // Different device (simulating Apple Health)
     duplicate_workout["workout_start"] = json!(workout_start + Duration::seconds(10)); // 10 seconds later
     duplicate_workout["workout_end"] = json!(workout_end + Duration::seconds(10)); // 10 seconds later
 
@@ -338,7 +337,7 @@ async fn test_duplicate_detection_edge_cases() {
     let workout_start = Utc::now() - Duration::hours(1);
     let workout_end = workout_start + Duration::minutes(30);
 
-    // Test 1: Workout at exact 15-second boundary - should be rejected
+    // Test 1: Workout with start and end times - should be accepted
     let workout1 = json!({
         "device_id": "device1",
         "timestamp": Utc::now(),
@@ -380,13 +379,13 @@ async fn test_duplicate_detection_edge_cases() {
     let response2_body: serde_json::Value = response2.json().await.expect("Failed to parse response");
     assert_eq!(response2_body["data"]["is_duplicate"], true, "Should be marked as duplicate");
 
-    // Test 2: Workout at 31 seconds later - should succeed (outside 15s tolerance from both previous workouts)
+    // Test 2: Workout at 16 seconds later - should succeed
     let workout3 = json!({
         "device_id": "device3",
         "timestamp": Utc::now(),
         "workout_uuid": Uuid::new_v4().to_string(),
-        "workout_start": workout_start + Duration::seconds(31), // Outside 15s tolerance from both 0s and 15s
-        "workout_end": workout_end + Duration::seconds(31),
+        "workout_start": workout_start + Duration::seconds(16),
+        "workout_end": workout_end + Duration::seconds(16),
         "calories_burned": 200
     });
 
@@ -398,7 +397,7 @@ async fn test_duplicate_detection_edge_cases() {
         Some(workout3),
     ).await;
 
-    assert!(response3.status().is_success(), "Workout at 31 seconds should succeed");
+    assert!(response3.status().is_success(), "Workout at 16 seconds should succeed");
     let response3_body: serde_json::Value = response3.json().await.expect("Failed to parse response");
     assert_eq!(response3_body["data"]["is_duplicate"], false, "Should NOT be marked as duplicate");
 
