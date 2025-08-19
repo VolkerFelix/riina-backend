@@ -521,35 +521,67 @@ async fn upload_workout_data_with_time(
 }
 
 pub async fn get_player_contributions(test_app: &TestApp, live_game_id: Uuid) -> (Vec<PlayerContribution>, Vec<PlayerContribution>) {
+    // Get the live game info first
+    let live_game = sqlx::query!(
+        "SELECT home_team_id, away_team_id FROM live_games WHERE id = $1",
+        live_game_id
+    )
+    .fetch_one(&test_app.db_pool)
+    .await
+    .expect("Failed to get live game info");
+
+    // Get contributions by joining team_members with aggregated score events (same logic as the main system)
     let rows = sqlx::query!(
         r#"
         SELECT 
-            user_id, username, team_side, current_power, 
-            total_score_contribution, contribution_count, last_contribution_time
-        FROM live_player_contributions 
-        WHERE live_game_id = $1
+            tm.user_id,
+            u.username,
+            tm.team_id,
+            t.team_name,
+            CASE 
+                WHEN tm.team_id = $2 THEN 'home'
+                WHEN tm.team_id = $3 THEN 'away'
+                ELSE 'unknown'
+            END as team_side,
+            COALESCE(SUM(lse.power_contribution), 0)::int as current_power,
+            COALESCE(SUM(lse.score_points), 0)::int as total_score_contribution,
+            COUNT(CASE WHEN lse.id IS NOT NULL THEN 1 END)::int as contribution_count,
+            MAX(lse.occurred_at) as last_contribution_time
+        FROM team_members tm
+        JOIN users u ON tm.user_id = u.id
+        JOIN teams t ON tm.team_id = t.id
+        LEFT JOIN live_score_events lse ON lse.live_game_id = $1 AND lse.user_id = tm.user_id
+        WHERE tm.status = 'active'
+        AND (tm.team_id = $2 OR tm.team_id = $3)
+        GROUP BY tm.user_id, u.username, tm.team_id, t.team_name
         ORDER BY total_score_contribution DESC
         "#,
-        live_game_id
+        live_game_id,
+        live_game.home_team_id,
+        live_game.away_team_id
     )
     .fetch_all(&test_app.db_pool)
     .await
     .expect("Failed to get player contributions");
+    
+    println!("DEBUG: Found {} team members for live_game_id: {}", rows.len(), live_game_id);
+    println!("DEBUG: home_team_id: {}, away_team_id: {}", live_game.home_team_id, live_game.away_team_id);
 
     let mut home_contributions = Vec::new();
     let mut away_contributions = Vec::new();
 
     for row in rows {
+        let team_side = row.team_side.as_ref().unwrap_or(&"unknown".to_string()).clone();
         let contrib = PlayerContribution {
             user_id: row.user_id,
             username: row.username,
-            team_side: row.team_side,
-            total_score_contribution: row.total_score_contribution,
-            contribution_count: row.contribution_count,
+            team_side: team_side.clone(),
+            total_score_contribution: row.total_score_contribution.unwrap_or(0),
+            contribution_count: row.contribution_count.unwrap_or(0),
             last_contribution_time: row.last_contribution_time,
         };
 
-        if contrib.team_side == "home" {
+        if team_side == "home" {
             home_contributions.push(contrib);
         } else {
             away_contributions.push(contrib);

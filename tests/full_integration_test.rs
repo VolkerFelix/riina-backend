@@ -844,35 +844,67 @@ async fn get_live_game_state(test_app: &TestApp, game_id: Uuid) -> LiveGameRow {
 }
 
 async fn get_player_contributions(test_app: &TestApp, live_game_id: Uuid) -> (Vec<PlayerContribution>, Vec<PlayerContribution>) {
+    // Get the live game info first
+    let live_game = sqlx::query!(
+        "SELECT home_team_id, away_team_id FROM live_games WHERE id = $1",
+        live_game_id
+    )
+    .fetch_one(&test_app.db_pool)
+    .await
+    .expect("Failed to get live game info");
+
+    // Get contributions by joining team_members with aggregated score events (same logic as the main system)
     let rows = sqlx::query!(
         r#"
         SELECT 
-            user_id, username, team_side, current_power, 
-            total_score_contribution, contribution_count, last_contribution_time
-        FROM live_player_contributions 
-        WHERE live_game_id = $1
+            tm.user_id,
+            u.username,
+            tm.team_id,
+            t.team_name,
+            CASE 
+                WHEN tm.team_id = $2 THEN 'home'
+                WHEN tm.team_id = $3 THEN 'away'
+                ELSE 'unknown'
+            END as team_side,
+            COALESCE(SUM(lse.power_contribution), 0)::int as current_power,
+            COALESCE(SUM(lse.score_points), 0)::int as total_score_contribution,
+            COUNT(CASE WHEN lse.id IS NOT NULL THEN 1 END)::int as contribution_count,
+            MAX(lse.occurred_at) as last_contribution_time
+        FROM team_members tm
+        JOIN users u ON tm.user_id = u.id
+        JOIN teams t ON tm.team_id = t.id
+        LEFT JOIN live_score_events lse ON lse.live_game_id = $1 AND lse.user_id = tm.user_id
+        WHERE tm.status = 'active'
+        AND (tm.team_id = $2 OR tm.team_id = $3)
+        GROUP BY tm.user_id, u.username, tm.team_id, t.team_name
         ORDER BY total_score_contribution DESC
         "#,
-        live_game_id
+        live_game_id,
+        live_game.home_team_id,
+        live_game.away_team_id
     )
     .fetch_all(&test_app.db_pool)
     .await
     .expect("Failed to get player contributions");
+    
+    println!("DEBUG: Found {} team members for live_game_id: {}", rows.len(), live_game_id);
+    println!("DEBUG: home_team_id: {}, away_team_id: {}", live_game.home_team_id, live_game.away_team_id);
 
     let mut home_contributions = Vec::new();
     let mut away_contributions = Vec::new();
 
     for row in rows {
+        let team_side = row.team_side.as_ref().unwrap_or(&"unknown".to_string()).clone();
         let contrib = PlayerContribution {
             user_id: row.user_id,
             username: row.username,
-            team_side: row.team_side,
-            total_score_contribution: row.total_score_contribution,
-            contribution_count: row.contribution_count,
+            team_side: team_side.clone(),
+            total_score_contribution: row.total_score_contribution.unwrap_or(0),
+            contribution_count: row.contribution_count.unwrap_or(0),
             last_contribution_time: row.last_contribution_time,
         };
 
-        if contrib.team_side == "home" {
+        if team_side == "home" {
             home_contributions.push(contrib);
         } else {
             away_contributions.push(contrib);
@@ -1177,6 +1209,139 @@ async fn test_live_game_partial_workout_deletion() {
                "Contribution count should be 2 after deleting 1 of 3 workouts");
     
     println!("✅ Partial workout deletion test completed successfully!");
+}
+
+#[tokio::test]
+async fn test_user_joining_team_during_live_game() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    // Setup live game environment
+    let live_game_environment = setup_live_game_environment(&test_app).await;
+    
+    // Update game times to current and start the game
+    update_game_times_to_now(&test_app, live_game_environment.first_game_id).await;
+    start_test_game(&test_app, live_game_environment.first_game_id).await;
+    let live_game = initialize_live_game(&test_app, live_game_environment.first_game_id).await;
+    
+    // Verify initial state - only original team members should have contribution records
+    let (initial_home_contributions, initial_away_contributions) = get_player_contributions(&test_app, live_game.id).await;
+    
+    let initial_home_count = initial_home_contributions.len();
+    let initial_away_count = initial_away_contributions.len();
+    
+    println!("Initial contribution records - Home: {}, Away: {}", initial_home_count, initial_away_count);
+    
+    // Create a new user who will join the home team during the live game
+    let new_user = create_test_user_with_health_profile(&test_app, &client).await;
+    println!("Created new user: {} ({})", new_user.username, new_user.user_id);
+    
+    // Verify the new user is NOT in the contributions before joining team
+    let new_user_contrib_before = initial_home_contributions.iter()
+        .find(|c| c.user_id == new_user.user_id);
+    assert!(new_user_contrib_before.is_none(), "New user should not have contribution record before joining team");
+    
+    // Add the new user to the home team AFTER the live game has started
+    add_user_to_team(&test_app.address, &live_game_environment.admin_session.token, &live_game_environment.home_team_id, new_user.user_id).await;
+    println!("Added new user to home team during active live game");
+    
+    // Verify user is now a team member with zero contributions (new behavior with simplified system)
+    let (contributions_after_join, _) = get_player_contributions(&test_app, live_game.id).await;
+    let new_user_contrib_after_join = contributions_after_join.iter()
+        .find(|c| c.user_id == new_user.user_id)
+        .expect("New user should have contribution record with zero values after joining team");
+    assert_eq!(new_user_contrib_after_join.total_score_contribution, 0, "New user should have zero contributions immediately after joining");
+    assert_eq!(new_user_contrib_after_join.contribution_count, 0, "New user should have zero contribution count immediately after joining");
+    
+    // Now the new user uploads a workout during the active live game
+    println!("About to upload workout for new user during live game...");
+    println!("Live game info: id={}, start_time={}, end_time={}", 
+        live_game.id, live_game.game_start_time, live_game.game_end_time);
+    
+    // Use a workout time within the live game window (10 minutes after game start)
+    let workout_start = live_game.game_start_time + Duration::minutes(10);
+    println!("Using workout start time: {} (within game window)", workout_start);
+    
+    let workout_data = WorkoutData::new(WorkoutType::Moderate, workout_start, 30);
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/upload_health", test_app.address),
+        &new_user.token,
+        Some(workout_data.to_json()),
+    ).await;
+    
+    assert!(response.status().is_success(), "Workout upload should succeed");
+    let response_data: serde_json::Value = response.json().await.expect("Failed to parse workout response");
+    let stamina = response_data["data"]["game_stats"]["stat_changes"]["stamina_change"].as_i64().unwrap_or(0) as i32;
+    let strength = response_data["data"]["game_stats"]["stat_changes"]["strength_change"].as_i64().unwrap_or(0) as i32;
+    println!("New user uploaded workout: stamina={}, strength={}", stamina, strength);
+    
+    // Verify the live game score was updated
+    let updated_live_game = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
+    println!("Updated live game state - home_score: {}, away_score: {}, home_power: {}, away_power: {}", 
+        updated_live_game.home_score, updated_live_game.away_score, 
+        updated_live_game.home_power, updated_live_game.away_power);
+    
+    // Check what the initial score was
+    println!("Initial live game state - home_score: {}, away_score: {}, home_power: {}, away_power: {}", 
+        live_game.home_score, live_game.away_score, live_game.home_power, live_game.away_power);
+        
+    assert!(updated_live_game.home_score > live_game.home_score, "Home team score should have increased from new user's contribution");
+    assert!(updated_live_game.home_power > live_game.home_power, "Home team power should have increased");
+    
+    // Verify the new user now has a contribution record with actual contributions
+    let (final_home_contributions, final_away_contributions) = get_player_contributions(&test_app, live_game.id).await;
+    
+    // Home team should have one more member than initially (the new user that joined)
+    assert_eq!(final_home_contributions.len(), initial_home_count + 1, "Should have one additional home contribution record");
+    assert_eq!(final_away_contributions.len(), initial_away_count, "Away contributions should remain unchanged");
+    
+    // Find the new user's contribution record
+    let new_user_contrib = final_home_contributions.iter()
+        .find(|c| c.user_id == new_user.user_id)
+        .expect("New user should now have a contribution record");
+        
+    // Verify the contribution record was created correctly
+    assert_eq!(new_user_contrib.username, new_user.username);
+    assert_eq!(new_user_contrib.team_side, "home");
+    assert_eq!(new_user_contrib.contribution_count, 1);
+    assert!(new_user_contrib.total_score_contribution > 0, "Should have non-zero score contribution");
+    assert!(new_user_contrib.is_recently_active(), "Should be marked as recently active");
+    
+    // Verify a score event was recorded for the new user
+    let score_events = get_recent_score_events(&test_app, live_game.id).await;
+    let new_user_event = score_events.iter()
+        .find(|e| e.user_id == new_user.user_id)
+        .expect("Should have score event for new user");
+        
+    assert_eq!(new_user_event.team_side, "home");
+    assert!(new_user_event.score_points > 0, "Score event should have positive score");
+    
+    // Test that the new user can upload another workout and it continues to work
+    let second_workout_start = live_game.game_start_time + Duration::minutes(45);
+    let second_workout = WorkoutData::new(WorkoutType::Light, second_workout_start, 20);
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/upload_health", test_app.address),
+        &new_user.token,
+        Some(second_workout.to_json()),
+    ).await;
+    assert!(response.status().is_success(), "Second workout should also succeed");
+    
+    // Verify the contribution count increased
+    let (after_second_contributions, _) = get_player_contributions(&test_app, live_game.id).await;
+    let new_user_final_contrib = after_second_contributions.iter()
+        .find(|c| c.user_id == new_user.user_id)
+        .expect("New user should still have contribution record");
+        
+    assert_eq!(new_user_final_contrib.contribution_count, 2, "Should have 2 contributions after second workout");
+    assert!(new_user_final_contrib.total_score_contribution > new_user_contrib.total_score_contribution, 
+        "Total score should have increased with second workout");
+    
+    println!("✅ User joining team during live game test completed successfully!");
+    println!("New user {} successfully contributed to live game after joining team mid-game", new_user.username);
 }
 
 #[tokio::test]

@@ -246,8 +246,9 @@ impl LiveGameService {
                 lg.game_start_time, lg.game_end_time, lg.last_score_time, lg.last_scorer_id,
                 lg.last_scorer_name, lg.last_scorer_team, lg.is_active, lg.created_at, lg.updated_at
             FROM live_games lg
-            JOIN live_player_contributions lpc ON lg.id = lpc.live_game_id
-            WHERE lpc.user_id = $1 
+            JOIN team_members tm ON (tm.team_id = lg.home_team_id OR tm.team_id = lg.away_team_id)
+            WHERE tm.user_id = $1 
+            AND tm.status = 'active'
             AND lg.is_active = true
             AND lg.game_start_time <= NOW()
             AND lg.game_end_time > NOW()
