@@ -123,7 +123,7 @@ pub async fn upload_workout_media(
                 Err(_) => 0,
             };
 
-            let file_url = format!("/api/workout-media/{}", unique_filename);
+            let file_url = format!("/workout-media/{}", unique_filename);
             let file_type = determine_file_type(&extension);
 
             let response = MediaUploadResponse {
