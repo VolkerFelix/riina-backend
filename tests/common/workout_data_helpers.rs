@@ -25,10 +25,9 @@ impl WorkoutData {
             WorkoutType::Intense => generate_intense_workout_data(workout_start, duration_minutes),
             WorkoutType::Moderate => generate_moderate_workout_data(workout_start, duration_minutes),
             WorkoutType::Light => generate_light_workout_data(workout_start, duration_minutes),
-            _ => generate_light_workout_data(workout_start, duration_minutes),
         };
         let workout_uuid = Uuid::new_v4().to_string();
-        let workout_end = workout_start + Duration::minutes(duration_minutes as i64);
+        let workout_end = workout_start + Duration::minutes(duration_minutes);
         Self {
             workout_uuid,
             workout_start,
@@ -38,6 +37,11 @@ impl WorkoutData {
             device_id: format!("test-device-{}", &Uuid::new_v4().to_string()[..8]),
             timestamp: Utc::now(),
         }
+    }
+    
+    pub fn new_with_offset_hours(workout_type: WorkoutType, hours_ago: i64, duration_minutes: i64) -> Self {
+        let workout_start = Utc::now() - Duration::hours(hours_ago);
+        Self::new(workout_type, workout_start, duration_minutes)
     }
 
     pub fn to_json(&self) -> serde_json::Value {

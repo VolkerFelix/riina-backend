@@ -228,4 +228,239 @@ async fn duplicate_workout_uuid_prevention() {
     .expect("Failed to count total health data records");
 
     assert_eq!(total_count, 2, "Should have two records with different workout UUIDs");
+}
+
+#[tokio::test]
+async fn test_duplicate_workout_detection_by_time() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_and_login(&test_app.address).await;
+
+    // Create base workout data with start and end times
+    let workout_start = Utc::now() - Duration::hours(2); // 2 hours ago
+    let workout_end = workout_start + Duration::minutes(30); // 30 minute workout
+    
+    let workout_data = json!({
+        "device_id": "garmin-watch",
+        "timestamp": Utc::now(),
+        "workout_uuid": Uuid::new_v4().to_string(),
+        "workout_start": workout_start,
+        "workout_end": workout_end,
+        "heart_rate": [{
+            "timestamp": workout_start,
+            "heart_rate": 120
+        }],
+        "calories_burned": 250
+    });
+
+    // First upload - should succeed
+    let response1 = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/upload_health", &test_app.address),
+        &test_user.token,
+        Some(workout_data.clone()),
+    ).await;
+
+    assert!(response1.status().is_success(), "First workout upload should succeed");
+
+    // Second upload with different UUID but same time (within tolerance) - should be accepted but marked as duplicate
+    let mut duplicate_workout = workout_data.clone();
+    duplicate_workout["workout_uuid"] = json!(Uuid::new_v4().to_string()); // Different UUID
+    duplicate_workout["device_id"] = json!("apple-health"); // Different device (simulating Apple Health)
+    duplicate_workout["workout_start"] = json!(workout_start + Duration::seconds(10)); // 10 seconds later
+    duplicate_workout["workout_end"] = json!(workout_end + Duration::seconds(10)); // 10 seconds later
+
+    let response2 = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/upload_health", &test_app.address),
+        &test_user.token,
+        Some(duplicate_workout.clone()),
+    ).await;
+
+    assert_eq!(response2.status(), 200, "Should accept duplicate workout but mark it");
+    
+    let response2_body: serde_json::Value = response2.json().await.expect("Failed to parse duplicate response");
+    assert_eq!(response2_body["success"], true);
+    assert_eq!(response2_body["data"]["is_duplicate"], true, "Should be marked as duplicate");
+    assert_eq!(response2_body["data"]["game_stats"]["stat_changes"]["stamina_change"], 0, "Duplicate should have 0 stamina");
+    assert_eq!(response2_body["data"]["game_stats"]["stat_changes"]["strength_change"], 0, "Duplicate should have 0 strength");
+    assert!(response2_body["message"].as_str().unwrap().contains("duplicate"));
+
+    // Third upload with different UUID and time outside tolerance - should succeed
+    let mut different_workout = workout_data.clone();
+    different_workout["workout_uuid"] = json!(Uuid::new_v4().to_string());
+    different_workout["workout_start"] = json!(workout_start + Duration::minutes(60)); // 1 hour later
+    different_workout["workout_end"] = json!(workout_end + Duration::minutes(60)); // 1 hour later
+
+    let response3 = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/upload_health", &test_app.address),
+        &test_user.token,
+        Some(different_workout),
+    ).await;
+
+    assert!(response3.status().is_success(), "Workout with different time should succeed");
+
+    // Verify we have 3 workouts total (all stored)
+    let total_count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM workout_data WHERE user_id = (SELECT id FROM users WHERE username = $1)"
+    )
+    .bind(&test_user.username)
+    .fetch_one(&test_app.db_pool)
+    .await
+    .expect("Failed to count workout records");
+
+    assert_eq!(total_count, 3, "Should have all 3 workouts stored");
+    
+    // Verify only 2 workouts are not duplicates
+    let non_duplicate_count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM workout_data WHERE user_id = (SELECT id FROM users WHERE username = $1) AND is_duplicate = false"
+    )
+    .bind(&test_user.username)
+    .fetch_one(&test_app.db_pool)
+    .await
+    .expect("Failed to count non-duplicate records");
+
+    assert_eq!(non_duplicate_count, 2, "Should have exactly 2 non-duplicate workouts");
+}
+
+#[tokio::test]
+async fn test_duplicate_detection_edge_cases() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_and_login(&test_app.address).await;
+
+    let workout_start = Utc::now() - Duration::hours(1);
+    let workout_end = workout_start + Duration::minutes(30);
+
+    // Test 1: Workout at exact 15-second boundary - should be rejected
+    let workout1 = json!({
+        "device_id": "device1",
+        "timestamp": Utc::now(),
+        "workout_uuid": Uuid::new_v4().to_string(),
+        "workout_start": workout_start,
+        "workout_end": workout_end,
+        "calories_burned": 200
+    });
+
+    let response1 = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/upload_health", &test_app.address),
+        &test_user.token,
+        Some(workout1),
+    ).await;
+
+    assert!(response1.status().is_success(), "First workout should succeed");
+
+    // Workout at exactly 15 seconds later - should be accepted but marked as duplicate
+    let workout2 = json!({
+        "device_id": "device2",
+        "timestamp": Utc::now(),
+        "workout_uuid": Uuid::new_v4().to_string(),
+        "workout_start": workout_start + Duration::seconds(15), // Exactly at boundary
+        "workout_end": workout_end + Duration::seconds(15),
+        "calories_burned": 200
+    });
+
+    let response2 = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/upload_health", &test_app.address),
+        &test_user.token,
+        Some(workout2),
+    ).await;
+
+    assert_eq!(response2.status(), 200, "Workout at 15-second boundary should be accepted");
+    let response2_body: serde_json::Value = response2.json().await.expect("Failed to parse response");
+    assert_eq!(response2_body["data"]["is_duplicate"], true, "Should be marked as duplicate");
+
+    // Test 2: Workout at 31 seconds later - should succeed (outside 15s tolerance from both previous workouts)
+    let workout3 = json!({
+        "device_id": "device3",
+        "timestamp": Utc::now(),
+        "workout_uuid": Uuid::new_v4().to_string(),
+        "workout_start": workout_start + Duration::seconds(31), // Outside 15s tolerance from both 0s and 15s
+        "workout_end": workout_end + Duration::seconds(31),
+        "calories_burned": 200
+    });
+
+    let response3 = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/upload_health", &test_app.address),
+        &test_user.token,
+        Some(workout3),
+    ).await;
+
+    assert!(response3.status().is_success(), "Workout at 31 seconds should succeed");
+    let response3_body: serde_json::Value = response3.json().await.expect("Failed to parse response");
+    assert_eq!(response3_body["data"]["is_duplicate"], false, "Should NOT be marked as duplicate");
+
+    // Test 3: Workout without start/end times - should succeed (no time check)
+    let workout4 = json!({
+        "device_id": "device4",
+        "timestamp": Utc::now(),
+        "workout_uuid": Uuid::new_v4().to_string(),
+        "calories_burned": 200
+        // No workout_start or workout_end
+    });
+
+    let response4 = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/upload_health", &test_app.address),
+        &test_user.token,
+        Some(workout4),
+    ).await;
+
+    assert!(response4.status().is_success(), "Workout without times should succeed");
+}
+
+#[tokio::test]
+async fn test_uuid_duplicate_still_rejected() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_and_login(&test_app.address).await;
+
+    let workout_uuid = Uuid::new_v4().to_string();
+    let workout_data = json!({
+        "device_id": "device1",
+        "timestamp": Utc::now(),
+        "workout_uuid": &workout_uuid,
+        "workout_start": Utc::now() - Duration::hours(1),
+        "workout_end": Utc::now() - Duration::minutes(30),
+        "calories_burned": 200
+    });
+
+    // First upload - should succeed
+    let response1 = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/upload_health", &test_app.address),
+        &test_user.token,
+        Some(workout_data.clone()),
+    ).await;
+
+    assert!(response1.status().is_success(), "First workout should succeed");
+
+    // Second upload with SAME UUID - should be rejected (this is a true duplicate)
+    let response2 = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/upload_health", &test_app.address),
+        &test_user.token,
+        Some(workout_data.clone()),
+    ).await;
+
+    assert_eq!(response2.status(), 409, "Same UUID should still be rejected");
+    let response2_body: serde_json::Value = response2.json().await.expect("Failed to parse response");
+    assert_eq!(response2_body["success"], false);
+    assert!(response2_body["message"].as_str().unwrap().contains("already been uploaded"));
 } 
