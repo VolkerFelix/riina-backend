@@ -418,43 +418,25 @@ async fn get_user_team_id(
     live_game: &LiveGame,
     pool: &sqlx::PgPool
 ) -> Result<Uuid, Box<dyn std::error::Error>> {
-    // Query live_player_contributions to find which team the user belongs to
-    let team_info = sqlx::query!(
+    // Simply check team membership directly (no more live_player_contributions complexity!)
+    let membership = sqlx::query!(
         r#"
-        SELECT team_id, team_side 
-        FROM live_player_contributions 
-        WHERE live_game_id = $1 AND user_id = $2
+        SELECT team_id 
+        FROM team_members 
+        WHERE user_id = $1 
+        AND status = 'active'
+        AND (team_id = $2 OR team_id = $3)
         "#,
-        live_game.id,
-        user_id
+        user_id,
+        live_game.home_team_id,
+        live_game.away_team_id
     )
     .fetch_optional(pool)
     .await?;
     
-    match team_info {
-        Some(info) => Ok(info.team_id),
-        None => {
-            // If not found in contributions, check team membership directly
-            let membership = sqlx::query!(
-                r#"
-                SELECT team_id 
-                FROM team_members 
-                WHERE user_id = $1 
-                AND status = 'active'
-                AND (team_id = $2 OR team_id = $3)
-                "#,
-                user_id,
-                live_game.home_team_id,
-                live_game.away_team_id
-            )
-            .fetch_optional(pool)
-            .await?;
-            
-            match membership {
-                Some(m) => Ok(m.team_id),
-                None => Err("User does not belong to either team in this game".into())
-            }
-        }
+    match membership {
+        Some(m) => Ok(m.team_id),
+        None => Err("User does not belong to either team in this game".into())
     }
 }
 
