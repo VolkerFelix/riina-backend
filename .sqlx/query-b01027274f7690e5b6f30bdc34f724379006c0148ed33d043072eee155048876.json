@@ -1,0 +1,78 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT \n                tm.user_id,\n                u.username,\n                tm.team_id,\n                t.team_name,\n                CASE \n                    WHEN tm.team_id = $2 THEN 'home'\n                    WHEN tm.team_id = $3 THEN 'away'\n                    ELSE 'unknown'\n                END as team_side,\n                COALESCE(SUM(lse.power_contribution), 0)::int as current_power,\n                COALESCE(SUM(lse.score_points), 0)::int as total_score_contribution,\n                COUNT(CASE WHEN lse.id IS NOT NULL THEN 1 END)::int as contribution_count,\n                MAX(lse.occurred_at) as last_contribution_time,\n                CASE WHEN MAX(lse.occurred_at) > NOW() - INTERVAL '10 minutes' THEN true ELSE false END as is_currently_active\n            FROM team_members tm\n            JOIN users u ON tm.user_id = u.id\n            JOIN teams t ON tm.team_id = t.id\n            LEFT JOIN live_score_events lse ON lse.live_game_id = $1 AND lse.user_id = tm.user_id\n            WHERE tm.status = 'active'\n            AND (tm.team_id = $2 OR tm.team_id = $3)\n            GROUP BY tm.user_id, u.username, tm.team_id, t.team_name\n            ORDER BY total_score_contribution DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "username",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "team_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "team_side",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "current_power",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "total_score_contribution",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "contribution_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "last_contribution_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "is_currently_active",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "b01027274f7690e5b6f30bdc34f724379006c0148ed33d043072eee155048876"
+}

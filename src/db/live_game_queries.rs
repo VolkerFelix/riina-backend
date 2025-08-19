@@ -81,73 +81,12 @@ impl LiveGameQueries {
         .fetch_one(&self.pool)
         .await?;
 
-        // Initialize player contributions for both teams
-        self.initialize_player_contributions(&live_game).await?;
+        // Note: Player contributions are now derived from team_members table - no initialization needed
 
         info!("Successfully created live game {} for game {}", live_game_id, game_id);
         Ok(live_game)
     }
 
-    /// Initialize player contributions for a live game
-    async fn initialize_player_contributions(
-        &self,
-        live_game: &LiveGame,
-    ) -> Result<(), sqlx::Error> {
-        // Get all team members for both teams
-        let members_query = "
-            SELECT 
-                tm.user_id,
-                u.username,
-                tm.team_id,
-                t.team_name as team_name,
-                CASE 
-                    WHEN tm.team_id = $1 THEN 'home'
-                    WHEN tm.team_id = $2 THEN 'away'
-                    ELSE 'unknown'
-                END as team_side
-            FROM team_members tm
-            JOIN users u ON tm.user_id = u.id
-            JOIN teams t ON tm.team_id = t.id
-            WHERE (tm.team_id = $1 OR tm.team_id = $2)
-            AND tm.status = 'active'
-        ";
-
-        let members = sqlx::query(members_query)
-            .bind(live_game.home_team_id)
-            .bind(live_game.away_team_id)
-            .fetch_all(&self.pool)
-            .await?;
-
-        for member in members {
-            let contribution_id = Uuid::new_v4();
-            let user_id: Uuid = member.get("user_id");
-            let username: String = member.get("username");
-            let team_id: Uuid = member.get("team_id");
-            let team_name: String = member.get("team_name");
-            let team_side: String = member.get("team_side");
-
-            sqlx::query!(
-                r#"
-                INSERT INTO live_player_contributions (
-                    id, live_game_id, user_id, username, team_id, team_name, team_side,
-                    current_power, total_score_contribution, contribution_count,
-                    is_currently_active, created_at, updated_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, 0, false, NOW(), NOW())
-                "#,
-                contribution_id,
-                live_game.id,
-                user_id,
-                username,
-                team_id,
-                team_name,
-                team_side
-            )
-            .execute(&self.pool)
-            .await?;
-        }
-
-        Ok(())
-    }
 
     /// Get a live game by game_id
     pub async fn get_live_game_by_game_id(
@@ -271,12 +210,8 @@ impl LiveGameQueries {
         .fetch_one(&self.pool)
         .await?;
 
-        // Only update contributions and record events if there's actual score increase
+        // Record the score event if there's actual score increase
         if update.score_increase > 0 || update.power_increase > 0 {
-            // Update player contribution
-            self.update_player_contribution(live_game_id, update).await?;
-
-            // Record the score event
             self.record_score_event(live_game_id, update, team_side).await?;
         }
 
@@ -291,34 +226,6 @@ impl LiveGameQueries {
         Ok(updated_game)
     }
 
-    /// Update a player's contribution in a live game
-    async fn update_player_contribution(
-        &self,
-        live_game_id: Uuid,
-        update: &LiveGameScoreUpdate,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query!(
-            r#"
-            UPDATE live_player_contributions 
-            SET 
-                current_power = current_power + $1,
-                total_score_contribution = total_score_contribution + $2,
-                contribution_count = contribution_count + 1,
-                last_contribution_time = NOW(),
-                is_currently_active = true,
-                updated_at = NOW()
-            WHERE live_game_id = $3 AND user_id = $4
-            "#,
-            update.power_increase,
-            update.score_increase,
-            live_game_id,
-            update.user_id
-        )
-        .execute(&self.pool)
-        .await?;
-
-        Ok(())
-    }
 
     /// Record a score event
     async fn record_score_event(
@@ -381,23 +288,50 @@ impl LiveGameQueries {
         Ok(games)
     }
 
-    /// Get player contributions for a live game
+    /// Get player contributions for a live game (derived from team_members and score events)
     pub async fn get_live_game_contributions(
         &self,
         live_game_id: Uuid,
     ) -> Result<(Vec<LivePlayerContribution>, Vec<LivePlayerContribution>), sqlx::Error> {
-        let contributions = sqlx::query_as!(
-            LivePlayerContribution,
+        // Get the live game info first
+        let live_game = sqlx::query_as!(
+            LiveGame,
+            "SELECT * FROM live_games WHERE id = $1",
+            live_game_id
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        // Get contributions by joining team_members with aggregated score events
+        let contributions = sqlx::query!(
             r#"
             SELECT 
-                id, live_game_id, user_id, username, team_id, team_name, team_side,
-                current_power, total_score_contribution, last_contribution_time,
-                contribution_count, is_currently_active, created_at, updated_at
-            FROM live_player_contributions 
-            WHERE live_game_id = $1
+                tm.user_id,
+                u.username,
+                tm.team_id,
+                t.team_name,
+                CASE 
+                    WHEN tm.team_id = $2 THEN 'home'
+                    WHEN tm.team_id = $3 THEN 'away'
+                    ELSE 'unknown'
+                END as team_side,
+                COALESCE(SUM(lse.power_contribution), 0)::int as current_power,
+                COALESCE(SUM(lse.score_points), 0)::int as total_score_contribution,
+                COUNT(CASE WHEN lse.id IS NOT NULL THEN 1 END)::int as contribution_count,
+                MAX(lse.occurred_at) as last_contribution_time,
+                CASE WHEN MAX(lse.occurred_at) > NOW() - INTERVAL '10 minutes' THEN true ELSE false END as is_currently_active
+            FROM team_members tm
+            JOIN users u ON tm.user_id = u.id
+            JOIN teams t ON tm.team_id = t.id
+            LEFT JOIN live_score_events lse ON lse.live_game_id = $1 AND lse.user_id = tm.user_id
+            WHERE tm.status = 'active'
+            AND (tm.team_id = $2 OR tm.team_id = $3)
+            GROUP BY tm.user_id, u.username, tm.team_id, t.team_name
             ORDER BY total_score_contribution DESC
             "#,
-            live_game_id
+            live_game_id,
+            live_game.home_team_id,
+            live_game.away_team_id
         )
         .fetch_all(&self.pool)
         .await?;
@@ -405,9 +339,25 @@ impl LiveGameQueries {
         let mut home_contributions = Vec::new();
         let mut away_contributions = Vec::new();
 
-        for mut contribution in contributions {
-            contribution.update_activity_status();
-            if contribution.team_side == "home" {
+        for row in contributions {
+            let contribution = LivePlayerContribution {
+                id: Uuid::new_v4(), // Not used anymore, but needed for struct compatibility
+                live_game_id,
+                user_id: row.user_id,
+                username: row.username,
+                team_id: row.team_id,
+                team_name: row.team_name,
+                team_side: row.team_side.clone().unwrap_or("unknown".to_string()),
+                current_power: row.current_power.unwrap_or(0),
+                total_score_contribution: row.total_score_contribution.unwrap_or(0),
+                contribution_count: row.contribution_count.unwrap_or(0),
+                last_contribution_time: row.last_contribution_time,
+                is_currently_active: row.is_currently_active.unwrap_or(false),
+                created_at: Utc::now(), // Not meaningful anymore
+                updated_at: Utc::now(), // Not meaningful anymore
+            };
+
+            if row.team_side.unwrap_or("unknown".to_string()) == "home" {
                 home_contributions.push(contribution);
             } else {
                 away_contributions.push(contribution);
