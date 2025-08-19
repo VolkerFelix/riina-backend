@@ -7,7 +7,7 @@ use uuid::Uuid;
 use redis::AsyncCommands;
 use std::sync::Arc;
 use crate::middleware::auth::Claims;
-use crate::db::workout_data::insert_workout_data;
+use crate::db::workout_data::{insert_workout_data, check_duplicate_workout_by_time};
 use crate::models::workout_data::WorkoutDataSyncRequest;
 use crate::models::common::ApiResponse;
 use crate::game::stats_calculator::StatCalculator;
@@ -48,101 +48,135 @@ pub async fn upload_workout_data(
     // workout_uuid is now required - database constraint will prevent duplicates
     tracing::info!("🔍 Processing workout UUID: {}", data.workout_uuid);
 
-    // 🎲 CALCULATE GAME STATS FROM WORKOUT DATA
-    let stat_changes = StatCalculator::calculate_stat_changes(&pool, user_id, &data).await;
-    tracing::info!("📊 Calculated stat changes for {}: +{} stamina, +{} strength", 
-        claims.username, 
-        stat_changes.stamina_change, 
-        stat_changes.strength_change, 
-    );
-
-    // 💾 APPLY STAT CHANGES TO DATABASE
-    let update_result = sqlx::query!(
-        r#"
-        UPDATE user_avatars 
-        SET stamina = stamina + $1, 
-            strength = strength + $2
-        WHERE user_id = $3
-        "#,
-        stat_changes.stamina_change,
-        stat_changes.strength_change,
-        user_id
-    )
-    .execute(&**pool)
-    .await;
-
-    match update_result {
-        Ok(_) => {
-            tracing::info!("✅ Successfully updated avatar stats for {}", claims.username);
+    // Check for duplicate workouts based on time (with 15-second tolerance)
+    let is_duplicate = match check_duplicate_workout_by_time(&pool, user_id, &data).await {
+        Ok(is_dup) => {
+            if is_dup {
+                tracing::warn!("⚠️ Duplicate workout detected based on time overlap for user: {}. Will store but skip stats.", claims.username);
+            }
+            is_dup
         }
         Err(e) => {
-            tracing::error!("❌ Failed to update avatar stats for {}: {}", claims.username, e);
-            return HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error("Failed to update avatar stats")
-            );
+            tracing::error!("❌ Failed to check for duplicate workouts: {}", e);
+            // Continue anyway - assume not duplicate
+            false
         }
-    }
+    };
 
-    // Insert workout data into database first to get the ID
-    tracing::info!("💾 Inserting workout data into database for user: {} with workout_uuid: {:?}", 
-        claims.username, data.workout_uuid);
-    let insert_result = insert_workout_data(&pool, user_id, &data).await;
+    // Calculate and apply stats ONLY if not a duplicate
+    let stat_changes = if !is_duplicate {
+        // 🎲 CALCULATE GAME STATS FROM WORKOUT DATA
+        let changes = StatCalculator::calculate_stat_changes(&pool, user_id, &data).await;
+        tracing::info!("📊 Calculated stat changes for {}: +{} stamina, +{} strength", 
+            claims.username, 
+            changes.stamina_change, 
+            changes.strength_change, 
+        );
+
+        // 💾 APPLY STAT CHANGES TO DATABASE
+        let update_result = sqlx::query!(
+            r#"
+            UPDATE user_avatars 
+            SET stamina = stamina + $1, 
+                strength = strength + $2
+            WHERE user_id = $3
+            "#,
+            changes.stamina_change,
+            changes.strength_change,
+            user_id
+        )
+        .execute(&**pool)
+        .await;
+
+        match update_result {
+            Ok(_) => {
+                tracing::info!("✅ Successfully updated avatar stats for {}", claims.username);
+            }
+            Err(e) => {
+                tracing::error!("❌ Failed to update avatar stats for {}: {}", claims.username, e);
+                return HttpResponse::InternalServerError().json(
+                    ApiResponse::<()>::error("Failed to update avatar stats")
+                );
+            }
+        }
+        
+        changes
+    } else {
+        tracing::info!("⏭️ Skipping stats calculation for duplicate workout");
+        // Return zero stats for duplicate
+        StatChanges {
+            stamina_change: 0,
+            strength_change: 0,
+            reasoning: vec!["Duplicate workout - stats not applied".to_string()],
+            zone_breakdown: None,
+        }
+    };
+
+    // Insert workout data into database (with duplicate flag)
+    tracing::info!("💾 Inserting workout data into database for user: {} with workout_uuid: {:?} (is_duplicate: {})", 
+        claims.username, data.workout_uuid, is_duplicate);
+    let insert_result = insert_workout_data(&pool, user_id, &data, is_duplicate).await;
     
     match insert_result {
         Ok(sync_id) => {
             tracing::info!("✅ Workout data inserted successfully with sync_id: {} for user: {}", 
                 sync_id, claims.username);
                 
-            // 📊 UPDATE WORKOUT DATA WITH CALCULATED STATS
-            let zone_breakdown_json = stat_changes.zone_breakdown.as_ref()
-                .map(|breakdown| serde_json::to_value(breakdown).unwrap_or(serde_json::Value::Null));
+            // Only update stats and live games if NOT a duplicate
+            if !is_duplicate {
+                // 📊 UPDATE WORKOUT DATA WITH CALCULATED STATS
+                let zone_breakdown_json = stat_changes.zone_breakdown.as_ref()
+                    .map(|breakdown| serde_json::to_value(breakdown).unwrap_or(serde_json::Value::Null));
 
-            let update_result = sqlx::query!(
-                r#"
-                UPDATE workout_data 
-                SET heart_rate_zones = $1,
-                    stamina_gained = $2,
-                    strength_gained = $3,
-                    total_points_gained = $4
-                WHERE id = $5
-                "#,
-                zone_breakdown_json,
-                stat_changes.stamina_change,
-                stat_changes.strength_change,
-                stat_changes.stamina_change + stat_changes.strength_change,
-                sync_id
-            )
-            .execute(&**pool)
-            .await;
+                let update_result = sqlx::query!(
+                    r#"
+                    UPDATE workout_data 
+                    SET heart_rate_zones = $1,
+                        stamina_gained = $2,
+                        strength_gained = $3,
+                        total_points_gained = $4
+                    WHERE id = $5
+                    "#,
+                    zone_breakdown_json,
+                    stat_changes.stamina_change,
+                    stat_changes.strength_change,
+                    stat_changes.stamina_change + stat_changes.strength_change,
+                    sync_id
+                )
+                .execute(&**pool)
+                .await;
 
-            if let Err(e) = update_result {
-                tracing::error!("❌ Failed to update workout data with calculated stats for workout {}: {}", sync_id, e);
-            } else {
-                tracing::info!("✅ Successfully updated workout data with zone breakdown and stat gains for workout {}", sync_id);
-            }
-
-            // 🏆 CHECK FOR ACTIVE LIVE GAMES AND UPDATE SCORES
-            if let Some(live_service) = &live_game_service {
-                if let Some(workout_start) = data.workout_start {
-                    match check_and_update_live_games(
-                        user_id, 
-                        &claims.username,
-                        sync_id, // Now we have the workout_data_id
-                        &stat_changes,
-                        &live_service,
-                        &workout_start,
-                        &pool,
-                    ).await {
-                        Ok(_) => {
-                            tracing::info!("✅ Successfully updated live game scores for user {}", claims.username);
-                        }
-                        Err(e) => {
-                            tracing::error!("❌ Failed to update live game scores for user {}: {}", claims.username, e);
-                        }
-                    }
+                if let Err(e) = update_result {
+                    tracing::error!("❌ Failed to update workout data with calculated stats for workout {}: {}", sync_id, e);
                 } else {
-                    tracing::warn!("⚠️ No workout start time found for user {}", claims.username);
+                    tracing::info!("✅ Successfully updated workout data with zone breakdown and stat gains for workout {}", sync_id);
                 }
+
+                // 🏆 CHECK FOR ACTIVE LIVE GAMES AND UPDATE SCORES
+                if let Some(live_service) = &live_game_service {
+                    if let Some(workout_start) = data.workout_start {
+                        match check_and_update_live_games(
+                            user_id, 
+                            &claims.username,
+                            sync_id, // Now we have the workout_data_id
+                            &stat_changes,
+                            &live_service,
+                            &workout_start,
+                            &pool,
+                        ).await {
+                            Ok(_) => {
+                                tracing::info!("✅ Successfully updated live game scores for user {}", claims.username);
+                            }
+                            Err(e) => {
+                                tracing::error!("❌ Failed to update live game scores for user {}: {}", claims.username, e);
+                            }
+                        }
+                    } else {
+                        tracing::warn!("⚠️ No workout start time found for user {}", claims.username);
+                    }
+                }
+            } else {
+                tracing::info!("⏭️ Skipping stats update and live game scoring for duplicate workout");
             }
             // 🎯 PREPARE GAME EVENT FOR REAL-TIME NOTIFICATION
             let game_event = json!({
@@ -203,37 +237,61 @@ pub async fn upload_workout_data(
             }
 
             // 🎉 ENHANCED RESPONSE WITH GAME STATS
-            let sync_data = json!({
-                "sync_id": sync_id,
-                "timestamp": Utc::now(),
-                "game_stats": {
-                    "stat_changes": {
-                        "stamina_change": stat_changes.stamina_change,
-                        "strength_change": stat_changes.strength_change,
-                    },
-                    "reasoning": stat_changes.reasoning,
-                    "summary": format!("Gained {} total stat points!", 
-                        stat_changes.stamina_change + stat_changes.strength_change
-                    )
-                }
-            });
+            let (message, sync_data) = if is_duplicate {
+                (
+                    "Workout data synced (duplicate detected - stats not applied)",
+                    json!({
+                        "sync_id": sync_id,
+                        "timestamp": Utc::now(),
+                        "is_duplicate": true,
+                        "duplicate_reason": "Similar workout time detected (within 15 seconds)",
+                        "game_stats": {
+                            "stat_changes": {
+                                "stamina_change": 0,
+                                "strength_change": 0,
+                            },
+                            "reasoning": "Duplicate workout - stats not applied to prevent double counting",
+                            "summary": "Workout stored but no stats gained (duplicate)"
+                        }
+                    })
+                )
+            } else {
+                (
+                    "Workout data synced and game stats calculated!",
+                    json!({
+                        "sync_id": sync_id,
+                        "timestamp": Utc::now(),
+                        "is_duplicate": false,
+                        "game_stats": {
+                            "stat_changes": {
+                                "stamina_change": stat_changes.stamina_change,
+                                "strength_change": stat_changes.strength_change,
+                            },
+                            "reasoning": stat_changes.reasoning,
+                            "summary": format!("Gained {} total stat points!", 
+                                stat_changes.stamina_change + stat_changes.strength_change
+                            )
+                        }
+                    })
+                )
+            };
 
-            tracing::info!("✅ Workout data processed successfully with game mechanics for {}: {}", 
-                claims.username, sync_id);
+            tracing::info!("✅ Workout data processed successfully for {}: {} (is_duplicate: {})", 
+                claims.username, sync_id, is_duplicate);
             HttpResponse::Ok().json(
-                ApiResponse::success("Workout data synced and game stats calculated!", sync_data)
+                ApiResponse::success(message, sync_data)
             )
         }
         Err(e) => {
             // Check if this is a duplicate workout UUID error
             if let sqlx::Error::Database(ref db_err) = e {
                 if db_err.code().as_deref() == Some("23505") {
-                    tracing::error!("❌ DUPLICATE WORKOUT UUID: Failed to sync workout data for {} due to duplicate workout_uuid: {:?}. This indicates a potential race condition where the duplicate check passed but another request inserted the same UUID before this one.", 
+                    tracing::error!("❌ DUPLICATE WORKOUT UUID: Failed to sync workout data for {} due to duplicate workout_uuid: {:?}. This workout has already been uploaded.", 
                         claims.username, data.workout_uuid);
                     
                     // Return a more specific error response for duplicate UUIDs
                     return HttpResponse::Conflict().json(
-                        ApiResponse::<()>::error("Workout UUID already exists - possible race condition detected")
+                        ApiResponse::<()>::error("This workout has already been uploaded (duplicate UUID)")
                     );
                 }
             }

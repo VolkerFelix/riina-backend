@@ -1,0 +1,43 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, workout_uuid, workout_start, workout_end\n        FROM workout_data \n        WHERE user_id = $1\n        AND workout_start IS NOT NULL\n        AND workout_end IS NOT NULL\n        AND is_duplicate = false\n        AND ABS(EXTRACT(EPOCH FROM (workout_start - $2))) <= 15\n        AND ABS(EXTRACT(EPOCH FROM (workout_end - $3))) <= 15\n        AND workout_uuid != $4\n        LIMIT 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "workout_uuid",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "workout_start",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 3,
+        "name": "workout_end",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "46b8b1d1c0f91adb5812af591ee1c03e919f0987c35e931c6fd8c5b67d5ed878"
+}

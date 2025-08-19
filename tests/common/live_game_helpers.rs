@@ -471,9 +471,30 @@ pub async fn upload_workout_data(
     user: &UserRegLoginResponse, 
     workout_type: WorkoutType
 ) -> (i32, i32) {
+    // Use current time for first workout
+    upload_workout_data_with_time(test_app, client, user, workout_type, Utc::now()).await
+}
 
-    let workout_data = WorkoutData::new(workout_type, Utc::now(), 30);
+pub async fn upload_workout_data_with_offset(
+    test_app: &TestApp, 
+    client: &Client, 
+    user: &UserRegLoginResponse, 
+    workout_type: WorkoutType,
+    hours_ago: i64
+) -> (i32, i32) {
+    // Use offset time for subsequent workouts to avoid duplicate detection
+    let workout_start = Utc::now() - Duration::hours(hours_ago);
+    upload_workout_data_with_time(test_app, client, user, workout_type, workout_start).await
+}
 
+async fn upload_workout_data_with_time(
+    test_app: &TestApp, 
+    client: &Client, 
+    user: &UserRegLoginResponse, 
+    workout_type: WorkoutType,
+    workout_start: DateTime<Utc>
+) -> (i32, i32) {
+    let workout_data = WorkoutData::new(workout_type, workout_start, 30);
 
     let response = make_authenticated_request(
         client,
