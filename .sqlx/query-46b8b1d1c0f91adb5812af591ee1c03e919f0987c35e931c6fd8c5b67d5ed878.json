@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT id, workout_uuid, workout_start, workout_end\n        FROM workout_data \n        WHERE user_id = $1\n        AND workout_start IS NOT NULL\n        AND workout_end IS NOT NULL\n        AND ABS(EXTRACT(EPOCH FROM (workout_start - $2))) <= 15\n        AND ABS(EXTRACT(EPOCH FROM (workout_end - $3))) <= 15\n        AND workout_uuid != $4\n        LIMIT 1\n        ",
+  "query": "\n        SELECT id, workout_uuid, workout_start, workout_end\n        FROM workout_data \n        WHERE user_id = $1\n        AND workout_start IS NOT NULL\n        AND workout_end IS NOT NULL\n        AND is_duplicate = false\n        AND ABS(EXTRACT(EPOCH FROM (workout_start - $2))) <= 15\n        AND ABS(EXTRACT(EPOCH FROM (workout_end - $3))) <= 15\n        AND workout_uuid != $4\n        LIMIT 1\n        ",
   "describe": {
     "columns": [
       {
@@ -39,5 +39,5 @@
       true
     ]
   },
-  "hash": "b91629e3e80e0568884e796ee525bc302eb95ecf932e50dc19fbd1ee5a378104"
+  "hash": "46b8b1d1c0f91adb5812af591ee1c03e919f0987c35e931c6fd8c5b67d5ed878"
 }
