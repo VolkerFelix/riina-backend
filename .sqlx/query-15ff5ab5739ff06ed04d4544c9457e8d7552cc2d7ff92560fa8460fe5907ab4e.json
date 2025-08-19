@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE user_avatars \n            SET stamina = stamina + $1, \n                strength = strength + $2\n            WHERE user_id = $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Int4",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "15ff5ab5739ff06ed04d4544c9457e8d7552cc2d7ff92560fa8460fe5907ab4e"
+}

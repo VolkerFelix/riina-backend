@@ -46,15 +46,17 @@ fn calculate_min_heart_rate(heart_rate_data: &[HeartRateData]) -> Option<i32> {
     fields(
         user_id = %user_id,
         workout_uuid = ?data.workout_uuid,
-        device_id = %data.device_id
+        device_id = %data.device_id,
+        is_duplicate = %is_duplicate
     )
 )]
 pub async fn insert_workout_data(
     pool: &Pool<Postgres>,
     user_id: Uuid,
     data: &WorkoutDataSyncRequest,
+    is_duplicate: bool,
 ) -> Result<Uuid, sqlx::Error> {
-    tracing::info!("Attempting to insert workout data for user");
+    tracing::info!("Attempting to insert workout data for user (is_duplicate: {})", is_duplicate);
     
     // Calculate derived metrics
     let duration_minutes = calculate_duration_minutes(data);
@@ -75,9 +77,9 @@ pub async fn insert_workout_data(
             user_id, device_id, heart_rate_data, 
             calories_burned, workout_uuid, workout_start, workout_end,
             duration_minutes, avg_heart_rate, max_heart_rate, min_heart_rate,
-            image_url, video_url
+            image_url, video_url, is_duplicate
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         RETURNING id
         "#,
         user_id,
@@ -92,7 +94,8 @@ pub async fn insert_workout_data(
         max_heart_rate,
         min_heart_rate,
         data.image_url.as_deref(),
-        data.video_url.as_deref()
+        data.video_url.as_deref(),
+        is_duplicate
     )
     .fetch_one(pool)
     .await
@@ -162,4 +165,70 @@ pub async fn check_workout_uuid_exists(
     tracing::info!("Workout UUID check result: exists={}", exists);
     
     Ok(exists)
+}
+
+#[tracing::instrument(
+    name = "Check for duplicate workout by time",
+    skip(pool, data),
+    fields(
+        user_id = %user_id,
+        workout_start = ?data.workout_start,
+        workout_end = ?data.workout_end
+    )
+)]
+pub async fn check_duplicate_workout_by_time(
+    pool: &Pool<Postgres>,
+    user_id: Uuid,
+    data: &WorkoutDataSyncRequest,
+) -> Result<bool, sqlx::Error> {
+    // Only check if we have both start and end times
+    let (workout_start, workout_end) = match (&data.workout_start, &data.workout_end) {
+        (Some(start), Some(end)) => (start, end),
+        _ => {
+            tracing::debug!("No workout start/end times provided, skipping time-based duplicate check");
+            return Ok(false);
+        }
+    };
+    
+    tracing::info!(
+        "Checking for duplicate workouts with time tolerance. Start: {} ± 15s, End: {} ± 15s",
+        workout_start, workout_end
+    );
+    
+    // Check if there's any workout with overlapping time windows
+    // We need to check if there's an existing workout where:
+    // - The new workout's start time is within ±15s of existing workout's start time
+    // - AND the new workout's end time is within ±15s of existing workout's end time  
+    let record = sqlx::query!(
+        r#"
+        SELECT id, workout_uuid, workout_start, workout_end
+        FROM workout_data 
+        WHERE user_id = $1
+        AND workout_start IS NOT NULL
+        AND workout_end IS NOT NULL
+        AND ABS(EXTRACT(EPOCH FROM (workout_start - $2))) <= 15
+        AND ABS(EXTRACT(EPOCH FROM (workout_end - $3))) <= 15
+        AND workout_uuid != $4
+        LIMIT 1
+        "#,
+        user_id,
+        workout_start,
+        workout_end,
+        &data.workout_uuid
+    )
+    .fetch_optional(pool)
+    .await?;
+    
+    if let Some(rec) = record {
+        tracing::warn!(
+            "Found potential duplicate workout! Existing workout id: {}, uuid: {:?}, \
+            start: {:?}, end: {:?}. New workout uuid: {:?}, start: {:?}, end: {:?}",
+            rec.id, rec.workout_uuid, rec.workout_start, rec.workout_end,
+            data.workout_uuid, workout_start, workout_end
+        );
+        Ok(true)
+    } else {
+        tracing::debug!("No duplicate workout found based on time check");
+        Ok(false)
+    }
 }
