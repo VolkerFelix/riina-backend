@@ -1,4 +1,9 @@
+use std::sync::Arc;
+
+use evolveme_backend::config::redis::RedisSettings;
+use evolveme_backend::config::settings::get_config;
 use reqwest::Client;
+use secrecy::ExposeSecret;
 use serde_json::json;
 use chrono::{Utc, Duration, Weekday, NaiveTime, DateTime};
 use uuid::Uuid;
@@ -13,7 +18,8 @@ use common::workout_data_helpers::{WorkoutData, WorkoutType};
 async fn test_complete_live_game_workflow() {
     let test_app = spawn_app().await;
     let client = Client::new();
-
+    let configuration = get_config().expect("Failed to read configuration.");
+    let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
     // Step 1: Setup test environment - create league, season, teams, and users
     let live_game_environment = setup_live_game_environment(&test_app).await;
     
@@ -22,7 +28,7 @@ async fn test_complete_live_game_workflow() {
     
     start_test_game(&test_app, live_game_environment.first_game_id).await;
 
-    let live_game = initialize_live_game(&test_app, live_game_environment.first_game_id).await;
+    let live_game = initialize_live_game(&test_app, live_game_environment.first_game_id, redis_client).await;
     
     // Verify initial live game state
     assert_eq!(live_game.home_score, 0);
@@ -161,12 +167,13 @@ async fn test_live_game_edge_cases() {
 
     // Test 2: Multiple initializations of same live game
     let live_game_environment = setup_live_game_environment(&test_app).await;
-    
+    let configuration = get_config().expect("Failed to read configuration.");
+    let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
     update_game_times_to_now(&test_app, live_game_environment.first_game_id).await;
     start_test_game(&test_app, live_game_environment.first_game_id).await;
 
-    let live_game_1 = initialize_live_game(&test_app, live_game_environment.first_game_id).await;
-    let live_game_2 = initialize_live_game(&test_app, live_game_environment.first_game_id).await;
+    let live_game_1 = initialize_live_game(&test_app, live_game_environment.first_game_id, redis_client.clone()).await;
+    let live_game_2 = initialize_live_game(&test_app, live_game_environment.first_game_id, redis_client).await;
     
     // Should return same live game, not create duplicate
     assert_eq!(live_game_1.id, live_game_2.id);
@@ -273,7 +280,8 @@ async fn create_manual_game(test_app: &TestApp, season_id: Uuid, home_team_id: U
 async fn test_live_game_finish_workflow() {
     let test_app = spawn_app().await;
     let client = Client::new();
-
+    let configuration = get_config().expect("Failed to read configuration.");
+    let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
     // Setup and create a game that ends soon
     let live_game_environment = setup_live_game_environment(&test_app).await;
     
@@ -281,7 +289,7 @@ async fn test_live_game_finish_workflow() {
     update_game_to_short_duration(&test_app, live_game_environment.first_game_id).await;
     start_test_game(&test_app, live_game_environment.first_game_id).await;
     
-    let live_game = initialize_live_game(&test_app, live_game_environment.first_game_id).await;
+    let live_game = initialize_live_game(&test_app, live_game_environment.first_game_id, redis_client.clone()).await;
     
     // Upload some data while game is active
     upload_workout_data(&test_app, &client, &live_game_environment.home_user, WorkoutType::Intense).await;
@@ -291,7 +299,7 @@ async fn test_live_game_finish_workflow() {
     assert!(active_game.home_score > 0);
 
     // Wait for game to end (in real test, we'd manipulate time or end the game programmatically)
-    finish_live_game(&test_app, live_game.id).await;
+    finish_live_game(&test_app, live_game.id, redis_client).await;
     
     let finished_game = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
     assert!(!finished_game.is_active);
@@ -330,7 +338,8 @@ async fn test_live_game_finish_workflow() {
 async fn test_workout_timing_validation_for_live_games() {
     let test_app = spawn_app().await;
     let client = Client::new();
-
+    let configuration = get_config().expect("Failed to read configuration.");
+    let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());  
     println!("🧪 Testing workout timing validation for live games...");
 
     // Setup test environment
@@ -340,7 +349,7 @@ async fn test_workout_timing_validation_for_live_games() {
     update_game_times_to_now(&test_app, live_game_environment.first_game_id).await;
     start_test_game(&test_app, live_game_environment.first_game_id).await;
     
-    let live_game = initialize_live_game(&test_app, live_game_environment.first_game_id).await;
+    let live_game = initialize_live_game(&test_app, live_game_environment.first_game_id, redis_client).await;
     let game_start = live_game.game_start_time;
     let game_end = live_game.game_end_time;
     
@@ -759,9 +768,9 @@ async fn start_test_game(test_app: &TestApp, game_id: Uuid) {
     .expect("Failed to start test game");
 }
 
-async fn initialize_live_game(test_app: &TestApp, game_id: Uuid) -> LiveGameRow {
+async fn initialize_live_game(test_app: &TestApp, game_id: Uuid, redis_client: Arc<redis::Client>) -> LiveGameRow {
     // Create live game service and initialize
-    let live_game_service = evolveme_backend::services::LiveGameService::new(test_app.db_pool.clone(), None);
+    let live_game_service = evolveme_backend::services::LiveGameService::new(test_app.db_pool.clone(), redis_client);
     
     live_game_service.initialize_live_game(game_id)
         .await
@@ -936,9 +945,9 @@ async fn get_recent_score_events(test_app: &TestApp, live_game_id: Uuid) -> Vec<
     }).collect()
 }
 
-async fn finish_live_game(test_app: &TestApp, live_game_id: Uuid) {
+    async fn finish_live_game(test_app: &TestApp, live_game_id: Uuid, redis_client: Arc<redis::Client>) {
     // Use the actual backend service instead of direct database calls
-    let live_game_service = evolveme_backend::services::LiveGameService::new(test_app.db_pool.clone(), None);
+    let live_game_service = evolveme_backend::services::LiveGameService::new(test_app.db_pool.clone(), redis_client);
     
     live_game_service.finish_live_game(live_game_id)
         .await
@@ -949,7 +958,8 @@ async fn finish_live_game(test_app: &TestApp, live_game_id: Uuid) {
 async fn test_live_game_workout_deletion_score_update() {
     let test_app = spawn_app().await;
     let client = Client::new();
-
+    let configuration = get_config().expect("Failed to read configuration.");
+    let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
     // Setup test environment
     let live_game_environment = setup_live_game_environment(&test_app).await;
     
@@ -959,7 +969,7 @@ async fn test_live_game_workout_deletion_score_update() {
     // Update game times and start the game
     update_game_times_to_now(&test_app, live_game_environment.first_game_id).await;
     start_test_game(&test_app, live_game_environment.first_game_id).await;
-    let live_game = initialize_live_game(&test_app, live_game_environment.first_game_id).await;
+    let live_game = initialize_live_game(&test_app, live_game_environment.first_game_id, redis_client).await;
     
     // Verify initial state
     assert_eq!(live_game.home_score, 0);
@@ -1124,7 +1134,8 @@ async fn test_live_game_workout_deletion_score_update() {
 async fn test_live_game_partial_workout_deletion() {
     let test_app = spawn_app().await;
     let client = Client::new();
-
+    let configuration = get_config().expect("Failed to read configuration.");
+    let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
     // Setup test environment
     let live_game_environment = setup_live_game_environment(&test_app).await;
     let admin_session = create_admin_user_and_login(&test_app.address).await;
@@ -1132,7 +1143,7 @@ async fn test_live_game_partial_workout_deletion() {
     // Start the game
     update_game_times_to_now(&test_app, live_game_environment.first_game_id).await;
     start_test_game(&test_app, live_game_environment.first_game_id).await;
-    initialize_live_game(&test_app, live_game_environment.first_game_id).await;
+    initialize_live_game(&test_app, live_game_environment.first_game_id, redis_client.clone()).await;
     
     // Upload multiple workouts for the same user (with different times to avoid duplicate detection)
     let mut workout_ids = Vec::new();
@@ -1215,14 +1226,15 @@ async fn test_live_game_partial_workout_deletion() {
 async fn test_user_joining_team_during_live_game() {
     let test_app = spawn_app().await;
     let client = Client::new();
-
+    let configuration = get_config().expect("Failed to read configuration.");
+    let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
     // Setup live game environment
     let live_game_environment = setup_live_game_environment(&test_app).await;
     
     // Update game times to current and start the game
     update_game_times_to_now(&test_app, live_game_environment.first_game_id).await;
     start_test_game(&test_app, live_game_environment.first_game_id).await;
-    let live_game = initialize_live_game(&test_app, live_game_environment.first_game_id).await;
+    let live_game = initialize_live_game(&test_app, live_game_environment.first_game_id, redis_client).await;
     
     // Verify initial state - only original team members should have contribution records
     let (initial_home_contributions, initial_away_contributions) = get_player_contributions(&test_app, live_game.id).await;
@@ -1348,7 +1360,8 @@ async fn test_user_joining_team_during_live_game() {
 async fn test_admin_live_game_score_adjustment() {
     let test_app = spawn_app().await;
     let client = Client::new();
-
+    let configuration = get_config().expect("Failed to read configuration.");
+    let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
     // Setup test environment
     let live_game_environment = setup_live_game_environment(&test_app).await;
     let admin_session = create_admin_user_and_login(&test_app.address).await;
@@ -1356,7 +1369,7 @@ async fn test_admin_live_game_score_adjustment() {
     // Start the game
     update_game_times_to_now(&test_app, live_game_environment.first_game_id).await;
     start_test_game(&test_app, live_game_environment.first_game_id).await;
-    let live_game = initialize_live_game(&test_app, live_game_environment.first_game_id).await;
+    let live_game = initialize_live_game(&test_app, live_game_environment.first_game_id, redis_client).await;
     
     // Verify initial state
     assert_eq!(live_game.home_score, 0);

@@ -10,7 +10,6 @@ mod routes;
 mod handlers;
 pub mod models;
 mod utils;
-pub mod telemetry;
 mod middleware;
 mod db;
 pub mod game;
@@ -26,20 +25,18 @@ pub fn run(
     listener: TcpListener,
     db_pool: PgPool,
     jwt_settings: JwtSettings,
-    redis_client: Option<Arc<redis::Client>>,
+    redis_client: Arc<redis::Client>,
     scheduler_service: Arc<SchedulerService>,
-    minio_service: Arc<MinIOService>
+    minio_service: MinIOService
 ) -> Result<Server, std::io::Error> {
     // Wrap using web::Data, which boils down to an Arc smart pointer
     let db_pool_data = web::Data::new(db_pool.clone());
     let jwt_settings = web::Data::new(jwt_settings);
     let scheduler_service = web::Data::new(scheduler_service);
-    let redis_client_data = redis_client.as_ref().map(|client| {
-        web::Data::new(client.clone())
-    });
+    let redis_client_data = web::Data::new(redis_client.clone());
     
     // Create LiveGameService
-    let live_game_service = web::Data::new(LiveGameService::new(db_pool, redis_client));
+    let live_game_service = web::Data::new(LiveGameService::new(db_pool, redis_client_data.get_ref().clone()));
     
     // Wrap MinIOService
     let minio_service_data = web::Data::new(minio_service);
@@ -73,9 +70,7 @@ pub fn run(
             .app_data(scheduler_service.clone())
             .app_data(live_game_service.clone())
             .app_data(minio_service_data.clone());
-        if let Some(ref redis) = redis_client_data {
-            app = app.app_data(redis.clone());
-        }
+        app = app.app_data(redis_client_data.clone());
 
         app.configure(init_routes)
     })

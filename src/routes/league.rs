@@ -2,6 +2,7 @@
 use actix_web::{get, post, put, web, HttpResponse, Result};
 use sqlx::PgPool;
 use uuid::Uuid;
+use std::sync::Arc;
 
 use crate::handlers::league::{team_handler, team_member_handler, game_handler, league_handler, season_handler, league_users_handler};
 use crate::handlers::league::league_users_handler::PaginationParams;
@@ -231,10 +232,11 @@ async fn get_league_users_with_stats(
 #[get("/games/live")]
 async fn get_live_scores(
     pool: web::Data<PgPool>,
+    redis_client: web::Data<Arc<redis::Client>>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
     use crate::handlers::league::live_game_handler;
-    live_game_handler::get_live_scores(pool, claims).await
+    live_game_handler::get_live_scores(pool, redis_client, claims).await
 }
 
 /// Get live score for a specific game
@@ -252,18 +254,20 @@ async fn get_game_live_score(
 #[get("/games/active")]
 async fn get_active_games(
     pool: web::Data<PgPool>,
+    redis_client: web::Data<Arc<redis::Client>>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
     use crate::handlers::league::live_game_handler;
-    live_game_handler::get_active_games(pool, claims).await
+    live_game_handler::get_active_games(pool, redis_client, claims).await
 }
 
 /// Admin endpoint to manage games (start/finish)
 #[post("/games/manage")]
 async fn manage_games(
     pool: web::Data<PgPool>,
+    redis_client: web::Data<Arc<redis::Client>>,
 ) -> Result<HttpResponse> {
     use crate::handlers::league::live_game_handler;
-    live_game_handler::manage_games(pool).await
+    live_game_handler::manage_games(pool, redis_client).await
 }
 

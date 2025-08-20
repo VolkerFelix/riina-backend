@@ -61,6 +61,8 @@ async fn test_zone_1_active_recovery() {
         workout_end: Some(workout_end),
         heart_rate: Some(heart_rate_data),
         calories_burned: Some(150),
+        image_url: None,
+        video_url: None,
     };
 
     let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
@@ -128,6 +130,8 @@ async fn test_zone_2_aerobic_base() {
         workout_end: Some(workout_end),
         heart_rate: Some(heart_rate_data),
         calories_burned: Some(225),
+        image_url: None,
+        video_url: None,
     };
 
     let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
@@ -195,6 +199,8 @@ async fn test_zone_4_lactate_threshold() {
         workout_end: Some(workout_end),
         heart_rate: Some(heart_rate_data),
         calories_burned: Some(300),
+        image_url: None,
+        video_url: None,
     };
 
     let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
@@ -262,6 +268,8 @@ async fn test_zone_5_neuromuscular_power() {
         workout_end: Some(workout_end),
         heart_rate: Some(heart_rate_data),
         calories_burned: Some(400),
+        image_url: None,
+        video_url: None,
     };
 
     let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
@@ -318,6 +326,8 @@ async fn test_no_heart_rate_no_gains() {
         workout_end: Some(workout_end),
         heart_rate: None,
         calories_burned: Some(200),
+        image_url: None,
+        video_url: None,
     };
 
     let changes = StatCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;

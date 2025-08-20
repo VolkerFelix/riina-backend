@@ -27,9 +27,9 @@ async fn upload_media(
     upload_workout_media(form, claims, minio_service).await
 }
 
-#[get("/workout-media/{filename}")]
+#[get("/workout-media/{user_id}/{filename}")]
 async fn serve_media(
-    path: web::Path<String>,
+    path: web::Path<(String, String)>,
     claims: web::ReqData<Claims>,
     minio_service: web::Data<MinIOService>
 ) -> HttpResponse {

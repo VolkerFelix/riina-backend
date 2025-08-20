@@ -13,11 +13,11 @@ use redis::AsyncCommands;
 pub struct LiveGameService {
     pool: PgPool,
     live_game_queries: LiveGameQueries,
-    redis_client: Option<Arc<redis::Client>>,
+    redis_client: Arc<redis::Client>,
 }
 
 impl LiveGameService {
-    pub fn new(pool: PgPool, redis_client: Option<Arc<redis::Client>>) -> Self {
+    pub fn new(pool: PgPool, redis_client: Arc<redis::Client>) -> Self {
         Self {
             live_game_queries: LiveGameQueries::new(pool.clone()),
             pool,
@@ -78,7 +78,6 @@ impl LiveGameService {
         let live_game = self.live_game_queries.create_live_game(game_id).await?;
 
         // Broadcast game started event
-        if let Some(redis) = &self.redis_client {
             let event = GameEvent::LiveScoreUpdate {
                 game_id: live_game.game_id,
                 home_team_id: live_game.home_team_id,
@@ -95,7 +94,7 @@ impl LiveGameService {
                 last_updated: Utc::now(),
             };
 
-            match redis.get_async_connection().await {
+            match self.redis_client.get_async_connection().await {
                 Ok(mut conn) => {
                     match serde_json::to_string(&event) {
                         Ok(message) => {
@@ -109,8 +108,7 @@ impl LiveGameService {
                         Err(e) => error!("Failed to serialize game started event: {}", e),
                     }
                 }
-                Err(e) => error!("Failed to get Redis connection: {}", e),
-            }
+            Err(e) => error!("Failed to get Redis connection: {}", e),
         }
 
         info!("Live game initialized: {} vs {}", 
@@ -167,7 +165,6 @@ impl LiveGameService {
         &self,
         live_game: &LiveGame,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(redis_client) = &self.redis_client {
             let event = GameEvent::LiveScoreUpdate {
                 game_id: live_game.game_id,
                 home_team_id: live_game.home_team_id,
@@ -184,7 +181,7 @@ impl LiveGameService {
                 last_updated: live_game.updated_at,
             };
 
-            let mut conn = redis_client.get_async_connection().await?;
+            let mut conn = self.redis_client.get_async_connection().await?;
             let message = serde_json::to_string(&event)?;
             
             let global_channel = "game:events:global";
@@ -197,7 +194,6 @@ impl LiveGameService {
                 Err(e) => {
                     error!("❌ Failed to broadcast live score update: {}", e);
                     return Err(Box::new(e));
-                }
             }
         }
 

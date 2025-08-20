@@ -1,24 +1,38 @@
-use crate::config::minio::MinIOSettings;
 use bytes::Bytes;
-use aws_sdk_s3::{Client as S3Client, primitives::ByteStream};
 use std::sync::Arc;
-use tracing::{error, info, warn};
 use uuid::Uuid;
+use aws_sdk_s3::primitives::ByteStream;
+use aws_sdk_s3::Client as S3Client;
+use aws_sdk_s3::error::SdkError;
+use aws_sdk_s3::operation::create_bucket::CreateBucketError;
+
+use crate::config::minio::MinIOSettings;
 
 #[derive(Clone, Debug)]
 pub struct MinIOService {
-    client: Arc<S3Client>,
+    pub client: Arc<S3Client>,
     bucket_name: String,
+    settings: MinIOSettings,
 }
 
 impl MinIOService {
-    pub async fn new(settings: MinIOSettings) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn new(settings: &MinIOSettings) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let bucket_name = settings.bucket_name.clone();
-        let client = Arc::new(settings.create_s3_client().await?);
-        
+        let client = match settings.create_s3_client().await {
+            Ok(client) => {
+                tracing::info!("✅ MinIO client created successfully");
+                client
+            }
+            Err(e) => {
+                tracing::error!("❌ Failed to create MinIO client: {}", e);
+                return Err(e);
+            }
+        };
+        let client = Arc::new(client);        
         let service = Self {
             client,
             bucket_name,
+            settings: settings.clone(),
         };
         
         // Initialize bucket
@@ -28,7 +42,7 @@ impl MinIOService {
     }
 
     async fn init_bucket(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        info!("🗄️ Initializing MinIO bucket: {}", self.bucket_name);
+        tracing::info!("🗄️ Initializing MinIO bucket: {}", self.bucket_name);
         
         // Check if bucket exists
         let bucket_exists = match self.client
@@ -42,15 +56,49 @@ impl MinIOService {
         };
 
         if !bucket_exists {
-            info!("📦 Creating MinIO bucket: {}", self.bucket_name);
-            self.client
+            tracing::info!("📦 Creating MinIO bucket: {}", self.bucket_name);
+            match self.client
                 .create_bucket()
                 .bucket(&self.bucket_name)
                 .send()
-                .await?;
-            info!("✅ MinIO bucket created successfully");
+                .await
+            {
+                Ok(_) => {
+                    tracing::info!("✅ MinIO bucket created successfully");
+                }
+                Err(e) => {
+                    // Handle specific AWS S3/MinIO error types
+                    match &e {
+                        SdkError::ServiceError(service_err) => {
+                            match service_err.err() {
+                                CreateBucketError::BucketAlreadyOwnedByYou(_) => {
+                                    tracing::info!("✅ MinIO bucket already exists (owned by us)");
+                                    // This is fine - bucket exists and we own it
+                                }
+                                CreateBucketError::BucketAlreadyExists(_) => {
+                                    // This is only expected during local development and testing
+                                    if self.settings.testing {
+                                        tracing::info!("✅ MinIO bucket already exists (owned by us) - testing mode");
+                                    } else {
+                                        tracing::error!("❌ Failed to create MinIO bucket: {:?}", service_err.err());
+                                        return Err(Box::new(e));
+                                    }
+                                }
+                                _ => {
+                                    tracing::error!("❌ Failed to create MinIO bucket: {:?}", service_err.err());
+                                    return Err(Box::new(e));
+                                }
+                            }
+                        }
+                        _ => {
+                            tracing::error!("❌ Failed to create MinIO bucket (SDK error): {}", e);
+                            return Err(Box::new(e));
+                        }
+                    }
+                }
+            }
         } else {
-            info!("✅ MinIO bucket already exists");
+            tracing::info!("✅ MinIO bucket already exists");
         }
 
         Ok(())
@@ -66,7 +114,7 @@ impl MinIOService {
         // Create a unique path with user_id prefix for organization
         let object_key = format!("users/{}/{}", user_id, file_name);
         
-        info!("📤 Uploading file to MinIO: {} (size: {} bytes)", object_key, file_data.len());
+        tracing::info!("📤 Uploading file to MinIO: {} (size: {} bytes)", object_key, file_data.len());
 
         let byte_stream = ByteStream::from(file_data);
 
@@ -82,11 +130,11 @@ impl MinIOService {
             .await
         {
             Ok(_) => {
-                info!("✅ File uploaded successfully to MinIO: {}", object_key);
+                tracing::info!("✅ File uploaded successfully to MinIO: {}", object_key);
                 Ok(object_key)
             }
             Err(e) => {
-                error!("❌ Failed to upload file to MinIO: {}", e);
+                tracing::error!("❌ Failed to upload file to MinIO: {}", e);
                 Err(Box::new(e))
             }
         }
@@ -96,7 +144,7 @@ impl MinIOService {
         &self,
         object_key: &str,
     ) -> Result<(Bytes, String), Box<dyn std::error::Error + Send + Sync>> {
-        info!("📥 Downloading file from MinIO: {}", object_key);
+        tracing::info!("📥 Downloading file from MinIO: {}", object_key);
 
         match self.client
             .get_object()
@@ -116,13 +164,13 @@ impl MinIOService {
                 let bytes_data = response.body.collect().await?;
                 let bytes = bytes_data.into_bytes();
 
-                info!("✅ File downloaded successfully from MinIO: {} (size: {} bytes)", 
+                tracing::info!("✅ File downloaded successfully from MinIO: {} (size: {} bytes)", 
                       object_key, bytes.len());
                 
                 Ok((bytes, content_type))
             }
             Err(e) => {
-                warn!("❌ File not found in MinIO: {} - {}", object_key, e);
+                tracing::warn!("❌ File not found in MinIO: {} - {}", object_key, e);
                 Err(Box::new(e))
             }
         }
@@ -132,7 +180,7 @@ impl MinIOService {
         &self,
         object_key: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        info!("🗑️ Deleting file from MinIO: {}", object_key);
+        tracing::info!("🗑️ Deleting file from MinIO: {}", object_key);
 
         match self.client
             .delete_object()
@@ -142,19 +190,24 @@ impl MinIOService {
             .await
         {
             Ok(_) => {
-                info!("✅ File deleted successfully from MinIO: {}", object_key);
+                tracing::info!("✅ File deleted successfully from MinIO: {}", object_key);
                 Ok(())
             }
             Err(e) => {
-                error!("❌ Failed to delete file from MinIO: {}", e);
+                tracing::error!("❌ Failed to delete file from MinIO: {}", e);
                 Err(Box::new(e))
             }
         }
     }
 
     pub fn generate_file_url(&self, object_key: &str) -> String {
-        // For local development, return a URL that points to our serving endpoint
-        // In production, you might want to use presigned URLs or a CDN
-        format!("/api/workout-media/{}", object_key.replace("users/", "").replace("/", "_"))
+        // Extract user_id and filename from object key: users/{user_id}/{filename}
+        // Convert to URL format: /health/workout-media/{user_id}/{filename}
+        if let Some(path_without_users) = object_key.strip_prefix("users/") {
+            format!("/health/workout-media/{}", path_without_users)
+        } else {
+            // Fallback for any non-standard object keys
+            format!("/health/workout-media/{}", object_key)
+        }
     }
 }

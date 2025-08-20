@@ -1,30 +1,24 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use aws_sdk_s3::{config::Builder as S3ConfigBuilder, Client as S3Client};
 use aws_config::Region;
 use aws_sdk_s3::config::{Credentials, SharedCredentialsProvider};
+use secrecy::{ExposeSecret, SecretString};
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct MinIOSettings {
     pub endpoint: String,
-    pub access_key: String,
-    pub secret_key: String,
+    pub access_key: SecretString,
+    pub secret_key: SecretString,
     pub bucket_name: String,
     pub region: String,
+    pub testing: bool,
 }
 
 impl MinIOSettings {
-    pub fn new() -> Result<Self, config::ConfigError> {
-        let settings = config::Config::builder()
-            .add_source(config::Environment::with_prefix("MINIO").separator("__"))
-            .build()?;
-
-        settings.try_deserialize()
-    }
-
     pub async fn create_s3_client(&self) -> Result<S3Client, Box<dyn std::error::Error + Send + Sync>> {
         let creds = Credentials::new(
-            &self.access_key,
-            &self.secret_key,
+            self.access_key.expose_secret(),
+            self.secret_key.expose_secret(),
             None, // No session token
             None, // No expiration
             "custom-minio", // Provider name
@@ -39,17 +33,5 @@ impl MinIOSettings {
             .build();
 
         Ok(S3Client::from_conf(config))
-    }
-}
-
-impl Default for MinIOSettings {
-    fn default() -> Self {
-        Self {
-            endpoint: "http://localhost:9000".to_string(),
-            access_key: "minioadmin".to_string(),
-            secret_key: "minioadmin123".to_string(),
-            bucket_name: "evolveme-workout-media".to_string(),
-            region: "us-east-1".to_string(),
-        }
     }
 }

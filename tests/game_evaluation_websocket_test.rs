@@ -9,6 +9,10 @@ use std::time::Duration;
 use uuid::Uuid;
 use chrono::{Weekday, NaiveTime, Utc};
 use std::collections::HashMap;
+use std::sync::Arc;
+use evolveme_backend::config::redis::RedisSettings;
+use evolveme_backend::config::settings::get_config;
+use secrecy::ExposeSecret;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, get_next_date};
@@ -19,7 +23,8 @@ use common::workout_data_helpers::{upload_workout_data_for_user, WorkoutData, Wo
 async fn test_game_evaluation_websocket_notifications_comprehensive() {
     let app = spawn_app().await;
     let client = Client::new();
-    
+    let configuration = get_config().expect("Failed to read configuration.");
+    let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
     println!("🎯 Testing Comprehensive Game Evaluation WebSocket Notifications");
     
     // Step 1: Set up users with different power levels
@@ -168,7 +173,7 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     update_games_to_current_time(&app, league_id).await;
     
     // Wait for games to complete their lifecycle (start → finish)
-    let week_game_service = evolveme_backend::services::ManageGameService::new(app.db_pool.clone());
+    let week_game_service = evolveme_backend::services::ManageGameService::new(app.db_pool.clone(), redis_client);
     
     println!("🔄 Running first game management cycle to start games...");
     let (_, _, started_games, _) = week_game_service.run_game_cycle().await.unwrap();

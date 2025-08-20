@@ -3,6 +3,7 @@ use serde_json::json;
 use chrono::{Utc, Duration, Weekday, NaiveTime, DateTime};
 use uuid::Uuid;
 use serde::{Serialize, Deserialize};
+use std::sync::Arc;
 
 use crate::common::utils::*;
 use crate::common::admin_helpers::*;
@@ -381,9 +382,9 @@ pub async fn start_test_game(test_app: &TestApp, game_id: Uuid) {
     .expect("Failed to start test game");
 }
 
-pub async fn initialize_live_game(test_app: &TestApp, game_id: Uuid) -> LiveGameRow {
+pub async fn initialize_live_game(test_app: &TestApp, game_id: Uuid, redis_client: Arc<redis::Client>) -> LiveGameRow {
     // Create live game service and initialize
-    let live_game_service = evolveme_backend::services::LiveGameService::new(test_app.db_pool.clone(), None);
+    let live_game_service = evolveme_backend::services::LiveGameService::new(test_app.db_pool.clone(), redis_client);
     
     live_game_service.initialize_live_game(game_id)
         .await
@@ -613,9 +614,9 @@ pub async fn get_recent_score_events(test_app: &TestApp, live_game_id: Uuid) -> 
     }).collect()
 }
 
-pub async fn finish_live_game(test_app: &TestApp, live_game_id: Uuid) {
+pub async fn finish_live_game(test_app: &TestApp, live_game_id: Uuid, redis_client: Arc<redis::Client>) {
     // Use the actual backend service instead of direct database calls
-    let live_game_service = evolveme_backend::services::LiveGameService::new(test_app.db_pool.clone(), None);
+    let live_game_service = evolveme_backend::services::LiveGameService::new(test_app.db_pool.clone(), redis_client);
     
     live_game_service.finish_live_game(live_game_id)
         .await

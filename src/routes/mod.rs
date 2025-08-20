@@ -28,18 +28,12 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .wrap(AuthMiddleware)
             .service(health_data::upload_health)
             .service(health_data::upload_media)
+            .service(health_data::serve_media)
             .service(health_data::update_media)
             .service(health_activity::get_activity_sum)
             .service(health_activity::get_zone_ana)
             .service(health_activity::get_workout_hist)
             .service(health_activity::check_sync_status)
-    );
-    
-    // Authenticated media serving (requires authentication)
-    cfg.service(
-        web::scope("/api")
-            .wrap(AuthMiddleware)
-            .service(health_data::serve_media)
     );
     // Profile routes (require authentication)
     cfg.service(

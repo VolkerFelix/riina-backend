@@ -34,11 +34,11 @@ const ALLOWED_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "mp4", "mov",
     skip(form, claims, minio_service),
     fields(
         username = %claims.username,
-        file_name = %form.file.file_name.as_deref().unwrap_or("unknown")
+        file_name = "deferred"
     )
 )]
 pub async fn upload_workout_media(
-    MultipartForm(form): MultipartForm<MediaUploadForm>,
+    form: MultipartForm<MediaUploadForm>,
     claims: web::ReqData<Claims>,
     minio_service: web::Data<MinIOService>,
 ) -> HttpResponse {
@@ -54,25 +54,27 @@ pub async fn upload_workout_media(
         }
     };
 
+    let form_data = form.into_inner();
+    
     // Log file info for debugging
     tracing::info!("📎 File upload details - Name: {:?}, Size: {:?}, Content-Type: {:?}", 
-        form.file.file_name, 
-        form.file.size, 
-        form.file.content_type
+        form_data.file.file_name, 
+        form_data.file.size, 
+        form_data.file.content_type
     );
 
     // Validate file
-    if let Err(error_response) = validate_file(&form.file) {
+    if let Err(error_response) = validate_file(&form_data.file) {
         return error_response;
     }
 
     // Generate unique filename with proper extension
-    let original_filename = form.file.file_name.as_deref().unwrap_or("unknown");
+    let original_filename = form_data.file.file_name.as_deref().unwrap_or("unknown");
     let mut extension = get_file_extension(original_filename);
     
     // If no extension or invalid extension, try to determine from content type
     if extension.is_empty() || !ALLOWED_EXTENSIONS.contains(&extension.as_str()) {
-        if let Some(content_type) = &form.file.content_type {
+        if let Some(content_type) = &form_data.file.content_type {
             let mime_str = content_type.to_string();
             extension = match mime_str.as_str() {
                 "image/jpeg" | "image/jpg" => "jpg".to_string(),
@@ -91,10 +93,10 @@ pub async fn upload_workout_media(
         extension = "png".to_string(); // Default to png for images
     }
     
-    let unique_filename = format!("{}_{}.{}", user_id, Uuid::new_v4(), extension);
+    let unique_filename = format!("{}.{}", Uuid::new_v4(), extension);
 
     // Read file data into memory
-    let file_data = match std::fs::read(&form.file.file.path()) {
+    let file_data = match std::fs::read(&form_data.file.file.path()) {
         Ok(data) => Bytes::from(data),
         Err(e) => {
             tracing::error!("Failed to read uploaded file: {}", e);
@@ -105,7 +107,7 @@ pub async fn upload_workout_media(
     };
 
     // Calculate file hash for integrity checking
-    let file_hash = match calculate_file_hash(&form.file.file.path()).await {
+    let file_hash = match calculate_file_hash(&form_data.file.file.path()).await {
         Ok(hash) => hash,
         Err(e) => {
             tracing::error!("Failed to calculate file hash: {}", e);
@@ -116,7 +118,7 @@ pub async fn upload_workout_media(
     };
 
     // Determine content type
-    let content_type = form.file.content_type
+    let content_type = form_data.file.content_type
         .as_ref()
         .map(|ct| ct.to_string())
         .unwrap_or_else(|| match extension.as_str() {
@@ -256,39 +258,39 @@ async fn calculate_file_hash(file_path: &std::path::Path) -> Result<String, std:
 // Handler to serve uploaded media files
 #[tracing::instrument(
     name = "Serve workout media",
-    skip(path, claims),
+    skip(path, claims, minio_service),
     fields(
         username = %claims.username,
-        filename = %path.as_str()
+        user_id = "deferred",
+        filename = "deferred"
     )
 )]
 pub async fn serve_workout_media(
-    path: web::Path<String>,
+    path: web::Path<(String, String)>,
     claims: web::ReqData<Claims>,
     minio_service: web::Data<MinIOService>,
 ) -> HttpResponse {
-    let filename = path.into_inner();
-    tracing::info!("🖼️ [SERVE MEDIA DEBUG] Authenticated user {} requesting filename: {}", claims.username, filename);
+    let (user_id_str, filename) = path.into_inner();
+    tracing::info!("🖼️ [SERVE MEDIA DEBUG] Authenticated user {} requesting file: {}/{}", claims.username, user_id_str, filename);
     
     // Validate filename to prevent directory traversal
-    if filename.contains("..") || filename.contains("/") || filename.contains("\\") {
-        tracing::warn!("🚨 Directory traversal attempt detected: {}", filename);
+    if filename.contains("..") || filename.contains("/") || filename.contains("\\") ||
+       user_id_str.contains("..") || user_id_str.contains("/") || user_id_str.contains("\\") {
+        tracing::warn!("🚨 Directory traversal attempt detected: {}/{}", user_id_str, filename);
         return HttpResponse::BadRequest().json(
-            ApiResponse::<()>::error("Invalid filename")
+            ApiResponse::<()>::error("Invalid path parameters")
         );
     }
 
-    // Parse the user ID and reconstruct the object key
-    // The filename comes in format: {user_id}_{uuid}.{extension}
-    let parts: Vec<&str> = filename.split('_').collect();
-    if parts.len() < 2 {
-        tracing::warn!("Invalid filename format: {}", filename);
+    // Validate that user_id_str is a valid UUID format
+    if let Err(_) = uuid::Uuid::parse_str(&user_id_str) {
+        tracing::warn!("Invalid user ID format: {}", user_id_str);
         return HttpResponse::BadRequest().json(
-            ApiResponse::<()>::error("Invalid filename format")
+            ApiResponse::<()>::error("Invalid user ID format")
         );
     }
 
-    let user_id_str = parts[0];
+    // Reconstruct the object key
     let object_key = format!("users/{}/{}", user_id_str, filename);
     
     tracing::info!("🖼️ [SERVE MEDIA DEBUG] Looking for MinIO object: {}", object_key);
