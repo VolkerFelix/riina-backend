@@ -19,7 +19,7 @@ mod workout;
 pub mod services;
 use crate::routes::init_routes;
 use crate::config::jwt::JwtSettings;
-use crate::services::{SchedulerService, LiveGameService};
+use crate::services::{SchedulerService, LiveGameService, MinIOService};
 use std::sync::Arc;
 
 pub fn run(
@@ -27,7 +27,8 @@ pub fn run(
     db_pool: PgPool,
     jwt_settings: JwtSettings,
     redis_client: Option<Arc<redis::Client>>,
-    scheduler_service: Arc<SchedulerService>
+    scheduler_service: Arc<SchedulerService>,
+    minio_service: Arc<MinIOService>
 ) -> Result<Server, std::io::Error> {
     // Wrap using web::Data, which boils down to an Arc smart pointer
     let db_pool_data = web::Data::new(db_pool.clone());
@@ -39,6 +40,9 @@ pub fn run(
     
     // Create LiveGameService
     let live_game_service = web::Data::new(LiveGameService::new(db_pool, redis_client));
+    
+    // Wrap MinIOService
+    let minio_service_data = web::Data::new(minio_service);
 
 
     let server = HttpServer::new( move || {
@@ -67,7 +71,8 @@ pub fn run(
             .app_data(db_pool_data.clone())
             .app_data(jwt_settings.clone())
             .app_data(scheduler_service.clone())
-            .app_data(live_game_service.clone());
+            .app_data(live_game_service.clone())
+            .app_data(minio_service_data.clone());
         if let Some(ref redis) = redis_client_data {
             app = app.app_data(redis.clone());
         }

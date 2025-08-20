@@ -4,7 +4,7 @@ use crate::handlers::workout_data::media_upload::{upload_workout_media, serve_wo
 use crate::handlers::workout_data::update_workout_media::update_workout_media;
 use crate::middleware::auth::Claims;
 use crate::models::workout_data::WorkoutDataSyncRequest;
-use crate::services::live_game_service::LiveGameService;
+use crate::services::{live_game_service::LiveGameService, MinIOService};
 use std::sync::Arc;
 
 #[post("/upload_health")]
@@ -21,16 +21,19 @@ async fn upload_health(
 #[post("/upload_workout_media")]
 async fn upload_media(
     form: actix_multipart::form::MultipartForm<crate::handlers::workout_data::media_upload::MediaUploadForm>,
-    claims: web::ReqData<Claims>
+    claims: web::ReqData<Claims>,
+    minio_service: web::Data<MinIOService>
 ) -> HttpResponse {
-    upload_workout_media(form, claims).await
+    upload_workout_media(form, claims, minio_service).await
 }
 
 #[get("/workout-media/{filename}")]
 async fn serve_media(
-    path: web::Path<String>
+    path: web::Path<String>,
+    claims: web::ReqData<Claims>,
+    minio_service: web::Data<MinIOService>
 ) -> HttpResponse {
-    serve_workout_media(path).await
+    serve_workout_media(path, claims, minio_service).await
 }
 
 #[put("/workout/{workout_id}/media")]

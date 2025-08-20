@@ -44,6 +44,9 @@ thiserror = "1.0"
 lazy_static = "1.4"
 tokio-cron-scheduler = "0.13"
 sha2 = "0.10"
+aws-config = "1.0"
+aws-sdk-s3 = "1.0"
+bytes = "1.0"
 
 [dev-dependencies]
 reqwest = { version = "0.12.12", features = ["json"] }

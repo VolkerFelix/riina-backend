@@ -35,9 +35,10 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .service(health_activity::check_sync_status)
     );
     
-    // Public media serving (no auth required)
+    // Authenticated media serving (requires authentication)
     cfg.service(
         web::scope("/api")
+            .wrap(AuthMiddleware)
             .service(health_data::serve_media)
     );
     // Profile routes (require authentication)

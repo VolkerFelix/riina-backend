@@ -1,14 +1,14 @@
 use actix_multipart::{form::tempfile::TempFile, form::MultipartForm};
 use actix_web::{web, HttpResponse};
-use serde_json::json;
 use std::fs;
-use std::path::PathBuf;
 use uuid::Uuid;
 use sha2::{Sha256, Digest};
 use std::io::Read;
+use bytes::Bytes;
 
 use crate::middleware::auth::Claims;
 use crate::models::common::ApiResponse;
+use crate::services::MinIOService;
 
 #[derive(Debug, MultipartForm)]
 pub struct MediaUploadForm {
@@ -31,7 +31,7 @@ const ALLOWED_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "mp4", "mov",
 
 #[tracing::instrument(
     name = "Upload workout media",
-    skip(form, claims),
+    skip(form, claims, minio_service),
     fields(
         username = %claims.username,
         file_name = %form.file.file_name.as_deref().unwrap_or("unknown")
@@ -40,6 +40,7 @@ const ALLOWED_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "mp4", "mov",
 pub async fn upload_workout_media(
     MultipartForm(form): MultipartForm<MediaUploadForm>,
     claims: web::ReqData<Claims>,
+    minio_service: web::Data<MinIOService>,
 ) -> HttpResponse {
     tracing::info!("📎 Processing media upload for user: {}", claims.username);
 
@@ -63,14 +64,6 @@ pub async fn upload_workout_media(
     // Validate file
     if let Err(error_response) = validate_file(&form.file) {
         return error_response;
-    }
-
-    // Create upload directory if it doesn't exist
-    if let Err(e) = fs::create_dir_all(UPLOAD_DIR) {
-        tracing::error!("Failed to create upload directory: {}", e);
-        return HttpResponse::InternalServerError().json(
-            ApiResponse::<()>::error("Failed to create upload directory")
-        );
     }
 
     // Generate unique filename with proper extension
@@ -99,7 +92,17 @@ pub async fn upload_workout_media(
     }
     
     let unique_filename = format!("{}_{}.{}", user_id, Uuid::new_v4(), extension);
-    let file_path = PathBuf::from(UPLOAD_DIR).join(&unique_filename);
+
+    // Read file data into memory
+    let file_data = match std::fs::read(&form.file.file.path()) {
+        Ok(data) => Bytes::from(data),
+        Err(e) => {
+            tracing::error!("Failed to read uploaded file: {}", e);
+            return HttpResponse::InternalServerError().json(
+                ApiResponse::<()>::error("Failed to read uploaded file")
+            );
+        }
+    };
 
     // Calculate file hash for integrity checking
     let file_hash = match calculate_file_hash(&form.file.file.path()).await {
@@ -112,18 +115,25 @@ pub async fn upload_workout_media(
         }
     };
 
-    // Copy the uploaded file to permanent location (using copy instead of persist to handle cross-device links)
-    match std::fs::copy(form.file.file.path(), &file_path) {
-        Ok(_) => {
-            tracing::info!("✅ Successfully saved file: {}", file_path.display());
-            
-            // Get file metadata
-            let file_size = match fs::metadata(&file_path) {
-                Ok(metadata) => metadata.len(),
-                Err(_) => 0,
-            };
+    // Determine content type
+    let content_type = form.file.content_type
+        .as_ref()
+        .map(|ct| ct.to_string())
+        .unwrap_or_else(|| match extension.as_str() {
+            "jpg" | "jpeg" => "image/jpeg".to_string(),
+            "png" => "image/png".to_string(),
+            "gif" => "image/gif".to_string(),
+            "mp4" => "video/mp4".to_string(),
+            "mov" => "video/quicktime".to_string(),
+            "avi" => "video/avi".to_string(),
+            _ => "application/octet-stream".to_string(),
+        });
 
-            let file_url = format!("/api/workout-media/{}", unique_filename);
+    // Upload to MinIO
+    match minio_service.upload_file(file_data.clone(), &unique_filename, &content_type, user_id).await {
+        Ok(object_key) => {
+            let file_size = file_data.len() as u64;
+            let file_url = minio_service.generate_file_url(&object_key);
             let file_type = determine_file_type(&extension);
 
             let response = MediaUploadResponse {
@@ -139,9 +149,9 @@ pub async fn upload_workout_media(
             )
         }
         Err(e) => {
-            tracing::error!("Failed to save uploaded file: {}", e);
+            tracing::error!("Failed to upload file to MinIO: {}", e);
             HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error("Failed to save uploaded file")
+                ApiResponse::<()>::error("Failed to upload file")
             )
         }
     }
@@ -246,13 +256,19 @@ async fn calculate_file_hash(file_path: &std::path::Path) -> Result<String, std:
 // Handler to serve uploaded media files
 #[tracing::instrument(
     name = "Serve workout media",
-    skip(path),
+    skip(path, claims),
+    fields(
+        username = %claims.username,
+        filename = %path.as_str()
+    )
 )]
 pub async fn serve_workout_media(
     path: web::Path<String>,
+    claims: web::ReqData<Claims>,
+    minio_service: web::Data<MinIOService>,
 ) -> HttpResponse {
     let filename = path.into_inner();
-    tracing::info!("🖼️ [SERVE MEDIA DEBUG] Requested filename: {}", filename);
+    tracing::info!("🖼️ [SERVE MEDIA DEBUG] Authenticated user {} requesting filename: {}", claims.username, filename);
     
     // Validate filename to prevent directory traversal
     if filename.contains("..") || filename.contains("/") || filename.contains("\\") {
@@ -262,27 +278,31 @@ pub async fn serve_workout_media(
         );
     }
 
-    let file_path = PathBuf::from(UPLOAD_DIR).join(&filename);
-    tracing::info!("🖼️ [SERVE MEDIA DEBUG] Looking for file at: {}", file_path.display());
-    tracing::info!("🖼️ [SERVE MEDIA DEBUG] UPLOAD_DIR constant: {}", UPLOAD_DIR);
-    
-    match actix_web::web::block(move || std::fs::read(file_path)).await {
-        Ok(Ok(contents)) => {
-            let content_type = match get_file_extension(&filename).as_str() {
-                "jpg" | "jpeg" => "image/jpeg",
-                "png" => "image/png",
-                "gif" => "image/gif",
-                "mp4" => "video/mp4",
-                "mov" => "video/quicktime",
-                "avi" => "video/avi",
-                _ => "application/octet-stream",
-            };
+    // Parse the user ID and reconstruct the object key
+    // The filename comes in format: {user_id}_{uuid}.{extension}
+    let parts: Vec<&str> = filename.split('_').collect();
+    if parts.len() < 2 {
+        tracing::warn!("Invalid filename format: {}", filename);
+        return HttpResponse::BadRequest().json(
+            ApiResponse::<()>::error("Invalid filename format")
+        );
+    }
 
+    let user_id_str = parts[0];
+    let object_key = format!("users/{}/{}", user_id_str, filename);
+    
+    tracing::info!("🖼️ [SERVE MEDIA DEBUG] Looking for MinIO object: {}", object_key);
+    
+    match minio_service.get_file(&object_key).await {
+        Ok((contents, content_type)) => {
+            tracing::info!("✅ Successfully served file from MinIO: {} (size: {} bytes)", 
+                          object_key, contents.len());
             HttpResponse::Ok()
                 .content_type(content_type)
                 .body(contents)
         }
-        Ok(Err(_)) | Err(_) => {
+        Err(e) => {
+            tracing::warn!("❌ File not found in MinIO: {} - {}", object_key, e);
             HttpResponse::NotFound().json(
                 ApiResponse::<()>::error("File not found")
             )

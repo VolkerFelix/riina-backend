@@ -7,7 +7,8 @@ use std::time::Duration;
 use evolveme_backend::run;
 use evolveme_backend::config::settings::{get_config, get_jwt_settings, get_redis_url};
 use evolveme_backend::telemetry::{get_subscriber, init_subscriber};
-use evolveme_backend::services::SchedulerService;
+use evolveme_backend::services::{SchedulerService, MinIOService};
+use evolveme_backend::config::minio::MinIOSettings;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
@@ -71,11 +72,31 @@ async fn main() -> std::io::Result<()> {
         }
     };
     
+    // Initialize MinIO service
+    let minio_settings = match MinIOSettings::new() {
+        Ok(settings) => settings,
+        Err(_) => {
+            tracing::warn!("Failed to load MinIO settings from environment, using defaults");
+            MinIOSettings::default()
+        }
+    };
+    let minio_service = match MinIOService::new(minio_settings).await {
+        Ok(service) => {
+            tracing::info!("✅ MinIO service initialized successfully");
+            Arc::new(service)
+        }
+        Err(e) => {
+            tracing::error!("❌ Failed to initialize MinIO service: {}", e);
+            std::process::exit(1);
+        }
+    };
+    
     run(
         listener,
         conection_pool,
         jwt_settings,
         redis_client_arc,
-        scheduler_service
+        scheduler_service,
+        minio_service
     )?.await
 }

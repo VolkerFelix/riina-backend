@@ -1,5 +1,5 @@
 # Stage 1: Generate recipe file
-FROM rust:1.84 AS chef
+FROM rust:1.86 AS chef
 RUN cargo install cargo-chef
 WORKDIR /app
 
