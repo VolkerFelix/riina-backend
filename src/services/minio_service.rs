@@ -10,7 +10,8 @@ use crate::config::minio::MinIOSettings;
 
 #[derive(Clone, Debug)]
 pub struct MinIOService {
-    pub client: Arc<S3Client>,
+    pub internal_client: Arc<S3Client>,
+    pub external_client: Option<Arc<S3Client>>,
     bucket_name: String,
     settings: MinIOSettings,
 }
@@ -18,19 +19,21 @@ pub struct MinIOService {
 impl MinIOService {
     pub async fn new(settings: &MinIOSettings) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let bucket_name = settings.bucket_name.clone();
-        let client = match settings.create_s3_client().await {
-            Ok(client) => {
-                tracing::info!("✅ MinIO client created successfully");
-                client
+        let internal_client = settings.create_internal_s3_client().await;
+        let internal_client = Arc::new(internal_client);
+        let external_client = match settings.create_external_s3_client().await {
+            Some(external_client) => {
+                tracing::info!("✅ MinIO external client: {:?}", external_client);
+                Some(Arc::new(external_client))
             }
-            Err(e) => {
-                tracing::error!("❌ Failed to create MinIO client: {}", e);
-                return Err(e);
-            }
-        };
-        let client = Arc::new(client);        
-        let service = Self {
-            client,
+            None => {
+            tracing::info!("❌ MinIO external client not created");
+            None
+        }};
+
+        let service = Self {    
+            internal_client,
+            external_client,
             bucket_name,
             settings: settings.clone(),
         };
@@ -40,12 +43,13 @@ impl MinIOService {
         
         Ok(service)
     }
+    
 
     async fn init_bucket(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         tracing::info!("🗄️ Initializing MinIO bucket: {}", self.bucket_name);
         
         // Check if bucket exists
-        let bucket_exists = match self.client
+        let bucket_exists = match self.internal_client
             .head_bucket()
             .bucket(&self.bucket_name)
             .send()
@@ -57,7 +61,7 @@ impl MinIOService {
 
         if !bucket_exists {
             tracing::info!("📦 Creating MinIO bucket: {}", self.bucket_name);
-            match self.client
+            match self.internal_client
                 .create_bucket()
                 .bucket(&self.bucket_name)
                 .send()
@@ -118,7 +122,7 @@ impl MinIOService {
 
         let byte_stream = ByteStream::from(file_data);
 
-        match self.client
+        match self.internal_client
             .put_object()
             .bucket(&self.bucket_name)
             .key(&object_key)
@@ -146,7 +150,7 @@ impl MinIOService {
     ) -> Result<(Bytes, String), Box<dyn std::error::Error + Send + Sync>> {
         tracing::info!("📥 Downloading file from MinIO: {}", object_key);
 
-        match self.client
+        match self.internal_client
             .get_object()
             .bucket(&self.bucket_name)
             .key(object_key)
@@ -182,7 +186,7 @@ impl MinIOService {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         tracing::info!("🗑️ Deleting file from MinIO: {}", object_key);
 
-        match self.client
+        match self.internal_client
             .delete_object()
             .bucket(&self.bucket_name)
             .key(object_key)
@@ -209,5 +213,63 @@ impl MinIOService {
             // Fallback for any non-standard object keys
             format!("/health/workout-media/{}", object_key)
         }
+    }
+
+    pub async fn generate_presigned_download_url(&self, object_key: &str, expires_in_seconds: u32) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        use aws_sdk_s3::presigning::PresigningConfig;
+        use std::time::Duration;
+        
+        tracing::debug!("🔗 Generating presigned download URL for object: {}", object_key);
+        
+        let presigning_config = PresigningConfig::builder()
+            .expires_in(Duration::from_secs(expires_in_seconds as u64))
+            .build()?;
+            
+        let client = self.external_client.as_ref().unwrap_or(&self.internal_client);
+        let presigned_req = client
+            .get_object()
+            .bucket(&self.bucket_name)
+            .key(object_key)
+            .presigned(presigning_config)
+            .await?;
+            
+        let signed_url = presigned_req.uri().to_string();
+        
+        tracing::debug!("✅ Generated presigned download URL (expires in {}s): {}", expires_in_seconds, signed_url);
+        
+        Ok(signed_url)
+    }
+
+    pub async fn generate_presigned_upload_url(&self, object_key: &str, content_type: &str, expected_hash: &str, expires_in_seconds: u32) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        use aws_sdk_s3::presigning::PresigningConfig;
+        use std::time::Duration;
+        use base64::{Engine as _, engine::general_purpose};
+        
+        tracing::debug!("📤 Generating presigned upload URL for object: {} with hash: {}", object_key, expected_hash);
+        
+        // Convert hex hash to base64 for S3 checksum
+        let hash_bytes = hex::decode(expected_hash)
+            .map_err(|e| format!("Invalid hash format: {}", e))?;
+        let checksum_sha256 = general_purpose::STANDARD.encode(&hash_bytes);
+        
+        let presigning_config = PresigningConfig::builder()
+            .expires_in(Duration::from_secs(expires_in_seconds as u64))
+            .build()?;
+            
+        let client = self.external_client.as_ref().unwrap_or(&self.internal_client);
+        let presigned_req = client
+            .put_object()
+            .bucket(&self.bucket_name)
+            .key(object_key)
+            .content_type(content_type)
+            .checksum_sha256(&checksum_sha256)  // MinIO will verify this matches the uploaded file
+            .presigned(presigning_config)
+            .await?;
+            
+        let signed_url = presigned_req.uri().to_string();
+        
+        tracing::debug!("✅ Generated presigned upload URL with checksum verification (expires in {}s): {}", expires_in_seconds, signed_url);
+        
+        Ok(signed_url)
     }
 }

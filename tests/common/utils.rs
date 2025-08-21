@@ -123,8 +123,10 @@ pub fn parse_user_id_from_jwt_token(token: &str) -> Uuid {
     if token_parts.len() != 3 {
         panic!("Invalid JWT token format");
     }
-    // Decode the payload (second part)
-    let payload = base64::decode(token_parts[1])
+    // Decode the payload (second part) using base64url
+    use base64::Engine;
+    let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(token_parts[1])
         .expect("Failed to decode JWT payload");
 
     let payload_str = String::from_utf8(payload).expect("Failed to convert payload to string");

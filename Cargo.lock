@@ -944,12 +944,6 @@ checksum = "349a06037c7bf932dd7e7d1f653678b2038b9ad46a74102f1fc7bd7872678cce"
 
 [[package]]
 name = "base64"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
-
-[[package]]
-name = "base64"
 version = "0.21.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
@@ -1854,7 +1848,7 @@ dependencies = [
  "argon2",
  "aws-config",
  "aws-sdk-s3",
- "base64 0.13.1",
+ "base64 0.22.1",
  "bcrypt",
  "bytes",
  "chrono",
@@ -1863,6 +1857,7 @@ dependencies = [
  "env_logger",
  "futures",
  "futures-util",
+ "hex",
  "http 0.2.12",
  "jsonwebtoken",
  "lazy_static",
@@ -1885,6 +1880,7 @@ dependencies = [
  "tracing-bunyan-formatter",
  "tracing-log 0.2.0",
  "tracing-subscriber",
+ "url",
  "uuid",
 ]
 
