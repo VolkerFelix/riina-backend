@@ -20,6 +20,7 @@ async fn test_complete_live_game_workflow() {
     let client = Client::new();
     let configuration = get_config().expect("Failed to read configuration.");
     let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
+
     // Step 1: Setup test environment - create league, season, teams, and users
     let live_game_environment = setup_live_game_environment(&test_app).await;
     
@@ -282,6 +283,7 @@ async fn test_live_game_finish_workflow() {
     let client = Client::new();
     let configuration = get_config().expect("Failed to read configuration.");
     let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
+
     // Setup and create a game that ends soon
     let live_game_environment = setup_live_game_environment(&test_app).await;
     
@@ -960,6 +962,7 @@ async fn test_live_game_workout_deletion_score_update() {
     let client = Client::new();
     let configuration = get_config().expect("Failed to read configuration.");
     let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
+
     // Setup test environment
     let live_game_environment = setup_live_game_environment(&test_app).await;
     
@@ -1136,6 +1139,7 @@ async fn test_live_game_partial_workout_deletion() {
     let client = Client::new();
     let configuration = get_config().expect("Failed to read configuration.");
     let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
+
     // Setup test environment
     let live_game_environment = setup_live_game_environment(&test_app).await;
     let admin_session = create_admin_user_and_login(&test_app.address).await;
@@ -1228,6 +1232,7 @@ async fn test_user_joining_team_during_live_game() {
     let client = Client::new();
     let configuration = get_config().expect("Failed to read configuration.");
     let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
+
     // Setup live game environment
     let live_game_environment = setup_live_game_environment(&test_app).await;
     
@@ -1362,6 +1367,7 @@ async fn test_admin_live_game_score_adjustment() {
     let client = Client::new();
     let configuration = get_config().expect("Failed to read configuration.");
     let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
+
     // Setup test environment
     let live_game_environment = setup_live_game_environment(&test_app).await;
     let admin_session = create_admin_user_and_login(&test_app.address).await;

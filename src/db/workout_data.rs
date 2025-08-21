@@ -1,6 +1,5 @@
 use sqlx::{Pool, Postgres};
 use uuid::Uuid;
-use serde_json::json;
 use chrono::Duration;
 
 use crate::models::workout_data::{WorkoutDataSyncRequest, HeartRateData};
@@ -84,7 +83,7 @@ pub async fn insert_workout_data(
         "#,
         user_id,
         &data.device_id,
-        json!(data.heart_rate),
+        serde_json::to_value(&data.heart_rate).unwrap(),
         data.calories_burned,
         data.workout_uuid,
         data.workout_start,
