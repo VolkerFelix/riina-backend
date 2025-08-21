@@ -11,7 +11,7 @@ on:
 
 jobs:
     test:
-        name: Test with Database and Redis
+        name: Test with Database, Redis and MinIO
         runs-on: ubuntu-latest
         timeout-minutes: 30
         
@@ -32,6 +32,14 @@ jobs:
               REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
             ports:
               - 6379:6379
+
+          minio:
+            image: minio/minio:latest
+            env:
+              MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
+              MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+            ports:
+              - 9000:9000
         
         env:
           POSTGRES__DATABASE__USER: ${{ secrets.POSTGRES_USER }}
@@ -41,6 +49,8 @@ jobs:
           APP_ENVIRONMENT: local
           REDIS__REDIS__PASSWORD: ${{ secrets.REDIS_PASSWORD }}
           DATABASE_URL: postgres://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/evolveme_db
+          MINIO__MINIO__ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
+          MINIO__MINIO__SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
 
         steps:
             - name: Check out repository code

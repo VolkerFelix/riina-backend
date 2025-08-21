@@ -1,2 +1,4 @@
 application:
   host: localhost
+minio:
+  testing: true
