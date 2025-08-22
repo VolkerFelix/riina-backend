@@ -1,7 +1,6 @@
-use actix_web::{post, get, put, web, HttpResponse};
+use actix_web::{post, get, web, HttpResponse};
 use crate::handlers::workout_data::upload_workout_data::upload_workout_data;
-use crate::handlers::workout_data::media_upload::{request_upload_signed_url, confirm_upload, get_download_signed_url};
-use crate::handlers::workout_data::update_workout_media::update_workout_media;
+use crate::handlers::workout_data::media_upload::{request_upload_signed_url, confirm_upload, get_download_signed_url, UploadUrlRequest, ConfirmUploadRequest};
 use crate::middleware::auth::Claims;
 use crate::models::workout_data::WorkoutDataSyncRequest;
 use crate::services::{live_game_service::LiveGameService, MinIOService};
@@ -18,34 +17,9 @@ async fn upload_health(
     upload_workout_data(data, pool, redis, live_game_service, claims).await
 }
 
-// Old upload_media and serve_media endpoints removed - now using signed URLs
-
-#[put("/workout/{workout_id}/media")]
-async fn update_media(
-    workout_id: web::Path<String>,
-    data: web::Json<crate::handlers::workout_data::update_workout_media::UpdateWorkoutMediaRequest>,
-    pool: web::Data<sqlx::PgPool>,
-    claims: web::ReqData<Claims>
-) -> HttpResponse {
-    // Parse workout_id from path and merge with request data
-    let workout_uuid = match uuid::Uuid::parse_str(&workout_id.into_inner()) {
-        Ok(id) => id,
-        Err(_) => {
-            return HttpResponse::BadRequest().json(
-                crate::models::common::ApiResponse::<()>::error("Invalid workout ID")
-            );
-        }
-    };
-    
-    let mut request_data = data.into_inner();
-    request_data.workout_id = workout_uuid;
-    
-    update_workout_media(web::Json(request_data), pool, claims).await
-}
-
 #[post("/request-upload-url")]
 async fn request_upload_url(
-    request: web::Json<crate::handlers::workout_data::media_upload::UploadUrlRequest>,
+    request: web::Json<UploadUrlRequest>,
     claims: web::ReqData<Claims>,
     minio_service: web::Data<MinIOService>
 ) -> HttpResponse {
@@ -54,11 +28,12 @@ async fn request_upload_url(
 
 #[post("/confirm-upload")]
 async fn confirm_upload_handler(
-    request: web::Json<crate::handlers::workout_data::media_upload::ConfirmUploadRequest>,
+    request: web::Json<ConfirmUploadRequest>,
     claims: web::ReqData<Claims>,
-    minio_service: web::Data<MinIOService>
+    minio_service: web::Data<MinIOService>,
+    pool: web::Data<sqlx::PgPool>
 ) -> HttpResponse {
-    confirm_upload(request, claims, minio_service).await
+    confirm_upload(request, claims, minio_service, pool).await
 }
 
 #[get("/workout-media-url/{user_id}/{filename}")]

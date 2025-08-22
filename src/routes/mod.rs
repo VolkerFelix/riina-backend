@@ -28,7 +28,6 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .wrap(AuthMiddleware)
             .service(health_data::upload_health)
             // Removed old upload_media and serve_media - now using signed URLs
-            .service(health_data::update_media)
             .service(health_data::request_upload_url)
             .service(health_data::confirm_upload_handler)
             .service(health_data::get_download_url)

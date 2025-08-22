@@ -34,6 +34,7 @@ pub struct UploadUrlResponse {
 pub struct ConfirmUploadRequest {
     pub object_key: String,
     pub expected_hash: String,
+    pub workout_id: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -111,6 +112,7 @@ pub async fn confirm_upload(
     request: web::Json<ConfirmUploadRequest>,
     claims: web::ReqData<Claims>,
     minio_service: web::Data<MinIOService>,
+    pool: web::Data<sqlx::PgPool>,
 ) -> HttpResponse {
     tracing::info!("✅ User {} confirming upload: {}", claims.username, request.object_key);
 
@@ -135,6 +137,55 @@ pub async fn confirm_upload(
             
             tracing::info!("✅ Upload confirmed and verified: {} (hash: {})", 
                           request.object_key, actual_hash);
+            
+            // If workout_id is provided, update the workout record with the media URL
+            if let Some(workout_id_str) = &request.workout_id {
+                if let Ok(workout_uuid) = uuid::Uuid::parse_str(workout_id_str) {
+                    let user_id = match uuid::Uuid::parse_str(&claims.sub) {
+                        Ok(id) => id,
+                        Err(_) => {
+                            tracing::error!("Invalid user ID in claims");
+                            return HttpResponse::InternalServerError().json(
+                                ApiResponse::<()>::error("Invalid user ID")
+                            );
+                        }
+                    };
+                    
+                    // Determine if this is an image or video based on file extension
+                    let extension = get_file_extension(&request.object_key).to_lowercase();
+                    let is_image = matches!(extension.as_str(), "jpg" | "jpeg" | "png" | "gif");
+                    
+                    // Update the workout_data table
+                    let update_query = if is_image {
+                        "UPDATE workout_data SET image_url = $1 WHERE id = $2 AND user_id = $3"
+                    } else {
+                        "UPDATE workout_data SET video_url = $1 WHERE id = $2 AND user_id = $3"
+                    };
+                    
+                    match sqlx::query(update_query)
+                        .bind(&file_url)
+                        .bind(workout_uuid)
+                        .bind(user_id)
+                        .execute(pool.get_ref())
+                        .await
+                    {
+                        Ok(result) => {
+                            if result.rows_affected() > 0 {
+                                tracing::info!("✅ Updated workout {} with {} URL: {}", 
+                                             workout_uuid, if is_image { "image" } else { "video" }, file_url);
+                            } else {
+                                tracing::warn!("⚠️ No workout found with ID {} for user {}", workout_uuid, user_id);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("❌ Failed to update workout with media URL: {}", e);
+                            // Continue anyway, don't fail the upload
+                        }
+                    }
+                } else {
+                    tracing::warn!("Invalid workout_id format: {}", workout_id_str);
+                }
+            }
             
             HttpResponse::Ok().json(ApiResponse::success(
                 "Upload confirmed and verified successfully",
