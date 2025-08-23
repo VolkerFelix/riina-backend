@@ -29,7 +29,7 @@ pub async fn upload_workout_data(
     redis: Option<web::Data<Arc<redis::Client>>>,
     live_game_service: Option<web::Data<LiveGameService>>,
     claims: web::ReqData<Claims>
-) -> actix_web::Result<HttpResponse> {
+) -> HttpResponse {
     tracing::info!("🎮 Processing workout data with game mechanics for user: {}", claims.username);
     
     let user_id = match Uuid::parse_str(&claims.sub) {
@@ -39,9 +39,9 @@ pub async fn upload_workout_data(
         },
         Err(e) => {
             tracing::error!("Failed to parse user ID: {}", e);
-            return Ok(HttpResponse::InternalServerError().json(
+            return HttpResponse::InternalServerError().json(
                 ApiResponse::<()>::error("Invalid user ID")
-            ));
+            );
         }
     };
 
@@ -61,10 +61,10 @@ pub async fn upload_workout_data(
                     action: Some("rejected".to_string()),
                     game_stats: None,
                 };
-                return Ok(HttpResponse::Ok().json(ApiResponse::success(
+                return HttpResponse::Ok().json(ApiResponse::success(
                     "Workout already exists (duplicate detected)",
                     response
-                )));
+                ));
             }
             is_dup
         }
@@ -104,9 +104,9 @@ pub async fn upload_workout_data(
         }
         Err(e) => {
             tracing::error!("❌ Failed to update avatar stats for {}: {}", claims.username, e);
-            return Ok(HttpResponse::InternalServerError().json(
+            return HttpResponse::InternalServerError().json(
                 ApiResponse::<()>::error("Failed to update avatar stats")
-            ));
+            );
         }
     }
 
@@ -256,9 +256,9 @@ pub async fn upload_workout_data(
 
             tracing::info!("✅ Workout data processed successfully for {}: {}", 
                 claims.username, sync_id);
-            Ok(HttpResponse::Ok().json(
+            HttpResponse::Ok().json(
                 ApiResponse::success(message, response)
-            ))
+            )
         }
         Err(e) => {
             // Check if this is a duplicate workout UUID error
@@ -268,16 +268,16 @@ pub async fn upload_workout_data(
                         claims.username, data.workout_uuid);
                     
                     // Return a more specific error response for duplicate UUIDs
-                    return Ok(HttpResponse::Conflict().json(
+                    return HttpResponse::Conflict().json(
                         ApiResponse::<()>::error("This workout has already been uploaded (duplicate UUID)")
-                    ));
+                    );
                 }
             }
             
             tracing::error!("❌ Failed to sync workout data for {}: {}", claims.username, e);
-            Ok(HttpResponse::InternalServerError().json(
+            HttpResponse::InternalServerError().json(
                 ApiResponse::<()>::error(format!("Failed to sync workout data: {}", e))
-            ))
+            )
         }
     }
 }
