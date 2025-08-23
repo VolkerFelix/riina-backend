@@ -3,6 +3,8 @@
 use reqwest::Client;
 use serde_json::json;
 use sha2::{Sha256, Digest};
+use uuid::Uuid;
+use std::time::Duration;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login};
@@ -164,4 +166,29 @@ async fn test_download_signed_url() {
     );
     
     println!("✅ Download URL endpoint working correctly");
+}
+
+// Unauthorized access to download URL
+#[tokio::test]
+async fn test_unauthorized_download_url() {
+    let app = spawn_app().await;
+    let client = Client::builder()
+        .danger_accept_invalid_certs(true)
+        .timeout(Duration::from_secs(30))
+        .build()
+        .expect("Failed to build client");
+    
+    println!("🔍 Testing unauthorized download URL access");
+    
+    let response = client
+        .get(&format!(
+            "{}/health/workout-media-url/{}/test-image.png",
+            &app.address,
+            Uuid::new_v4()
+        ))
+        .send()
+        .await
+        .expect("Failed to request download URL");
+    
+    assert_eq!(response.status(), 401, "Should get 401 for unauthorized access");
 }
