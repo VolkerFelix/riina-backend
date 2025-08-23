@@ -6,6 +6,7 @@ use serde::Deserialize;
 
 use crate::config::jwt::JwtSettings;
 use crate::config::redis::RedisSettings;
+use crate::config::minio::MinIOSettings;
 
 #[derive(Deserialize, Debug)]
 pub struct Settings{
@@ -13,6 +14,7 @@ pub struct Settings{
     pub application: ApplicationSettings,
     pub jwt: JwtSettings,
     pub redis: RedisSettings,
+    pub minio: MinIOSettings,
 }
 
 #[derive(Deserialize, Debug)]
@@ -90,6 +92,12 @@ pub fn get_config() -> Result<Settings, ConfigError> {
                 .prefix_separator("__")
                 .separator("__")
         )
+        .add_source(
+            config::Environment::default()
+                .prefix("MINIO")
+                .prefix_separator("__")
+                .separator("__")
+        )
         .build()?;
 
     let mut settings = config.try_deserialize::<Settings>()?;
@@ -145,8 +153,4 @@ pub fn get_jwt_settings(settings: &Settings) -> JwtSettings {
         settings.jwt.secret.expose_secret().to_string().clone(),
         settings.jwt.expiration_hours,
     )
-}
-
-pub fn get_redis_url(settings: &Settings) -> SecretString {
-    SecretString::new(format!("redis://:{}@{}:{}", settings.redis.password.expose_secret(), settings.redis.host, settings.redis.port).into_boxed_str())
 }

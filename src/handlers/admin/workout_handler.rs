@@ -19,7 +19,6 @@ struct AdminWorkoutData {
     pub workout_uuid: Option<String>,
     pub workout_start: Option<DateTime<Utc>>,
     pub workout_end: Option<DateTime<Utc>>,
-    pub is_duplicate: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -34,7 +33,6 @@ pub struct AdminWorkoutDetail {
     pub workout_uuid: Option<String>,
     pub workout_start: Option<DateTime<Utc>>,
     pub workout_end: Option<DateTime<Utc>>,
-    pub is_duplicate: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -90,7 +88,6 @@ pub async fn get_all_workouts(
             wd.workout_uuid,
             wd.workout_start,
             wd.workout_end,
-            wd.is_duplicate,
             wd.created_at
         FROM workout_data wd
         JOIN users u ON u.id = wd.user_id
@@ -130,7 +127,6 @@ pub async fn get_workout_detail(
             wd.workout_uuid,
             wd.workout_start,
             wd.workout_end,
-            wd.is_duplicate,
             wd.created_at
         FROM workout_data wd
         JOIN users u ON u.id = wd.user_id
@@ -192,7 +188,6 @@ pub async fn get_workout_detail(
         workout_uuid: row.get("workout_uuid"),
         workout_start: row.get("workout_start"),
         workout_end: row.get("workout_end"),
-        is_duplicate: row.get("is_duplicate"),
         created_at: row.get("created_at"),
     };
 
@@ -324,8 +319,7 @@ pub async fn delete_workout(
 
         // Broadcast the updated scores if the game was updated
         if updated_game.is_some() {
-            let redis_option = redis_client.as_ref().map(|r| Some(r.get_ref().clone()));
-            let live_game_service = LiveGameService::new(pool.get_ref().clone(), redis_option.unwrap_or(None));
+            let live_game_service = LiveGameService::new(pool.get_ref().clone(), redis_client.unwrap().get_ref().clone());
             
             // Get the updated live game and broadcast the change
             if let Ok(Some(live_game)) = live_game_service.get_live_game_by_id(live_game_id).await {
@@ -374,7 +368,7 @@ pub struct BulkDeleteRequest {
 pub async fn bulk_delete_workouts(
     pool: web::Data<PgPool>,
     body: web::Json<BulkDeleteRequest>,
-    redis_client: Option<web::Data<Arc<redis::Client>>>,
+    redis_client: web::Data<Arc<redis::Client>>,
 ) -> Result<HttpResponse, actix_web::Error> {
     if body.workout_ids.is_empty() {
         return Err(actix_web::error::ErrorBadRequest("No workout IDs provided"));
@@ -499,8 +493,7 @@ pub async fn bulk_delete_workouts(
     let deleted_count = result.rows_affected();
     
     // Now update all affected live games
-    let redis_option = redis_client.as_ref().map(|r| Some(r.get_ref().clone()));
-    let live_game_service = LiveGameService::new(pool.get_ref().clone(), redis_option.unwrap_or(None));
+    let live_game_service = LiveGameService::new(pool.get_ref().clone(), redis_client.get_ref().clone());
     
     for (live_game_id, adjustment) in game_adjustments {
         // Update live game scores

@@ -11,13 +11,13 @@ use crate::services::manage_game_service::ManageGameService;
 pub struct SchedulerService {
     scheduler: Arc<Mutex<JobScheduler>>,
     pool: PgPool,
-    redis_client: Option<Arc<redis::Client>>,
+    redis_client: Arc<redis::Client>,
     // Track active season jobs by season_id -> job_id
     active_jobs: Arc<Mutex<HashMap<Uuid, Uuid>>>,
 }
 
 impl SchedulerService {
-    pub async fn new_with_redis(pool: PgPool, redis_client: Option<Arc<redis::Client>>) -> Result<Self, Box<dyn Error>> {
+    pub async fn new_with_redis(pool: PgPool, redis_client: Arc<redis::Client>) -> Result<Self, Box<dyn Error>> {
         let scheduler = JobScheduler::new().await?;
         
         Ok(Self {
@@ -68,8 +68,8 @@ impl SchedulerService {
             Box::pin(async move {
                 tracing::info!("🎮 Running scheduled game management cycle for season '{}'", season_name);
                 
-                let manage_games = ManageGameService::new_with_redis(pool.clone(), redis_client.clone());
-                let evaluate_games = GameEvaluationService::new_with_redis(pool, redis_client);
+                let manage_games = ManageGameService::new(pool.clone(), redis_client.clone());
+                let evaluate_games = GameEvaluationService::new(pool, redis_client);
                 
                 // Step 1: Run complete game cycle (start due games, finish ended games)
                 match manage_games.run_game_cycle().await {

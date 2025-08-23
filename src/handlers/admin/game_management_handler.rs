@@ -56,6 +56,7 @@ pub struct AdjustLiveGameScoreResponse {
 pub async fn start_games_now(
     pool: web::Data<PgPool>,
     body: web::Json<StartGamesRequest>,
+    redis_client: web::Data<Arc<redis::Client>>,
 ) -> Result<HttpResponse> {
     info!("Starting games immediately for season {} week {:?}", 
         body.season_id, body.week_number);
@@ -169,7 +170,7 @@ pub async fn start_games_now(
     })?;
 
     // Initialize live games for the started games
-    let live_game_service = LiveGameService::new(pool.get_ref().clone(), None);
+    let live_game_service = LiveGameService::new(pool.get_ref().clone(), redis_client.get_ref().clone());
     let mut live_games_initialized = 0;
 
     for game in &games {
@@ -315,7 +316,7 @@ pub struct EvaluateGamesResponse {
 pub async fn evaluate_games_for_date(
     pool: web::Data<PgPool>,
     body: web::Json<EvaluateGamesRequest>,
-    redis: Option<web::Data<Arc<redis::Client>>>,
+    redis_client: web::Data<Arc<redis::Client>>,
 ) -> Result<HttpResponse> {
     info!("Evaluating games for date: {}", body.date);
 
@@ -356,9 +357,9 @@ pub async fn evaluate_games_for_date(
     let game_ids: Vec<uuid::Uuid> = finished_games.iter().map(|g| g.id).collect();
     
     // Create the evaluation service with Redis for WebSocket notifications
-    let evaluation_service = GameEvaluationService::new_with_redis(
+    let evaluation_service = GameEvaluationService::new(
         pool.get_ref().clone(), 
-        redis.map(|r| r.get_ref().clone())
+        redis_client.get_ref().clone()
     );
     
     match evaluation_service.evaluate_finished_live_games(game_ids).await {

@@ -25,6 +25,9 @@ export APP__APPLICATION__USER=${APP__APPLICATION__USER:-testuser}
 export APP__APPLICATION__PASSWORD=${APP__APPLICATION__PASSWORD:-testpassword}
 # Redis Config
 export REDIS__REDIS__PASSWORD=${REDIS__REDIS__PASSWORD:-redis}
+# MinIO Configuration
+export MINIO__MINIO__ACCESS_KEY=${MINIO__MINIO__ACCESS_KEY:-minioadmin}
+export MINIO__MINIO__SECRET_KEY=${MINIO__MINIO__SECRET_KEY:-minioadmin}
 
 # Default configuration
 DB_HOST="localhost"
@@ -56,6 +59,17 @@ check_redis() {
     fi
 }
 
+# Check if MinIO container is already running
+
+check_minio() {
+    if [ "$(docker ps -q -f name=evolveme-minio-test)" ]; then
+        echo -e "${GREEN}MinIO container is already running.${NC}"
+    else
+        echo -e "${RED}MinIO container is not running.${NC}"
+        spin_up_minio
+    fi
+}
+
 # Spin up postgres container
 spin_up_postgres() {
     echo -e "${YELLOW}Spinning up PostgreSQL container for tests...${NC}"
@@ -79,9 +93,21 @@ spin_up_redis() {
         redis-server --requirepass ${REDIS__REDIS__PASSWORD}
 }
 
-# Clean up postgres and redis containers
-clean_up_postgres_and_redis() {
-    echo -e "${YELLOW}Cleaning up PostgreSQL and Redis containers...${NC}"
+# Spin up minio container
+
+spin_up_minio() {
+    echo -e "${YELLOW}Spinning up MinIO container for tests...${NC}"
+    docker run --name evolveme-minio-test \
+        -e MINIO_ACCESS_KEY=${MINIO__MINIO__ACCESS_KEY} \
+        -e MINIO_SECRET_KEY=${MINIO__MINIO__SECRET_KEY} \
+        -v evolveme-minio-test-data:/data \
+        -p 9000:9000 \
+        -d minio/minio server /data
+}
+
+# Clean up postgres, redis and minio containers
+clean_up() {
+    echo -e "${YELLOW}Cleaning up PostgreSQL, Redis and MinIO containers...${NC}"
     
     # Stop and remove containers if they exist
     if [ "$(docker ps -aq -f name=evolveme-postgres-test)" ]; then
@@ -93,7 +119,12 @@ clean_up_postgres_and_redis() {
         docker stop evolveme-redis-test 2>/dev/null || true
         docker rm evolveme-redis-test 2>/dev/null || true
     fi
-    
+
+    if [ "$(docker ps -aq -f name=evolveme-minio-test)" ]; then
+        docker stop evolveme-minio-test 2>/dev/null || true
+        docker rm evolveme-minio-test 2>/dev/null || true
+    fi
+
     # Remove volumes if they exist
     if [ "$(docker volume ls -q -f name=evolveme-postgres-test-data)" ]; then
         docker volume rm evolveme-postgres-test-data 2>/dev/null || true
@@ -101,6 +132,10 @@ clean_up_postgres_and_redis() {
     
     if [ "$(docker volume ls -q -f name=evolveme-redis-test-data)" ]; then
         docker volume rm evolveme-redis-test-data 2>/dev/null || true
+    fi
+
+    if [ "$(docker volume ls -q -f name=evolveme-minio-test-data)" ]; then
+        docker volume rm evolveme-minio-test-data 2>/dev/null || true
     fi
 }
 
@@ -161,10 +196,11 @@ main() {
     # Execute steps
     check_postgres
     check_redis
+    check_minio
     run_migrations
     prepare_sqlx
     run_tests
-    clean_up_postgres_and_redis
+    clean_up
 
     echo -e "${GREEN}Test run and cleanup completed successfully!${NC}"
 }

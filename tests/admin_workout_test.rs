@@ -65,10 +65,11 @@ async fn test_admin_can_bulk_delete_workouts() {
     // Create a regular user
     let user = create_test_user_and_login(&test_app.address).await;
 
-    // Create multiple workouts
-    let workout1 = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
-    let workout2 = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
-    let workout3 = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    // Create multiple workouts with different timestamps to avoid duplicate detection
+    let now = Utc::now();
+    let workout1 = WorkoutData::new(WorkoutType::Moderate, now - chrono::Duration::hours(2), 30);
+    let workout2 = WorkoutData::new(WorkoutType::Moderate, now - chrono::Duration::hours(1), 30);
+    let workout3 = WorkoutData::new(WorkoutType::Moderate, now, 30);
 
     let workout_response1 = client
         .post(&format!("{}/health/upload_health", &test_app.address))

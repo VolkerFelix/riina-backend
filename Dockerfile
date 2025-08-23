@@ -1,5 +1,5 @@
 # Stage 1: Generate recipe file
-FROM rust:1.84 AS chef
+FROM rust:1.86 AS chef
 RUN cargo install cargo-chef
 WORKDIR /app
 
@@ -38,7 +38,7 @@ RUN apt-get update -y \
 
 # Create app directory for config
 WORKDIR /app
-RUN mkdir -p configuration migrations scripts
+RUN mkdir -p configuration migrations scripts uploads/workout_media
 COPY --from=builder /app/configuration/ /app/configuration/
 COPY --from=builder /app/migrations/ /app/migrations/
 COPY --from=builder /app/scripts/run_migrations_psql.sh /app/scripts/

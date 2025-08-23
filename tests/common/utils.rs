@@ -10,9 +10,9 @@ use chrono::{DateTime, Datelike, Duration, Utc, Weekday, NaiveTime};
 use reqwest::Response;
 
 use evolveme_backend::run;
-use evolveme_backend::config::settings::{get_config, DatabaseSettings, get_jwt_settings, get_redis_url};
-use evolveme_backend::telemetry::{get_subscriber, init_subscriber};
-use evolveme_backend::services::SchedulerService;
+use evolveme_backend::config::settings::{get_config, DatabaseSettings, get_jwt_settings};
+use evolveme_backend::services::{SchedulerService, MinIOService, telemetry::{get_subscriber, init_subscriber}};
+use evolveme_backend::config::redis::RedisSettings;
 use std::sync::Arc;
 
 // Ensure that the `tracing` stack is only initialised once using `once_cell`
@@ -63,11 +63,11 @@ pub async fn spawn_app() -> TestApp {
     let connection_pool = configure_db(&configuration.database)
         .await;
     let jwt_settings = get_jwt_settings(&configuration);
-    let redis_client = redis::Client::open(get_redis_url(&configuration).expose_secret())
+    let redis_client = redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret())
         .ok();
-    
+    let minio_service = MinIOService::new(&configuration.minio).await.expect("Failed to create MinIO service");
     // Create scheduler service for tests
-    let redis_client_arc = redis_client.as_ref().map(|client| Arc::new(client.clone()));
+    let redis_client_arc = Arc::new(redis_client.unwrap());
     let scheduler_service = Arc::new(
         SchedulerService::new_with_redis(connection_pool.clone(), redis_client_arc.clone())
             .await
@@ -80,6 +80,7 @@ pub async fn spawn_app() -> TestApp {
         jwt_settings,
         redis_client_arc,
         scheduler_service,
+        minio_service
     )
         .expect("Failed to bind address");
     // Launch the server as a background task
@@ -122,8 +123,10 @@ pub fn parse_user_id_from_jwt_token(token: &str) -> Uuid {
     if token_parts.len() != 3 {
         panic!("Invalid JWT token format");
     }
-    // Decode the payload (second part)
-    let payload = base64::decode(token_parts[1])
+    // Decode the payload (second part) using base64url
+    use base64::Engine;
+    let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(token_parts[1])
         .expect("Failed to decode JWT payload");
 
     let payload_str = String::from_utf8(payload).expect("Failed to convert payload to string");

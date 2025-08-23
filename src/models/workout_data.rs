@@ -14,6 +14,8 @@ pub struct WorkoutData {
     pub heart_rate: Option<Vec<HeartRateData>>,
     pub calories_burned: Option<i32>,
     pub created_at: DateTime<Utc>,
+    pub image_url: Option<String>,
+    pub video_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow, sqlx::Decode)]
@@ -31,12 +33,41 @@ pub struct WorkoutDataSyncRequest {
     pub workout_uuid: String, // Required: Apple Health workout UUID for duplicate prevention
     pub workout_start: Option<DateTime<Utc>>, // Actual workout start time
     pub workout_end: Option<DateTime<Utc>>, // Actual workout end time
+    pub image_url: Option<String>,
+    pub video_url: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct WorkoutDataSyncData {
     pub sync_id: Uuid,
     pub timestamp: DateTime<Utc>,
+}
+
+/// Response for successful workout upload
+#[derive(Debug, Serialize)]
+pub struct WorkoutUploadResponse {
+    pub sync_id: Uuid,
+    pub timestamp: DateTime<Utc>,
+    pub is_duplicate: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duplicate_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub game_stats: Option<GameStats>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GameStats {
+    pub stat_changes: StatChanges,
+    pub reasoning: String,
+    pub summary: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StatChanges {
+    pub stamina_change: i32,
+    pub strength_change: i32,
 }
 
 #[derive(Debug, Clone)]

@@ -27,6 +27,10 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
         web::scope("/health")
             .wrap(AuthMiddleware)
             .service(health_data::upload_health)
+            // Removed old upload_media and serve_media - now using signed URLs
+            .service(health_data::request_upload_url)
+            .service(health_data::confirm_upload_handler)
+            .service(health_data::get_download_url)
             .service(health_activity::get_activity_sum)
             .service(health_activity::get_zone_ana)
             .service(health_activity::get_workout_hist)

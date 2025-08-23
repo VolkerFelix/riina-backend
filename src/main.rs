@@ -5,15 +5,15 @@ use sqlx::postgres::PgPoolOptions;
 use std::time::Duration;
 
 use evolveme_backend::run;
-use evolveme_backend::config::settings::{get_config, get_jwt_settings, get_redis_url};
-use evolveme_backend::telemetry::{get_subscriber, init_subscriber};
-use evolveme_backend::services::SchedulerService;
+use evolveme_backend::config::settings::{get_config, get_jwt_settings};
+use evolveme_backend::services::{SchedulerService, MinIOService, telemetry::{get_subscriber, init_subscriber}, redis_service::RedisService};
+use evolveme_backend::config::minio::MinIOSettings;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     // Panic if we can't read the config
     let config = get_config().expect("Failed to read the config.");
-    
+    // Telemetry
     let subscriber = get_subscriber(
         "evolveme-backend".into(), 
         config.application.log_level.clone(), 
@@ -24,20 +24,10 @@ async fn main() -> std::io::Result<()> {
     // JWT
     let jwt_settings = get_jwt_settings(&config);
     // Redis
-    let redis_client_raw = match redis::Client::open(get_redis_url(&config).expose_secret()) {
-        Ok(client) => {
-            tracing::info!("Redis client created successfully");
-            Some(client)
-        },
-        Err(e) => {
-            tracing::error!("Failed to create Redis client: {}. LLM features will not work properly.", e);
-            eprintln!("Failed to create Redis client: {}", e);
-            eprintln!("Redis is required for LLM integration. Please ensure Redis is running.");
-            std::process::exit(1);
-        }
-    };
-    // Create Arc version to be thread safe
-    let redis_client_arc = redis_client_raw.map(|client| Arc::new(client));
+    let redis_service = RedisService::new(&config.redis).await.expect("Failed to create Redis service");
+    // MinIO
+    let minio_service = MinIOService::new(&config.minio).await.expect("Failed to create MinIO service");
+    // Postgres
     // Only try to establish connection when actually used
     let conection_pool = PgPoolOptions::new()
         .max_connections(32)
@@ -51,8 +41,8 @@ async fn main() -> std::io::Result<()> {
     let address = format!("{}:{}", config.application.host, config.application.port);
     let listener = TcpListener::bind(&address)?;
     
-    // Initialize the scheduler service
-    let scheduler_service = match SchedulerService::new_with_redis(conection_pool.clone(), redis_client_arc.clone()).await {
+    // Scheduler service
+    let scheduler_service = match SchedulerService::new_with_redis(conection_pool.clone(), redis_service.client.clone()).await {
         Ok(scheduler) => {
             match scheduler.start().await {
                 Ok(_) => {
@@ -75,7 +65,8 @@ async fn main() -> std::io::Result<()> {
         listener,
         conection_pool,
         jwt_settings,
-        redis_client_arc,
-        scheduler_service
+        redis_service.client,
+        scheduler_service,
+        minio_service
     )?.await
 }

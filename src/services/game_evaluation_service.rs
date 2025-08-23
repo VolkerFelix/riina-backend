@@ -14,7 +14,7 @@ use crate::game::game_evaluator::GameStats;
 #[derive(Debug)]
 pub struct GameEvaluationService {
     pool: PgPool,
-    redis_client: Option<Arc<redis::Client>>,
+    redis_client: Arc<redis::Client>,
     standings: StandingsService,
 }
 
@@ -27,14 +27,7 @@ pub struct EvaluationResult {
 }
 
 impl GameEvaluationService {
-    pub fn new(pool: PgPool) -> Self {
-        Self { 
-            standings: StandingsService::new(pool.clone()),
-            pool,
-            redis_client: None,
-        }
-    }
-    pub fn new_with_redis(pool: PgPool, redis_client: Option<Arc<redis::Client>>) -> Self {
+    pub fn new(pool: PgPool, redis_client: Arc<redis::Client>) -> Self {
         Self { 
             standings: StandingsService::new(pool.clone()),
             pool,
@@ -275,8 +268,7 @@ impl GameEvaluationService {
 
     /// Broadcast event to global game events channel using existing Redis pattern
     async fn broadcast_to_global_channel(&self, event: &GameEvent) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(redis_client) = &self.redis_client {
-            let mut conn = redis_client.get_async_connection().await?;
+            let mut conn = self.redis_client.get_async_connection().await?;
             let message = serde_json::to_string(event)?;
             
             let global_channel = "game:events:global";
@@ -291,9 +283,6 @@ impl GameEvaluationService {
                     return Err(Box::new(e));
                 }
             }
-        } else {
-            tracing::warn!("⚠️  No Redis client available for broadcasting game evaluation results");
-        }
         Ok(())
     }
 
@@ -343,8 +332,7 @@ impl GameEvaluationService {
 
     /// Send notification to a specific user using existing Redis pattern
     async fn send_user_notification(&self, user_id: &Uuid, notification: &GameEvent) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(redis_client) = &self.redis_client {
-            let mut conn = redis_client.get_async_connection().await?;
+            let mut conn = self.redis_client.get_async_connection().await?;
             let message = serde_json::to_string(notification)?;
             let user_channel = format!("game:events:user:{}", user_id);
             
@@ -359,7 +347,6 @@ impl GameEvaluationService {
                     return Err(Box::new(e));
                 }
             }
-        }
         Ok(())
     }
 

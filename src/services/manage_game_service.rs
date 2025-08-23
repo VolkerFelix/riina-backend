@@ -12,12 +12,7 @@ pub struct ManageGameService {
 }
 
 impl ManageGameService {
-    pub fn new(pool: PgPool) -> Self {
-        let live_game_service = LiveGameService::new(pool.clone(), None);
-        Self { pool, live_game_service }
-    }
-
-    pub fn new_with_redis(pool: PgPool, redis_client: Option<Arc<redis::Client>>) -> Self {
+    pub fn new(pool: PgPool, redis_client: Arc<redis::Client>) -> Self {
         let live_game_service = LiveGameService::new(pool.clone(), redis_client);
         Self { pool, live_game_service }
     }

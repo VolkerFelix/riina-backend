@@ -12,3 +12,8 @@ jwt:
 redis:
   host: localhost
   port: 6379
+minio:
+  endpoint: http://localhost:9000
+  bucket_name: evolveme-media
+  region: us-east-1
+  testing: false
