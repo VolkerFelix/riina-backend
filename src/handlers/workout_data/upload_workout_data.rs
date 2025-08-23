@@ -8,7 +8,7 @@ use redis::AsyncCommands;
 use std::sync::Arc;
 use crate::middleware::auth::Claims;
 use crate::db::workout_data::{insert_workout_data, check_duplicate_workout_by_time};
-use crate::models::workout_data::WorkoutDataSyncRequest;
+use crate::models::workout_data::{WorkoutDataSyncRequest, WorkoutUploadResponse, GameStats, StatChanges as WorkoutStatChanges};
 use crate::models::common::ApiResponse;
 use crate::game::stats_calculator::StatCalculator;
 use crate::models::live_game::{LiveGame, LiveGameScoreUpdate};
@@ -29,7 +29,7 @@ pub async fn upload_workout_data(
     redis: Option<web::Data<Arc<redis::Client>>>,
     live_game_service: Option<web::Data<LiveGameService>>,
     claims: web::ReqData<Claims>
-) -> HttpResponse {
+) -> actix_web::Result<HttpResponse> {
     tracing::info!("🎮 Processing workout data with game mechanics for user: {}", claims.username);
     
     let user_id = match Uuid::parse_str(&claims.sub) {
@@ -39,9 +39,9 @@ pub async fn upload_workout_data(
         },
         Err(e) => {
             tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::InternalServerError().json(
+            return Ok(HttpResponse::InternalServerError().json(
                 ApiResponse::<()>::error("Invalid user ID")
-            );
+            ));
         }
     };
 
@@ -53,16 +53,18 @@ pub async fn upload_workout_data(
         Ok(is_dup) => {
             if is_dup {
                 tracing::warn!("⚠️ Duplicate workout detected based on time overlap for user: {}. Rejecting duplicate.", claims.username);
-                return HttpResponse::Ok().json(ApiResponse::success(
+                let response = WorkoutUploadResponse {
+                    sync_id: Uuid::new_v4(),
+                    timestamp: Utc::now(),
+                    is_duplicate: true,
+                    duplicate_reason: Some("Similar workout time detected (within 15 seconds)".to_string()),
+                    action: Some("rejected".to_string()),
+                    game_stats: None,
+                };
+                return Ok(HttpResponse::Ok().json(ApiResponse::success(
                     "Workout already exists (duplicate detected)",
-                    serde_json::json!({
-                        "sync_id": Uuid::new_v4(),
-                        "timestamp": Utc::now(),
-                        "is_duplicate": true,
-                        "duplicate_reason": "Similar workout time detected (within 15 seconds)",
-                        "action": "rejected"
-                    })
-                ));
+                    response
+                )));
             }
             is_dup
         }
@@ -102,9 +104,9 @@ pub async fn upload_workout_data(
         }
         Err(e) => {
             tracing::error!("❌ Failed to update avatar stats for {}: {}", claims.username, e);
-            return HttpResponse::InternalServerError().json(
+            return Ok(HttpResponse::InternalServerError().json(
                 ApiResponse::<()>::error("Failed to update avatar stats")
-            );
+            ));
         }
     }
 
@@ -234,27 +236,29 @@ pub async fn upload_workout_data(
 
             // 🎉 RESPONSE WITH GAME STATS (only non-duplicates reach here)
             let message = "Workout data synced and game stats calculated!";
-            let sync_data = json!({
-                "sync_id": sync_id,
-                "timestamp": Utc::now(),
-                "is_duplicate": false,
-                "game_stats": {
-                    "stat_changes": {
-                        "stamina_change": stat_changes.stamina_change,
-                        "strength_change": stat_changes.strength_change,
+            let response = WorkoutUploadResponse {
+                sync_id,
+                timestamp: Utc::now(),
+                is_duplicate: false,
+                duplicate_reason: None,
+                action: None,
+                game_stats: Some(GameStats {
+                    stat_changes: WorkoutStatChanges {
+                        stamina_change: stat_changes.stamina_change,
+                        strength_change: stat_changes.strength_change,
                     },
-                    "reasoning": stat_changes.reasoning,
-                    "summary": format!("Gained {} total stat points!", 
+                    reasoning: stat_changes.reasoning.join("\n"),
+                    summary: format!("Gained {} total stat points!", 
                         stat_changes.stamina_change + stat_changes.strength_change
-                    )
-                }
-            });
+                    ),
+                }),
+            };
 
             tracing::info!("✅ Workout data processed successfully for {}: {}", 
                 claims.username, sync_id);
-            HttpResponse::Ok().json(
-                ApiResponse::success(message, sync_data)
-            )
+            Ok(HttpResponse::Ok().json(
+                ApiResponse::success(message, response)
+            ))
         }
         Err(e) => {
             // Check if this is a duplicate workout UUID error
@@ -264,16 +268,16 @@ pub async fn upload_workout_data(
                         claims.username, data.workout_uuid);
                     
                     // Return a more specific error response for duplicate UUIDs
-                    return HttpResponse::Conflict().json(
+                    return Ok(HttpResponse::Conflict().json(
                         ApiResponse::<()>::error("This workout has already been uploaded (duplicate UUID)")
-                    );
+                    ));
                 }
             }
             
             tracing::error!("❌ Failed to sync workout data for {}: {}", claims.username, e);
-            HttpResponse::InternalServerError().json(
+            Ok(HttpResponse::InternalServerError().json(
                 ApiResponse::<()>::error(format!("Failed to sync workout data: {}", e))
-            )
+            ))
         }
     }
 }

@@ -43,6 +43,33 @@ pub struct WorkoutDataSyncData {
     pub timestamp: DateTime<Utc>,
 }
 
+/// Response for successful workout upload
+#[derive(Debug, Serialize)]
+pub struct WorkoutUploadResponse {
+    pub sync_id: Uuid,
+    pub timestamp: DateTime<Utc>,
+    pub is_duplicate: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duplicate_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub game_stats: Option<GameStats>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GameStats {
+    pub stat_changes: StatChanges,
+    pub reasoning: String,
+    pub summary: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StatChanges {
+    pub stamina_change: i32,
+    pub strength_change: i32,
+}
+
 #[derive(Debug, Clone)]
 pub struct UserProfile {
     pub age: i32,
