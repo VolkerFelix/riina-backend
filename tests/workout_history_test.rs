@@ -114,9 +114,10 @@ async fn test_workout_history_pagination() {
     let test_user = create_test_user_and_login(&test_app.address).await;
     let token = test_user.token;
 
-    // Upload multiple health data entries
-    for _ in 0..5 {
-        let workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    // Upload multiple health data entries with different timestamps to avoid duplicate detection
+    for i in 0..5 {
+        let workout_time = Utc::now() - chrono::Duration::hours(i as i64); // Each workout at different times
+        let workout_data = WorkoutData::new(WorkoutType::Moderate, workout_time, 30);
 
         let health_response = client
             .post(&format!("{}/health/upload_health", &test_app.address))

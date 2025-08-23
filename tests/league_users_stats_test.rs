@@ -137,11 +137,11 @@ async fn test_get_league_users_with_stats_success() {
 
     println!("✅ Added members to both teams");
 
-    // Step 5: Test the league users stats endpoint
+    // Step 5: Test the league users stats endpoint with a large page_size to get all users
     let stats_response = make_authenticated_request(
         &client,
         reqwest::Method::GET,
-        &format!("{}/league/users/stats", &test_app.address),
+        &format!("{}/league/users/stats?page_size=100", &test_app.address),
         &team1_owner.token,
         None,
     ).await;

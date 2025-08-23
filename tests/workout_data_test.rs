@@ -265,7 +265,7 @@ async fn test_duplicate_workout_detection_by_time() {
 
     assert!(response1.status().is_success(), "First workout upload should succeed");
 
-    // Second upload with different UUID but same time (within tolerance) - should be accepted but marked as duplicate
+    // Second upload with different UUID but same time (within tolerance) - should be rejected as duplicate
     let mut duplicate_workout = workout_data.clone();
     duplicate_workout["workout_uuid"] = json!(Uuid::new_v4().to_string()); // Different UUID
     duplicate_workout["workout_start"] = json!(workout_start + Duration::seconds(10)); // 10 seconds later
@@ -279,13 +279,12 @@ async fn test_duplicate_workout_detection_by_time() {
         Some(duplicate_workout.clone()),
     ).await;
 
-    assert_eq!(response2.status(), 200, "Should accept duplicate workout but mark it");
+    assert_eq!(response2.status(), 200, "Duplicate workout should return success with rejection info");
     
     let response2_body: serde_json::Value = response2.json().await.expect("Failed to parse duplicate response");
     assert_eq!(response2_body["success"], true);
     assert_eq!(response2_body["data"]["is_duplicate"], true, "Should be marked as duplicate");
-    assert_eq!(response2_body["data"]["game_stats"]["stat_changes"]["stamina_change"], 0, "Duplicate should have 0 stamina");
-    assert_eq!(response2_body["data"]["game_stats"]["stat_changes"]["strength_change"], 0, "Duplicate should have 0 strength");
+    assert_eq!(response2_body["data"]["action"], "rejected", "Should be rejected");
     assert!(response2_body["message"].as_str().unwrap().contains("duplicate"));
 
     // Third upload with different UUID and time outside tolerance - should succeed
@@ -304,7 +303,7 @@ async fn test_duplicate_workout_detection_by_time() {
 
     assert!(response3.status().is_success(), "Workout with different time should succeed");
 
-    // Verify we have 3 workouts total (all stored)
+    // Verify we have only 2 workouts stored (duplicate was rejected)
     let total_count = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM workout_data WHERE user_id = (SELECT id FROM users WHERE username = $1)"
     )
@@ -313,18 +312,7 @@ async fn test_duplicate_workout_detection_by_time() {
     .await
     .expect("Failed to count workout records");
 
-    assert_eq!(total_count, 3, "Should have all 3 workouts stored");
-    
-    // Verify only 2 workouts are not duplicates
-    let non_duplicate_count = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM workout_data WHERE user_id = (SELECT id FROM users WHERE username = $1) AND is_duplicate = false"
-    )
-    .bind(&test_user.username)
-    .fetch_one(&test_app.db_pool)
-    .await
-    .expect("Failed to count non-duplicate records");
-
-    assert_eq!(non_duplicate_count, 2, "Should have exactly 2 non-duplicate workouts");
+    assert_eq!(total_count, 2, "Should have only 2 workouts stored (duplicate rejected)");
 }
 
 #[tokio::test]
@@ -357,7 +345,7 @@ async fn test_duplicate_detection_edge_cases() {
 
     assert!(response1.status().is_success(), "First workout should succeed");
 
-    // Workout at exactly 15 seconds later - should be accepted but marked as duplicate
+    // Workout at exactly 15 seconds later - should be rejected as duplicate
     let workout2 = json!({
         "device_id": "device2",
         "timestamp": Utc::now(),
@@ -375,9 +363,10 @@ async fn test_duplicate_detection_edge_cases() {
         Some(workout2),
     ).await;
 
-    assert_eq!(response2.status(), 200, "Workout at 15-second boundary should be accepted");
+    assert_eq!(response2.status(), 200, "Workout at 15-second boundary should return success with rejection");
     let response2_body: serde_json::Value = response2.json().await.expect("Failed to parse response");
     assert_eq!(response2_body["data"]["is_duplicate"], true, "Should be marked as duplicate");
+    assert_eq!(response2_body["data"]["action"], "rejected", "Should be rejected");
 
     // Test 2: Workout at 16 seconds later - should succeed
     let workout3 = json!({

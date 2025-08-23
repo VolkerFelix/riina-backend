@@ -46,17 +46,15 @@ fn calculate_min_heart_rate(heart_rate_data: &[HeartRateData]) -> Option<i32> {
     fields(
         user_id = %user_id,
         workout_uuid = ?data.workout_uuid,
-        device_id = %data.device_id,
-        is_duplicate = %is_duplicate
+        device_id = %data.device_id
     )
 )]
 pub async fn insert_workout_data(
     pool: &Pool<Postgres>,
     user_id: Uuid,
     data: &WorkoutDataSyncRequest,
-    is_duplicate: bool,
 ) -> Result<Uuid, sqlx::Error> {
-    tracing::info!("Attempting to insert workout data for user (is_duplicate: {})", is_duplicate);
+    tracing::info!("Attempting to insert workout data for user");
     
     // Calculate derived metrics
     let duration_minutes = calculate_duration_minutes(data);
@@ -77,9 +75,9 @@ pub async fn insert_workout_data(
             user_id, device_id, heart_rate_data, 
             calories_burned, workout_uuid, workout_start, workout_end,
             duration_minutes, avg_heart_rate, max_heart_rate, min_heart_rate,
-            image_url, video_url, is_duplicate
+            image_url, video_url
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         RETURNING id
         "#,
         user_id,
@@ -94,8 +92,7 @@ pub async fn insert_workout_data(
         max_heart_rate,
         min_heart_rate,
         data.image_url.as_deref(),
-        data.video_url.as_deref(),
-        is_duplicate
+        data.video_url.as_deref()
     )
     .fetch_one(pool)
     .await
@@ -206,7 +203,6 @@ pub async fn check_duplicate_workout_by_time(
         WHERE user_id = $1
         AND workout_start IS NOT NULL
         AND workout_end IS NOT NULL
-        AND is_duplicate = false
         AND ABS(EXTRACT(EPOCH FROM (workout_start - $2))) <= 15
         AND ABS(EXTRACT(EPOCH FROM (workout_end - $3))) <= 15
         AND workout_uuid != $4

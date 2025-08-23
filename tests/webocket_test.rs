@@ -8,6 +8,7 @@ use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use std::time::Duration;
 use uuid::Uuid;
+use base64::{Engine as _, engine::general_purpose};
 
 mod common;
 use common::utils::spawn_app;
@@ -421,7 +422,7 @@ fn decode_jwt_user_id(token: &str) -> Result<String, String> {
     }
     
     let payload_base64 = parts[1];
-    let payload_bytes = base64::decode_config(payload_base64, base64::URL_SAFE_NO_PAD)
+    let payload_bytes = general_purpose::URL_SAFE_NO_PAD.decode(payload_base64)
         .map_err(|e| format!("Failed to decode base64: {}", e))?;
     
     let payload_str = String::from_utf8(payload_bytes)

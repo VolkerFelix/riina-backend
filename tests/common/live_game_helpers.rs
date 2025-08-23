@@ -509,6 +509,15 @@ async fn upload_workout_data_with_time(
     
     // Return actual calculated values based on the response
     let response_data: serde_json::Value = response.json().await.unwrap();
+    
+    // Check if this is a duplicate workout response
+    if let Some(is_duplicate) = response_data["data"]["is_duplicate"].as_bool() {
+        if is_duplicate {
+            // Duplicate workouts don't contribute stats, return zero
+            return (0, 0);
+        }
+    }
+    
     if let Some(game_stats) = response_data["data"]["game_stats"].as_object() {
         if let Some(stat_changes) = game_stats["stat_changes"].as_object() {
             let stamina = stat_changes["stamina_change"].as_i64().unwrap_or(0) as i32;

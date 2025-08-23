@@ -83,7 +83,7 @@ pub async fn get_workout_history(
     let limit = query.limit.unwrap_or(20).min(100); // Max 100 items
     let offset = query.offset.unwrap_or(0);
 
-    // Fetch workout history with all stats from workout_data
+    // Fetch workout history with all stats from workout_data (excluding duplicates)
     let workouts: Vec<WorkoutHistoryItem> = match sqlx::query!(
         r#"
         SELECT 

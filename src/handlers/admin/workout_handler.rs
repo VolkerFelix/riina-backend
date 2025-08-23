@@ -19,7 +19,6 @@ struct AdminWorkoutData {
     pub workout_uuid: Option<String>,
     pub workout_start: Option<DateTime<Utc>>,
     pub workout_end: Option<DateTime<Utc>>,
-    pub is_duplicate: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -34,7 +33,6 @@ pub struct AdminWorkoutDetail {
     pub workout_uuid: Option<String>,
     pub workout_start: Option<DateTime<Utc>>,
     pub workout_end: Option<DateTime<Utc>>,
-    pub is_duplicate: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -90,7 +88,6 @@ pub async fn get_all_workouts(
             wd.workout_uuid,
             wd.workout_start,
             wd.workout_end,
-            wd.is_duplicate,
             wd.created_at
         FROM workout_data wd
         JOIN users u ON u.id = wd.user_id
@@ -130,7 +127,6 @@ pub async fn get_workout_detail(
             wd.workout_uuid,
             wd.workout_start,
             wd.workout_end,
-            wd.is_duplicate,
             wd.created_at
         FROM workout_data wd
         JOIN users u ON u.id = wd.user_id
@@ -192,7 +188,6 @@ pub async fn get_workout_detail(
         workout_uuid: row.get("workout_uuid"),
         workout_start: row.get("workout_start"),
         workout_end: row.get("workout_end"),
-        is_duplicate: row.get("is_duplicate"),
         created_at: row.get("created_at"),
     };
 
