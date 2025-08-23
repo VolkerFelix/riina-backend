@@ -13,7 +13,7 @@ async fn upload_health(
     redis: Option<web::Data<Arc<redis::Client>>>,
     live_game_service: Option<web::Data<LiveGameService>>,
     claims: web::ReqData<Claims>
-) -> actix_web::Result<HttpResponse> {
+) -> HttpResponse {
     upload_workout_data(data, pool, redis, live_game_service, claims).await
 }
 
