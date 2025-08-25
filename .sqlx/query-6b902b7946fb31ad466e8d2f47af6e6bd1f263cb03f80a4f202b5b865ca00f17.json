@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id, home_team_id, away_team_id, home_score, away_score\n            FROM games \n            WHERE id = ANY($1) and status = 'finished'\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "home_team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "away_team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "home_score",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 4,
+        "name": "away_score",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "6b902b7946fb31ad466e8d2f47af6e6bd1f263cb03f80a4f202b5b865ca00f17"
+}

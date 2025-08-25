@@ -155,7 +155,7 @@ impl SeasonService {
             .execute(&mut *tx)
             .await?;
 
-        sqlx::query!("DELETE FROM league_games WHERE season_id = $1", season_id)
+        sqlx::query!("DELETE FROM games WHERE season_id = $1", season_id)
             .execute(&mut *tx)
             .await?;
 
@@ -181,7 +181,7 @@ impl SeasonService {
                 SUM(CASE WHEN lg.status = 'finished' THEN 1 ELSE 0 END) as completed_games,
                 COUNT(DISTINCT ls.team_id) as total_teams,
                 MAX(lg.week_number) as total_weeks
-            FROM league_games lg
+            FROM games lg
             LEFT JOIN league_standings ls ON ls.season_id = lg.season_id
             WHERE lg.season_id = $1
             "#,

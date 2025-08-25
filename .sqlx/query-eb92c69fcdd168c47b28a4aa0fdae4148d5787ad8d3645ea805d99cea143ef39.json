@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT \n                COUNT(DISTINCT lg.id) as total_games,\n                SUM(CASE WHEN lg.status = 'finished' THEN 1 ELSE 0 END) as completed_games,\n                COUNT(DISTINCT ls.team_id) as total_teams,\n                MAX(lg.week_number) as total_weeks\n            FROM games lg\n            LEFT JOIN league_standings ls ON ls.season_id = lg.season_id\n            WHERE lg.season_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "total_games",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "completed_games",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "total_teams",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "total_weeks",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "eb92c69fcdd168c47b28a4aa0fdae4148d5787ad8d3645ea805d99cea143ef39"
+}

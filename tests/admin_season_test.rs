@@ -147,7 +147,7 @@ async fn admin_generate_schedule_works() {
     let games = sqlx::query!(
         r#"
         SELECT COUNT(*) as count
-        FROM league_games
+        FROM games
         WHERE season_id = $1
         "#,
         Uuid::parse_str(&season_id).unwrap()

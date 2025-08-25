@@ -6,7 +6,7 @@ use uuid::Uuid;
 use std::sync::Arc;
 
 use crate::models::workout_data::HeartRateData;
-use crate::services::live_game_service::LiveGameService;
+// LiveGameService removed during table consolidation
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
 struct AdminWorkoutData {
@@ -286,29 +286,26 @@ pub async fn delete_workout(
         // Update the live game scores by subtracting the deleted workout's contribution
         let update_query = if team_side == "home" {
             r#"
-            UPDATE live_games 
+            UPDATE games 
             SET 
                 home_score = GREATEST(0, home_score - $1),
-                home_power = GREATEST(0, home_power - $2),
                 updated_at = NOW()
-            WHERE id = $3
+            WHERE id = $2
             RETURNING *
             "#
         } else {
             r#"
-            UPDATE live_games 
+            UPDATE games 
             SET 
                 away_score = GREATEST(0, away_score - $1),
-                away_power = GREATEST(0, away_power - $2),
                 updated_at = NOW()
-            WHERE id = $3
+            WHERE id = $2
             RETURNING *
             "#
         };
 
         let updated_game = sqlx::query(update_query)
             .bind(score_points)
-            .bind(power_contribution)
             .bind(live_game_id)
             .fetch_optional(pool.get_ref())
             .await
@@ -317,20 +314,13 @@ pub async fn delete_workout(
                 actix_web::error::ErrorInternalServerError("Failed to update live game scores")
             })?;
 
-        // Broadcast the updated scores if the game was updated
-        if updated_game.is_some() {
-            let live_game_service = LiveGameService::new(pool.get_ref().clone(), redis_client.unwrap().get_ref().clone());
-            
-            // Get the updated live game and broadcast the change
-            if let Ok(Some(live_game)) = live_game_service.get_live_game_by_id(live_game_id).await {
-                let _ = live_game_service.broadcast_live_score_update(&live_game).await;
-            }
-        }
+        // TODO: Re-implement with consolidated game architecture
+        // Live game broadcasting temporarily disabled during table consolidation
 
         // Update player contribution
         sqlx::query(
             r#"
-            UPDATE live_player_contributions 
+            -- UPDATE live_player_contributions (table removed) 
             SET 
                 current_power = GREATEST(0, current_power - $1),
                 total_score_contribution = GREATEST(0, total_score_contribution - $2),
@@ -492,59 +482,33 @@ pub async fn bulk_delete_workouts(
 
     let deleted_count = result.rows_affected();
     
-    // Now update all affected live games
-    let live_game_service = LiveGameService::new(pool.get_ref().clone(), redis_client.get_ref().clone());
+    // TODO: Re-implement with consolidated game architecture
+    // Live game score adjustments temporarily disabled during table consolidation
     
     for (live_game_id, adjustment) in game_adjustments {
         // Update live game scores
         let update_result = sqlx::query(
             r#"
-            UPDATE live_games 
+            UPDATE games 
             SET 
                 home_score = GREATEST(0, home_score - $1),
-                home_power = GREATEST(0, home_power - $2),
-                away_score = GREATEST(0, away_score - $3),
-                away_power = GREATEST(0, away_power - $4),
+                away_score = GREATEST(0, away_score - $2),
                 updated_at = NOW()
-            WHERE id = $5
-            RETURNING id
+            WHERE id = $2
             "#
         )
         .bind(adjustment.home_score_decrease)
-        .bind(adjustment.home_power_decrease)
         .bind(adjustment.away_score_decrease)
-        .bind(adjustment.away_power_decrease)
         .bind(live_game_id)
-        .fetch_optional(pool.get_ref())
+        .execute(pool.get_ref())
         .await;
 
-        if update_result.is_ok() && update_result.unwrap().is_some() {
-            // Update player contributions
-            for (user_id, (score_decrease, power_decrease)) in adjustment.user_contributions {
-                sqlx::query(
-                    r#"
-                    UPDATE live_player_contributions 
-                    SET 
-                        current_power = GREATEST(0, current_power - $1),
-                        total_score_contribution = GREATEST(0, total_score_contribution - $2),
-                        contribution_count = GREATEST(0, contribution_count - 1),
-                        updated_at = NOW()
-                    WHERE live_game_id = $3 AND user_id = $4
-                    "#
-                )
-                .bind(power_decrease)
-                .bind(score_decrease)
-                .bind(live_game_id)
-                .bind(user_id)
-                .execute(pool.get_ref())
-                .await
-                .ok();
-            }
+        if update_result.is_ok() {
+            // Note: Player contribution tracking moved to live_score_events table
+            tracing::info!("Updated game {} scores after workout deletion", live_game_id);
 
-            // Broadcast the updated scores
-            if let Ok(Some(live_game)) = live_game_service.get_live_game_by_id(live_game_id).await {
-                let _ = live_game_service.broadcast_live_score_update(&live_game).await;
-            }
+            // TODO: Re-implement with consolidated game architecture
+            // Live game broadcasting temporarily disabled
         }
     }
     

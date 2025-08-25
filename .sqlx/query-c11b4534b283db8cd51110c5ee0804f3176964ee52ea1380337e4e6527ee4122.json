@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT \n                    lse.id, lse.user_id, lse.score_points,\n                    lse.occurred_at, lse.event_type::text as \"event_type!\", lse.description,\n                    lse.username, lse.workout_data_id\n                FROM live_score_events lse\n                WHERE lse.game_id = $1\n                ORDER BY lse.occurred_at DESC\n                LIMIT 50\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "score_points",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "occurred_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "event_type!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "username",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "workout_data_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      null,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "c11b4534b283db8cd51110c5ee0804f3176964ee52ea1380337e4e6527ee4122"
+}

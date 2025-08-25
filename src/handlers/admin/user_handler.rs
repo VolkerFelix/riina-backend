@@ -359,17 +359,7 @@ pub async fn delete_user(
 
     // Delete in the correct order to maintain referential integrity
     
-    // 1. Delete from live_player_contributions
-    sqlx::query!(
-        "DELETE FROM live_player_contributions WHERE user_id = $1",
-        user_id
-    )
-    .execute(&mut *tx)
-    .await
-    .map_err(|e| {
-        eprintln!("Database error deleting live player contributions: {}", e);
-        actix_web::error::ErrorInternalServerError("Database error")
-    })?;
+    // Note: live_player_contributions table was removed in consolidation
 
     // 2. Delete from team_members
     sqlx::query!(

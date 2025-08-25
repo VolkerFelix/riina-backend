@@ -620,7 +620,7 @@ pub async fn get_league_seasons(
             ls.game_duration_minutes
         FROM league_seasons ls
         LEFT JOIN league_teams lt ON ls.id = lt.season_id
-        LEFT JOIN league_games lg ON ls.id = lg.season_id
+        LEFT JOIN games lg ON ls.id = lg.season_id
         WHERE ls.league_id = $1
         GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.evaluation_cron, ls.evaluation_timezone, ls.auto_evaluation_enabled, ls.created_at
         ORDER BY ls.created_at DESC
@@ -920,7 +920,7 @@ pub async fn get_league_season_by_id(
             ls.game_duration_minutes
         FROM league_seasons ls
         LEFT JOIN league_teams lt ON ls.id = lt.season_id
-        LEFT JOIN league_games lg ON ls.id = lg.season_id
+        LEFT JOIN games lg ON ls.id = lg.season_id
         WHERE ls.league_id = $1 AND ls.id = $2
         GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.evaluation_cron, ls.evaluation_timezone, ls.auto_evaluation_enabled, ls.created_at
         "#,
@@ -1057,7 +1057,7 @@ pub async fn delete_league_season(
     
     // 1. Delete league games
     sqlx::query!(
-        "DELETE FROM league_games WHERE season_id = $1",
+        "DELETE FROM games WHERE season_id = $1",
         season_id
     )
     .execute(&mut *tx)

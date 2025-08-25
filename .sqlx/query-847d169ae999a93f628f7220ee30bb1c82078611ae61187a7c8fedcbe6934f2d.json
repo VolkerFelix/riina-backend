@@ -1,0 +1,88 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT \n            ls.id,\n            ls.league_id,\n            ls.name,\n            ls.start_date,\n            ls.end_date,\n            ls.evaluation_cron,\n            ls.evaluation_timezone,\n            ls.auto_evaluation_enabled,\n            ls.created_at,\n            COUNT(DISTINCT lt.team_id) as total_teams,\n            COUNT(DISTINCT lg.id) as games_count,\n            ls.game_duration_minutes\n        FROM league_seasons ls\n        LEFT JOIN league_teams lt ON ls.id = lt.season_id\n        LEFT JOIN games lg ON ls.id = lg.season_id\n        WHERE ls.league_id = $1\n        GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.evaluation_cron, ls.evaluation_timezone, ls.auto_evaluation_enabled, ls.created_at\n        ORDER BY ls.created_at DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "league_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "start_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "end_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "evaluation_cron",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "evaluation_timezone",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "auto_evaluation_enabled",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "total_teams",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 10,
+        "name": "games_count",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 11,
+        "name": "game_duration_minutes",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      null,
+      null,
+      false
+    ]
+  },
+  "hash": "847d169ae999a93f628f7220ee30bb1c82078611ae61187a7c8fedcbe6934f2d"
+}

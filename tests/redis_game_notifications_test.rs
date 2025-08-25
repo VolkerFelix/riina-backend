@@ -160,7 +160,7 @@ async fn test_redis_game_evaluation_notifications() {
     
     // Check game statuses after cycle
     let games_after_cycle = sqlx::query!(
-        "SELECT id, status FROM league_games WHERE season_id IN (SELECT id FROM league_seasons WHERE league_id = $1)",
+        "SELECT id, status FROM games WHERE season_id IN (SELECT id FROM league_seasons WHERE league_id = $1)",
         Uuid::parse_str(league_id).expect("Invalid league ID")
     )
     .fetch_all(&app.db_pool)
@@ -191,7 +191,7 @@ async fn test_redis_game_evaluation_notifications() {
     
     // Check final game statuses
     let games_final = sqlx::query!(
-        "SELECT id, status FROM league_games WHERE season_id IN (SELECT id FROM league_seasons WHERE league_id = $1)",
+        "SELECT id, status FROM games WHERE season_id IN (SELECT id FROM league_seasons WHERE league_id = $1)",
         Uuid::parse_str(league_id).expect("Invalid league ID")
     )
     .fetch_all(&app.db_pool)
@@ -218,9 +218,9 @@ async fn test_redis_game_evaluation_notifications() {
     
     println!("✅ Subscribed to user-specific Redis channels");
     
-    // Clean up old finished games without live game data to avoid noise
+    // Clean up old finished games to avoid noise  
     let cleanup_result = sqlx::query!(
-        "DELETE FROM league_games WHERE status = 'finished' AND id NOT IN (SELECT DISTINCT game_id FROM live_games WHERE game_id IS NOT NULL)"
+        "DELETE FROM games WHERE status = 'finished'"
     )
     .execute(&app.db_pool)
     .await
@@ -381,7 +381,7 @@ async fn update_games_to_current_time(app: &common::utils::TestApp, league_id: &
     // Set week_start_date to beginning of today (so CURRENT_DATE BETWEEN works) and week_end_date to 5 seconds later
     sqlx::query!(
         r#"
-        UPDATE league_games 
+        UPDATE games 
         SET scheduled_time = $1, week_start_date = $2, week_end_date = $3
         WHERE season_id IN (
             SELECT id FROM league_seasons WHERE league_id = $4
@@ -400,7 +400,7 @@ async fn update_games_to_current_time(app: &common::utils::TestApp, league_id: &
     
     // Check game statuses right after update
     let games_check = sqlx::query!(
-        "SELECT id, status, scheduled_time, week_start_date, week_end_date FROM league_games WHERE season_id IN (SELECT id FROM league_seasons WHERE league_id = $1)",
+        "SELECT id, status, scheduled_time, week_start_date, week_end_date FROM games WHERE season_id IN (SELECT id FROM league_seasons WHERE league_id = $1)",
         league_uuid
     )
     .fetch_all(&app.db_pool)

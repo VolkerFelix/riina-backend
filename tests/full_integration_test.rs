@@ -259,7 +259,7 @@ async fn create_manual_game(test_app: &TestApp, season_id: Uuid, home_team_id: U
     
     sqlx::query!(
         r#"
-        INSERT INTO league_games (id, season_id, home_team_id, away_team_id, scheduled_time, week_number, status)
+        INSERT INTO games (id, season_id, home_team_id, away_team_id, scheduled_time, week_number, status)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         "#,
         game_id,
@@ -678,7 +678,7 @@ async fn get_first_game_for_teams(test_app: &TestApp, season_id: Uuid, home_team
     let game = sqlx::query!(
         r#"
         SELECT id 
-        FROM league_games 
+        FROM games 
         WHERE season_id = $1 
         AND ((home_team_id = $2 AND away_team_id = $3) OR (home_team_id = $3 AND away_team_id = $2))
         ORDER BY week_number
@@ -704,7 +704,7 @@ async fn create_test_game(test_app: &TestApp, client: &Client, home_team_id: Uui
     // Insert game directly into database for testing
     sqlx::query!(
         r#"
-        INSERT INTO league_games (id, home_team_id, away_team_id, season_id, week_number, scheduled_time, status, week_start_date, week_end_date)
+        INSERT INTO games (id, home_team_id, away_team_id, season_id, week_number, scheduled_time, status, week_start_date, week_end_date)
         VALUES ($1, $2, $3, $4, 1, $5, 'in_progress', $6, $7)
         "#,
         game_id,
@@ -728,7 +728,7 @@ async fn update_game_to_short_duration(test_app: &TestApp, game_id: Uuid) {
     
     sqlx::query!(
         r#"
-        UPDATE league_games 
+        UPDATE games 
         SET week_start_date = $1, week_end_date = $2, scheduled_time = $1
         WHERE id = $3
         "#,
@@ -747,7 +747,7 @@ async fn update_game_times_to_now(test_app: &TestApp, game_id: Uuid) {
     
     sqlx::query!(
         r#"
-        UPDATE league_games 
+        UPDATE games 
         SET scheduled_time = $1, week_start_date = $1, week_end_date = $2
         WHERE id = $3
         "#,
@@ -762,7 +762,7 @@ async fn update_game_times_to_now(test_app: &TestApp, game_id: Uuid) {
 
 async fn start_test_game(test_app: &TestApp, game_id: Uuid) {
     sqlx::query!(
-        "UPDATE league_games SET status = 'in_progress' WHERE id = $1",
+        "UPDATE games SET status = 'in_progress' WHERE id = $1",
         game_id
     )
     .execute(&test_app.db_pool)
@@ -770,20 +770,16 @@ async fn start_test_game(test_app: &TestApp, game_id: Uuid) {
     .expect("Failed to start test game");
 }
 
-async fn initialize_live_game(test_app: &TestApp, game_id: Uuid, redis_client: Arc<redis::Client>) -> LiveGameRow {
-    // Create live game service and initialize
-    let live_game_service = evolveme_backend::services::LiveGameService::new(test_app.db_pool.clone(), redis_client);
-    
-    live_game_service.initialize_live_game(game_id)
-        .await
-        .expect("Failed to initialize live game");
-
+async fn initialize_live_game(test_app: &TestApp, game_id: Uuid, _redis_client: Arc<redis::Client>) -> LiveGameRow {
+    // In the consolidated architecture, games don't need separate initialization
+    // Just start the game directly and return its state
+    start_test_game(test_app, game_id).await;
     get_live_game_state(test_app, game_id).await
 }
 
 async fn get_season_id_for_game(test_app: &TestApp, game_id: Uuid) -> Uuid {
     let row = sqlx::query!(
-        "SELECT season_id FROM league_games WHERE id = $1",
+        "SELECT season_id FROM games WHERE id = $1",
         game_id
     )
     .fetch_one(&test_app.db_pool)
@@ -820,14 +816,15 @@ async fn get_live_game_state(test_app: &TestApp, game_id: Uuid) -> LiveGameRow {
     let row = sqlx::query!(
         r#"
         SELECT 
-            id, game_id, home_team_id, home_team_name, away_team_id, away_team_name,
-            home_score, away_score, home_power, away_power,
-            game_start_time, game_end_time, last_score_time, last_scorer_id,
-            last_scorer_name, last_scorer_team, is_active, created_at, updated_at
-        FROM live_games 
-        WHERE game_id = $1
-        ORDER BY created_at DESC
-        LIMIT 1
+            g.id, g.id as game_id, g.home_team_id, ht.team_name as home_team_name, 
+            g.away_team_id, at.team_name as away_team_name,
+            g.home_score, g.away_score,
+            g.game_start_time, g.game_end_time, g.last_score_time, g.last_scorer_id,
+            g.last_scorer_name, g.last_scorer_team, g.created_at, g.updated_at
+        FROM games g
+        JOIN teams ht ON g.home_team_id = ht.id
+        JOIN teams at ON g.away_team_id = at.id
+        WHERE g.id = $1
         "#,
         game_id
     )
@@ -842,27 +839,24 @@ async fn get_live_game_state(test_app: &TestApp, game_id: Uuid) -> LiveGameRow {
         away_team_name: row.away_team_name,
         home_score: row.home_score,
         away_score: row.away_score,
-        home_power: row.home_power,
-        away_power: row.away_power,
         game_start_time: row.game_start_time,
         game_end_time: row.game_end_time,
         last_score_time: row.last_score_time,
         last_scorer_id: row.last_scorer_id,
         last_scorer_name: row.last_scorer_name,
         last_scorer_team: row.last_scorer_team,
-        is_active: row.is_active,
     }
 }
 
-async fn get_player_contributions(test_app: &TestApp, live_game_id: Uuid) -> (Vec<PlayerContribution>, Vec<PlayerContribution>) {
-    // Get the live game info first
-    let live_game = sqlx::query!(
-        "SELECT home_team_id, away_team_id FROM live_games WHERE id = $1",
-        live_game_id
+async fn get_player_contributions(test_app: &TestApp, game_id: Uuid) -> (Vec<PlayerContribution>, Vec<PlayerContribution>) {
+    // Get the game info first
+    let game = sqlx::query!(
+        "SELECT home_team_id, away_team_id FROM games WHERE id = $1",
+        game_id
     )
     .fetch_one(&test_app.db_pool)
     .await
-    .expect("Failed to get live game info");
+    .expect("Failed to get game info");
 
     // Get contributions by joining team_members with aggregated score events (same logic as the main system)
     let rows = sqlx::query!(
@@ -877,29 +871,28 @@ async fn get_player_contributions(test_app: &TestApp, live_game_id: Uuid) -> (Ve
                 WHEN tm.team_id = $3 THEN 'away'
                 ELSE 'unknown'
             END as team_side,
-            COALESCE(SUM(lse.power_contribution), 0)::int as current_power,
             COALESCE(SUM(lse.score_points), 0)::int as total_score_contribution,
             COUNT(CASE WHEN lse.id IS NOT NULL THEN 1 END)::int as contribution_count,
             MAX(lse.occurred_at) as last_contribution_time
         FROM team_members tm
         JOIN users u ON tm.user_id = u.id
         JOIN teams t ON tm.team_id = t.id
-        LEFT JOIN live_score_events lse ON lse.live_game_id = $1 AND lse.user_id = tm.user_id
+        LEFT JOIN live_score_events lse ON lse.game_id = $1 AND lse.user_id = tm.user_id
         WHERE tm.status = 'active'
         AND (tm.team_id = $2 OR tm.team_id = $3)
         GROUP BY tm.user_id, u.username, tm.team_id, t.team_name
         ORDER BY total_score_contribution DESC
         "#,
-        live_game_id,
-        live_game.home_team_id,
-        live_game.away_team_id
+        game_id,
+        game.home_team_id,
+        game.away_team_id
     )
     .fetch_all(&test_app.db_pool)
     .await
     .expect("Failed to get player contributions");
     
-    println!("DEBUG: Found {} team members for live_game_id: {}", rows.len(), live_game_id);
-    println!("DEBUG: home_team_id: {}, away_team_id: {}", live_game.home_team_id, live_game.away_team_id);
+    println!("DEBUG: Found {} team members for game_id: {}", rows.len(), game_id);
+    println!("DEBUG: home_team_id: {}, away_team_id: {}", game.home_team_id, game.away_team_id);
 
     let mut home_contributions = Vec::new();
     let mut away_contributions = Vec::new();
@@ -925,15 +918,15 @@ async fn get_player_contributions(test_app: &TestApp, live_game_id: Uuid) -> (Ve
     (home_contributions, away_contributions)
 }
 
-async fn get_recent_score_events(test_app: &TestApp, live_game_id: Uuid) -> Vec<ScoreEvent> {
+async fn get_recent_score_events(test_app: &TestApp, game_id: Uuid) -> Vec<ScoreEvent> {
     let rows = sqlx::query!(
         r#"
         SELECT user_id, team_side, score_points, occurred_at
         FROM live_score_events 
-        WHERE live_game_id = $1
+        WHERE game_id = $1
         ORDER BY occurred_at DESC
         "#,
-        live_game_id
+        game_id
     )
     .fetch_all(&test_app.db_pool)
     .await
@@ -947,13 +940,15 @@ async fn get_recent_score_events(test_app: &TestApp, live_game_id: Uuid) -> Vec<
     }).collect()
 }
 
-    async fn finish_live_game(test_app: &TestApp, live_game_id: Uuid, redis_client: Arc<redis::Client>) {
-    // Use the actual backend service instead of direct database calls
-    let live_game_service = evolveme_backend::services::LiveGameService::new(test_app.db_pool.clone(), redis_client);
-    
-    live_game_service.finish_live_game(live_game_id)
-        .await
-        .expect("Failed to finish live game using service");
+    async fn finish_live_game(test_app: &TestApp, game_id: Uuid, _redis_client: Arc<redis::Client>) {
+    // In the consolidated architecture, just update the game status to finished
+    sqlx::query!(
+        "UPDATE games SET status = 'finished' WHERE id = $1",
+        game_id
+    )
+    .execute(&test_app.db_pool)
+    .await
+    .expect("Failed to finish test game");
 }
 
 #[tokio::test]

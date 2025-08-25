@@ -5,6 +5,14 @@ use sqlx::FromRow;
 use uuid::Uuid;
 use std::fmt;
 
+// Live game score update structure
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LiveGameScoreUpdate {
+    pub user_id: Uuid,
+    pub username: String,
+    pub score_increase: i32,
+}
+
 #[derive(Debug, FromRow, Serialize, Deserialize, Clone)]
 pub struct LeagueSeason {
     pub id: Uuid,
@@ -48,6 +56,117 @@ pub struct LeagueGame {
     pub week_end_date: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    // New consolidated fields from live_games table
+    #[serde(default)]
+    pub home_score: Option<i32>,
+    #[serde(default)]
+    pub away_score: Option<i32>,
+    #[serde(default)]
+    pub game_start_time: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub game_end_time: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub last_score_time: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub last_scorer_id: Option<Uuid>,
+    #[serde(default)]
+    pub last_scorer_name: Option<String>,
+    #[serde(default)]
+    pub last_scorer_team: Option<String>,
+}
+
+impl LeagueGame {
+    /// Create a LeagueGame with all the original fields, setting new consolidated fields to defaults
+    pub fn with_defaults(
+        id: Uuid,
+        season_id: Uuid,
+        home_team_id: Uuid,
+        away_team_id: Uuid,
+        scheduled_time: DateTime<Utc>,
+        week_number: i32,
+        is_first_leg: bool,
+        status: GameStatus,
+        home_score_final: Option<i32>,
+        away_score_final: Option<i32>,
+        winner_team_id: Option<Uuid>,
+        week_start_date: Option<DateTime<Utc>>,
+        week_end_date: Option<DateTime<Utc>>,
+        created_at: DateTime<Utc>,
+        updated_at: DateTime<Utc>,
+    ) -> Self {
+        Self {
+            id,
+            season_id,
+            home_team_id,
+            away_team_id,
+            scheduled_time,
+            week_number,
+            is_first_leg,
+            status,
+            home_score_final,
+            away_score_final,
+            winner_team_id,
+            week_start_date,
+            week_end_date,
+            created_at,
+            updated_at,
+            // Default values for new consolidated fields
+            home_score: Some(0),
+            away_score: Some(0),
+            game_start_time: None,
+            game_end_time: None,
+            last_score_time: None,
+            last_scorer_id: None,
+            last_scorer_name: None,
+            last_scorer_team: None,
+        }
+    }
+    
+    /// Create a new LeagueGame with basic fields, defaulting new consolidated fields to None
+    pub fn new_basic(
+        id: Uuid,
+        season_id: Uuid,
+        home_team_id: Uuid,
+        away_team_id: Uuid,
+        scheduled_time: DateTime<Utc>,
+        week_number: i32,
+        is_first_leg: bool,
+        status: GameStatus,
+        home_score_final: Option<i32>,
+        away_score_final: Option<i32>,
+        winner_team_id: Option<Uuid>,
+        week_start_date: Option<DateTime<Utc>>,
+        week_end_date: Option<DateTime<Utc>>,
+        created_at: DateTime<Utc>,
+        updated_at: DateTime<Utc>,
+    ) -> Self {
+        Self {
+            id,
+            season_id,
+            home_team_id,
+            away_team_id,
+            scheduled_time,
+            week_number,
+            is_first_leg,
+            status,
+            home_score_final,
+            away_score_final,
+            winner_team_id,
+            week_start_date,
+            week_end_date,
+            created_at,
+            updated_at,
+            // Default new consolidated fields
+            home_score: Some(0),
+            away_score: Some(0),
+            game_start_time: None,
+            game_end_time: None,
+            last_score_time: None,
+            last_scorer_id: None,
+            last_scorer_name: None,
+            last_scorer_team: None,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, sqlx::Type)]
@@ -55,7 +174,6 @@ pub struct LeagueGame {
 pub enum GameStatus {
     Scheduled,
     InProgress,
-    Live,
     Finished,
     Evaluated,
     Postponed,
@@ -65,7 +183,6 @@ impl From<String> for GameStatus {
     fn from(s: String) -> Self {
         match s.to_lowercase().as_str() {
             "in_progress" | "in-progress" => GameStatus::InProgress,
-            "live" => GameStatus::Live,
             "finished" => GameStatus::Finished,
             "evaluated" => GameStatus::Evaluated,
             "postponed" => GameStatus::Postponed,
@@ -198,7 +315,6 @@ impl GameStatus {
         match self {
             GameStatus::Scheduled => "scheduled",
             GameStatus::InProgress => "in_progress",
-            GameStatus::Live => "live",
             GameStatus::Finished => "finished",
             GameStatus::Evaluated => "evaluated",
             GameStatus::Postponed => "postponed",

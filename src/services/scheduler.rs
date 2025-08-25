@@ -68,7 +68,7 @@ impl SchedulerService {
             Box::pin(async move {
                 tracing::info!("🎮 Running scheduled game management cycle for season '{}'", season_name);
                 
-                let manage_games = ManageGameService::new(pool.clone(), redis_client.clone());
+                let manage_games = ManageGameService::new(pool.clone());
                 let evaluate_games = GameEvaluationService::new(pool, redis_client);
                 
                 // Step 1: Run complete game cycle (start due games, finish ended games)

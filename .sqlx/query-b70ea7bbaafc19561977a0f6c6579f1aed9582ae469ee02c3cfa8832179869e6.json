@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, home_team_id, away_team_id, week_number FROM games WHERE season_id = $1 AND status = 'scheduled' AND scheduled_time > NOW() ORDER BY week_number, scheduled_time LIMIT 10",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "home_team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "away_team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "week_number",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "b70ea7bbaafc19561977a0f6c6579f1aed9582ae469ee02c3cfa8832179869e6"
+}

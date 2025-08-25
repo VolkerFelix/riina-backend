@@ -1,0 +1,152 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT \n                id, season_id, home_team_id, away_team_id, scheduled_time,\n                week_number, is_first_leg, status as \"status: GameStatus\",\n                home_score_final, away_score_final, winner_team_id,\n                week_start_date, week_end_date, created_at, updated_at,\n                home_score, away_score, game_start_time, game_end_time,\n                last_score_time, last_scorer_id, last_scorer_name, last_scorer_team\n            FROM games\n            WHERE status = 'scheduled' \n            AND week_start_date <= CURRENT_TIMESTAMP\n            ORDER BY scheduled_time ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "season_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "home_team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "away_team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "scheduled_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "week_number",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "is_first_leg",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 7,
+        "name": "status: GameStatus",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "home_score_final",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 9,
+        "name": "away_score_final",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 10,
+        "name": "winner_team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 11,
+        "name": "week_start_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "week_end_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 14,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 15,
+        "name": "home_score",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 16,
+        "name": "away_score",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 17,
+        "name": "game_start_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 18,
+        "name": "game_end_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 19,
+        "name": "last_score_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 20,
+        "name": "last_scorer_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 21,
+        "name": "last_scorer_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 22,
+        "name": "last_scorer_team",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "86bc7bf688692b645b7ee7dc6444bf1e5418f2946d45bb811d2e73cbf017cb30"
+}

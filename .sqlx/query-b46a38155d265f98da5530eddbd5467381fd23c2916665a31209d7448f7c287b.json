@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE games \n            SET \n                home_score_final = $2,\n                away_score_final = $3,\n                winner_team_id = $4,\n                status = 'evaluated',\n                updated_at = $5\n            WHERE id = $1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int4",
+        "Int4",
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b46a38155d265f98da5530eddbd5467381fd23c2916665a31209d7448f7c287b"
+}

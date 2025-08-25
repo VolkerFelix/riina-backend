@@ -88,7 +88,7 @@ impl ScheduleService {
 
                 sqlx::query!(
                     r#"
-                    INSERT INTO league_games (
+                    INSERT INTO games (
                         season_id, home_team_id, away_team_id, scheduled_time, 
                         week_number, is_first_leg, status, week_start_date, week_end_date
                     ) VALUES ($1, $2, $3, $4, $5, TRUE, 'scheduled', $6, $7)
@@ -151,7 +151,7 @@ impl ScheduleService {
 
                 sqlx::query!(
                     r#"
-                    INSERT INTO league_games (
+                    INSERT INTO games (
                         season_id, home_team_id, away_team_id, scheduled_time,
                         week_number, is_first_leg, status, week_start_date, week_end_date
                     ) VALUES ($1, $2, $3, $4, $5, FALSE, 'scheduled', $6, $7)
@@ -237,7 +237,7 @@ impl ScheduleService {
                 at.team_name as away_team_name,
                 ht.team_color as home_team_color,
                 at.team_color as away_team_color
-            FROM league_games lg
+            FROM games lg
             JOIN teams ht ON lg.home_team_id = ht.id
             JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.season_id = $1 AND lg.week_number = $2
@@ -279,30 +279,30 @@ impl ScheduleService {
         // Convert query results to GameWithTeams with team powers
         let games_with_teams = games_query.into_iter().map(|row| {
             let status = match row.status.as_str() {
-                "live" => GameStatus::Live,
+                "live" => GameStatus::InProgress,
                 "finished" => GameStatus::Finished,
                 "postponed" => GameStatus::Postponed,
                 _ => GameStatus::Scheduled,
             };
 
             GameWithTeams {
-                game: LeagueGame {
-                    id: row.id,
-                    season_id: row.season_id,
-                    home_team_id: row.home_team_id,
-                    away_team_id: row.away_team_id,
-                    scheduled_time: row.scheduled_time,
-                    week_number: row.week_number,
-                    is_first_leg: row.is_first_leg,
+                game: LeagueGame::with_defaults(
+                    row.id,
+                    row.season_id,
+                    row.home_team_id,
+                    row.away_team_id,
+                    row.scheduled_time,
+                    row.week_number,
+                    row.is_first_leg,
                     status,
-                    home_score_final: row.home_score_final,
-                    away_score_final: row.away_score_final,
-                    winner_team_id: row.winner_team_id,
-                    week_start_date: None,
-                    week_end_date: None,
-                    created_at: row.created_at,
-                    updated_at: row.updated_at,
-                },
+                    row.home_score_final,
+                    row.away_score_final,
+                    row.winner_team_id,
+                    None, // week_start_date
+                    None, // week_end_date
+                    row.created_at,
+                    row.updated_at,
+                ),
                 home_team_name: row.home_team_name,
                 away_team_name: row.away_team_name,
                 home_team_color: row.home_team_color,
@@ -338,7 +338,7 @@ impl ScheduleService {
                 at.team_name as away_team_name,
                 ht.team_color as home_team_color,
                 at.team_color as away_team_color
-            FROM league_games lg
+            FROM games lg
             JOIN teams ht ON lg.home_team_id = ht.id
             JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.season_id = $1 
@@ -368,30 +368,30 @@ impl ScheduleService {
 
         Ok(games_query.into_iter().map(|row| {
             let status = match row.status.as_str() {
-                "live" => GameStatus::Live,
+                "live" => GameStatus::InProgress,
                 "finished" => GameStatus::Finished,
                 "postponed" => GameStatus::Postponed,
                 _ => GameStatus::Scheduled,
             };
 
             GameWithTeams {
-                game: LeagueGame {
-                    id: row.id,
-                    season_id: row.season_id,
-                    home_team_id: row.home_team_id,
-                    away_team_id: row.away_team_id,
-                    scheduled_time: row.scheduled_time,
-                    week_number: row.week_number,
-                    is_first_leg: row.is_first_leg,
+                game: LeagueGame::with_defaults(
+                    row.id,
+                    row.season_id,
+                    row.home_team_id,
+                    row.away_team_id,
+                    row.scheduled_time,
+                    row.week_number,
+                    row.is_first_leg,
                     status,
-                    home_score_final: row.home_score_final,
-                    away_score_final: row.away_score_final,
-                    winner_team_id: row.winner_team_id,
-                    week_start_date: None,
-                    week_end_date: None,
-                    created_at: row.created_at,
-                    updated_at: row.updated_at,
-                },
+                    row.home_score_final,
+                    row.away_score_final,
+                    row.winner_team_id,
+                    None, // week_start_date
+                    None, // week_end_date
+                    row.created_at,
+                    row.updated_at,
+                ),
                 home_team_name: row.home_team_name,
                 away_team_name: row.away_team_name,
                 home_team_color: row.home_team_color,
@@ -418,7 +418,7 @@ impl ScheduleService {
                 at.team_name as away_team_name,
                 ht.team_color as home_team_color,
                 at.team_color as away_team_color
-            FROM league_games lg
+            FROM games lg
             JOIN teams ht ON lg.home_team_id = ht.id
             JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.season_id = $1 
@@ -446,30 +446,30 @@ impl ScheduleService {
 
         Ok(games_query.into_iter().map(|row| {
             let status = match row.status.as_str() {
-                "live" => GameStatus::Live,
+                "live" => GameStatus::InProgress,
                 "finished" => GameStatus::Finished,
                 "postponed" => GameStatus::Postponed,
                 _ => GameStatus::Scheduled,
             };
 
             GameWithTeams {
-                game: LeagueGame {
-                    id: row.id,
-                    season_id: row.season_id,
-                    home_team_id: row.home_team_id,
-                    away_team_id: row.away_team_id,
-                    scheduled_time: row.scheduled_time,
-                    week_number: row.week_number,
-                    is_first_leg: row.is_first_leg,
+                game: LeagueGame::with_defaults(
+                    row.id,
+                    row.season_id,
+                    row.home_team_id,
+                    row.away_team_id,
+                    row.scheduled_time,
+                    row.week_number,
+                    row.is_first_leg,
                     status,
-                    home_score_final: row.home_score_final,
-                    away_score_final: row.away_score_final,
-                    winner_team_id: row.winner_team_id,
-                    week_start_date: None,
-                    week_end_date: None,
-                    created_at: row.created_at,
-                    updated_at: row.updated_at,
-                },
+                    row.home_score_final,
+                    row.away_score_final,
+                    row.winner_team_id,
+                    None, // week_start_date
+                    None, // week_end_date
+                    row.created_at,
+                    row.updated_at,
+                ),
                 home_team_name: row.home_team_name,
                 away_team_name: row.away_team_name,
                 home_team_color: row.home_team_color,
@@ -549,7 +549,7 @@ impl ScheduleService {
                 at.team_name as away_team_name,
                 ht.team_color as home_team_color,
                 at.team_color as away_team_color
-            FROM league_games lg
+            FROM games lg
             JOIN teams ht ON lg.home_team_id = ht.id
             JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.season_id = $1
@@ -574,30 +574,30 @@ impl ScheduleService {
 
         Ok(games_query.into_iter().map(|row| {
             let status = match row.status.as_str() {
-                "live" => GameStatus::Live,
+                "live" => GameStatus::InProgress,
                 "finished" => GameStatus::Finished,
                 "postponed" => GameStatus::Postponed,
                 _ => GameStatus::Scheduled,
             };
 
             GameWithTeams {
-                game: LeagueGame {
-                    id: row.id,
-                    season_id: row.season_id,
-                    home_team_id: row.home_team_id,
-                    away_team_id: row.away_team_id,
-                    scheduled_time: row.scheduled_time,
-                    week_number: row.week_number,
-                    is_first_leg: row.is_first_leg,
+                game: LeagueGame::with_defaults(
+                    row.id,
+                    row.season_id,
+                    row.home_team_id,
+                    row.away_team_id,
+                    row.scheduled_time,
+                    row.week_number,
+                    row.is_first_leg,
                     status,
-                    home_score_final: row.home_score_final,
-                    away_score_final: row.away_score_final,
-                    winner_team_id: row.winner_team_id,
-                    week_start_date: None,
-                    week_end_date: None,
-                    created_at: row.created_at,
-                    updated_at: row.updated_at,
-                },
+                    row.home_score_final,
+                    row.away_score_final,
+                    row.winner_team_id,
+                    None, // week_start_date
+                    None, // week_end_date
+                    row.created_at,
+                    row.updated_at,
+                ),
                 home_team_name: row.home_team_name,
                 away_team_name: row.away_team_name,
                 home_team_color: row.home_team_color,
@@ -622,7 +622,7 @@ impl ScheduleService {
                 MAX(scheduled_time) as last_game_time,
                 MIN(week_number) as first_week,
                 MAX(week_number) as last_week
-            FROM league_games
+            FROM games
             WHERE season_id = $1
             "#,
             season_id
@@ -668,7 +668,7 @@ impl ScheduleService {
                 at.team_name as away_team_name,
                 ht.team_color as home_team_color,
                 at.team_color as away_team_color
-            FROM league_games lg
+            FROM games lg
             JOIN teams ht ON lg.home_team_id = ht.id
             JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.season_id = $1 
@@ -697,30 +697,30 @@ impl ScheduleService {
 
         Ok(games_query.into_iter().map(|row| {
             let status = match row.status.as_str() {
-                "live" => GameStatus::Live,
+                "live" => GameStatus::InProgress,
                 "finished" => GameStatus::Finished,
                 "postponed" => GameStatus::Postponed,
                 _ => GameStatus::Scheduled,
             };
 
             GameWithTeams {
-                game: LeagueGame {
-                    id: row.id,
-                    season_id: row.season_id,
-                    home_team_id: row.home_team_id,
-                    away_team_id: row.away_team_id,
-                    scheduled_time: row.scheduled_time,
-                    week_number: row.week_number,
-                    is_first_leg: row.is_first_leg,
+                game: LeagueGame::with_defaults(
+                    row.id,
+                    row.season_id,
+                    row.home_team_id,
+                    row.away_team_id,
+                    row.scheduled_time,
+                    row.week_number,
+                    row.is_first_leg,
                     status,
-                    home_score_final: row.home_score_final,
-                    away_score_final: row.away_score_final,
-                    winner_team_id: row.winner_team_id,
-                    week_start_date: None,
-                    week_end_date: None,
-                    created_at: row.created_at,
-                    updated_at: row.updated_at,
-                },
+                    row.home_score_final,
+                    row.away_score_final,
+                    row.winner_team_id,
+                    None, // week_start_date
+                    None, // week_end_date
+                    row.created_at,
+                    row.updated_at,
+                ),
                 home_team_name: row.home_team_name,
                 away_team_name: row.away_team_name,
                 home_team_color: row.home_team_color,

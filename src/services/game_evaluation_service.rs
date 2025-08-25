@@ -45,8 +45,10 @@ impl GameEvaluationService {
                 id, season_id, home_team_id, away_team_id, scheduled_time, 
                 week_number, is_first_leg, status as "status: GameStatus", 
                 home_score_final, away_score_final, winner_team_id, week_start_date, week_end_date,
-                created_at, updated_at
-            FROM league_games 
+                created_at, updated_at,
+                home_score, away_score, game_start_time, game_end_time,
+                last_score_time, last_scorer_id, last_scorer_name, last_scorer_team
+            FROM games 
             WHERE id = $1
             "#,
             game_id
@@ -60,7 +62,7 @@ impl GameEvaluationService {
         // Update the game result and mark as evaluated
         sqlx::query!(
             r#"
-            UPDATE league_games 
+            UPDATE games 
             SET 
                 home_score_final = $2,
                 away_score_final = $3,
@@ -112,8 +114,8 @@ impl GameEvaluationService {
         // Get the game details
         let games = sqlx::query!(
             r#"
-            SELECT id, home_team_id, away_team_id
-            FROM league_games 
+            SELECT id, home_team_id, away_team_id, home_score, away_score
+            FROM games 
             WHERE id = ANY($1) and status = 'finished'
             "#,
             &game_ids
@@ -126,24 +128,13 @@ impl GameEvaluationService {
         for game_data in games {
             let game_id = game_data.id;
 
-            // Get the scores from live_games table and set later as final scores in league games table
-            let live_game_scores = sqlx::query!(
-                r#"
-                SELECT home_score, away_score
-                FROM live_games
-                WHERE game_id = $1
-                ORDER BY created_at DESC
-                LIMIT 1
-                "#,
-                game_id
-            )
-            .fetch_optional(&self.pool)
-            .await?;
-
-            let game_stats = if let Some(live_scores) = live_game_scores {
-                let winner_team_id = if live_scores.home_score > live_scores.away_score {
+            // Use the scores from the games table directly (already consolidated)
+            let game_stats = {
+                let home_score = game_data.home_score;
+                let away_score = game_data.away_score;
+                let winner_team_id = if home_score > away_score {
                     Some(game_data.home_team_id)
-                } else if live_scores.away_score > live_scores.home_score {
+                } else if away_score > home_score {
                     Some(game_data.away_team_id)
                 } else {
                     None
@@ -153,30 +144,26 @@ impl GameEvaluationService {
                     game_id,
                     home_team_name: String::new(),
                     away_team_name: String::new(),
-                    home_team_score: live_scores.home_score as u32,
-                    away_team_score: live_scores.away_score as u32,
-                    home_team_result: if live_scores.home_score > live_scores.away_score { 
+                    home_team_score: home_score as u32,
+                    away_team_score: away_score as u32,
+                    home_team_result: if home_score > away_score { 
                         MatchResult::Win 
-                    } else if live_scores.home_score < live_scores.away_score { 
+                    } else if home_score < away_score { 
                         MatchResult::Loss 
                     } else { 
                         MatchResult::Draw 
                     },
-                    away_team_result: if live_scores.away_score > live_scores.home_score { 
+                    away_team_result: if away_score > home_score { 
                         MatchResult::Win 
-                    } else if live_scores.away_score < live_scores.home_score { 
+                    } else if away_score < home_score { 
                         MatchResult::Loss 
                     } else { 
                         MatchResult::Draw 
                     },
                     winner_team_id,
-                    home_score: live_scores.home_score as u32,
-                    away_score: live_scores.away_score as u32,
+                    home_score: home_score as u32,
+                    away_score: away_score as u32,
                 }
-            } else {
-                // This should not happen if all games are live games
-                tracing::error!("❌ No live game data found for finished game {}", game_id);
-                continue;
             };
 
             // Update the game result in the database
@@ -355,7 +342,7 @@ impl GameEvaluationService {
         let game_info = sqlx::query!(
             r#"
             SELECT home_team_id, away_team_id
-            FROM league_games
+            FROM games
             WHERE id = $1
             "#,
             game_id

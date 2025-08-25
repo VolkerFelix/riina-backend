@@ -173,7 +173,7 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     update_games_to_current_time(&app, league_id).await;
     
     // Wait for games to complete their lifecycle (start → finish)
-    let week_game_service = evolveme_backend::services::ManageGameService::new(app.db_pool.clone(), redis_client);
+    let week_game_service = evolveme_backend::services::ManageGameService::new(app.db_pool.clone());
     
     println!("🔄 Running first game management cycle to start games...");
     let (_, _, started_games, _) = week_game_service.run_game_cycle().await.unwrap();
@@ -385,7 +385,7 @@ async fn update_games_to_current_time(app: &common::utils::TestApp, league_id: &
     // Set week_start_date to beginning of today (so CURRENT_DATE BETWEEN works) and week_end_date to 5 seconds later
     sqlx::query!(
         r#"
-        UPDATE league_games 
+        UPDATE games 
         SET scheduled_time = $1, week_start_date = $2, week_end_date = $3
         WHERE season_id IN (
             SELECT id FROM league_seasons WHERE league_id = $4

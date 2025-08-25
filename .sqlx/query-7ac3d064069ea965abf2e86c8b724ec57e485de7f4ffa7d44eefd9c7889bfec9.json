@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT \n            lg.id,\n            lg.week_number,\n            lg.status,\n            lg.scheduled_time,\n            lg.week_end_date as \"week_end_date?\",\n            ht.team_name as home_team_name,\n            at.team_name as away_team_name,\n            NULL::uuid as \"live_game_id?\" -- No longer needed since games are consolidated\n        FROM games lg\n        JOIN teams ht ON lg.home_team_id = ht.id\n        JOIN teams at ON lg.away_team_id = at.id\n        -- No longer need live_games join since games are consolidated\n        WHERE lg.season_id = $1\n        ORDER BY lg.week_number, lg.scheduled_time\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "week_number",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "scheduled_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "week_end_date?",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "home_team_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "away_team_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "live_game_id?",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "7ac3d064069ea965abf2e86c8b724ec57e485de7f4ffa7d44eefd9c7889bfec9"
+}

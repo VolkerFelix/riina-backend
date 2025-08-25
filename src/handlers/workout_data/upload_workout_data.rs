@@ -11,13 +11,14 @@ use crate::db::workout_data::{insert_workout_data, check_duplicate_workout_by_ti
 use crate::models::workout_data::{WorkoutDataSyncRequest, WorkoutUploadResponse, GameStats, StatChanges as WorkoutStatChanges};
 use crate::models::common::ApiResponse;
 use crate::game::stats_calculator::StatCalculator;
-use crate::models::live_game::{LiveGame, LiveGameScoreUpdate};
-use crate::services::live_game_service::LiveGameService;
+use crate::models::league::{LiveGameScoreUpdate, LeagueGame};
+use crate::db::game_queries::GameQueries;
 use crate::game::stats_calculator::StatChanges;
+use crate::models::game_events::GameEvent;
 
 #[tracing::instrument(
     name = "Upload workout data with game stats",
-    skip(data, pool, redis, live_game_service, claims),
+    skip(data, pool, redis, claims),
     fields(
         username = %claims.username,
         data_type = %data.device_id
@@ -27,7 +28,6 @@ pub async fn upload_workout_data(
     data: web::Json<WorkoutDataSyncRequest>,
     pool: web::Data<sqlx::PgPool>,
     redis: Option<web::Data<Arc<redis::Client>>>,
-    live_game_service: Option<web::Data<LiveGameService>>,
     claims: web::ReqData<Claims>
 ) -> HttpResponse {
     tracing::info!("🎮 Processing workout data with game mechanics for user: {}", claims.username);
@@ -150,28 +150,25 @@ pub async fn upload_workout_data(
                     tracing::info!("✅ Successfully updated workout data with zone breakdown and stat gains for workout {}", sync_id);
                 }
 
-                // 🏆 CHECK FOR ACTIVE LIVE GAMES AND UPDATE SCORES
-                if let Some(live_service) = &live_game_service {
-                    if let Some(workout_start) = data.workout_start {
-                        match check_and_update_live_games(
-                            user_id, 
-                            &claims.username,
-                            sync_id, // Now we have the workout_data_id
-                            &stat_changes,
-                            &live_service,
-                            &workout_start,
-                            &pool,
-                        ).await {
-                            Ok(_) => {
-                                tracing::info!("✅ Successfully updated live game scores for user {}", claims.username);
-                            }
-                            Err(e) => {
-                                tracing::error!("❌ Failed to update live game scores for user {}: {}", claims.username, e);
-                            }
+                // 🏆 CHECK FOR ACTIVE GAMES AND UPDATE SCORES
+                if let Some(workout_start) = data.workout_start {
+                    match check_and_update_active_games(
+                        user_id, 
+                        &claims.username,
+                        sync_id,
+                        &stat_changes,
+                        &workout_start,
+                        &pool,
+                    ).await {
+                        Ok(_) => {
+                            tracing::info!("✅ Successfully updated game scores for user {}", claims.username);
                         }
-                    } else {
-                        tracing::warn!("⚠️ No workout start time found for user {}", claims.username);
+                        Err(e) => {
+                            tracing::error!("❌ Failed to update game scores for user {}: {}", claims.username, e);
+                        }
                     }
+                } else {
+                    tracing::warn!("⚠️ No workout start time found for user {}", claims.username);
                 }
             } else {
                 tracing::info!("⏭️ Skipping stats update and live game scoring for duplicate workout");
@@ -282,121 +279,126 @@ pub async fn upload_workout_data(
     }
 }
 
-/// Check if user is in any active live games and update scores
-async fn check_and_update_live_games(
+/// Check if user is in any active games and update scores using consolidated architecture
+async fn check_and_update_active_games(
     user_id: Uuid,
     username: &str,
     workout_data_id: Uuid,
     stat_changes: &StatChanges,
-    live_game_service: &LiveGameService,
     workout_start_time: &DateTime<Utc>,
     pool: &sqlx::PgPool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    tracing::info!("🎮 Checking for active live games for user {}", username);
+    tracing::info!("🎮 Checking for active games for user {}", username);
 
-    // Get user's active live games
-    match live_game_service.get_user_active_games(user_id).await {
-        Ok(active_games) => {
-            if active_games.is_empty() {
-                tracing::debug!("No active live games found for user {}", username);
-                return Ok(());
+    let game_queries = GameQueries::new(pool.clone());
+    let active_games = game_queries.get_active_games().await?;
+    
+    if active_games.is_empty() {
+        tracing::debug!("No active games found for user {}", username);
+        return Ok(());
+    }
+
+    tracing::info!("🏆 Found {} active game(s) to check for user {}", active_games.len(), username);
+
+    for game in active_games {
+        // Check if user is a member of either team in this game
+        let user_team_id = match get_user_team_for_game(user_id, &game, pool).await {
+            Ok(team_id) => team_id,
+            Err(_) => {
+                tracing::debug!("User {} is not a member of teams playing in game {}", username, game.id);
+                continue;
             }
+        };
 
-            tracing::info!("🏆 Found {} active live game(s) for user {}", active_games.len(), username);
-
-            for live_game in active_games {
-                // Determine which team the user belongs to
-                let user_team_id = if let Ok(team_id) = get_user_team_id(user_id, &live_game, pool).await {
-                    team_id
-                } else {
-                    tracing::error!("Could not determine team for user {} in game {}", username, live_game.game_id);
-                    continue;
-                };
-                // Check if the workout start time is within the game start and end times
-                if &live_game.game_start_time <= workout_start_time && &live_game.game_end_time >= workout_start_time {
-                    tracing::info!("🏆 Workout start time is within the game start and end times for user {}", username);
-                    update_live_game_score(user_id, username, user_team_id, stat_changes, live_game_service, &live_game, workout_data_id).await;
-
-                } else {
-                    tracing::info!("❌ Workout start time is not within the game start and end times for user {}", username);
-                    continue;
-                }
+        // Check if the workout time falls within the game's active period
+        if let (Some(game_start), Some(game_end)) = (game.week_start_date, game.week_end_date) {
+            if workout_start_time >= &game_start && workout_start_time <= &game_end {
+                tracing::info!("🏆 Workout time is within game period for user {} in game {}", username, game.id);
+                update_game_score_from_workout(
+                    user_id,
+                    username,
+                    user_team_id,
+                    &game,
+                    stat_changes,
+                    workout_data_id,
+                    pool,
+                ).await?;
+            } else {
+                tracing::debug!("❌ Workout time is outside game period for user {} in game {}", username, game.id);
             }
-            Ok(())
-        }
-        Err(e) => {
-            tracing::error!("❌ Failed to get active games for user {}: {}", username, e);
-            return Err(e);
         }
     }
+
+    Ok(())
 }
 
-async fn update_live_game_score(
+/// Update game score based on workout stats using consolidated games table
+async fn update_game_score_from_workout(
     user_id: Uuid,
     username: &str,
     user_team_id: Uuid,
+    game: &LeagueGame,
     stat_changes: &StatChanges,
-    live_game_service: &LiveGameService,
-    live_game: &LiveGame,
     workout_data_id: Uuid,
-) {
-    tracing::info!("🏆 Updating live game score for user {}", user_id);
+    pool: &sqlx::PgPool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    tracing::info!("🏆 Updating game score for user {} in game {}", username, game.id);
 
-    // Calculate score increases based on stat changes
-    let score_increase = live_game_service.calculate_score_from_stats(
-        stat_changes.stamina_change,
-        stat_changes.strength_change,
-    );
-    let power_increase = live_game_service.calculate_power_from_stats(
-        stat_changes.stamina_change,
-        stat_changes.strength_change,
-    );
+    // Simple scoring: just add up stamina and strength gains
+    let score_increase = stat_changes.stamina_change + stat_changes.strength_change;
     
-    tracing::info!("📊 Score calculation for {}: stamina={}, strength={}, score_increase={}, power_increase={}, team_id={}", 
-        username, stat_changes.stamina_change, stat_changes.strength_change, 
-        score_increase, power_increase, user_team_id);
+    tracing::info!("📊 Score calculation for {}: stamina={}, strength={}, score_increase={}", 
+        username, stat_changes.stamina_change, stat_changes.strength_change, score_increase);
 
-    // Create the score update
+    // Create score update object
     let score_update = LiveGameScoreUpdate {
         user_id,
         username: username.to_string(),
-        team_id: user_team_id,
         score_increase,
-        power_increase,
-        stamina_gained: stat_changes.stamina_change,
-        strength_gained: stat_changes.strength_change,
-        description: format!("Workout upload: +{} stamina, +{} strength", 
-            stat_changes.stamina_change, stat_changes.strength_change),
-        workout_data_id: Some(workout_data_id),
     };
 
-    // Apply the score update
-    match live_game_service.handle_score_update(live_game.game_id, score_update).await {
-        Ok(updated_game) => {
-            tracing::info!("📊 Updated live game {}: {} {} - {} {} (Player: {} +{})", 
-                live_game.game_id,
-                updated_game.home_team_name,
-                updated_game.home_score,
-                updated_game.away_score,
-                updated_game.away_team_name,
-                username,
-                score_increase
-            );
-        }
-        Err(e) => {
-            tracing::error!("❌ Failed to update live game score for {}: {}", username, e);
-        }
-    }
- 
+    // Update the game score using GameQueries
+    let game_queries = GameQueries::new(pool.clone());
+    game_queries.update_game_score(game.id, &score_update).await?;
+
+    // Determine which team side (home or away)
+    let team_side = if user_team_id == game.home_team_id {
+        "home"
+    } else {
+        "away"
+    };
+
+    // Record the scoring event with all required fields
+    record_score_event(
+        game.id, 
+        user_id, 
+        username,
+        user_team_id,
+        team_side,
+        score_increase, 
+        stat_changes.stamina_change,
+        stat_changes.strength_change,
+        workout_data_id,
+        pool
+    ).await?;
+
+    // Broadcast score update via WebSocket
+    broadcast_score_update(game.id, pool).await.unwrap_or_else(|e| {
+        tracing::error!("Failed to broadcast score update: {}", e);
+    });
+
+    tracing::info!("✅ Successfully updated score for game {} by {} points from user {}", 
+        game.id, score_increase, username);
+
+    Ok(())
 }
 
-/// Helper function to determine which team a user belongs to in a live game
-async fn get_user_team_id(
+/// Helper function to determine which team a user belongs to in a game
+async fn get_user_team_for_game(
     user_id: Uuid, 
-    live_game: &LiveGame,
+    game: &LeagueGame,
     pool: &sqlx::PgPool
 ) -> Result<Uuid, Box<dyn std::error::Error>> {
-    // Simply check team membership directly (no more live_player_contributions complexity!)
     let membership = sqlx::query!(
         r#"
         SELECT team_id 
@@ -406,8 +408,8 @@ async fn get_user_team_id(
         AND (team_id = $2 OR team_id = $3)
         "#,
         user_id,
-        live_game.home_team_id,
-        live_game.away_team_id
+        game.home_team_id,
+        game.away_team_id
     )
     .fetch_optional(pool)
     .await?;
@@ -416,5 +418,112 @@ async fn get_user_team_id(
         Some(m) => Ok(m.team_id),
         None => Err("User does not belong to either team in this game".into())
     }
+}
+
+/// Record a scoring event in the live_score_events table
+async fn record_score_event(
+    game_id: Uuid,
+    user_id: Uuid,
+    username: &str,
+    team_id: Uuid,
+    team_side: &str,
+    score_increase: i32,
+    stamina_gained: i32,
+    strength_gained: i32,
+    workout_data_id: Uuid,
+    pool: &sqlx::PgPool,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+        INSERT INTO live_score_events (
+            id, game_id, user_id, username, team_id, team_side,
+            score_points, power_contribution, stamina_gained, strength_gained,
+            event_type, description, workout_data_id, occurred_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'workout_upload', $11, $12, NOW())
+        "#,
+        Uuid::new_v4(),
+        game_id,
+        user_id,
+        username,
+        team_id,
+        team_side,
+        score_increase, // score_points
+        0i32, // power_contribution (no longer used, set to 0)
+        stamina_gained,
+        strength_gained,
+        format!("Workout completed: +{} stamina, +{} strength", stamina_gained, strength_gained),
+        workout_data_id
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Broadcast game score update via WebSocket
+async fn broadcast_score_update(
+    game_id: Uuid,
+    pool: &sqlx::PgPool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Get updated game information with team names
+    let game_data = sqlx::query!(
+        r#"
+        SELECT 
+            g.id, g.home_team_id, g.away_team_id, 
+            g.home_score, g.away_score, g.status,
+            g.week_start_date, g.week_end_date,
+            ht.team_name as home_team_name,
+            at.team_name as away_team_name
+        FROM games g
+        JOIN teams ht ON g.home_team_id = ht.id
+        JOIN teams at ON g.away_team_id = at.id
+        WHERE g.id = $1
+        "#,
+        game_id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some(game) = game_data {
+        // Calculate game progress (simplified)
+        let game_progress = if let (Some(start), Some(end)) = (game.week_start_date, game.week_end_date) {
+            let now = chrono::Utc::now();
+            let total_duration = end - start;
+            let elapsed = now - start;
+            
+            if elapsed.num_seconds() < 0 {
+                0.0
+            } else if elapsed > total_duration {
+                100.0
+            } else {
+                (elapsed.num_seconds() as f32 / total_duration.num_seconds() as f32) * 100.0
+            }
+        } else {
+            0.0
+        };
+
+        let game_event = GameEvent::LiveScoreUpdate {
+            game_id: game.id,
+            home_team_id: game.home_team_id,
+            home_team_name: game.home_team_name,
+            away_team_id: game.away_team_id,
+            away_team_name: game.away_team_name,
+            home_score: game.home_score as u32,
+            away_score: game.away_score as u32,
+            game_progress,
+            game_time_remaining: None, // TODO: Calculate remaining time
+            is_active: game.status == "in_progress",
+            last_updated: chrono::Utc::now(),
+        };
+
+        // TODO: Implement actual WebSocket broadcasting via Redis
+        if let GameEvent::LiveScoreUpdate { home_team_name, home_score, away_score, away_team_name, .. } = &game_event {
+            tracing::info!("Broadcasting score update for game {}: {} {} - {} {}", 
+                game.id, home_team_name, home_score, away_score, away_team_name);
+        }
+    }
+
+    Ok(())
 }
 
