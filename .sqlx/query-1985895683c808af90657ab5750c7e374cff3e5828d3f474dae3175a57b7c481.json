@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id\n        FROM games\n        WHERE DATE(game_start_time) = $1\n        AND status = 'finished'\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "1985895683c808af90657ab5750c7e374cff3e5828d3f474dae3175a57b7c481"
+}

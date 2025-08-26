@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT \n                id, season_id, home_team_id, away_team_id,\n                week_number, is_first_leg, status as \"status: GameStatus\",\n                home_score_final, away_score_final, winner_team_id,\n                created_at, updated_at,\n                home_score, away_score, game_start_time, game_end_time,\n                last_score_time, last_scorer_id, last_scorer_name, last_scorer_team\n            FROM games\n            WHERE status = 'in_progress' \n            AND game_end_time <= CURRENT_TIMESTAMP\n            ORDER BY game_start_time ASC\n            ",
+  "query": "\n            SELECT \n                id, season_id, home_team_id, away_team_id, \n                week_number, is_first_leg, status as \"status: GameStatus\", \nwinner_team_id,\n                created_at, updated_at,\n                home_score, away_score, game_start_time, game_end_time,\n                last_score_time, last_scorer_id, last_scorer_name, last_scorer_team\n            FROM games \n            WHERE id = $1\n            ",
   "describe": {
     "columns": [
       {
@@ -40,72 +40,64 @@
       },
       {
         "ordinal": 7,
-        "name": "home_score_final",
-        "type_info": "Int4"
-      },
-      {
-        "ordinal": 8,
-        "name": "away_score_final",
-        "type_info": "Int4"
-      },
-      {
-        "ordinal": 9,
         "name": "winner_team_id",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 10,
+        "ordinal": 8,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 11,
+        "ordinal": 9,
         "name": "updated_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 12,
+        "ordinal": 10,
         "name": "home_score",
         "type_info": "Int4"
       },
       {
-        "ordinal": 13,
+        "ordinal": 11,
         "name": "away_score",
         "type_info": "Int4"
       },
       {
-        "ordinal": 14,
+        "ordinal": 12,
         "name": "game_start_time",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 15,
+        "ordinal": 13,
         "name": "game_end_time",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 16,
+        "ordinal": 14,
         "name": "last_score_time",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 17,
+        "ordinal": 15,
         "name": "last_scorer_id",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 18,
+        "ordinal": 16,
         "name": "last_scorer_name",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 19,
+        "ordinal": 17,
         "name": "last_scorer_team",
         "type_info": "Varchar"
       }
     ],
     "parameters": {
-      "Left": []
+      "Left": [
+        "Uuid"
+      ]
     },
     "nullable": [
       false,
@@ -115,8 +107,6 @@
       false,
       false,
       false,
-      true,
-      true,
       true,
       false,
       false,
@@ -130,5 +120,5 @@
       true
     ]
   },
-  "hash": "1ae4944d87bcca3be3de0fa6f43a5da8f1821fd336ab8d326cce1e6540ca1101"
+  "hash": "6303406e4b71dec024bad9f599781a035111254d3813f15d976a323b14b212c0"
 }

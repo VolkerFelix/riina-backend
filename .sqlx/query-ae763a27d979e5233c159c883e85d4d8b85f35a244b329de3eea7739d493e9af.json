@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT \n                lg.id,\n                lg.season_id,\n                lg.home_team_id,\n                lg.away_team_id,\n                lg.game_start_time,\n                lg.week_number,\n                lg.is_first_leg,\n                lg.status,\n                lg.winner_team_id,\n                lg.home_score_final,\n                lg.away_score_final,\n                lg.created_at,\n                lg.updated_at,\n                ht.team_name as home_team_name,\n                at.team_name as away_team_name,\n                ht.team_color as home_team_color,\n                at.team_color as away_team_color\n            FROM games lg\n            JOIN teams ht ON lg.home_team_id = ht.id\n            JOIN teams at ON lg.away_team_id = at.id\n            WHERE lg.season_id = $1\n            ORDER BY lg.game_start_time, lg.week_number\n            ",
+  "query": "\n            SELECT \n                lg.id,\n                lg.season_id,\n                lg.home_team_id,\n                lg.away_team_id,\n                lg.game_start_time,\n                lg.week_number,\n                lg.is_first_leg,\n                lg.status,\n                lg.winner_team_id,\n                lg.created_at,\n                lg.updated_at,\n                ht.team_name as home_team_name,\n                at.team_name as away_team_name,\n                ht.team_color as home_team_color,\n                at.team_color as away_team_color\n            FROM games lg\n            JOIN teams ht ON lg.home_team_id = ht.id\n            JOIN teams at ON lg.away_team_id = at.id\n            WHERE lg.season_id = $1\n            ORDER BY lg.game_start_time, lg.week_number\n            ",
   "describe": {
     "columns": [
       {
@@ -50,41 +50,31 @@
       },
       {
         "ordinal": 9,
-        "name": "home_score_final",
-        "type_info": "Int4"
-      },
-      {
-        "ordinal": 10,
-        "name": "away_score_final",
-        "type_info": "Int4"
-      },
-      {
-        "ordinal": 11,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 12,
+        "ordinal": 10,
         "name": "updated_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 13,
+        "ordinal": 11,
         "name": "home_team_name",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 14,
+        "ordinal": 12,
         "name": "away_team_name",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 15,
+        "ordinal": 13,
         "name": "home_team_color",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 16,
+        "ordinal": 14,
         "name": "away_team_color",
         "type_info": "Varchar"
       }
@@ -104,8 +94,6 @@
       false,
       false,
       true,
-      true,
-      true,
       false,
       false,
       false,
@@ -114,5 +102,5 @@
       false
     ]
   },
-  "hash": "e2f2485cc07522c3ce67bddc658898866dcb891535147ef13afcd0bbcb640baa"
+  "hash": "ae763a27d979e5233c159c883e85d4d8b85f35a244b329de3eea7739d493e9af"
 }

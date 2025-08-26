@@ -23,7 +23,7 @@ impl GameQueries {
             SELECT 
                 id, season_id, home_team_id, away_team_id,
                 week_number, is_first_leg, status as "status: GameStatus",
-                home_score_final, away_score_final, winner_team_id, 
+winner_team_id, 
                 created_at, updated_at,
                 home_score, away_score, game_start_time, game_end_time,
                 last_score_time, last_scorer_id, last_scorer_name, last_scorer_team
@@ -184,7 +184,7 @@ impl GameQueries {
             SELECT 
                 id, season_id, home_team_id, away_team_id,
                 week_number, is_first_leg, status as "status: GameStatus",
-                home_score_final, away_score_final, winner_team_id,
+winner_team_id,
                 created_at, updated_at,
                 home_score, away_score, game_start_time, game_end_time,
                 last_score_time, last_scorer_id, last_scorer_name, last_scorer_team
@@ -207,7 +207,7 @@ impl GameQueries {
             SELECT 
                 id, season_id, home_team_id, away_team_id,
                 week_number, is_first_leg, status as "status: GameStatus",
-                home_score_final, away_score_final, winner_team_id,
+winner_team_id,
                 created_at, updated_at,
                 home_score, away_score, game_start_time, game_end_time,
                 last_score_time, last_scorer_id, last_scorer_name, last_scorer_team
@@ -231,7 +231,7 @@ impl GameQueries {
             SELECT 
                 id, season_id, home_team_id, away_team_id,
                 week_number, is_first_leg, status as "status: GameStatus",
-                home_score_final, away_score_final, winner_team_id,
+winner_team_id,
                 created_at, updated_at,
                 home_score, away_score, game_start_time, game_end_time,
                 last_score_time, last_scorer_id, last_scorer_name, last_scorer_team

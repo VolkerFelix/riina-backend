@@ -44,7 +44,7 @@ impl GameEvaluationService {
             SELECT 
                 id, season_id, home_team_id, away_team_id, 
                 week_number, is_first_leg, status as "status: GameStatus", 
-                home_score_final, away_score_final, winner_team_id,
+winner_team_id,
                 created_at, updated_at,
                 home_score, away_score, game_start_time, game_end_time,
                 last_score_time, last_scorer_id, last_scorer_name, last_scorer_team
@@ -64,8 +64,8 @@ impl GameEvaluationService {
             r#"
             UPDATE games 
             SET 
-                home_score_final = $2,
-                away_score_final = $3,
+                home_score = $2,
+                away_score = $3,
                 winner_team_id = $4,
                 status = 'evaluated',
                 updated_at = $5
@@ -85,8 +85,8 @@ impl GameEvaluationService {
 
         // Update standings with the updated game record
         let mut updated_game = game_record;
-        updated_game.home_score_final = Some(game_stats.home_team_score as i32);
-        updated_game.away_score_final = Some(game_stats.away_team_score as i32);
+        updated_game.home_score = Some(game_stats.home_team_score as i32);
+        updated_game.away_score = Some(game_stats.away_team_score as i32);
         updated_game.winner_team_id = game_stats.winner_team_id;
         updated_game.status = GameStatus::Evaluated;
 

@@ -321,7 +321,6 @@ pub async fn evaluate_games_for_date(
         FROM games
         WHERE DATE(game_start_time) = $1
         AND status = 'finished'
-        AND (home_score_final IS NULL OR away_score_final IS NULL)
         "#,
         date
     )

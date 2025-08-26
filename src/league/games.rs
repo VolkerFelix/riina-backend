@@ -38,8 +38,8 @@ impl GameService {
                 LeagueGame,
                 r#"
                 UPDATE games 
-                SET home_score_final = $1, 
-                    away_score_final = $2, 
+                SET home_score = $1, 
+                    away_score = $2, 
                     status = 'finished',
                     winner_team_id = CASE 
                         WHEN $3 = 'home_team_id' THEN home_team_id
@@ -62,8 +62,8 @@ impl GameService {
                 LeagueGame,
                 r#"
                 UPDATE games 
-                SET home_score_final = $1, 
-                    away_score_final = $2, 
+                SET home_score = $1, 
+                    away_score = $2, 
                     status = 'finished',
                     winner_team_id = NULL,
                     updated_at = NOW()
@@ -144,8 +144,6 @@ impl GameService {
                         row.week_number,
                         row.is_first_leg,
                         status,
-                        row.home_score_final,
-                        row.away_score_final,
                         row.winner_team_id,
                         row.created_at,
                         row.updated_at,
@@ -212,8 +210,6 @@ impl GameService {
                         row.week_number,
                         row.is_first_leg,
                         status,
-                        row.home_score_final,
-                        row.away_score_final,
                         row.winner_team_id,
                         row.created_at,
                         row.updated_at,
@@ -288,8 +284,6 @@ impl GameService {
                     row.week_number,
                     row.is_first_leg,
                     status,
-                    row.home_score_final,
-                    row.away_score_final,
                     row.winner_team_id,
                     row.created_at,
                     row.updated_at,
@@ -364,8 +358,6 @@ impl GameService {
                     row.week_number,
                     row.is_first_leg,
                     status,
-                    row.home_score_final,
-                    row.away_score_final,
                     row.winner_team_id,
                     row.created_at,
                     row.updated_at,
@@ -436,8 +428,6 @@ impl GameService {
                     row.week_number,
                     row.is_first_leg,
                     status,
-                    row.home_score_final,
-                    row.away_score_final,
                     row.winner_team_id,
                     row.created_at,
                     row.updated_at,
