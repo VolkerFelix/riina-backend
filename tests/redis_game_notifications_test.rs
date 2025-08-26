@@ -217,18 +217,6 @@ async fn test_redis_game_evaluation_notifications() {
     user2_pubsub.subscribe(&user2_channel).await.expect("Failed to subscribe to user2 channel");
     
     println!("✅ Subscribed to user-specific Redis channels");
-    
-    // Clean up old finished games to avoid noise  
-    let cleanup_result = sqlx::query!(
-        "DELETE FROM games WHERE status = 'finished'"
-    )
-    .execute(&app.db_pool)
-    .await
-    .expect("Failed to clean up old games");
-    
-    if cleanup_result.rows_affected() > 0 {
-        println!("🧹 Cleaned up {} old finished games without live game data", cleanup_result.rows_affected());
-    }
 
     // Step 3: Trigger game evaluation
     println!("🎮 Triggering game evaluation...");

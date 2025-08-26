@@ -319,7 +319,7 @@ pub async fn evaluate_games_for_date(
         r#"
         SELECT id
         FROM games
-        WHERE DATE(game_start_time) = $1
+        WHERE DATE(game_start_time AT TIME ZONE 'UTC') = $1
         AND status = 'finished'
         "#,
         date
