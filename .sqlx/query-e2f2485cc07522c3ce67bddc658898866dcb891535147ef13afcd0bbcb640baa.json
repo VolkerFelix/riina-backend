@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT \n                lg.id,\n                lg.season_id,\n                lg.home_team_id,\n                lg.away_team_id,\n                lg.scheduled_time,\n                lg.week_number,\n                lg.is_first_leg,\n                lg.status,\n                lg.winner_team_id,\n                lg.home_score_final,\n                lg.away_score_final,\n                lg.created_at,\n                lg.updated_at,\n                ht.team_name as home_team_name,\n                at.team_name as away_team_name,\n                ht.team_color as home_team_color,\n                at.team_color as away_team_color\n            FROM games lg\n            JOIN teams ht ON lg.home_team_id = ht.id\n            JOIN teams at ON lg.away_team_id = at.id\n            WHERE lg.season_id = $1\n            ORDER BY lg.scheduled_time, lg.week_number\n            ",
+  "query": "\n            SELECT \n                lg.id,\n                lg.season_id,\n                lg.home_team_id,\n                lg.away_team_id,\n                lg.game_start_time,\n                lg.week_number,\n                lg.is_first_leg,\n                lg.status,\n                lg.winner_team_id,\n                lg.home_score_final,\n                lg.away_score_final,\n                lg.created_at,\n                lg.updated_at,\n                ht.team_name as home_team_name,\n                at.team_name as away_team_name,\n                ht.team_color as home_team_color,\n                at.team_color as away_team_color\n            FROM games lg\n            JOIN teams ht ON lg.home_team_id = ht.id\n            JOIN teams at ON lg.away_team_id = at.id\n            WHERE lg.season_id = $1\n            ORDER BY lg.game_start_time, lg.week_number\n            ",
   "describe": {
     "columns": [
       {
@@ -25,7 +25,7 @@
       },
       {
         "ordinal": 4,
-        "name": "scheduled_time",
+        "name": "game_start_time",
         "type_info": "Timestamptz"
       },
       {
@@ -99,7 +99,7 @@
       false,
       false,
       false,
-      false,
+      true,
       false,
       false,
       false,
@@ -114,5 +114,5 @@
       false
     ]
   },
-  "hash": "8ae8eeddcc4a867e9f756d804a7da755db29dc3afd8555554a423ff4bbd8714b"
+  "hash": "e2f2485cc07522c3ce67bddc658898866dcb891535147ef13afcd0bbcb640baa"
 }

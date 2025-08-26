@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    INSERT INTO games (\n                        season_id, home_team_id, away_team_id, \n                        week_number, is_first_leg, status, game_start_time, game_end_time\n                    ) VALUES ($1, $2, $3, $4, TRUE, 'scheduled', $5, $6)\n                    ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Int4",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6e6c34185a801a9f760fa58aae3d9281702263f14858392e238db6b93e5f735b"
+}

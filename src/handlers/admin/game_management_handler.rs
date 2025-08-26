@@ -33,7 +33,7 @@ pub struct StartGamesResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct AdjustLiveGameScoreRequest {
-    pub game_id: Uuid, // Changed from live_game_id to game_id
+    pub game_id: Uuid,
     pub team_side: String, // "home" or "away"
     pub score_adjustment: i32, // Positive to increase, negative to decrease
     pub reason: String, // Admin reason for the adjustment
@@ -67,7 +67,7 @@ pub async fn start_games_now(
     let games: Vec<GameToStart> = if let Some(week) = body.week_number {
         sqlx::query_as!(
             GameToStart,
-            "SELECT id, home_team_id, away_team_id, week_number FROM games WHERE season_id = $1 AND week_number = $2 AND status = 'scheduled' ORDER BY week_number, scheduled_time",
+            "SELECT id, home_team_id, away_team_id, week_number FROM games WHERE season_id = $1 AND week_number = $2 AND status = 'scheduled' ORDER BY week_number, game_start_time",
             body.season_id,
             week
         )
@@ -80,7 +80,7 @@ pub async fn start_games_now(
     } else {
         sqlx::query_as!(
             GameToStart,
-            "SELECT id, home_team_id, away_team_id, week_number FROM games WHERE season_id = $1 AND status = 'scheduled' AND scheduled_time > NOW() ORDER BY week_number, scheduled_time LIMIT 10",
+            "SELECT id, home_team_id, away_team_id, week_number FROM games WHERE season_id = $1 AND status = 'scheduled' AND game_start_time > NOW() ORDER BY week_number, game_start_time LIMIT 10",
             body.season_id
         )
         .fetch_all(&mut *tx)
@@ -135,9 +135,8 @@ pub async fn start_games_now(
             r#"
             UPDATE games 
             SET 
-                scheduled_time = $1,
-                week_start_date = $1,
-                week_end_date = $2,
+                game_start_time = $1,
+                game_end_time = $2,
                 status = 'in_progress',
                 updated_at = NOW()
             WHERE id = $3
@@ -211,9 +210,7 @@ pub struct GameStatusInfo {
     pub home_team_name: String,
     pub away_team_name: String,
     pub status: String,
-    pub scheduled_time: chrono::DateTime<Utc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub week_end_date: Option<chrono::DateTime<Utc>>,
+    pub game_start_time: chrono::DateTime<Utc>,
     pub has_live_game: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub live_game_id: Option<Uuid>,
@@ -235,8 +232,7 @@ pub async fn get_games_status(
             lg.id,
             lg.week_number,
             lg.status,
-            lg.scheduled_time,
-            lg.week_end_date as "week_end_date?",
+            lg.game_start_time,
             ht.team_name as home_team_name,
             at.team_name as away_team_name,
             NULL::uuid as "live_game_id?" -- No longer needed since games are consolidated
@@ -245,7 +241,7 @@ pub async fn get_games_status(
         JOIN teams at ON lg.away_team_id = at.id
         -- No longer need live_games join since games are consolidated
         WHERE lg.season_id = $1
-        ORDER BY lg.week_number, lg.scheduled_time
+        ORDER BY lg.week_number, lg.game_start_time
         "#,
         season_id
     )
@@ -267,8 +263,7 @@ pub async fn get_games_status(
             home_team_name: game.home_team_name,
             away_team_name: game.away_team_name,
             status: game.status.clone(),
-            scheduled_time: game.scheduled_time,
-            week_end_date: game.week_end_date,
+            game_start_time: game.game_start_time.unwrap(),
             has_live_game: game.live_game_id.is_some(),
             live_game_id: game.live_game_id,
         };
@@ -324,7 +319,7 @@ pub async fn evaluate_games_for_date(
         r#"
         SELECT id
         FROM games
-        WHERE DATE(scheduled_time) = $1
+        WHERE DATE(game_start_time) = $1
         AND status = 'finished'
         AND (home_score_final IS NULL OR away_score_final IS NULL)
         "#,

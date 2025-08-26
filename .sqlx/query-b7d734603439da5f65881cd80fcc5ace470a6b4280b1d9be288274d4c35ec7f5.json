@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                UPDATE games \n                SET home_score_final = $1, \n                    away_score_final = $2, \n                    status = 'finished',\n                    winner_team_id = NULL,\n                    updated_at = NOW()\n                WHERE id = $3\n                RETURNING *\n                ",
+  "query": "\n            SELECT \n                id, season_id, home_team_id, away_team_id,\n                week_number, is_first_leg, status as \"status: GameStatus\",\n                home_score_final, away_score_final, winner_team_id, \n                created_at, updated_at,\n                home_score, away_score, game_start_time, game_end_time,\n                last_score_time, last_scorer_id, last_scorer_name, last_scorer_team\n            FROM games \n            WHERE id = $1\n            ",
   "describe": {
     "columns": [
       {
@@ -35,23 +35,23 @@
       },
       {
         "ordinal": 6,
-        "name": "status",
+        "name": "status: GameStatus",
         "type_info": "Varchar"
       },
       {
         "ordinal": 7,
-        "name": "winner_team_id",
-        "type_info": "Uuid"
-      },
-      {
-        "ordinal": 8,
         "name": "home_score_final",
         "type_info": "Int4"
       },
       {
-        "ordinal": 9,
+        "ordinal": 8,
         "name": "away_score_final",
         "type_info": "Int4"
+      },
+      {
+        "ordinal": 9,
+        "name": "winner_team_id",
+        "type_info": "Uuid"
       },
       {
         "ordinal": 10,
@@ -106,8 +106,6 @@
     ],
     "parameters": {
       "Left": [
-        "Int4",
-        "Int4",
         "Uuid"
       ]
     },
@@ -134,5 +132,5 @@
       true
     ]
   },
-  "hash": "c43bf72e95a98dc1dfe1aa02328314f88420ef6584754b2e42c320a709667f20"
+  "hash": "b7d734603439da5f65881cd80fcc5ace470a6b4280b1d9be288274d4c35ec7f5"
 }

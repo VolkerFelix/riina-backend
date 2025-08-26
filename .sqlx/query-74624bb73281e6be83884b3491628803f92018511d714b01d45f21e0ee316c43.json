@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT DISTINCT lse.game_id\n        FROM live_score_events lse \n        WHERE lse.workout_data_id = $1\n        AND lse.game_id IS NOT NULL\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "game_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "74624bb73281e6be83884b3491628803f92018511d714b01d45f21e0ee316c43"
+}

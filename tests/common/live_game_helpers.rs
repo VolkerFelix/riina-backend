@@ -316,14 +316,13 @@ pub async fn create_test_game(test_app: &TestApp, home_team_id: Uuid, away_team_
     // Insert game directly into database for testing
     sqlx::query!(
         r#"
-        INSERT INTO games (id, home_team_id, away_team_id, season_id, week_number, scheduled_time, status, week_start_date, week_end_date)
-        VALUES ($1, $2, $3, $4, 1, $5, 'in_progress', $6, $7)
+        INSERT INTO games (id, home_team_id, away_team_id, season_id, week_number, game_start_time, game_end_time, status)
+        VALUES ($1, $2, $3, $4, 1, $5, $6, 'in_progress')
         "#,
         game_id,
         home_team_id,
         away_team_id,
         season_id,
-        game_start,
         game_start,
         game_end
     )
@@ -341,7 +340,7 @@ pub async fn update_game_to_short_duration(test_app: &TestApp, game_id: Uuid) {
     sqlx::query!(
         r#"
         UPDATE games 
-        SET week_start_date = $1, week_end_date = $2, scheduled_time = $1
+        SET game_start_time = $1, game_end_time = $2
         WHERE id = $3
         "#,
         game_start,
@@ -360,7 +359,7 @@ pub async fn update_game_times_to_now(test_app: &TestApp, game_id: Uuid) {
     sqlx::query!(
         r#"
         UPDATE games 
-        SET scheduled_time = $1, week_start_date = $1, week_end_date = $2
+        SET game_start_time = $1, game_end_time = $2
         WHERE id = $3
         "#,
         now,
@@ -373,8 +372,19 @@ pub async fn update_game_times_to_now(test_app: &TestApp, game_id: Uuid) {
 }
 
 pub async fn start_test_game(test_app: &TestApp, game_id: Uuid) {
+    let now = Utc::now();
+    let game_end = now + Duration::hours(2);
+    
     sqlx::query!(
-        "UPDATE games SET status = 'in_progress' WHERE id = $1",
+        r#"
+        UPDATE games 
+        SET status = 'in_progress', 
+            game_start_time = $1,
+            game_end_time = $2
+        WHERE id = $3
+        "#,
+        now,
+        game_end,
         game_id
     )
     .execute(&test_app.db_pool)
@@ -451,13 +461,12 @@ pub async fn get_live_game_state(test_app: &TestApp, game_id: Uuid) -> LiveGameR
         away_team_name: row.away_team_name,
         home_score: row.home_score,
         away_score: row.away_score,
-        game_start_time: row.game_start_time.unwrap_or_else(|| chrono::Utc::now()),
-        game_end_time: row.game_end_time.unwrap_or_else(|| chrono::Utc::now()),
+        game_start_time: row.game_start_time,
+        game_end_time: row.game_end_time,
         last_score_time: row.last_score_time,
         last_scorer_id: row.last_scorer_id,
         last_scorer_name: row.last_scorer_name,
-        last_scorer_team: row.last_scorer_team,
-        is_active: row.status == "in_progress", // Derive from status instead of separate field
+        last_scorer_team: row.last_scorer_team
     }
 }
 
@@ -638,28 +647,33 @@ pub struct LiveGameRow {
     pub away_team_name: String,
     pub home_score: i32,
     pub away_score: i32,
-    pub game_start_time: DateTime<Utc>,
-    pub game_end_time: DateTime<Utc>,
+    pub game_start_time: Option<DateTime<Utc>>,
+    pub game_end_time: Option<DateTime<Utc>>,
     pub last_score_time: Option<DateTime<Utc>>,
     pub last_scorer_id: Option<Uuid>,
     pub last_scorer_name: Option<String>,
     pub last_scorer_team: Option<String>,
-    pub is_active: bool,
 }
 
 impl LiveGameRow {
     /// Calculate game progress as percentage (0-100)
     pub fn game_progress(&self) -> f32 {
         let now = Utc::now();
-        if now < self.game_start_time {
-            return 0.0;
-        }
-        if now >= self.game_end_time {
-            return 100.0;
-        }
+        let game_start_time = match self.game_start_time {
+            Some(time) => time,
+            // Game hasn't started yet
+            None => return 0.0,
+        };
+        let game_end_time = match self.game_end_time {
+            Some(time) => time,
+            // Game has ended
+            None => {
+                panic!("Game end time is not set");
+            }
+        };
         
-        let total_duration = (self.game_end_time - self.game_start_time).num_milliseconds() as f32;
-        let elapsed = (now - self.game_start_time).num_milliseconds() as f32;
+        let total_duration = (game_end_time - game_start_time).num_milliseconds() as f32;
+        let elapsed = (now - game_start_time).num_milliseconds() as f32;
         
         (elapsed / total_duration * 100.0).clamp(0.0, 100.0)
     }
@@ -667,11 +681,18 @@ impl LiveGameRow {
     /// Get time remaining in human readable format
     pub fn time_remaining(&self) -> Option<String> {
         let now = Utc::now();
-        if now >= self.game_end_time || !self.is_active {
+        let game_end_time = match self.game_end_time {
+            Some(time) => time,
+            // Game has ended
+            None => {
+                panic!("Game end time is not set");
+            }
+        };
+        if now >= game_end_time {
             return Some("Final".to_string());
         }
 
-        let remaining = self.game_end_time - now;
+        let remaining = game_end_time - now;
         let hours = remaining.num_hours();
         let minutes = remaining.num_minutes() % 60;
 

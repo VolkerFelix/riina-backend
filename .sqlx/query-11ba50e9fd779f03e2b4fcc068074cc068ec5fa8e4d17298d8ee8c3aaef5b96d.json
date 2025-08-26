@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT \n            g.id, g.home_team_id, g.away_team_id, \n            g.home_score, g.away_score, g.status,\n            g.week_start_date, g.week_end_date,\n            ht.team_name as home_team_name,\n            at.team_name as away_team_name\n        FROM games g\n        JOIN teams ht ON g.home_team_id = ht.id\n        JOIN teams at ON g.away_team_id = at.id\n        WHERE g.id = $1\n        ",
+  "query": "\n        SELECT \n            g.id, g.home_team_id, g.away_team_id, \n            g.home_score, g.away_score, g.status,\n            g.game_start_time, g.game_end_time,\n            ht.team_name as home_team_name,\n            at.team_name as away_team_name\n        FROM games g\n        JOIN teams ht ON g.home_team_id = ht.id\n        JOIN teams at ON g.away_team_id = at.id\n        WHERE g.id = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -35,12 +35,12 @@
       },
       {
         "ordinal": 6,
-        "name": "week_start_date",
+        "name": "game_start_time",
         "type_info": "Timestamptz"
       },
       {
         "ordinal": 7,
-        "name": "week_end_date",
+        "name": "game_end_time",
         "type_info": "Timestamptz"
       },
       {
@@ -72,5 +72,5 @@
       false
     ]
   },
-  "hash": "2c5ce88904a7fdeb61778e7c1cecd7435c6ee065e27ddca7beada6ec4d36b9a2"
+  "hash": "11ba50e9fd779f03e2b4fcc068074cc068ec5fa8e4d17298d8ee8c3aaef5b96d"
 }

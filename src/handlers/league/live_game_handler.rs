@@ -107,14 +107,21 @@ pub async fn get_game_live_score(
             let home_score = game_data.home_score as u32;
             let away_score = game_data.away_score as u32;
             
-            // Fetch scoring events from live_score_events table
+            // Fetch scoring events from live_score_events table with workout details
             let scoring_events = sqlx::query!(
                 r#"
                 SELECT 
                     lse.id, lse.user_id, lse.score_points,
                     lse.occurred_at, lse.event_type::text as "event_type!", lse.description,
-                    lse.username, lse.workout_data_id
+                    lse.username, lse.team_id, lse.team_side, lse.workout_data_id,
+                    lse.stamina_gained, lse.strength_gained,
+                    wd.id as "workout_id?", wd.created_at as "workout_date?",
+                    wd.workout_start as "workout_start?", wd.workout_end as "workout_end?",
+                    wd.avg_heart_rate as "avg_heart_rate?", wd.max_heart_rate as "max_heart_rate?",
+                    wd.duration_minutes as "duration_minutes?",
+                    wd.heart_rate_zones as "heart_rate_zones?"
                 FROM live_score_events lse
+                LEFT JOIN workout_data wd ON wd.id = lse.workout_data_id
                 WHERE lse.game_id = $1
                 ORDER BY lse.occurred_at DESC
                 LIMIT 50
@@ -128,16 +135,35 @@ pub async fn get_game_live_score(
             let scoring_events_json: Vec<serde_json::Value> = scoring_events
                 .into_iter()
                 .map(|event| {
-                    serde_json::json!({
+                    let mut event_json = serde_json::json!({
                         "id": event.id,
                         "user_id": event.user_id,
                         "username": event.username,
+                        "team_id": event.team_id,
+                        "team_side": event.team_side,
                         "score_points": event.score_points,
                         "occurred_at": event.occurred_at,
                         "event_type": event.event_type.to_string(),
-                        "description": event.description,
-                        "workout_data_id": event.workout_data_id
-                    })
+                        "description": event.description
+                    });
+                    
+                    // Add workout details if available
+                    if event.workout_id.is_some() {
+                        event_json["workout_details"] = serde_json::json!({
+                            "id": event.workout_id,
+                            "workout_date": event.workout_date,
+                            "workout_start": event.workout_start,
+                            "workout_end": event.workout_end,
+                            "stamina_gained": event.stamina_gained,
+                            "strength_gained": event.strength_gained,
+                            "avg_heart_rate": event.avg_heart_rate,
+                            "max_heart_rate": event.max_heart_rate,
+                            "duration_minutes": event.duration_minutes,
+                            "heart_rate_zones": event.heart_rate_zones
+                        });
+                    }
+                    
+                    event_json
                 })
                 .collect();
 

@@ -521,9 +521,9 @@ async fn test_first_game_starts_on_season_start_date() {
     assert!(!week_1_games.is_empty(), "Should have games in week 1");
     
     // Get the scheduled time of the first week's games
-    let first_game_time_str = week_1_games[0]["game"]["scheduled_time"]
+    let first_game_time_str = week_1_games[0]["game"]["game_start_time"]
         .as_str()
-        .expect("Scheduled time not found");
+        .expect("Game start time not found");
     
     let first_game_time = chrono::DateTime::parse_from_rfc3339(first_game_time_str)
         .expect("Failed to parse scheduled time")
@@ -547,9 +547,9 @@ async fn test_first_game_starts_on_season_start_date() {
         .collect();
     
     if !week_2_games.is_empty() {
-        let second_week_time_str = week_2_games[0]["game"]["scheduled_time"]
+        let second_week_time_str = week_2_games[0]["game"]["game_start_time"]
             .as_str()
-            .expect("Scheduled time not found");
+            .expect("Game start time not found");
         
         let second_week_time = chrono::DateTime::parse_from_rfc3339(second_week_time_str)
             .expect("Failed to parse scheduled time")

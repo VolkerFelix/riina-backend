@@ -310,10 +310,11 @@ async fn check_and_update_active_games(
             }
         };
 
-        // Check if the workout time falls within the game's active period
-        if let (Some(game_start), Some(game_end)) = (game.week_start_date, game.week_end_date) {
+        // Check if the workout time falls within the game's live scoring period
+        if let (Some(game_start), Some(game_end)) = (game.game_start_time, game.game_end_time) {
             if workout_start_time >= &game_start && workout_start_time <= &game_end {
-                tracing::info!("🏆 Workout time is within game period for user {} in game {}", username, game.id);
+                tracing::info!("🏆 Workout time is within live game period for user {} in game {} ({})", 
+                              username, game.id, workout_start_time);
                 update_game_score_from_workout(
                     user_id,
                     username,
@@ -324,8 +325,11 @@ async fn check_and_update_active_games(
                     pool,
                 ).await?;
             } else {
-                tracing::debug!("❌ Workout time is outside game period for user {} in game {}", username, game.id);
+                tracing::debug!("❌ Workout time {} is outside live game period ({} to {}) for user {} in game {}", 
+                               workout_start_time, game_start, game_end, username, game.id);
             }
+        } else {
+            tracing::debug!("❌ Game {} does not have live scoring times set", game.id);
         }
     }
 
@@ -472,7 +476,7 @@ async fn broadcast_score_update(
         SELECT 
             g.id, g.home_team_id, g.away_team_id, 
             g.home_score, g.away_score, g.status,
-            g.week_start_date, g.week_end_date,
+            g.game_start_time, g.game_end_time,
             ht.team_name as home_team_name,
             at.team_name as away_team_name
         FROM games g
@@ -487,7 +491,7 @@ async fn broadcast_score_update(
 
     if let Some(game) = game_data {
         // Calculate game progress (simplified)
-        let game_progress = if let (Some(start), Some(end)) = (game.week_start_date, game.week_end_date) {
+        let game_progress = if let (Some(start), Some(end)) = (game.game_start_time, game.game_end_time) {
             let now = chrono::Utc::now();
             let total_duration = end - start;
             let elapsed = now - start;

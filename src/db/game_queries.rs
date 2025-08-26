@@ -21,10 +21,10 @@ impl GameQueries {
             LeagueGame,
             r#"
             SELECT 
-                id, season_id, home_team_id, away_team_id, scheduled_time,
+                id, season_id, home_team_id, away_team_id,
                 week_number, is_first_leg, status as "status: GameStatus",
                 home_score_final, away_score_final, winner_team_id, 
-                week_start_date, week_end_date, created_at, updated_at,
+                created_at, updated_at,
                 home_score, away_score, game_start_time, game_end_time,
                 last_score_time, last_scorer_id, last_scorer_name, last_scorer_team
             FROM games 
@@ -182,15 +182,15 @@ impl GameQueries {
             LeagueGame,
             r#"
             SELECT 
-                id, season_id, home_team_id, away_team_id, scheduled_time,
+                id, season_id, home_team_id, away_team_id,
                 week_number, is_first_leg, status as "status: GameStatus",
                 home_score_final, away_score_final, winner_team_id,
-                week_start_date, week_end_date, created_at, updated_at,
+                created_at, updated_at,
                 home_score, away_score, game_start_time, game_end_time,
                 last_score_time, last_scorer_id, last_scorer_name, last_scorer_team
             FROM games
             WHERE status = 'in_progress'
-            ORDER BY scheduled_time ASC
+            ORDER BY game_start_time ASC
             "#
         )
         .fetch_all(&self.pool)
@@ -205,16 +205,16 @@ impl GameQueries {
             LeagueGame,
             r#"
             SELECT 
-                id, season_id, home_team_id, away_team_id, scheduled_time,
+                id, season_id, home_team_id, away_team_id,
                 week_number, is_first_leg, status as "status: GameStatus",
                 home_score_final, away_score_final, winner_team_id,
-                week_start_date, week_end_date, created_at, updated_at,
+                created_at, updated_at,
                 home_score, away_score, game_start_time, game_end_time,
                 last_score_time, last_scorer_id, last_scorer_name, last_scorer_team
             FROM games
             WHERE status = 'scheduled' 
-            AND week_start_date <= CURRENT_TIMESTAMP
-            ORDER BY scheduled_time ASC
+            AND game_start_time <= CURRENT_TIMESTAMP
+            ORDER BY game_start_time ASC
             "#
         )
         .fetch_all(&self.pool)
@@ -229,16 +229,16 @@ impl GameQueries {
             LeagueGame,
             r#"
             SELECT 
-                id, season_id, home_team_id, away_team_id, scheduled_time,
+                id, season_id, home_team_id, away_team_id,
                 week_number, is_first_leg, status as "status: GameStatus",
                 home_score_final, away_score_final, winner_team_id,
-                week_start_date, week_end_date, created_at, updated_at,
+                created_at, updated_at,
                 home_score, away_score, game_start_time, game_end_time,
                 last_score_time, last_scorer_id, last_scorer_name, last_scorer_team
             FROM games
             WHERE status = 'in_progress' 
-            AND week_end_date <= CURRENT_TIMESTAMP
-            ORDER BY scheduled_time ASC
+            AND game_end_time <= CURRENT_TIMESTAMP
+            ORDER BY game_start_time ASC
             "#
         )
         .fetch_all(&self.pool)

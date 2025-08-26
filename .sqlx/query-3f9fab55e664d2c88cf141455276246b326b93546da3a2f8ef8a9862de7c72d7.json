@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, home_team_id, away_team_id, week_number FROM games WHERE season_id = $1 AND status = 'scheduled' AND scheduled_time > NOW() ORDER BY week_number, scheduled_time LIMIT 10",
+  "query": "SELECT id, home_team_id, away_team_id, week_number FROM games WHERE season_id = $1 AND status = 'scheduled' AND game_start_time > NOW() ORDER BY week_number, game_start_time LIMIT 10",
   "describe": {
     "columns": [
       {
@@ -36,5 +36,5 @@
       false
     ]
   },
-  "hash": "b70ea7bbaafc19561977a0f6c6579f1aed9582ae469ee02c3cfa8832179869e6"
+  "hash": "3f9fab55e664d2c88cf141455276246b326b93546da3a2f8ef8a9862de7c72d7"
 }

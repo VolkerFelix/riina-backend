@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT \n                COUNT(*) as total_games,\n                SUM(CASE WHEN status = 'finished' THEN 1 ELSE 0 END) as completed_games,\n                SUM(CASE WHEN status = 'scheduled' THEN 1 ELSE 0 END) as upcoming_games,\n                SUM(CASE WHEN status = 'live' THEN 1 ELSE 0 END) as live_games,\n                SUM(CASE WHEN status = 'postponed' THEN 1 ELSE 0 END) as postponed_games,\n                MIN(scheduled_time) as first_game_time,\n                MAX(scheduled_time) as last_game_time,\n                MIN(week_number) as first_week,\n                MAX(week_number) as last_week\n            FROM games\n            WHERE season_id = $1\n            ",
+  "query": "\n            SELECT \n                COUNT(*) as total_games,\n                SUM(CASE WHEN status = 'finished' THEN 1 ELSE 0 END) as completed_games,\n                SUM(CASE WHEN status = 'scheduled' THEN 1 ELSE 0 END) as upcoming_games,\n                SUM(CASE WHEN status = 'live' THEN 1 ELSE 0 END) as live_games,\n                SUM(CASE WHEN status = 'postponed' THEN 1 ELSE 0 END) as postponed_games,\n                MIN(game_start_time) as first_game_time,\n                MAX(game_start_time) as last_game_time,\n                MIN(week_number) as first_week,\n                MAX(week_number) as last_week\n            FROM games\n            WHERE season_id = $1\n            ",
   "describe": {
     "columns": [
       {
@@ -66,5 +66,5 @@
       null
     ]
   },
-  "hash": "ea1777f0f71e07d5af07e1a14a2dc7d0ddbb1e4fa01e93299a6f23da8a74c412"
+  "hash": "4b372fbc2cc8ded08dc5fca5817219dd8a69cdf4b4ae425ff47a824893e1ee65"
 }

@@ -377,23 +377,21 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
 
 async fn update_games_to_current_time(app: &common::utils::TestApp, league_id: &str) {
     let now = chrono::Utc::now();
-    let today_start = chrono::Utc::now().date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc();
-    let week_end = now + chrono::Duration::seconds(5);
+    let game_end = now + chrono::Duration::seconds(5);
     let league_uuid = uuid::Uuid::parse_str(league_id).expect("Invalid league ID");
     
     // Update all games in the league to current time
-    // Set week_start_date to beginning of today (so CURRENT_DATE BETWEEN works) and week_end_date to 5 seconds later
+    // Set game_start_time to now and game_end_time to 5 seconds later
     sqlx::query!(
         r#"
         UPDATE games 
-        SET scheduled_time = $1, week_start_date = $2, week_end_date = $3
+        SET game_start_time = $1, game_end_time = $2
         WHERE season_id IN (
-            SELECT id FROM league_seasons WHERE league_id = $4
+            SELECT id FROM league_seasons WHERE league_id = $3
         )
         "#,
         now,
-        today_start,
-        week_end,
+        game_end,
         league_uuid
     )
     .execute(&app.db_pool)

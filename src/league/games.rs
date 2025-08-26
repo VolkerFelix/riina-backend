@@ -141,15 +141,12 @@ impl GameService {
                         row.season_id,
                         row.home_team_id,
                         row.away_team_id,
-                        row.scheduled_time,
                         row.week_number,
                         row.is_first_leg,
                         status,
                         row.home_score_final,
                         row.away_score_final,
                         row.winner_team_id,
-                        None, // week_start_date
-                        None, // week_end_date
                         row.created_at,
                         row.updated_at,
                     ),
@@ -183,8 +180,8 @@ impl GameService {
             JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.season_id = $1 
             AND lg.status = 'scheduled'
-            AND lg.scheduled_time >= $2
-            ORDER BY lg.scheduled_time ASC
+            AND lg.game_start_time >= $2
+            ORDER BY lg.game_start_time ASC
             LIMIT 1
             "#,
             season_id,
@@ -212,15 +209,12 @@ impl GameService {
                         row.season_id,
                         row.home_team_id,
                         row.away_team_id,
-                        row.scheduled_time,
                         row.week_number,
                         row.is_first_leg,
                         status,
                         row.home_score_final,
                         row.away_score_final,
                         row.winner_team_id,
-                        None, // week_start_date
-                        None, // week_end_date
                         row.created_at,
                         row.updated_at,
                     ),
@@ -254,9 +248,9 @@ impl GameService {
             JOIN teams ht ON lg.home_team_id = ht.id
             JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.season_id = $1 
-            AND lg.scheduled_time >= $2
-            AND lg.scheduled_time < $3
-            ORDER BY lg.scheduled_time ASC
+            AND lg.game_start_time >= $2
+            AND lg.game_start_time < $3
+            ORDER BY lg.game_start_time ASC
             "#,
             season_id,
             week_start,
@@ -291,15 +285,12 @@ impl GameService {
                     row.season_id,
                     row.home_team_id,
                     row.away_team_id,
-                    row.scheduled_time,
                     row.week_number,
                     row.is_first_leg,
                     status,
                     row.home_score_final,
                     row.away_score_final,
                     row.winner_team_id,
-                    None, // week_start_date
-                    None, // week_end_date
                     row.created_at,
                     row.updated_at,
                 ),
@@ -331,10 +322,10 @@ impl GameService {
             JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.season_id = $1 
             AND (
-                (lg.scheduled_time >= $2 AND lg.status IN ('scheduled', 'postponed'))
+                (lg.game_start_time >= $2 AND lg.status IN ('scheduled', 'postponed'))
                 OR lg.status IN ('in_progress', 'live')
             )
-            ORDER BY lg.scheduled_time ASC
+            ORDER BY lg.game_start_time ASC
             LIMIT $3
             "#,
             season_id,
@@ -370,15 +361,12 @@ impl GameService {
                     row.season_id,
                     row.home_team_id,
                     row.away_team_id,
-                    row.scheduled_time,
                     row.week_number,
                     row.is_first_leg,
                     status,
                     row.home_score_final,
                     row.away_score_final,
                     row.winner_team_id,
-                    None, // week_start_date
-                    None, // week_end_date
                     row.created_at,
                     row.updated_at,
                 ),
@@ -409,7 +397,7 @@ impl GameService {
             JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.season_id = $1 
             AND lg.status IN ('in_progress', 'live')
-            ORDER BY lg.scheduled_time ASC
+            ORDER BY lg.game_start_time ASC
             LIMIT $2
             "#,
             season_id,
@@ -445,15 +433,12 @@ impl GameService {
                     row.season_id,
                     row.home_team_id,
                     row.away_team_id,
-                    row.scheduled_time,
                     row.week_number,
                     row.is_first_leg,
                     status,
                     row.home_score_final,
                     row.away_score_final,
                     row.winner_team_id,
-                    None, // week_start_date
-                    None, // week_end_date
                     row.created_at,
                     row.updated_at,
                 ),

@@ -89,14 +89,13 @@ impl ScheduleService {
                 sqlx::query!(
                     r#"
                     INSERT INTO games (
-                        season_id, home_team_id, away_team_id, scheduled_time, 
-                        week_number, is_first_leg, status, week_start_date, week_end_date
-                    ) VALUES ($1, $2, $3, $4, $5, TRUE, 'scheduled', $6, $7)
+                        season_id, home_team_id, away_team_id, 
+                        week_number, is_first_leg, status, game_start_time, game_end_time
+                    ) VALUES ($1, $2, $3, $4, TRUE, 'scheduled', $5, $6)
                     "#,
                     season_id,
                     home_team,
                     away_team,
-                    game_start_time,
                     round_counter_for_readability as i32,
                     game_start_time,
                     game_end_time
@@ -152,14 +151,13 @@ impl ScheduleService {
                 sqlx::query!(
                     r#"
                     INSERT INTO games (
-                        season_id, home_team_id, away_team_id, scheduled_time,
-                        week_number, is_first_leg, status, week_start_date, week_end_date
-                    ) VALUES ($1, $2, $3, $4, $5, FALSE, 'scheduled', $6, $7)
+                        season_id, home_team_id, away_team_id,
+                        week_number, is_first_leg, status, game_start_time, game_end_time
+                    ) VALUES ($1, $2, $3, $4, FALSE, 'scheduled', $5, $6)
                     "#,
                     season_id,
                     home_team,
                     away_team,
-                    game_start_time,
                     round_counter_for_readability as i32,
                     game_start_time,
                     game_end_time
@@ -241,7 +239,7 @@ impl ScheduleService {
             JOIN teams ht ON lg.home_team_id = ht.id
             JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.season_id = $1 AND lg.week_number = $2
-            ORDER BY lg.scheduled_time ASC
+            ORDER BY lg.game_start_time ASC
             "#,
             season_id,
             week_number
@@ -253,7 +251,7 @@ impl ScheduleService {
             return Err(sqlx::Error::RowNotFound);
         }
 
-        let game_time = games_query[0].scheduled_time;
+        let game_time = games_query[0].game_start_time.unwrap_or_else(|| chrono::Utc::now());
         let now = Utc::now();
         let next_saturday = self.timing.get_next_game_time();
         let is_current_week = (game_time - next_saturday).abs() < Duration::days(7);
@@ -291,15 +289,12 @@ impl ScheduleService {
                     row.season_id,
                     row.home_team_id,
                     row.away_team_id,
-                    row.scheduled_time,
                     row.week_number,
                     row.is_first_leg,
                     status,
                     row.home_score_final,
                     row.away_score_final,
                     row.winner_team_id,
-                    None, // week_start_date
-                    None, // week_end_date
                     row.created_at,
                     row.updated_at,
                 ),
@@ -343,8 +338,8 @@ impl ScheduleService {
             JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.season_id = $1 
             AND lg.status = 'scheduled'
-            AND lg.scheduled_time >= $2
-            ORDER BY lg.scheduled_time ASC
+            AND lg.game_start_time >= $2
+            ORDER BY lg.game_start_time ASC
             LIMIT $3
             "#,
             season_id,
@@ -380,15 +375,12 @@ impl ScheduleService {
                     row.season_id,
                     row.home_team_id,
                     row.away_team_id,
-                    row.scheduled_time,
                     row.week_number,
                     row.is_first_leg,
                     status,
                     row.home_score_final,
                     row.away_score_final,
                     row.winner_team_id,
-                    None, // week_start_date
-                    None, // week_end_date
                     row.created_at,
                     row.updated_at,
                 ),
@@ -423,7 +415,7 @@ impl ScheduleService {
             JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.season_id = $1 
             AND lg.status = 'finished'
-            ORDER BY lg.scheduled_time DESC
+            ORDER BY lg.game_start_time DESC
             LIMIT $2
             "#,
             season_id,
@@ -458,15 +450,12 @@ impl ScheduleService {
                     row.season_id,
                     row.home_team_id,
                     row.away_team_id,
-                    row.scheduled_time,
                     row.week_number,
                     row.is_first_leg,
                     status,
                     row.home_score_final,
                     row.away_score_final,
                     row.winner_team_id,
-                    None, // week_start_date
-                    None, // week_end_date
                     row.created_at,
                     row.updated_at,
                 ),
@@ -536,7 +525,7 @@ impl ScheduleService {
                 lg.season_id,
                 lg.home_team_id,
                 lg.away_team_id,
-                lg.scheduled_time,
+                lg.game_start_time,
                 lg.week_number,
                 lg.is_first_leg,
                 lg.status,
@@ -553,7 +542,7 @@ impl ScheduleService {
             JOIN teams ht ON lg.home_team_id = ht.id
             JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.season_id = $1
-            ORDER BY lg.scheduled_time, lg.week_number
+            ORDER BY lg.game_start_time, lg.week_number
             "#,
             season_id
         )
@@ -581,23 +570,28 @@ impl ScheduleService {
             };
 
             GameWithTeams {
-                game: LeagueGame::with_defaults(
-                    row.id,
-                    row.season_id,
-                    row.home_team_id,
-                    row.away_team_id,
-                    row.scheduled_time,
-                    row.week_number,
-                    row.is_first_leg,
+                game: LeagueGame {
+                    id: row.id,
+                    season_id: row.season_id,
+                    home_team_id: row.home_team_id,
+                    away_team_id: row.away_team_id,
+                    week_number: row.week_number,
+                    is_first_leg: row.is_first_leg,
                     status,
-                    row.home_score_final,
-                    row.away_score_final,
-                    row.winner_team_id,
-                    None, // week_start_date
-                    None, // week_end_date
-                    row.created_at,
-                    row.updated_at,
-                ),
+                    home_score_final: row.home_score_final,
+                    away_score_final: row.away_score_final,
+                    winner_team_id: row.winner_team_id,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                    home_score: Some(0),
+                    away_score: Some(0),
+                    game_start_time: row.game_start_time,
+                    game_end_time: None,
+                    last_score_time: None,
+                    last_scorer_id: None,
+                    last_scorer_name: None,
+                    last_scorer_team: None,
+                },
                 home_team_name: row.home_team_name,
                 away_team_name: row.away_team_name,
                 home_team_color: row.home_team_color,
@@ -618,8 +612,8 @@ impl ScheduleService {
                 SUM(CASE WHEN status = 'scheduled' THEN 1 ELSE 0 END) as upcoming_games,
                 SUM(CASE WHEN status = 'live' THEN 1 ELSE 0 END) as live_games,
                 SUM(CASE WHEN status = 'postponed' THEN 1 ELSE 0 END) as postponed_games,
-                MIN(scheduled_time) as first_game_time,
-                MAX(scheduled_time) as last_game_time,
+                MIN(game_start_time) as first_game_time,
+                MAX(game_start_time) as last_game_time,
                 MIN(week_number) as first_week,
                 MAX(week_number) as last_week
             FROM games
@@ -672,9 +666,9 @@ impl ScheduleService {
             JOIN teams ht ON lg.home_team_id = ht.id
             JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.season_id = $1 
-            AND lg.scheduled_time >= $2
-            AND lg.scheduled_time <= $3
-            ORDER BY lg.scheduled_time ASC
+            AND lg.game_start_time >= $2
+            AND lg.game_start_time <= $3
+            ORDER BY lg.game_start_time ASC
             "#,
             season_id,
             start_utc,
@@ -709,15 +703,12 @@ impl ScheduleService {
                     row.season_id,
                     row.home_team_id,
                     row.away_team_id,
-                    row.scheduled_time,
                     row.week_number,
                     row.is_first_leg,
                     status,
                     row.home_score_final,
                     row.away_score_final,
                     row.winner_team_id,
-                    None, // week_start_date
-                    None, // week_end_date
                     row.created_at,
                     row.updated_at,
                 ),
