@@ -339,10 +339,8 @@ impl GameService {
             JOIN teams ht ON lg.home_team_id = ht.id
             JOIN teams at ON lg.away_team_id = at.id
             WHERE lg.season_id = $1 
-            AND (
-                (lg.game_start_time >= $2 AND lg.status IN ('scheduled', 'postponed'))
-                OR lg.status IN ('in_progress', 'live')
-            )
+            AND lg.game_start_time >= $2 
+            AND lg.status IN ('scheduled', 'postponed')
             ORDER BY lg.game_start_time ASC
             LIMIT $3
             "#,

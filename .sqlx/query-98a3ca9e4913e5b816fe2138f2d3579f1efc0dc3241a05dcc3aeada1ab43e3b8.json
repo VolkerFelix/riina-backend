@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT \n                lg.*,\n                ht.team_name as home_team_name,\n                ht.team_color as home_team_color,\n                at.team_name as away_team_name,\n                at.team_color as away_team_color\n            FROM games lg\n            JOIN teams ht ON lg.home_team_id = ht.id\n            JOIN teams at ON lg.away_team_id = at.id\n            WHERE lg.season_id = $1 \n            AND (\n                (lg.game_start_time >= $2 AND lg.status IN ('scheduled', 'postponed'))\n                OR lg.status IN ('in_progress', 'live')\n            )\n            ORDER BY lg.game_start_time ASC\n            LIMIT $3\n            ",
+  "query": "\n            SELECT \n                lg.*,\n                ht.team_name as home_team_name,\n                ht.team_color as home_team_color,\n                at.team_name as away_team_name,\n                at.team_color as away_team_color\n            FROM games lg\n            JOIN teams ht ON lg.home_team_id = ht.id\n            JOIN teams at ON lg.away_team_id = at.id\n            WHERE lg.season_id = $1 \n            AND lg.game_start_time >= $2 \n            AND lg.status IN ('scheduled', 'postponed')\n            ORDER BY lg.game_start_time ASC\n            LIMIT $3\n            ",
   "describe": {
     "columns": [
       {
@@ -146,5 +146,5 @@
       false
     ]
   },
-  "hash": "05f66825eeedf7625fa3139c706a77d136fae7a1a17b7c6d3e551e30ac876566"
+  "hash": "98a3ca9e4913e5b816fe2138f2d3579f1efc0dc3241a05dcc3aeada1ab43e3b8"
 }

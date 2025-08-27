@@ -3,7 +3,7 @@
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request};
-use common::admin_helpers::{create_admin_user_and_login, create_league_season};
+use common::admin_helpers::{create_admin_user_and_login, create_league_season, create_league};
 use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user};
 use serde_json::json;
 use uuid::Uuid;
@@ -563,4 +563,152 @@ async fn test_null_field_detection() {
     
     assert!(result.is_err(), "Should have detected null game_start_time");
     println!("✅ Null field detection working correctly!");
+}
+
+#[tokio::test]
+async fn test_upcoming_games_excludes_live_games() {
+    let app = spawn_app().await;
+    let client = reqwest::Client::new();
+    
+    let unique_suffix = &Uuid::new_v4().to_string()[..8];
+    
+    println!("🔍 Testing that upcoming games endpoint excludes live games...");
+    
+    // Setup: Create admin and regular users
+    let admin = create_admin_user_and_login(&app.address).await;
+    let user = create_test_user_and_login(&app.address).await;
+    let user2 = create_test_user_and_login(&app.address).await;
+
+    // Create first team
+    let team_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/teams", &app.address),
+        &admin.token,
+        Some(json!({
+            "name": format!("Team A {}", unique_suffix),
+            "color": "#FF0000",
+            "owner_id": user.user_id
+        })),
+    ).await;
+    println!("Team creation response status: {}", team_response.status());
+    let response_text = team_response.text().await.unwrap();
+    println!("Team creation response body: {}", response_text);
+    let team_data: serde_json::Value = serde_json::from_str(&response_text).unwrap();
+    let team_id = team_data["data"]["id"].as_str().unwrap();
+    
+    let team2_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/teams", &app.address),
+        &admin.token,
+        Some(json!({
+            "name": format!("Team B {}", unique_suffix),
+            "color": "#0000FF",
+            "owner_id": user2.user_id
+        })),
+    ).await;
+    let team2_data = team2_response.json::<serde_json::Value>().await.unwrap();
+    let team2_id = team2_data["data"]["id"].as_str().unwrap();
+
+    let league_id = create_league(&app.address, &admin.token, 2).await;
+
+    //Assign both teams to league
+    make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/leagues/{}/teams", &app.address, league_id),
+        &admin.token,
+        Some(json!({"team_id": team_id})),
+    ).await;
+    
+    make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/leagues/{}/teams", &app.address, league_id),
+        &admin.token,
+        Some(json!({"team_id": team2_id})),
+    ).await;
+
+    let start_date = Utc::now() + chrono::Duration::days(1);
+    let season_id = create_league_season(
+        &app.address,
+        &admin.token,
+        league_id.as_str(),
+        &format!("Games Test Season {}", unique_suffix),
+        &start_date.to_rfc3339()
+    ).await;
+
+    // Get the first scheduled game
+    let upcoming_games_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/games/upcoming?season_id={}", &app.address, season_id),
+        &user.token,
+        None,
+    ).await;
+    
+    assert_eq!(upcoming_games_response.status(), 200, "Expected 200 OK for upcoming games");
+    let upcoming_games_json = upcoming_games_response.json::<serde_json::Value>().await.unwrap();
+    let upcoming_games = upcoming_games_json["data"].as_array().unwrap();
+    
+    assert!(!upcoming_games.is_empty(), "Should have at least one upcoming game");
+    let game_id = upcoming_games[0]["game"]["id"].as_str().unwrap();
+    let week_number = upcoming_games[0]["game"]["week_number"].as_i64().unwrap() as i32;
+    
+    // Start the game (make it live) using the proper admin endpoint
+    make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/games/start-now", &app.address),
+        &admin.token,
+        Some(json!({
+            "season_id": season_id,
+            "week_number": week_number,
+            "duration_minutes": 60 // 1 hour for testing
+        })),
+    ).await;
+    
+    // Now check upcoming games again - the live game should NOT appear
+    let upcoming_after_live_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/games/upcoming?season_id={}", &app.address, season_id),
+        &user.token,
+        None,
+    ).await;
+    
+    assert_eq!(upcoming_after_live_response.status(), 200, "Expected 200 OK for upcoming games");
+    let upcoming_after_live_json = upcoming_after_live_response.json::<serde_json::Value>().await.unwrap();
+    let upcoming_after_live = upcoming_after_live_json["data"].as_array().unwrap();
+    
+    // Verify the live game is not in upcoming games anymore
+    let live_game_in_upcoming = upcoming_after_live.iter().any(|game| {
+        game["game"]["id"].as_str().unwrap() == game_id
+    });
+    
+    assert!(!live_game_in_upcoming, 
+        "Live game {} should NOT appear in upcoming games list", game_id);
+    
+    // Also verify it appears in live games endpoint
+    let live_games_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/games/live-active?season_id={}", &app.address, season_id),
+        &user.token,
+        None,
+    ).await;
+    
+    assert_eq!(live_games_response.status(), 200, "Expected 200 OK for live games");
+    let live_games_json = live_games_response.json::<serde_json::Value>().await.unwrap();
+    let live_games = live_games_json["data"].as_array().unwrap();
+    
+    let live_game_in_live = live_games.iter().any(|game| {
+        game["game"]["id"].as_str().unwrap() == game_id
+    });
+    
+    assert!(live_game_in_live, 
+        "Live game {} should appear in live games list", game_id);
+    
+    println!("✅ Upcoming games correctly excludes live games!");
 }
