@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT id, home_team_id, away_team_id, \n                   COALESCE(home_score, 0) as home_score,\n                   COALESCE(away_score, 0) as away_score\n            FROM games \n            WHERE id = ANY($1) and status = 'finished'\n            ",
+  "query": "\n            SELECT id, home_team_id, away_team_id, home_score, away_score\n            FROM games \n            WHERE id = ANY($1) and status = 'finished'\n            ",
   "describe": {
     "columns": [
       {
@@ -38,9 +38,9 @@
       false,
       false,
       false,
-      null,
-      null
+      false,
+      false
     ]
   },
-  "hash": "d3bc869ca0bdc82789bb17f127d941111ae5eda452ab98b7f4840044753451e4"
+  "hash": "6b902b7946fb31ad466e8d2f47af6e6bd1f263cb03f80a4f202b5b865ca00f17"
 }

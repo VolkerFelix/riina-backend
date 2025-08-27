@@ -85,8 +85,8 @@ winner_team_id,
 
         // Update standings with the updated game record
         let mut updated_game = game_record;
-        updated_game.home_score = Some(game_stats.home_team_score as i32);
-        updated_game.away_score = Some(game_stats.away_team_score as i32);
+        updated_game.home_score = game_stats.home_team_score as i32;
+        updated_game.away_score = game_stats.away_team_score as i32;
         updated_game.winner_team_id = game_stats.winner_team_id;
         updated_game.status = GameStatus::Evaluated;
 
@@ -114,9 +114,7 @@ winner_team_id,
         // Get the game details
         let games = sqlx::query!(
             r#"
-            SELECT id, home_team_id, away_team_id, 
-                   COALESCE(home_score, 0) as home_score,
-                   COALESCE(away_score, 0) as away_score
+            SELECT id, home_team_id, away_team_id, home_score, away_score
             FROM games 
             WHERE id = ANY($1) and status = 'finished'
             "#,
@@ -132,8 +130,8 @@ winner_team_id,
 
             // Use the scores from the games table directly (already consolidated)
             let game_stats = {
-                let home_score = game_data.home_score.unwrap_or(0);
-                let away_score = game_data.away_score.unwrap_or(0);
+                let home_score = game_data.home_score;
+                let away_score = game_data.away_score;
                 let winner_team_id = if home_score > away_score {
                     Some(game_data.home_team_id)
                 } else if away_score > home_score {

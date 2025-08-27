@@ -52,10 +52,8 @@ pub struct LeagueGame {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     // New consolidated fields from live_games table
-    #[serde(default)]
-    pub home_score: Option<i32>,
-    #[serde(default)]
-    pub away_score: Option<i32>,
+    pub home_score: i32,
+    pub away_score: i32,
     #[serde(default)]
     pub game_start_time: Option<DateTime<Utc>>,
     #[serde(default)]
@@ -96,8 +94,8 @@ impl LeagueGame {
             created_at,
             updated_at,
             // Default values for new consolidated fields
-            home_score: Some(0),
-            away_score: Some(0),
+            home_score: 0,
+            away_score: 0,
             game_start_time: None,
             game_end_time: None,
             last_score_time: None,
@@ -116,8 +114,8 @@ impl LeagueGame {
         week_number: i32,
         is_first_leg: bool,
         status: GameStatus,
-        home_score: Option<i32>,
-        away_score: Option<i32>,
+        home_score: i32,
+        away_score: i32,
         winner_team_id: Option<Uuid>,
         created_at: DateTime<Utc>,
         updated_at: DateTime<Utc>,
@@ -134,8 +132,8 @@ impl LeagueGame {
             created_at,
             updated_at,
             // Default new consolidated fields
-            home_score: Some(0),
-            away_score: Some(0),
+            home_score,
+            away_score,
             game_start_time: None,
             game_end_time: None,
             last_score_time: None,
