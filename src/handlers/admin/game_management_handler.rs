@@ -210,7 +210,8 @@ pub struct GameStatusInfo {
     pub home_team_name: String,
     pub away_team_name: String,
     pub status: String,
-    pub game_start_time: chrono::DateTime<Utc>,
+    pub game_start_time: Option<chrono::DateTime<Utc>>,
+    pub game_end_time: Option<chrono::DateTime<Utc>>,
     pub has_live_game: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub live_game_id: Option<Uuid>,
@@ -233,6 +234,7 @@ pub async fn get_games_status(
             lg.week_number,
             lg.status,
             lg.game_start_time,
+            lg.game_end_time,
             ht.team_name as home_team_name,
             at.team_name as away_team_name,
             NULL::uuid as "live_game_id?" -- No longer needed since games are consolidated
@@ -263,7 +265,8 @@ pub async fn get_games_status(
             home_team_name: game.home_team_name,
             away_team_name: game.away_team_name,
             status: game.status.clone(),
-            game_start_time: game.game_start_time.unwrap(),
+            game_start_time: game.game_start_time,
+            game_end_time: game.game_end_time,
             has_live_game: game.live_game_id.is_some(),
             live_game_id: game.live_game_id,
         };

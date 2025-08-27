@@ -837,6 +837,32 @@ pub async fn create_league_season(
                         Ok(created) => {
                             games_created = created;
                             tracing::info!("Automatically generated {} games for new season {}", created, season_id);
+                            
+                            // Update season end date based on the latest game end time
+                            let latest_game_end = sqlx::query!(
+                                "SELECT MAX(game_end_time) as max_end_time FROM games WHERE season_id = $1",
+                                season_id
+                            )
+                            .fetch_one(pool.get_ref())
+                            .await;
+
+                            if let Ok(result) = latest_game_end {
+                                if let Some(max_end_time) = result.max_end_time {
+                                    sqlx::query!(
+                                        "UPDATE league_seasons SET end_date = $1, updated_at = NOW() WHERE id = $2",
+                                        max_end_time,
+                                        season_id
+                                    )
+                                    .execute(pool.get_ref())
+                                    .await
+                                    .map_err(|e| {
+                                        tracing::error!("Failed to update season end date: {}", e);
+                                        actix_web::error::ErrorInternalServerError("Database error")
+                                    })?;
+                                    
+                                    tracing::info!("Updated season {} end date to: {}", season_id, max_end_time);
+                                }
+                            }
                         }
                         Err(e) => {
                             tracing::error!("Failed to automatically generate schedule for season {}: {}", season_id, e);

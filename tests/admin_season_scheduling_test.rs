@@ -142,20 +142,49 @@ async fn test_season_creation_with_dynamic_scheduling() {
     
     println!("✅ Created season with disabled auto-evaluation and 1-day games");
 
-    // Step 7: Verify end date is calculated based on team count (4 teams = 6 weeks)
-    let expected_end_date = start_date + Duration::weeks(6);
-    let actual_end_date = chrono::DateTime::parse_from_rfc3339(
+    // Step 7: Verify end date matches the actual last scheduled game end time
+    let season_end_date = chrono::DateTime::parse_from_rfc3339(
         season_data["data"]["end_date"].as_str().unwrap()
     ).unwrap();
     
-    // Check that the dates are on the same day (allowing for time differences)
+    // Get the actual game schedule to find the real last game end time
+    let games_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/admin/seasons/{}/schedule", &app.address, season_id_default),
+        &admin_user.token,
+        None,
+    ).await;
+    
+    assert_eq!(games_response.status(), 200);
+    let games_data: serde_json::Value = games_response.json().await.unwrap();
+    let games = games_data["data"]["games"].as_array().unwrap();
+    
+    // Find the maximum game_end_time from all scheduled games
+    let mut latest_game_end_time: Option<chrono::DateTime<chrono::FixedOffset>> = None;
+    
+    for game in games {
+        if let Some(game_end_time_str) = game["game"]["game_end_time"].as_str() {
+            let game_end_time = chrono::DateTime::parse_from_rfc3339(game_end_time_str).unwrap();
+            
+            if latest_game_end_time.is_none() || game_end_time > latest_game_end_time.unwrap() {
+                latest_game_end_time = Some(game_end_time);
+            }
+        }
+    }
+    
+    assert!(latest_game_end_time.is_some(), "Should have games with end times");
+    let actual_last_game_end = latest_game_end_time.unwrap();
+    
+    // The season end date should exactly match the last game's end time
     assert_eq!(
-        actual_end_date.date_naive(),
-        expected_end_date.date_naive(),
-        "End date should be 6 weeks after start date for 4 teams"
+        season_end_date.timestamp(),
+        actual_last_game_end.timestamp(),
+        "Season end date should equal the last game's end time (round-robin schedule result)"
     );
     
-    println!("✅ Verified end date calculation (6 weeks for 4 teams)");
+    println!("✅ Verified end date equals last scheduled game end time");
+    println!("   Season end: {} | Last game end: {}", season_end_date, actual_last_game_end);
 
     // Step 8: Test invalid game duration (exceeds 30-day limit)
     let invalid_duration_request = json!({

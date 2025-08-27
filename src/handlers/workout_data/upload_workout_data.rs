@@ -151,13 +151,14 @@ pub async fn upload_workout_data(
                 }
 
                 // 🏆 CHECK FOR ACTIVE GAMES AND UPDATE SCORES
-                if let Some(workout_start) = data.workout_start {
+                if let (Some(workout_start), Some(workout_end)) = (data.workout_start, data.workout_end) {
                     match check_and_update_active_games(
                         user_id, 
                         &claims.username,
                         sync_id,
                         &stat_changes,
                         &workout_start,
+                        &workout_end,
                         &pool,
                     ).await {
                         Ok(_) => {
@@ -168,7 +169,7 @@ pub async fn upload_workout_data(
                         }
                     }
                 } else {
-                    tracing::warn!("⚠️ No workout start time found for user {}", claims.username);
+                    tracing::warn!("⚠️ Workout start or end time missing for user {} - cannot score in live games", claims.username);
                 }
             } else {
                 tracing::info!("⏭️ Skipping stats update and live game scoring for duplicate workout");
@@ -286,6 +287,7 @@ async fn check_and_update_active_games(
     workout_data_id: Uuid,
     stat_changes: &StatChanges,
     workout_start_time: &DateTime<Utc>,
+    workout_end_time: &DateTime<Utc>,
     pool: &sqlx::PgPool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("🎮 Checking for active games for user {}", username);
@@ -312,9 +314,9 @@ async fn check_and_update_active_games(
 
         // Check if the workout time falls within the game's live scoring period
         if let (Some(game_start), Some(game_end)) = (game.game_start_time, game.game_end_time) {
-            if workout_start_time >= &game_start && workout_start_time <= &game_end {
-                tracing::info!("🏆 Workout time is within live game period for user {} in game {} ({})", 
-                              username, game.id, workout_start_time);
+            if workout_start_time >= &game_start && workout_end_time <= &game_end {
+                tracing::info!("🏆 Workout time is within live game period for user {} in game {} ({} to {})", 
+                              username, game.id, workout_start_time, workout_end_time);
                 update_game_score_from_workout(
                     user_id,
                     username,
@@ -325,8 +327,8 @@ async fn check_and_update_active_games(
                     pool,
                 ).await?;
             } else {
-                tracing::debug!("❌ Workout time {} is outside live game period ({} to {}) for user {} in game {}", 
-                               workout_start_time, game_start, game_end, username, game.id);
+                tracing::debug!("❌ Workout time ({} to {}) is outside live game period ({} to {}) for user {} in game {}", 
+                               workout_start_time, workout_end_time, game_start, game_end, username, game.id);
             }
         } else {
             tracing::debug!("❌ Game {} does not have live scoring times set", game.id);
