@@ -151,13 +151,17 @@ async fn test_season_creation_with_dynamic_scheduling() {
     let games_response = make_authenticated_request(
         &client,
         reqwest::Method::GET,
-        &format!("{}/admin/seasons/{}/schedule", &app.address, season_id_default),
+        &format!("{}/league/seasons/{}/schedule", &app.address, season_id_default),
         &admin_user.token,
         None,
     ).await;
     
     assert_eq!(games_response.status(), 200);
     let games_data: serde_json::Value = games_response.json().await.unwrap();
+    
+    // Debug: Print the structure to understand what we're getting
+    println!("Schedule response structure: {}", serde_json::to_string_pretty(&games_data).unwrap());
+    
     let games = games_data["data"]["games"].as_array().unwrap();
     
     // Find the maximum game_end_time from all scheduled games

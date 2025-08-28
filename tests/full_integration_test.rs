@@ -443,7 +443,7 @@ async fn test_workout_timing_validation_for_live_games() {
     assert!(game_state_4.away_score > 0, "Score should increase for workout at game start");
     println!("✅ Workout at game start correctly counted: +{} points", game_state_4.away_score);
     
-    // Test 5: Workout exactly at game end - should count
+    // Test 5: Workout exactly at game end - should NOT count (starts at boundary, ends after)
     println!("\n🔬 Test 5: Uploading workout exactly at game end...");
     let at_end_workout = WorkoutData::new(
         WorkoutType::Intense, 
@@ -460,10 +460,10 @@ async fn test_workout_timing_validation_for_live_games() {
     ).await;
     assert!(response.status().is_success(), "Workout upload should succeed");
     
-    // Check that away team score increased
+    // Check that away team score did NOT increase
     let game_state_5 = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
-    assert!(game_state_5.away_score > game_state_4.away_score, "Score should increase for workout at game end");
-    println!("✅ Workout at game end correctly counted: +{} points", game_state_5.away_score - game_state_4.away_score);
+    assert_eq!(game_state_5.away_score, game_state_4.away_score, "Score should NOT increase for workout starting at game end");
+    println!("✅ Workout starting at game end correctly ignored");
     
     println!("\n🎉 All workout timing validation tests passed!");
     println!("Final scores - Home: {}, Away: {}", game_state_5.home_score, game_state_5.away_score);
