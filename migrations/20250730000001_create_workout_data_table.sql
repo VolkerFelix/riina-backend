@@ -32,3 +32,7 @@ CREATE INDEX idx_workout_data_device_id ON workout_data(device_id);
 CREATE INDEX idx_workout_data_workout_start ON workout_data(workout_start);
 CREATE INDEX idx_workout_data_created_at ON workout_data(created_at);
 CREATE INDEX idx_workout_data_workout_uuid ON workout_data(workout_uuid) WHERE workout_uuid IS NOT NULL;
+
+-- Composite index for efficient time-based duplicate checks
+CREATE INDEX idx_workout_data_user_time_check ON workout_data(user_id, workout_start, workout_end) 
+WHERE workout_start IS NOT NULL AND workout_end IS NOT NULL;

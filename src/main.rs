@@ -7,7 +7,6 @@ use std::time::Duration;
 use evolveme_backend::run;
 use evolveme_backend::config::settings::{get_config, get_jwt_settings};
 use evolveme_backend::services::{SchedulerService, MinIOService, telemetry::{get_subscriber, init_subscriber}, redis_service::RedisService};
-use evolveme_backend::config::minio::MinIOSettings;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {

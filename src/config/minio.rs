@@ -4,7 +4,6 @@ use aws_config::Region;
 use aws_sdk_s3::config::{Credentials, SharedCredentialsProvider};
 use secrecy::{ExposeSecret, SecretString};
 use aws_smithy_runtime::client::http::hyper_014::HyperClientBuilder;
-use std::sync::Arc;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct MinIOSettings {

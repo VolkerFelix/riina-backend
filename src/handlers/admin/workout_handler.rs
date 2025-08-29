@@ -197,7 +197,6 @@ pub async fn get_workout_detail(
 pub async fn delete_workout(
     pool: web::Data<PgPool>,
     workout_id: web::Path<Uuid>,
-    redis_client: Option<web::Data<Arc<redis::Client>>>,
 ) -> Result<HttpResponse, actix_web::Error> {
     let workout_id = workout_id.into_inner();
 
@@ -288,7 +287,6 @@ pub struct BulkDeleteRequest {
 pub async fn bulk_delete_workouts(
     pool: web::Data<PgPool>,
     body: web::Json<BulkDeleteRequest>,
-    redis_client: web::Data<Arc<redis::Client>>,
 ) -> Result<HttpResponse, actix_web::Error> {
     if body.workout_ids.is_empty() {
         return Err(actix_web::error::ErrorBadRequest("No workout IDs provided"));

@@ -53,7 +53,6 @@ pub struct AdjustLiveGameScoreResponse {
 pub async fn start_games_now(
     pool: web::Data<PgPool>,
     body: web::Json<StartGamesRequest>,
-    redis_client: web::Data<Arc<redis::Client>>,
 ) -> Result<HttpResponse> {
     info!("Starting games immediately for season {} week {:?}", 
         body.season_id, body.week_number);
@@ -166,7 +165,6 @@ pub async fn start_games_now(
     })?;
 
     // Start games using the consolidated architecture
-    let manage_game_service = ManageGameService::new(pool.get_ref().clone());
     let mut live_games_initialized = 0;
 
     for game in &games {

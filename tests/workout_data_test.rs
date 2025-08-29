@@ -5,6 +5,7 @@ use sqlx::Row;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request};
+use common::workout_data_helpers::WorkoutData;
 use uuid::Uuid;
 
 #[tokio::test]
@@ -14,54 +15,21 @@ async fn upload_workout_data_working() {
 
     let test_user = create_test_user_and_login(&test_app.address).await;
 
-    // Prepare workout data with multiple heart rate readings simulating a workout
-    let base_time = Utc::now();
-    let mut heart_rate_readings = Vec::new();
-    
-    // Generate 10 minutes of heart rate data simulating a workout progression
-    for i in 0..600 { // 600 seconds = 10 minutes, one reading per second
-        let time_offset = Duration::seconds(i);
-        let workout_progress = i as f64 / 600.0; // 0.0 to 1.0
-        
-        // Simulate workout: resting -> warmup -> high intensity -> cooldown
-        let heart_rate = if workout_progress < 0.1 {
-            // Resting phase (0-1 min): 65-70 bpm
-            (65.0 + 5.0 * workout_progress * 10.0) as i32
-        } else if workout_progress < 0.3 {
-            // Warmup phase (1-3 min): 70-120 bpm
-            (70.0 + 50.0 * (workout_progress - 0.1) / 0.2) as i32
-        } else if workout_progress < 0.8 {
-            // High intensity phase (3-8 min): 120-160 bpm with variation
-            let base_hr = 120.0 + 40.0 * (workout_progress - 0.3) / 0.5;
-            (base_hr + 10.0 * (i as f64 * 0.1).sin()) as i32 // Add some variation
-        } else {
-            // Cooldown phase (8-10 min): 160-80 bpm
-            (160.0 - 80.0 * (workout_progress - 0.8) / 0.2) as i32
-        };
-        
-        heart_rate_readings.push(json!({
-            "timestamp": base_time + time_offset,
-            "heart_rate": heart_rate
-        }));
-    }
+    let workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
 
-    let workout_data = json!({
-        "device_id": "test-device-123",
-        "timestamp": base_time,
-        "workout_uuid": &Uuid::new_v4().to_string()[..8],
-        "heart_rate": heart_rate_readings,
-        "sleep": {
-            "total_sleep_hours": 7.5,
-            "in_bed_time": 1678900000,
-            "out_bed_time": 1678920000,
-            "time_in_bed": 8.0
-        },
-        "calories_burned": 450, // Higher calories for a real workout
-        "additional_metrics": {
-            "blood_oxygen": 98,
-            "skin_temperature": 36.6
-        }
-    });
+    // Check if workout is already in the database
+    let workout_data_json = workout_data.to_json();
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/sync_status", &test_app.address),
+        &test_user.token,
+        Some(workout_data_json),
+    ).await;
+    
+    let status = response.status();
+    if !status.is_success() {
+        let error_body = response.text().await.expect("Failed to read error response");
 
     // Upload health data
     let response = make_authenticated_request(

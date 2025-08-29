@@ -31,8 +31,8 @@ pub struct WorkoutDataSyncRequest {
     pub heart_rate: Option<Vec<HeartRateData>>,
     pub calories_burned: Option<i32>,
     pub workout_uuid: String, // Required: Apple Health workout UUID for duplicate prevention
-    pub workout_start: Option<DateTime<Utc>>, // Actual workout start time
-    pub workout_end: Option<DateTime<Utc>>, // Actual workout end time
+    pub workout_start: DateTime<Utc>, // Actual workout start time
+    pub workout_end: DateTime<Utc>, // Actual workout end time
     pub image_url: Option<String>,
     pub video_url: Option<String>,
 }
@@ -48,26 +48,44 @@ pub struct WorkoutDataSyncData {
 pub struct WorkoutUploadResponse {
     pub sync_id: Uuid,
     pub timestamp: DateTime<Utc>,
-    pub is_duplicate: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub duplicate_reason: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub action: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub game_stats: Option<GameStats>,
+    pub game_stats: StatChanges,
 }
 
-#[derive(Debug, Serialize)]
-pub struct GameStats {
-    pub stat_changes: StatChanges,
-    pub reasoning: String,
-    pub summary: String,
-}
-
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct StatChanges {
     pub stamina_change: i32,
     pub strength_change: i32,
+}
+
+impl StatChanges {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ZoneBreakdown {
+    pub zone: String,
+    pub minutes: f32,
+    pub stamina_gained: i32,
+    pub strength_gained: i32,
+    pub hr_min: Option<i32>, // Lower heart rate limit for this zone
+    pub hr_max: Option<i32>, // Upper heart rate limit for this zone
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct WorkoutStats {
+    pub changes: StatChanges,
+    pub zone_breakdown: Option<Vec<ZoneBreakdown>>,
+}
+
+impl WorkoutStats {
+    pub fn new() -> Self {
+        Self {
+            changes: StatChanges::new(),
+            zone_breakdown: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

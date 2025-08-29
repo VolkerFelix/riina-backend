@@ -1,60 +1,16 @@
-use serde::{Serialize, Deserialize};
 use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 
 use crate::models::game::*;
-use crate::models::workout_data::{WorkoutDataSyncRequest, HeartRateData, HeartRateZones, ZoneName};
+use crate::models::workout_data::{WorkoutDataSyncRequest, HeartRateData, HeartRateZones, ZoneName, StatChanges, ZoneBreakdown, WorkoutStats};
 use crate::game::helper::{get_user_profile, calc_max_heart_rate};
 use crate::workout::workout_analyzer::WorkoutAnalyzer;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ZoneBreakdown {
-    pub zone: String,
-    pub minutes: f32,
-    pub stamina_gained: i32,
-    pub strength_gained: i32,
-    pub hr_min: Option<i32>, // Lower heart rate limit for this zone
-    pub hr_max: Option<i32>, // Upper heart rate limit for this zone
-}
+pub struct WorkoutStatsCalculator;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct StatChanges {
-    pub stamina_change: i32,
-    pub strength_change: i32,
-    pub reasoning: Vec<String>,
-    pub zone_breakdown: Option<Vec<ZoneBreakdown>>,
-}
-
-pub struct StatCalculator;
-
-impl StatCalculator {
-    /// Calculate stat changes based on HRR zones from heart rate and calories
-    pub async fn calculate_stat_changes(pool: &Pool<Postgres>, user_id: Uuid, workout_data: &WorkoutDataSyncRequest) -> StatChanges {
-        let mut changes = StatChanges {
-            stamina_change: 0,
-            strength_change: 0,
-            reasoning: Vec::new(),
-            zone_breakdown: None,
-        };
-
-        if let Some(heart_rate) = &workout_data.heart_rate {
-            let stats_changes = Self::calc_stats_hhr_based(pool, user_id, heart_rate).await;
-            changes.stamina_change += stats_changes.stamina_change;
-            changes.strength_change += stats_changes.strength_change;
-            changes.zone_breakdown = stats_changes.zone_breakdown;
-        }
-        changes
-    }
-
+impl WorkoutStatsCalculator {
     /// Calculate base stats from HRR zones based on heart rate
-    async fn calc_stats_hhr_based(pool: &Pool<Postgres>, user_id: Uuid, heart_rate: &Vec<HeartRateData>) -> StatChanges {
-        let mut changes = StatChanges {
-            stamina_change: 0,
-            strength_change: 0,
-            reasoning: Vec::new(),
-            zone_breakdown: None,
-        };
-
+    pub async fn calculate_stat_changes(pool: &Pool<Postgres>, user_id: Uuid, workout_data: &WorkoutDataSyncRequest) -> Result<WorkoutStats, Box<dyn std::error::Error>> {
         let user_profile = get_user_profile(pool, user_id).await.unwrap();
         
         // Use stored heart rate zones if available, otherwise calculate them
@@ -75,56 +31,34 @@ impl StatCalculator {
             HeartRateZones::new(hrr, resting_heart_rate, max_heart_rate)
         };
         
-        tracing::info!("📊 Processing {} heart rate data points", heart_rate.len());
-        if !heart_rate.is_empty() {
-            let avg_hr: i32 = heart_rate.iter().map(|hr| hr.heart_rate).sum::<i32>() / heart_rate.len() as i32;
+        tracing::info!("📊 Processing {} heart rate data points", workout_data.heart_rate.as_ref().unwrap().len());
+        if workout_data.heart_rate.is_some() {
+            let avg_hr: i32 = workout_data.heart_rate.as_ref().unwrap().iter().map(|hr| hr.heart_rate).sum::<i32>() / workout_data.heart_rate.as_ref().unwrap().len() as i32;
             tracing::info!("💗 Heart rate range: avg={:.1}, min={:.1}, max={:.1}", 
                 avg_hr,
-                heart_rate.iter().map(|hr| hr.heart_rate).fold(i32::MAX, i32::min),
-                heart_rate.iter().map(|hr| hr.heart_rate).fold(0, i32::max)
+                workout_data.heart_rate.as_ref().unwrap().iter().map(|hr| hr.heart_rate).fold(i32::MAX, i32::min),
+                workout_data.heart_rate.as_ref().unwrap().iter().map(|hr| hr.heart_rate).fold(0, i32::max)
             );
         }
         
-        if let Some(workout_analysis) = WorkoutAnalyzer::new(heart_rate, &heart_rate_zones) {
+        if let Some(workout_analysis) = WorkoutAnalyzer::new(workout_data.heart_rate.as_ref().unwrap(), &heart_rate_zones) {
             tracing::info!("✅ WorkoutAnalyzer created successfully");
             for (zone, minutes) in &workout_analysis.zone_durations {
                 tracing::info!("📈 Zone {:?}: {:.1} minutes", zone, minutes);
             }
-            let (points_changes, zone_breakdown) = Self::calc_points_and_breakdown_from_workout_analysis(&workout_analysis, &heart_rate_zones);
-            changes.stamina_change += points_changes.stamina_change;
-            changes.strength_change += points_changes.strength_change;
-            changes.zone_breakdown = Some(zone_breakdown);
+            let workout_stats = Self::calc_points_and_breakdown_from_workout_analysis(&workout_analysis, &heart_rate_zones);
 
-            // Add zone distribution info
-            for (zone, minutes) in &workout_analysis.zone_durations {
-                if *minutes > 0.5 { // Only show zones with significant time
-                    changes.reasoning.push(format!(
-                        "{:?}: {:.1} min", zone, minutes
-                    ));
-                }
-            }
-
-            changes.reasoning.push(format!(
-                "Avg HR: {:.0} bpm, Peak HR: {:.0} bpm", 
-                workout_analysis.avg_heart_rate, workout_analysis.peak_heart_rate
-            ));
-            
             tracing::info!("🎯 Final stat changes: stamina +{}, strength +{}", 
-                changes.stamina_change, changes.strength_change);
+                workout_stats.changes.stamina_change, workout_stats.changes.strength_change);
+            return Ok(workout_stats);
         } else {
             tracing::error!("❌ WorkoutAnalyzer::new() returned None - no stats calculated");
         }
-
-        changes
+        Err("No workout stats calculated".into())
     }
 
-    fn calc_points_and_breakdown_from_workout_analysis(workout_analysis: &WorkoutAnalyzer, heart_rate_zones: &HeartRateZones) -> (StatChanges, Vec<ZoneBreakdown>) {
-        let mut changes = StatChanges {
-            stamina_change: 0,
-            strength_change: 0,
-            reasoning: Vec::new(),
-            zone_breakdown: None,
-        };
+    fn calc_points_and_breakdown_from_workout_analysis(workout_analysis: &WorkoutAnalyzer, heart_rate_zones: &HeartRateZones) -> WorkoutStats {
+        let mut workout_stats = WorkoutStats::new();
 
         let mut total_stamina = 0.0;
         let mut total_strength = 0.0;
@@ -163,8 +97,9 @@ impl StatCalculator {
             });
         }
 
-        changes.stamina_change = total_stamina as i32;
-        changes.strength_change = total_strength as i32;
-        (changes, zone_breakdown)
+        workout_stats.changes.stamina_change = total_stamina as i32;
+        workout_stats.changes.strength_change = total_strength as i32;
+        workout_stats.zone_breakdown = Some(zone_breakdown);
+        workout_stats
     }
 }
