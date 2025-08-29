@@ -31,30 +31,43 @@ impl WorkoutStatsCalculator {
             HeartRateZones::new(hrr, resting_heart_rate, max_heart_rate)
         };
         
-        tracing::info!("📊 Processing {} heart rate data points", workout_data.heart_rate.as_ref().unwrap().len());
-        if workout_data.heart_rate.is_some() {
-            let avg_hr: i32 = workout_data.heart_rate.as_ref().unwrap().iter().map(|hr| hr.heart_rate).sum::<i32>() / workout_data.heart_rate.as_ref().unwrap().len() as i32;
+        if let Some(ref heart_rate_data) = workout_data.heart_rate {
+            tracing::info!("📊 Processing {} heart rate data points", heart_rate_data.len());
+            let avg_hr: i32 = heart_rate_data.iter().map(|hr| hr.heart_rate).sum::<i32>() / heart_rate_data.len() as i32;
             tracing::info!("💗 Heart rate range: avg={:.1}, min={:.1}, max={:.1}", 
                 avg_hr,
-                workout_data.heart_rate.as_ref().unwrap().iter().map(|hr| hr.heart_rate).fold(i32::MAX, i32::min),
-                workout_data.heart_rate.as_ref().unwrap().iter().map(|hr| hr.heart_rate).fold(0, i32::max)
+                heart_rate_data.iter().map(|hr| hr.heart_rate).fold(i32::MAX, i32::min),
+                heart_rate_data.iter().map(|hr| hr.heart_rate).fold(0, i32::max)
             );
         }
         
-        if let Some(workout_analysis) = WorkoutAnalyzer::new(workout_data.heart_rate.as_ref().unwrap(), &heart_rate_zones) {
-            tracing::info!("✅ WorkoutAnalyzer created successfully");
-            for (zone, minutes) in &workout_analysis.zone_durations {
-                tracing::info!("📈 Zone {:?}: {:.1} minutes", zone, minutes);
-            }
-            let workout_stats = Self::calc_points_and_breakdown_from_workout_analysis(&workout_analysis, &heart_rate_zones);
+        if let Some(heart_rate_data) = &workout_data.heart_rate {
+            if let Some(workout_analysis) = WorkoutAnalyzer::new(heart_rate_data, &heart_rate_zones) {
+                tracing::info!("✅ WorkoutAnalyzer created successfully");
+                for (zone, minutes) in &workout_analysis.zone_durations {
+                    tracing::info!("📈 Zone {:?}: {:.1} minutes", zone, minutes);
+                }
+                let workout_stats = Self::calc_points_and_breakdown_from_workout_analysis(&workout_analysis, &heart_rate_zones);
 
-            tracing::info!("🎯 Final stat changes: stamina +{}, strength +{}", 
-                workout_stats.changes.stamina_change, workout_stats.changes.strength_change);
-            return Ok(workout_stats);
+                tracing::info!("🎯 Final stat changes: stamina +{}, strength +{}", 
+                    workout_stats.changes.stamina_change, workout_stats.changes.strength_change);
+                return Ok(workout_stats);
+            } else {
+                tracing::error!("❌ WorkoutAnalyzer::new() returned None - no stats calculated");
+            }
         } else {
-            tracing::error!("❌ WorkoutAnalyzer::new() returned None - no stats calculated");
+            tracing::warn!("⚠️ No heart rate data provided - returning zero stats");
         }
-        Err("No workout stats calculated".into())
+
+        // Return zero stats if no heart rate data or workout analysis failed
+        let mut workout_stats = WorkoutStats::new();
+        workout_stats.changes.stamina_change = 0;
+        workout_stats.changes.strength_change = 0;
+        
+        tracing::info!("🎯 Final stat changes: stamina +{}, strength +{}", 
+            workout_stats.changes.stamina_change, workout_stats.changes.strength_change);
+            
+        Ok(workout_stats)
     }
 
     fn calc_points_and_breakdown_from_workout_analysis(workout_analysis: &WorkoutAnalyzer, heart_rate_zones: &HeartRateZones) -> WorkoutStats {

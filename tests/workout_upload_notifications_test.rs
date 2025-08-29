@@ -30,9 +30,26 @@ async fn test_workout_upload_sends_redis_notifications() {
     let mut pubsub_conn = redis_client.get_async_connection().await.expect("Failed to create pubsub connection");
     let mut pubsub = pubsub_conn.into_pubsub();
     
-    // Create test user and get their ID
+    // Create test user and health profile
     let test_user = create_test_user_and_login(&app.address).await;
     let user_uuid = test_user.user_id.to_string();
+    
+    // Create health profile for stats calculation
+    let health_profile_data = json!({
+        "age": 25,
+        "gender": "male",
+        "resting_heart_rate": 60
+    });
+    
+    let profile_response = client
+        .put(&format!("{}/profile/health_profile", &app.address))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .json(&health_profile_data)
+        .send()
+        .await
+        .expect("Failed to create health profile");
+    
+    assert!(profile_response.status().is_success(), "Health profile creation should succeed");
     
     // Subscribe to user-specific channel
     let user_channel = format!("game:events:user:{}", user_uuid);
@@ -48,6 +65,8 @@ async fn test_workout_upload_sends_redis_notifications() {
         "device_id": "test-redis-notification",
         "timestamp": base_time,
         "workout_uuid": format!("redis-test-{}", Uuid::new_v4()),
+        "workout_start": base_time - Duration::minutes(30),
+        "workout_end": base_time,
         "heart_rate": [
             {
                 "timestamp": base_time,
