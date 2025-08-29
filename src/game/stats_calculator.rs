@@ -2,7 +2,7 @@ use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 
 use crate::models::game::*;
-use crate::models::workout_data::{WorkoutDataSyncRequest, HeartRateData, HeartRateZones, ZoneName, StatChanges, ZoneBreakdown, WorkoutStats};
+use crate::models::workout_data::{WorkoutDataSyncRequest, HeartRateZones, ZoneName, ZoneBreakdown, WorkoutStats};
 use crate::game::helper::{get_user_profile, calc_max_heart_rate};
 use crate::workout::workout_analyzer::WorkoutAnalyzer;
 

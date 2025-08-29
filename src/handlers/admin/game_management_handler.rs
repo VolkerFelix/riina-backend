@@ -7,7 +7,7 @@ use tracing::{info, error};
 use std::sync::Arc;
 
 use crate::models::common::ApiResponse;
-use crate::services::{GameEvaluationService, ManageGameService};
+use crate::services::GameEvaluationService;
 
 #[derive(Debug, Deserialize)]
 pub struct StartGamesRequest {

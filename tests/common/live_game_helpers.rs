@@ -523,11 +523,9 @@ async fn upload_workout_data_with_time(
     }
     
     if let Some(game_stats) = response_data["data"]["game_stats"].as_object() {
-        if let Some(stat_changes) = game_stats["stat_changes"].as_object() {
-            let stamina = stat_changes["stamina_change"].as_i64().unwrap_or(0) as i32;
-            let strength = stat_changes["strength_change"].as_i64().unwrap_or(0) as i32;
-            return (stamina, strength);
-        }
+        let stamina = game_stats["stamina_change"].as_i64().unwrap_or(0) as i32;
+        let strength = game_stats["strength_change"].as_i64().unwrap_or(0) as i32;
+        return (stamina, strength);
     }
     
     // Fallback - this shouldn't happen if the response is successful

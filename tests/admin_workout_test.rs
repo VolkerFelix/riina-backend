@@ -411,8 +411,8 @@ async fn test_workout_deletion_reverses_user_stats() {
     let sync_id = response_data["data"]["sync_id"].as_str().unwrap();
     
     // Extract the stat changes from the workout response
-    let stamina_gained = response_data["data"]["game_stats"]["stat_changes"]["stamina_change"].as_i64().unwrap_or(0);
-    let strength_gained = response_data["data"]["game_stats"]["stat_changes"]["strength_change"].as_i64().unwrap_or(0);
+    let stamina_gained = response_data["data"]["game_stats"]["stamina_change"].as_i64().unwrap_or(0);
+    let strength_gained = response_data["data"]["game_stats"]["strength_change"].as_i64().unwrap_or(0);
     
     println!("Workout gave - Stamina: {}, Strength: {}", stamina_gained, strength_gained);
     
@@ -518,8 +518,8 @@ async fn test_bulk_workout_deletion_reverses_user_stats() {
         workout_ids.push(sync_id.to_string());
         
         // Extract the stat changes from the workout response
-        let stamina_gained = response_data["data"]["game_stats"]["stat_changes"]["stamina_change"].as_i64().unwrap_or(0);
-        let strength_gained = response_data["data"]["game_stats"]["stat_changes"]["strength_change"].as_i64().unwrap_or(0);
+        let stamina_gained = response_data["data"]["game_stats"]["stamina_change"].as_i64().unwrap_or(0);
+        let strength_gained = response_data["data"]["game_stats"]["strength_change"].as_i64().unwrap_or(0);
         
         total_stamina_gained += stamina_gained;
         total_strength_gained += strength_gained;

@@ -5,7 +5,7 @@ use sqlx::Row;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request};
-use common::workout_data_helpers::WorkoutData;
+use common::workout_data_helpers::{WorkoutData, WorkoutType};
 use uuid::Uuid;
 
 #[tokio::test]
@@ -24,12 +24,14 @@ async fn upload_workout_data_working() {
         reqwest::Method::POST,
         &format!("{}/health/sync_status", &test_app.address),
         &test_user.token,
-        Some(workout_data_json),
+        Some(workout_data_json.clone()),
     ).await;
     
     let status = response.status();
     if !status.is_success() {
         let error_body = response.text().await.expect("Failed to read error response");
+        panic!("Sync status check failed with status {}: {}", status, error_body);
+    }
 
     // Upload health data
     let response = make_authenticated_request(
@@ -37,7 +39,7 @@ async fn upload_workout_data_working() {
         reqwest::Method::POST,
         &format!("{}/health/upload_health", &test_app.address),
         &test_user.token,
-        Some(workout_data),
+        Some(workout_data_json),
     ).await;
 
     let status = response.status();
@@ -419,4 +421,4 @@ async fn test_uuid_duplicate_still_rejected() {
     let response2_body: serde_json::Value = response2.json().await.expect("Failed to parse response");
     assert_eq!(response2_body["success"], false);
     assert!(response2_body["message"].as_str().unwrap().contains("already been uploaded"));
-} 
+}

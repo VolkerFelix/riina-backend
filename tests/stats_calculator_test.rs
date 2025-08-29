@@ -65,14 +65,14 @@ async fn test_zone_1_active_recovery() {
         video_url: None,
     };
 
-    let changes = WorkoutStatsCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
+    let workout_stats = WorkoutStatsCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
     
     // Around 5 minutes * 2 points per minute ≈ 10 stamina points (9-10 due to rounding)
-    assert!(changes.stamina_change >= 9 && changes.stamina_change <= 10);
-    assert_eq!(changes.strength_change, 0); // Zone 1 gives no strength
+    assert!(workout_stats.as_ref().unwrap().changes.stamina_change >= 9 && workout_stats.as_ref().unwrap().changes.stamina_change <= 10);
+    assert_eq!(workout_stats.as_ref().unwrap().changes.strength_change, 0); // Zone 1 gives no strength
     // Reasoning should contain zone info or heart rate stats if available
-    if changes.reasoning.len() > 0 {
-        assert!(changes.reasoning.iter().any(|r| r.contains("Zone1") || r.contains("Avg HR")));
+    if let Some(ref zones) = workout_stats.as_ref().unwrap().zone_breakdown {
+        assert!(zones.iter().any(|z| z.zone.contains("Zone1")));
     }
 }
 
@@ -134,14 +134,14 @@ async fn test_zone_2_aerobic_base() {
         video_url: None,
     };
 
-    let changes = WorkoutStatsCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
+    let workout_stats = WorkoutStatsCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
     
     // Around 3 minutes * 5 stamina + 1 strength points per minute (14-15 stamina, 2-3 strength due to rounding)
-    assert!(changes.stamina_change >= 14 && changes.stamina_change <= 15);
-    assert!(changes.strength_change >= 2 && changes.strength_change <= 3);
+    assert!(workout_stats.as_ref().unwrap().changes.stamina_change >= 14 && workout_stats.as_ref().unwrap().changes.stamina_change <= 15);
+    assert!(workout_stats.as_ref().unwrap().changes.strength_change >= 2 && workout_stats.as_ref().unwrap().changes.strength_change <= 3);
     // Reasoning should contain zone info or heart rate stats if available
-    if changes.reasoning.len() > 0 {
-        assert!(changes.reasoning.iter().any(|r| r.contains("Zone2") || r.contains("Avg HR")));
+    if let Some(ref zones) = workout_stats.as_ref().unwrap().zone_breakdown {
+        assert!(zones.iter().any(|z| z.zone.contains("Zone2")));
     }
 }
 
@@ -203,14 +203,14 @@ async fn test_zone_4_lactate_threshold() {
         video_url: None,
     };
 
-    let changes = WorkoutStatsCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
+    let workout_stats = WorkoutStatsCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
     
     // Around 2 minutes * 2 stamina + 5 strength points per minute (3-4 stamina, 9-10 strength due to rounding)
-    assert!(changes.stamina_change >= 3 && changes.stamina_change <= 4);
-    assert!(changes.strength_change >= 9 && changes.strength_change <= 10);
+    assert!(workout_stats.as_ref().unwrap().changes.stamina_change >= 3 && workout_stats.as_ref().unwrap().changes.stamina_change <= 4);
+    assert!(workout_stats.as_ref().unwrap().changes.strength_change >= 9 && workout_stats.as_ref().unwrap().changes.strength_change <= 10);
     // Reasoning should contain zone info or heart rate stats if available
-    if changes.reasoning.len() > 0 {
-        assert!(changes.reasoning.iter().any(|r| r.contains("Zone4") || r.contains("Avg HR")));
+    if let Some(ref zones) = workout_stats.as_ref().unwrap().zone_breakdown {
+        assert!(zones.iter().any(|z| z.zone.contains("Zone4")));
     }
 }
 
@@ -272,14 +272,14 @@ async fn test_zone_5_neuromuscular_power() {
         video_url: None,
     };
 
-    let changes = WorkoutStatsCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
+    let workout_stats = WorkoutStatsCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
     
     // Around 1.5 minutes * 1 stamina + 8 strength points per minute (1-2 stamina, 11-12 strength due to rounding)
-    assert!(changes.stamina_change >= 1 && changes.stamina_change <= 2);
-    assert!(changes.strength_change >= 11 && changes.strength_change <= 12);
+    assert!(workout_stats.as_ref().unwrap().changes.stamina_change >= 1 && workout_stats.as_ref().unwrap().changes.stamina_change <= 2);
+    assert!(workout_stats.as_ref().unwrap().changes.strength_change >= 11 && workout_stats.as_ref().unwrap().changes.strength_change <= 12);
     // Reasoning should contain zone info or heart rate stats if available
-    if changes.reasoning.len() > 0 {
-        assert!(changes.reasoning.iter().any(|r| r.contains("Zone5") || r.contains("Avg HR")));
+    if let Some(ref zones) = workout_stats.as_ref().unwrap().zone_breakdown {
+        assert!(zones.iter().any(|z| z.zone.contains("Zone5")));
     }
 }
 
@@ -330,8 +330,8 @@ async fn test_no_heart_rate_no_gains() {
         video_url: None,
     };
 
-    let changes = WorkoutStatsCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
-    assert_eq!(changes.stamina_change, 0);
-    assert_eq!(changes.strength_change, 0);
-    assert_eq!(changes.reasoning.len(), 0);
+    let workout_stats = WorkoutStatsCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
+    assert_eq!(workout_stats.as_ref().unwrap().changes.stamina_change, 0);
+    assert_eq!(workout_stats.as_ref().unwrap().changes.strength_change, 0);
+    assert_eq!(workout_stats.as_ref().unwrap().zone_breakdown.is_none(), true);
 }

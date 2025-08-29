@@ -3,7 +3,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
-use std::sync::Arc;
 
 use crate::models::workout_data::HeartRateData;
 // LiveGameService removed during table consolidation

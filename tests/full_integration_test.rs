@@ -998,8 +998,8 @@ async fn test_live_game_workout_deletion_score_update() {
         .expect("Health upload response should contain sync_id");
     
     // Get the score gained from stat changes
-    let home_score_gained = if let Some(stat_changes) = home_workout_data["data"]["game_stats"]["stat_changes"].as_object() {
-        stat_changes["stamina_change"].as_i64().unwrap_or(0) + stat_changes["strength_change"].as_i64().unwrap_or(0)
+    let home_score_gained = if let Some(game_stats) = home_workout_data["data"]["game_stats"].as_object() {
+        game_stats["stamina_change"].as_i64().unwrap_or(0) + game_stats["strength_change"].as_i64().unwrap_or(0)
     } else {
         0
     };
@@ -1024,8 +1024,8 @@ async fn test_live_game_workout_deletion_score_update() {
     let away1_workout_data: serde_json::Value = away1_workout_response.json().await.unwrap();
     let away1_workout_id = away1_workout_data["data"]["sync_id"].as_str()
         .expect("Health upload response should contain sync_id");
-    let away1_score_gained = if let Some(stat_changes) = away1_workout_data["data"]["game_stats"]["stat_changes"].as_object() {
-        stat_changes["stamina_change"].as_i64().unwrap_or(0) + stat_changes["strength_change"].as_i64().unwrap_or(0)
+    let away1_score_gained = if let Some(game_stats) = away1_workout_data["data"]["game_stats"].as_object() {
+        game_stats["stamina_change"].as_i64().unwrap_or(0) + game_stats["strength_change"].as_i64().unwrap_or(0)
     } else {
         0
     };
@@ -1041,8 +1041,8 @@ async fn test_live_game_workout_deletion_score_update() {
     let away2_workout_data: serde_json::Value = away2_workout_response.json().await.unwrap();
     let away2_workout_id = away2_workout_data["data"]["sync_id"].as_str()
         .expect("Health upload response should contain sync_id");
-    let away2_score_gained = if let Some(stat_changes) = away2_workout_data["data"]["game_stats"]["stat_changes"].as_object() {
-        stat_changes["stamina_change"].as_i64().unwrap_or(0) + stat_changes["strength_change"].as_i64().unwrap_or(0)
+    let away2_score_gained = if let Some(game_stats) = away2_workout_data["data"]["game_stats"].as_object() {
+        game_stats["stamina_change"].as_i64().unwrap_or(0) + game_stats["strength_change"].as_i64().unwrap_or(0)
     } else {
         0
     };
@@ -1178,8 +1178,8 @@ async fn test_live_game_partial_workout_deletion() {
             .expect("Health upload response should contain sync_id");
         workout_ids.push(workout_id.to_string());
         
-        let score_gained = if let Some(stat_changes) = workout_data["data"]["game_stats"]["stat_changes"].as_object() {
-            stat_changes["stamina_change"].as_i64().unwrap_or(0) + stat_changes["strength_change"].as_i64().unwrap_or(0)
+        let score_gained = if let Some(game_stats) = workout_data["data"]["game_stats"].as_object() {
+            game_stats["stamina_change"].as_i64().unwrap_or(0) + game_stats["strength_change"].as_i64().unwrap_or(0)
         } else {
             0
         };
