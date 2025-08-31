@@ -5,7 +5,7 @@ use sqlx::Row;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request};
-use common::workout_data_helpers::{WorkoutData, WorkoutType};
+use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user, WorkoutSyncRequest};
 
 async fn create_test_user_with_health_profile(app_address: &str) -> common::utils::UserRegLoginResponse {
     let client = reqwest::Client::new();
@@ -38,25 +38,15 @@ async fn upload_workout_data_working() {
 
     let test_user = create_test_user_with_health_profile(&test_app.address).await;
 
-    let workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
-    let workout_data_json = json!(workout_data);
+    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
 
-    // Upload health data
-    let response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/health/upload_health", &test_app.address),
-        &test_user.token,
-        Some(workout_data_json),
-    ).await;
-
-    let status = response.status();
-    if !status.is_success() {
-        let error_body = response.text().await.expect("Failed to read error response");
+    let status = response.is_ok();
+    if !status {
+        let error_body = response.err().unwrap();
         panic!("Health data upload failed with status {}: {}", status, error_body);
     }
-
-    assert!(status.is_success());
+    assert!(status);
 
     // Verify the data was stored correctly - query by user_id instead of device_id
     let user_id = sqlx::query_scalar::<_, uuid::Uuid>(
@@ -111,4 +101,96 @@ async fn upload_workout_data_working() {
         
         println!("Heart rate values: start={}, middle={}, end={}", first_hr, mid_hr, last_hr);
     }
+}
+
+#[tokio::test]
+async fn upload_workout_data_working_with_invalid_token() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_with_health_profile(&test_app.address).await;
+
+    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let workout_sync_request = WorkoutSyncRequest {
+        start: workout_data.workout_start,
+        end: workout_data.workout_end,
+        id: workout_data.workout_uuid.clone(),
+    };
+
+    let sync_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/check_sync_status", &test_app.address),
+        &test_user.token,
+        Some(json!({
+            "workouts": [workout_sync_request]
+        })),
+    ).await;
+    if !sync_response.status().is_success() {
+        let status = sync_response.status();
+        let error_body = sync_response.text().await.expect("Failed to get error body");
+        panic!("Health data sync failed with status {}: {}", status, error_body);
+    }
+    let sync_response_data: serde_json::Value = sync_response.json().await.expect("Failed to parse sync response");
+    
+    // Check if we have the new approved_workouts format
+    let approved_workout = sync_response_data["data"]["approved_workouts"][0].clone();
+    let approval_token = approved_workout["approval_token"].as_str().unwrap();
+    // Tamper with the token by modifying the last character of the signature
+    let mut token_chars: Vec<char> = approval_token.chars().collect();
+    let last_idx = token_chars.len() - 1;
+    token_chars[last_idx] = if token_chars[last_idx] == 'a' { 'b' } else { 'a' };
+    let tampered_token: String = token_chars.into_iter().collect();
+    workout_data.approval_token = Some(tampered_token);
+    
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/upload_health", &test_app.address),
+        &test_user.token,
+        Some(json!(workout_data)),
+    ).await;
+
+    // Upload should fail with 401 Unauthorized due to invalid token signature
+    assert_eq!(response.status().as_u16(), 401);
+    
+    // Check the error message
+    let error_body = response.text().await.expect("Failed to get response body");
+    let error_json: serde_json::Value = serde_json::from_str(&error_body).expect("Failed to parse error JSON");
+    assert!(
+        error_json["message"].as_str().unwrap().contains("Invalid or expired approval token"),
+        "Expected error message about invalid token, got: {}",
+        error_json["message"].as_str().unwrap()
+    );
+}
+
+#[tokio::test]
+async fn upload_workout_without_approval_token_fails() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_with_health_profile(&test_app.address).await;
+
+    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    // Don't set approval token - should fail
+    workout_data.approval_token = None;
+    
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/upload_health", &test_app.address),
+        &test_user.token,
+        Some(json!(workout_data)),
+    ).await;
+
+    // Upload should fail with 400 Bad Request when no token provided
+    assert_eq!(response.status().as_u16(), 400);
+    
+    // Check the error message
+    let error_body = response.text().await.expect("Failed to get response body");
+    let error_json: serde_json::Value = serde_json::from_str(&error_body).expect("Failed to parse error JSON");
+    assert_eq!(
+        error_json["message"].as_str().unwrap(),
+        "Approval token is required. Please sync workouts first to get approval tokens."
+    );
 }

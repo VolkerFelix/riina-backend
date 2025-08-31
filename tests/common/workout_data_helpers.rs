@@ -11,14 +11,14 @@ pub enum WorkoutType {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WorkoutData {
-    workout_uuid: String,
-    workout_start: DateTime<Utc>,
-    workout_end: DateTime<Utc>,
+    pub workout_uuid: String,
+    pub workout_start: DateTime<Utc>,
+    pub workout_end: DateTime<Utc>,
     calories_burned: i32,
     heart_rate: Vec<serde_json::Value>,
     pub device_id: String,
     timestamp: DateTime<Utc>,
-    approval_token: Option<String>,
+    pub approval_token: Option<String>,
 }
 impl WorkoutData {
     pub fn new(workout_type: WorkoutType, workout_start: DateTime<Utc>, duration_minutes: i64) -> Self {
@@ -129,7 +129,6 @@ pub async fn upload_workout_data_for_user(
     
     // If no approval token found, workout might already be synced or approval is not required
     // The upload will proceed without token for backwards compatibility
-
     let response = crate::common::utils::make_authenticated_request(
         client,
         reqwest::Method::POST,
