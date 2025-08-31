@@ -1703,6 +1703,7 @@ dependencies = [
  "futures",
  "futures-util",
  "hex",
+ "hmac",
  "http 0.2.12",
  "hyper 0.14.32",
  "hyper-rustls 0.24.2",

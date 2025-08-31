@@ -7,6 +7,8 @@ use chrono::{DateTime, Utc};
 use crate::middleware::auth::Claims;
 use crate::models::common::ApiResponse;
 use crate::db::workout_data::check_workout_exists_by_time;
+use crate::utils::workout_approval::WorkoutApprovalToken;
+use crate::config::jwt::JwtSettings;
 
 #[derive(Debug, Deserialize)]
 pub struct WorkoutTimeRange {
@@ -21,8 +23,16 @@ pub struct CheckSyncStatusRequest {
 }
 
 #[derive(Debug, Serialize)]
+pub struct WorkoutApproval {
+    pub workout_id: String,
+    pub approval_token: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
 pub struct SyncStatusResponse {
-    pub unsynced_workouts: Vec<String>,  // IDs of workouts to be synced
+    pub unsynced_workouts: Vec<String>,  // IDs of workouts to be synced (for backwards compatibility)
+    pub approved_workouts: Vec<WorkoutApproval>,  // New field with approval tokens
 }
 
 #[tracing::instrument(
@@ -37,6 +47,7 @@ pub async fn check_workout_sync_status(
     pool: web::Data<PgPool>,
     claims: web::ReqData<Claims>,
     request: web::Json<CheckSyncStatusRequest>,
+    jwt_settings: web::Data<JwtSettings>,
 ) -> HttpResponse {
     tracing::info!("🎮 Checking workout sync status for user: {} ({} workouts)", 
         claims.username, request.workouts.len());
@@ -56,6 +67,7 @@ pub async fn check_workout_sync_status(
 
     let mut synced_workouts = Vec::new();
     let mut unsynced_workouts = Vec::new();
+    let mut approved_workouts = Vec::new();
 
     // Check each workout using the time-based duplicate detection function
     for workout in &request.workouts {
@@ -67,22 +79,68 @@ pub async fn check_workout_sync_status(
                 } else {
                     tracing::debug!("Workout {} not synced", workout.id);
                     unsynced_workouts.push(workout.id.clone());
+                    
+                    // Generate approval token for this workout
+                    let token_data = WorkoutApprovalToken::new(
+                        user_id,
+                        workout.id.clone(),
+                        workout.start,
+                        workout.end,
+                        5, // 5 minutes validity
+                    );
+                    
+                    match token_data.generate_token(&jwt_settings.secret) {
+                        Ok(token) => {
+                            approved_workouts.push(WorkoutApproval {
+                                workout_id: workout.id.clone(),
+                                approval_token: token,
+                                expires_at: token_data.expires_at,
+                            });
+                        },
+                        Err(e) => {
+                            tracing::error!("Failed to generate approval token for workout {}: {}", workout.id, e);
+                            // Still allow sync but without token validation
+                        }
+                    }
                 }
             },
             Err(e) => {
                 tracing::error!("Error checking workout {}: {}", workout.id, e);
                 // Treat as unsynced on error to allow retry
                 unsynced_workouts.push(workout.id.clone());
+                
+                // Generate approval token even on error to allow upload
+                let token_data = WorkoutApprovalToken::new(
+                    user_id,
+                    workout.id.clone(),
+                    workout.start,
+                    workout.end,
+                    5, // 5 minutes validity
+                );
+                
+                match token_data.generate_token(&jwt_settings.secret) {
+                    Ok(token) => {
+                        approved_workouts.push(WorkoutApproval {
+                            workout_id: workout.id.clone(),
+                            approval_token: token,
+                            expires_at: token_data.expires_at,
+                        });
+                    },
+                    Err(e) => {
+                        tracing::error!("Failed to generate approval token for workout {}: {}", workout.id, e);
+                    }
+                }
             }
         }
     }
 
     let response = SyncStatusResponse {
         unsynced_workouts,
+        approved_workouts,
     };
 
-    tracing::info!("✅ Sync status check completed: {} synced, {} unsynced", 
-        synced_workouts.len(), response.unsynced_workouts.len());
+    tracing::info!("✅ Sync status check completed: {} synced, {} unsynced, {} approved", 
+        synced_workouts.len(), response.unsynced_workouts.len(), response.approved_workouts.len());
     
     HttpResponse::Ok().json(ApiResponse::success(
         "Sync status retrieved successfully",

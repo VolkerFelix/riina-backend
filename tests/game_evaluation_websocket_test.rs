@@ -37,10 +37,14 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     println!("✅ Created 4 users + 1 admin");
 
     // Step 2: Upload health data to create power differences
-    upload_workout_data_for_user(&client, &app.address, &user1.token, &WorkoutData::new(WorkoutType::Intense, Utc::now(), 30)).await.unwrap();
-    upload_workout_data_for_user(&client, &app.address, &user2.token, &WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30)).await.unwrap();
-    upload_workout_data_for_user(&client, &app.address, &user3.token, &WorkoutData::new(WorkoutType::Intense, Utc::now(), 30)).await.unwrap();
-    upload_workout_data_for_user(&client, &app.address, &user4.token, &WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30)).await.unwrap();
+    let mut workout1 = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let mut workout2 = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut workout3 = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let mut workout4 = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    upload_workout_data_for_user(&client, &app.address, &user1.token, &mut workout1).await.unwrap();
+    upload_workout_data_for_user(&client, &app.address, &user2.token, &mut workout2).await.unwrap();
+    upload_workout_data_for_user(&client, &app.address, &user3.token, &mut workout3).await.unwrap();
+    upload_workout_data_for_user(&client, &app.address, &user4.token, &mut workout4).await.unwrap();
     
     println!("✅ Uploaded health data for all users");
 

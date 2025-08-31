@@ -33,8 +33,8 @@ async fn test_get_league_users_with_stats_success() {
 
     // Step 2: Upload health data for each user
     for user in users.iter() {
-        let workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
-        let upload_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, &workout_data).await;
+        let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+        let upload_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout_data).await;
         assert!(upload_response.is_ok(), "Failed to upload health data for user: {}", upload_response.err().unwrap());
     }
 

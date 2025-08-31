@@ -4,6 +4,7 @@ use crate::middleware::auth::Claims;
 use crate::handlers::workout_data::activity::{get_activity_summary, get_zone_analysis};
 use crate::handlers::workout_data::workout_history::get_workout_history;
 use crate::handlers::workout_data::check_workout_sync_status::{check_workout_sync_status, CheckSyncStatusRequest};
+use crate::config::jwt::JwtSettings;
 
 #[get("/activity")]
 async fn get_activity_sum(
@@ -34,7 +35,8 @@ async fn get_workout_hist(
 async fn check_sync_status(
     pool: web::Data<PgPool>,
     claims: web::ReqData<Claims>,
-    request: web::Json<CheckSyncStatusRequest>
+    request: web::Json<CheckSyncStatusRequest>,
+    jwt_settings: web::Data<JwtSettings>,
 ) -> HttpResponse {
-    check_workout_sync_status(pool, claims, request).await
+    check_workout_sync_status(pool, claims, request, jwt_settings).await
 }

@@ -40,7 +40,7 @@ async fn upload_workout_data_working() {
     let test_user = create_test_user_with_health_profile(&test_app.address).await;
 
     let workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
-    let workout_data_json = workout_data.to_json();
+    let workout_data_json = json!(workout_data);
 
     // Upload health data
     let response = make_authenticated_request(

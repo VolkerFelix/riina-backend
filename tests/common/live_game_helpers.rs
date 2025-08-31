@@ -506,7 +506,7 @@ async fn upload_workout_data_with_time(
         reqwest::Method::POST,
         &format!("{}/health/upload_health", test_app.address),
         &user.token,
-        Some(workout_data.to_json()),
+        Some(json!(workout_data)),
     ).await;
 
     assert!(response.status().is_success(), "Health data upload should succeed");

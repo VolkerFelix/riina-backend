@@ -4,6 +4,7 @@ use crate::handlers::workout_data::media_upload::{request_upload_signed_url, con
 use crate::middleware::auth::Claims;
 use crate::models::workout_data::WorkoutDataSyncRequest;
 use crate::services::MinIOService;
+use crate::config::jwt::JwtSettings;
 use std::sync::Arc;
 
 #[post("/upload_health")]
@@ -11,9 +12,10 @@ async fn upload_health(
     data: web::Json<WorkoutDataSyncRequest>,
     pool: web::Data<sqlx::PgPool>,
     redis: Option<web::Data<Arc<redis::Client>>>,
-    claims: web::ReqData<Claims>
+    claims: web::ReqData<Claims>,
+    jwt_settings: web::Data<JwtSettings>,
 ) -> HttpResponse {
-    upload_workout_data(data, pool, redis, claims).await
+    upload_workout_data(data, pool, redis, claims, jwt_settings).await
 }
 
 #[post("/request-upload-url")]

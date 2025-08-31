@@ -47,8 +47,10 @@ async fn test_redis_game_evaluation_notifications() {
     let user2 = create_test_user_and_login(&app.address).await;
     
     // Upload health data
-    upload_workout_data_for_user(&client, &app.address, &user1.token, &WorkoutData::new(WorkoutType::Intense, Utc::now(), 30)).await.unwrap();
-    upload_workout_data_for_user(&client, &app.address, &user2.token, &WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30)).await.unwrap();
+    let mut workout1 = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let mut workout2 = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    upload_workout_data_for_user(&client, &app.address, &user1.token, &mut workout1).await.unwrap();
+    upload_workout_data_for_user(&client, &app.address, &user2.token, &mut workout2).await.unwrap();
     
     let unique_suffix = &Uuid::new_v4().to_string()[..8];
     // Create league

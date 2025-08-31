@@ -124,7 +124,7 @@ async fn test_complete_live_game_workflow() {
         reqwest::Method::POST,
         &format!("{}/health/upload_health", test_app.address),
         &live_game_environment.home_user.token,
-        Some(second_workout.to_json()),
+        Some(json!(second_workout)),
     ).await;
     assert!(response.status().is_success(), "Second workout upload should succeed");
     
@@ -367,7 +367,7 @@ async fn test_workout_timing_validation_for_live_games() {
         reqwest::Method::POST,
         &format!("{}/health/upload_health", test_app.address),
         &live_game_environment.home_user.token,
-        Some(before_game_workout.to_json()),
+        Some(json!(before_game_workout)),
     ).await;
     assert!(response.status().is_success(), "Workout upload should succeed");
     
@@ -389,7 +389,7 @@ async fn test_workout_timing_validation_for_live_games() {
         reqwest::Method::POST,
         &format!("{}/health/upload_health", test_app.address),
         &live_game_environment.home_user.token,
-        Some(during_game_workout.to_json()),
+        Some(json!(during_game_workout)),
     ).await;
     assert!(response.status().is_success(), "Workout upload should succeed");
     
@@ -412,7 +412,7 @@ async fn test_workout_timing_validation_for_live_games() {
         reqwest::Method::POST,
         &format!("{}/health/upload_health", test_app.address),
         &live_game_environment.home_user.token,
-        Some(after_game_workout.to_json()),
+        Some(json!(after_game_workout)),
     ).await;
     assert!(response.status().is_success(), "Workout upload should succeed");
     
@@ -434,7 +434,7 @@ async fn test_workout_timing_validation_for_live_games() {
         reqwest::Method::POST,
         &format!("{}/health/upload_health", test_app.address),
         &live_game_environment.away_user_1.token,
-        Some(at_start_workout.to_json()),
+        Some(json!(at_start_workout)),
     ).await;
     assert!(response.status().is_success(), "Workout upload should succeed");
     
@@ -456,7 +456,7 @@ async fn test_workout_timing_validation_for_live_games() {
         reqwest::Method::POST,
         &format!("{}/health/upload_health", test_app.address),
         &live_game_environment.away_user_1.token,
-        Some(at_end_workout.to_json()),
+        Some(json!(at_end_workout)),
     ).await;
     assert!(response.status().is_success(), "Workout upload should succeed");
     
@@ -988,7 +988,7 @@ async fn test_live_game_workout_deletion_score_update() {
         reqwest::Method::POST,
         &format!("{}/health/upload_health", test_app.address),
         &live_game_environment.home_user.token,
-        Some(WorkoutData::new(WorkoutType::Intense, Utc::now(), 30).to_json()),
+        Some(json!(WorkoutData::new(WorkoutType::Intense, Utc::now(), 30))),
     ).await;
     assert!(home_workout_response.status().is_success());
     let home_workout_data: serde_json::Value = home_workout_response.json().await.unwrap();
@@ -1018,7 +1018,7 @@ async fn test_live_game_workout_deletion_score_update() {
         reqwest::Method::POST,
         &format!("{}/health/upload_health", test_app.address),
         &live_game_environment.away_user_1.token,
-        Some(WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30).to_json()),
+        Some(json!(WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30))),
     ).await;
     assert!(away1_workout_response.status().is_success());
     let away1_workout_data: serde_json::Value = away1_workout_response.json().await.unwrap();
@@ -1035,7 +1035,7 @@ async fn test_live_game_workout_deletion_score_update() {
         reqwest::Method::POST,
         &format!("{}/health/upload_health", test_app.address),
         &live_game_environment.away_user_2.token,
-        Some(WorkoutData::new(WorkoutType::Light, Utc::now(), 30).to_json()),
+        Some(json!(WorkoutData::new(WorkoutType::Light, Utc::now(), 30))),
     ).await;
     assert!(away2_workout_response.status().is_success());
     let away2_workout_data: serde_json::Value = away2_workout_response.json().await.unwrap();
@@ -1170,7 +1170,7 @@ async fn test_live_game_partial_workout_deletion() {
             reqwest::Method::POST,
             &format!("{}/health/upload_health", test_app.address),
             &live_game_environment.home_user.token,
-            Some(WorkoutData::new(workout_type, workout_start, 30).to_json()),
+            Some(json!(WorkoutData::new(workout_type, workout_start, 30))),
         ).await;
         
         let workout_data: serde_json::Value = response.json().await.unwrap();
@@ -1286,7 +1286,7 @@ async fn test_user_joining_team_during_live_game() {
         reqwest::Method::POST,
         &format!("{}/health/upload_health", test_app.address),
         &new_user.token,
-        Some(workout_data.to_json()),
+        Some(json!(workout_data)),
     ).await;
     
     assert!(response.status().is_success(), "Workout upload should succeed");
@@ -1342,7 +1342,7 @@ async fn test_user_joining_team_during_live_game() {
         reqwest::Method::POST,
         &format!("{}/health/upload_health", test_app.address),
         &new_user.token,
-        Some(second_workout.to_json()),
+        Some(json!(second_workout)),
     ).await;
     assert!(response.status().is_success(), "Second workout should also succeed");
     

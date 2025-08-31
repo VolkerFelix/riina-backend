@@ -30,11 +30,12 @@ pub struct WorkoutDataSyncRequest {
     pub timestamp: DateTime<Utc>,
     pub heart_rate: Option<Vec<HeartRateData>>,
     pub calories_burned: Option<i32>,
-    pub workout_uuid: String, // Required: Apple Health workout UUID for duplicate prevention
-    pub workout_start: DateTime<Utc>, // Actual workout start time
-    pub workout_end: DateTime<Utc>, // Actual workout end time
+    pub workout_uuid: String,
+    pub workout_start: DateTime<Utc>,
+    pub workout_end: DateTime<Utc>,
     pub image_url: Option<String>,
     pub video_url: Option<String>,
+    pub approval_token: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

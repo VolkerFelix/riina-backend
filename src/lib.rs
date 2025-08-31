@@ -9,7 +9,7 @@ pub mod config;
 mod routes;
 mod handlers;
 pub mod models;
-mod utils;
+pub mod utils;
 mod middleware;
 mod db;
 pub mod game;
