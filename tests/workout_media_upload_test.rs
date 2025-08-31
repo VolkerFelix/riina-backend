@@ -24,12 +24,12 @@ async fn test_workout_media_upload_with_signed_urls() {
     println!("✅ Test user created and logged in");
     
     // First, upload a workout to associate the media with
-    let workout_data = WorkoutData::new_with_offset_hours(WorkoutType::Moderate, 1, 30);
+    let mut workout_data = WorkoutData::new_with_offset_hours(WorkoutType::Moderate, 1, 30);
     let workout_response = upload_workout_data_for_user(
         &client,
         &app.address,
         &token,
-        &workout_data
+        &mut workout_data
     ).await.expect("Failed to upload workout");
     
     println!("✅ Workout uploaded successfully: {:?}", workout_response);

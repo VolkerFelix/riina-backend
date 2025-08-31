@@ -8,7 +8,7 @@ use crate::models::workout_data::HeartRateData;
 // LiveGameService removed during table consolidation
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
-struct AdminWorkoutData {
+pub struct AdminWorkoutData {
     pub id: Uuid,
     pub user_id: Uuid,
     pub username: String,

@@ -49,18 +49,19 @@ async fn test_game_countdown_api_contract() {
     let user2 = create_test_user_and_login(&app.address).await;
     
     // Upload health data so users can participate
+    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
     upload_workout_data_for_user(
         &client, 
         &app.address, 
         &user1.token,
-        &WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30)
+        &mut workout_data
     ).await.unwrap();
     
     upload_workout_data_for_user(
         &client, 
         &app.address, 
         &user2.token,
-        &WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30)
+        &mut workout_data
     ).await.unwrap();
     
     let unique_suffix = &Uuid::new_v4().to_string()[..8];
@@ -381,11 +382,12 @@ async fn test_standings_api_contract() {
     let user = create_test_user_and_login(&app.address).await;
     
     // Upload health data
+    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
     upload_workout_data_for_user(
         &client, 
         &app.address, 
         &user.token,
-        &WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30)
+        &mut workout_data
     ).await.unwrap();
     
     let unique_suffix = &Uuid::new_v4().to_string()[..8];
@@ -407,11 +409,12 @@ async fn test_standings_api_contract() {
     
     // Create another user for the second team
     let user2 = create_test_user_and_login(&app.address).await;
+    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
     upload_workout_data_for_user(
         &client, 
         &app.address, 
         &user2.token,
-        &WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30)
+        &mut workout_data
     ).await.unwrap();
     
     // Create first team
