@@ -1,6 +1,6 @@
 // Comprehensive integration test for WebSocket notifications in game evaluations
 
-use futures_util::{SinkExt, StreamExt};
+use futures_util::StreamExt;
 use reqwest::Client;
 use serde_json::json;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
@@ -23,8 +23,6 @@ use common::workout_data_helpers::{upload_workout_data_for_user, WorkoutData, Wo
 async fn test_game_evaluation_websocket_notifications_comprehensive() {
     let app = spawn_app().await;
     let client = Client::new();
-    let configuration = get_config().expect("Failed to read configuration.");
-    let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
     println!("🎯 Testing Comprehensive Game Evaluation WebSocket Notifications");
     
     // Step 1: Set up users with different power levels

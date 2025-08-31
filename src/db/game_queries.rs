@@ -15,29 +15,6 @@ impl GameQueries {
         Self { pool }
     }
 
-    /// Get a game by ID (now from the unified games table)
-    pub async fn get_game_by_id(&self, game_id: Uuid) -> Result<Option<LeagueGame>, sqlx::Error> {
-        let game = sqlx::query_as!(
-            LeagueGame,
-            r#"
-            SELECT 
-                id, season_id, home_team_id, away_team_id,
-                week_number, is_first_leg, status as "status: GameStatus",
-winner_team_id, 
-                created_at, updated_at,
-                home_score, away_score, game_start_time, game_end_time,
-                last_score_time, last_scorer_id, last_scorer_name, last_scorer_team
-            FROM games 
-            WHERE id = $1
-            "#,
-            game_id
-        )
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(game)
-    }
-
     /// Start a game (update status to InProgress and set game_start_time)
     pub async fn start_game(&self, game_id: Uuid) -> Result<(), sqlx::Error> {
         info!("Starting game: {}", game_id);

@@ -6,14 +6,13 @@ use crate::db::game_queries::GameQueries;
 
 /// Service for managing games in a season
 pub struct ManageGameService {
-    pool: PgPool,
     game_queries: GameQueries,
 }
 
 impl ManageGameService {
     pub fn new(pool: PgPool) -> Self {
-        let game_queries = GameQueries::new(pool.clone());
-        Self { pool, game_queries }
+        let game_queries = GameQueries::new(pool);
+        Self { game_queries }
     }
 
     /// Start games that should be in progress (current time is within their week window)
