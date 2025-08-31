@@ -44,47 +44,48 @@ pub async fn upload_workout_data(
             );
         }
     };
-
-    tracing::info!("🔍 Processing workout UUID: {}", data.workout_uuid);
-
-    // Validate approval token if provided (optional for backwards compatibility)
-    if let Some(token) = &data.approval_token {
-        tracing::info!("🔐 Validating approval token for workout {}", data.workout_uuid);
-        
-        match WorkoutApprovalToken::validate_token(token, &jwt_settings.secret, user_id) {
-            Ok(approved_workout) => {
-                // Verify workout details match the approved token
-                if approved_workout.workout_id != data.workout_uuid {
-                    tracing::error!("❌ Workout ID mismatch: expected {}, got {}", 
-                        approved_workout.workout_id, data.workout_uuid);
-                    return HttpResponse::BadRequest().json(
-                        ApiResponse::<()>::error("Workout ID does not match approval token")
-                    );
-                }
-                
-                // Verify timestamps are reasonably close (allow 1 minute difference for clock skew)
-                let time_diff_start = (approved_workout.workout_start.timestamp() - data.workout_start.timestamp()).abs();
-                let time_diff_end = (approved_workout.workout_end.timestamp() - data.workout_end.timestamp()).abs();
-                
-                if time_diff_start > 60 || time_diff_end > 60 {
-                    tracing::error!("❌ Workout timestamps do not match approval token");
-                    return HttpResponse::BadRequest().json(
-                        ApiResponse::<()>::error("Workout timestamps do not match approval")
-                    );
-                }
-                
-                tracing::info!("✅ Approval token validated successfully for workout {}", data.workout_uuid);
-            },
-            Err(e) => {
-                tracing::error!("❌ Invalid approval token for workout {}: {}", data.workout_uuid, e);
-                return HttpResponse::Unauthorized().json(
-                    ApiResponse::<()>::error(format!("Invalid or expired approval token: {}", e))
+    // Validate approval token (required)
+    let approval_token = match &data.approval_token {
+        Some(token) => token,
+        None => {
+            tracing::error!("❌ No approval token provided for workout {}", data.workout_uuid);
+            return HttpResponse::BadRequest().json(
+                ApiResponse::<()>::error("Approval token is required. Please sync workouts first to get approval tokens.")
+            );
+        }
+    };
+    tracing::info!("🔐 Validating approval token for workout {}", data.workout_uuid);
+            
+    match WorkoutApprovalToken::validate_token(approval_token, &jwt_settings.secret, user_id) {
+        Ok(approved_workout) => {
+            // Verify workout details match the approved token
+            if approved_workout.workout_id != data.workout_uuid {
+                tracing::error!("❌ Workout ID mismatch: expected {}, got {}", 
+                    approved_workout.workout_id, data.workout_uuid);
+                return HttpResponse::BadRequest().json(
+                    ApiResponse::<()>::error("Workout ID does not match approval token")
                 );
             }
+            
+            // Verify timestamps are reasonably close (allow 1 minute difference for clock skew)
+            let time_diff_start = (approved_workout.workout_start.timestamp() - data.workout_start.timestamp()).abs();
+            let time_diff_end = (approved_workout.workout_end.timestamp() - data.workout_end.timestamp()).abs();
+            
+            if time_diff_start > 60 || time_diff_end > 60 {
+                tracing::error!("❌ Workout timestamps do not match approval token");
+                return HttpResponse::BadRequest().json(
+                    ApiResponse::<()>::error("Workout timestamps do not match approval")
+                );
+            }
+            
+            tracing::info!("✅ Approval token validated successfully for workout {}", data.workout_uuid);
+        },
+        Err(e) => {
+            tracing::error!("❌ Invalid approval token for workout {}: {}", data.workout_uuid, e);
+            return HttpResponse::Unauthorized().json(
+                ApiResponse::<()>::error(format!("Invalid or expired approval token: {}", e))
+            );
         }
-    } else {
-        tracing::warn!("⚠️ No approval token provided for workout {} - allowing for backwards compatibility", 
-            data.workout_uuid);
     }
 
     // 🎲 CALCULATE GAME STATS FROM WORKOUT DATA

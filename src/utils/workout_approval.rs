@@ -66,7 +66,6 @@ impl WorkoutApprovalToken {
         if parts.len() != 6 {
             return Err("Invalid token format".to_string());
         }
-
         // Extract components
         let user_id = Uuid::parse_str(parts[0])
             .map_err(|_| "Invalid user ID in token".to_string())?;
@@ -84,17 +83,14 @@ impl WorkoutApprovalToken {
             0
         ).ok_or("Invalid expiry timestamp")?;
         let provided_signature = parts[5];
-
         // Verify user ID matches
         if user_id != expected_user_id {
             return Err("Token user ID does not match".to_string());
         }
-
         // Check expiration
         if expires_at < Utc::now() {
             return Err("Token has expired".to_string());
         }
-
         // Reconstruct payload
         let payload = format!(
             "{}|{}|{}|{}|{}",
@@ -104,19 +100,15 @@ impl WorkoutApprovalToken {
             workout_end.timestamp(),
             expires_at.timestamp()
         );
-
         // Verify signature
         let mut mac = HmacSha256::new_from_slice(secret.expose_secret().as_bytes())
             .map_err(|e| format!("Failed to create HMAC: {}", e))?;
-        
         mac.update(payload.as_bytes());
         let result = mac.finalize();
         let expected_signature = hex::encode(result.into_bytes());
-
         if provided_signature != expected_signature {
             return Err("Invalid token signature".to_string());
         }
-
         Ok(Self {
             user_id,
             workout_id,

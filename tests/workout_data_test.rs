@@ -1,12 +1,11 @@
 use reqwest::Client;
 use serde_json::json;
-use chrono::{Utc, Duration};
+use chrono::Utc;
 use sqlx::Row;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request};
 use common::workout_data_helpers::{WorkoutData, WorkoutType};
-use uuid::Uuid;
 
 async fn create_test_user_with_health_profile(app_address: &str) -> common::utils::UserRegLoginResponse {
     let client = reqwest::Client::new();
