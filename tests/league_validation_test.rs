@@ -1,4 +1,4 @@
-use evolveme_backend::league::validation::LeagueValidator;
+use riina_backend::league::validation::LeagueValidator;
 use chrono::{Utc, Duration};
 use uuid::Uuid;
 

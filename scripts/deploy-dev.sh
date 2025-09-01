@@ -20,14 +20,14 @@ fi
 
 # Create the app if it doesn't exist
 echo "📱 Creating development app if it doesn't exist..."
-fly apps create evolveme-backend-dev || echo "App already exists"
+fly apps create riina-backend-dev || echo "App already exists"
 
 # Deploy the application
 echo "🏗️ Deploying application..."
 fly deploy --config fly-dev.toml
 
 echo "✅ Development backend deployed successfully!"
-echo "🌐 Access it at: https://evolveme-backend-dev.fly.dev"
+echo "🌐 Access it at: https://riina-backend-dev.fly.dev"
 echo ""
 echo "Next steps:"
 echo "1. Set up PostgreSQL database: ./scripts/setup-dev-database.sh"

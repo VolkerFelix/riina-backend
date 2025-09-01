@@ -470,68 +470,6 @@ pub async fn get_live_game_state(test_app: &TestApp, game_id: Uuid) -> LiveGameR
     }
 }
 
-pub async fn upload_workout_data(
-    test_app: &TestApp, 
-    client: &Client, 
-    user: &UserRegLoginResponse, 
-    workout_type: WorkoutType
-) -> (i32, i32) {
-    // Use current time for first workout
-    upload_workout_data_with_time(test_app, client, user, workout_type, Utc::now()).await
-}
-
-pub async fn upload_workout_data_with_offset(
-    test_app: &TestApp, 
-    client: &Client, 
-    user: &UserRegLoginResponse, 
-    workout_type: WorkoutType,
-    hours_ago: i64
-) -> (i32, i32) {
-    // Use offset time for subsequent workouts to avoid duplicate detection
-    let workout_start = Utc::now() - Duration::hours(hours_ago);
-    upload_workout_data_with_time(test_app, client, user, workout_type, workout_start).await
-}
-
-async fn upload_workout_data_with_time(
-    test_app: &TestApp, 
-    client: &Client, 
-    user: &UserRegLoginResponse, 
-    workout_type: WorkoutType,
-    workout_start: DateTime<Utc>
-) -> (i32, i32) {
-    let workout_data = WorkoutData::new(workout_type, workout_start, 30);
-
-    let response = make_authenticated_request(
-        client,
-        reqwest::Method::POST,
-        &format!("{}/health/upload_health", test_app.address),
-        &user.token,
-        Some(json!(workout_data)),
-    ).await;
-
-    assert!(response.status().is_success(), "Health data upload should succeed");
-    
-    // Return actual calculated values based on the response
-    let response_data: serde_json::Value = response.json().await.unwrap();
-    
-    // Check if this is a duplicate workout response
-    if let Some(is_duplicate) = response_data["data"]["is_duplicate"].as_bool() {
-        if is_duplicate {
-            // Duplicate workouts don't contribute stats, return zero
-            return (0, 0);
-        }
-    }
-    
-    if let Some(game_stats) = response_data["data"]["game_stats"].as_object() {
-        let stamina = game_stats["stamina_change"].as_i64().unwrap_or(0) as i32;
-        let strength = game_stats["strength_change"].as_i64().unwrap_or(0) as i32;
-        return (stamina, strength);
-    }
-    
-    // Fallback - this shouldn't happen if the response is successful
-    panic!("Failed to extract stat changes from response: {:?}", response_data);
-}
-
 pub async fn get_player_contributions(test_app: &TestApp, live_game_id: Uuid) -> (Vec<PlayerContribution>, Vec<PlayerContribution>) {
     // Get the live game info first
     let live_game = sqlx::query!(

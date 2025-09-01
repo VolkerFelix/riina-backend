@@ -4,9 +4,9 @@ use secrecy::ExposeSecret;
 use sqlx::postgres::PgPoolOptions;
 use std::time::Duration;
 
-use evolveme_backend::run;
-use evolveme_backend::config::settings::{get_config, get_jwt_settings};
-use evolveme_backend::services::{SchedulerService, MinIOService, telemetry::{get_subscriber, init_subscriber}, redis_service::RedisService};
+use riina_backend::run;
+use riina_backend::config::settings::{get_config, get_jwt_settings};
+use riina_backend::services::{SchedulerService, MinIOService, telemetry::{get_subscriber, init_subscriber}, redis_service::RedisService};
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
@@ -14,7 +14,7 @@ async fn main() -> std::io::Result<()> {
     let config = get_config().expect("Failed to read the config.");
     // Telemetry
     let subscriber = get_subscriber(
-        "evolveme-backend".into(), 
+        "riina-backend".into(), 
         config.application.log_level.clone(), 
         std::io::stdout
     );

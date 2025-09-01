@@ -9,10 +9,10 @@ use base64;
 use chrono::{DateTime, Datelike, Duration, Utc, Weekday, NaiveTime};
 use reqwest::Response;
 
-use evolveme_backend::run;
-use evolveme_backend::config::settings::{get_config, DatabaseSettings, get_jwt_settings};
-use evolveme_backend::services::{SchedulerService, MinIOService, telemetry::{get_subscriber, init_subscriber}};
-use evolveme_backend::config::redis::RedisSettings;
+use riina_backend::run;
+use riina_backend::config::settings::{get_config, DatabaseSettings, get_jwt_settings};
+use riina_backend::services::{SchedulerService, MinIOService, telemetry::{get_subscriber, init_subscriber}};
+use riina_backend::config::redis::RedisSettings;
 use std::sync::Arc;
 
 // Ensure that the `tracing` stack is only initialised once using `once_cell`

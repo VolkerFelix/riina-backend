@@ -26,7 +26,7 @@ fly secrets set \
   REDIS__REDIS__HOST="evolveme-redis-dev.internal" \
   REDIS__REDIS__PORT="6379" \
   REDIS__REDIS__PASSWORD="$(openssl rand -base64 32)" \
-  --app evolveme-backend-dev
+  --app riina-backend-dev
 
 echo ""
 echo "✅ Environment secrets set successfully!"

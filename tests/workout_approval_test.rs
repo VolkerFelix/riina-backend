@@ -1,7 +1,7 @@
 use chrono::{Duration, Utc};
 use secrecy::SecretString;
 use uuid::Uuid;
-use evolveme_backend::utils::workout_approval::WorkoutApprovalToken;
+use riina_backend::utils::workout_approval::WorkoutApprovalToken;
 
 #[test]
 fn test_token_generation_and_validation() {

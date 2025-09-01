@@ -11,7 +11,7 @@ use secrecy::ExposeSecret;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login};
-use evolveme_backend::config::settings::get_config;
+use riina_backend::config::settings::get_config;
 
 #[tokio::test]
 async fn test_workout_upload_sends_redis_notifications() {

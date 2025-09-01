@@ -17,7 +17,7 @@ fly postgres create evolveme-db-dev --region ams --vm-size shared-cpu-1x --volum
 
 # Attach database to the backend app
 echo "🔗 Attaching database to backend app..."
-fly postgres attach evolveme-db-dev --app evolveme-backend-dev
+fly postgres attach evolveme-db-dev --app riina-backend-dev
 
 echo "✅ PostgreSQL database created and attached!"
 echo ""

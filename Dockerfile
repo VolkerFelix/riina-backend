@@ -47,10 +47,10 @@ COPY --from=builder /app/scripts/run_migrations_psql.sh /app/scripts/
 RUN chmod +x /app/scripts/run_migrations_psql.sh
 
 # Copy the compiled binary from the builder stage
-COPY --from=builder /app/target/release/evolveme-backend /usr/local/bin/evolveme-backend
+COPY --from=builder /app/target/release/riina-backend /usr/local/bin/riina-backend
 
 # Expose port
 EXPOSE 8080
 
 # Run the application
-CMD ["evolveme-backend"]
+CMD ["riina-backend"]

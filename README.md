@@ -27,7 +27,7 @@ EvolveMe Backend is a RESTful API service that handles health data uploads from 
 ## Project Structure
 
 ```
-evolveme-backend/
+riina-backend/
 ├── .github/            # GitHub Actions workflows
 ├── .sqlx/              # SQLx prepared queries
 ├── configuration/      # Configuration files
@@ -97,7 +97,7 @@ The server will start at http://localhost:8080
 1. **Build the Docker image**
 
 ```bash
-docker build -t evolveme-backend .
+docker build -t riina-backend .
 ```
 
 2. **Run with Docker Compose**

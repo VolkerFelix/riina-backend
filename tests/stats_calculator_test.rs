@@ -1,5 +1,5 @@
-use evolveme_backend::game::stats_calculator::WorkoutStatsCalculator;
-use evolveme_backend::models::workout_data::{HeartRateData, WorkoutDataSyncRequest};
+use riina_backend::game::stats_calculator::WorkoutStatsCalculator;
+use riina_backend::models::workout_data::{HeartRateData, WorkoutDataSyncRequest};
 use chrono::{Duration, Utc};
 use uuid::Uuid;
 

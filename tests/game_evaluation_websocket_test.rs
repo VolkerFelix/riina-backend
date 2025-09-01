@@ -10,8 +10,8 @@ use uuid::Uuid;
 use chrono::{Weekday, NaiveTime, Utc};
 use std::collections::HashMap;
 use std::sync::Arc;
-use evolveme_backend::config::redis::RedisSettings;
-use evolveme_backend::config::settings::get_config;
+use riina_backend::config::redis::RedisSettings;
+use riina_backend::config::settings::get_config;
 use secrecy::ExposeSecret;
 
 mod common;
@@ -175,7 +175,7 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     update_games_to_current_time(&app, league_id).await;
     
     // Wait for games to complete their lifecycle (start → finish)
-    let week_game_service = evolveme_backend::services::ManageGameService::new(app.db_pool.clone());
+    let week_game_service = riina_backend::services::ManageGameService::new(app.db_pool.clone());
     
     println!("🔄 Running first game management cycle to start games...");
     let (_, _, started_games, _) = week_game_service.run_game_cycle().await.unwrap();

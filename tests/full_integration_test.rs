@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use evolveme_backend::config::redis::RedisSettings;
-use evolveme_backend::config::settings::get_config;
+use riina_backend::config::redis::RedisSettings;
+use riina_backend::config::settings::get_config;
 use reqwest::Client;
 use secrecy::ExposeSecret;
 use serde_json::json;
@@ -12,7 +12,7 @@ mod common;
 use common::utils::{spawn_app, create_test_user_and_login, TestApp, get_next_date, make_authenticated_request, UserRegLoginResponse, create_test_user_with_health_profile};
 use common::admin_helpers::{create_admin_user_and_login, create_league_season, create_teams_for_test, create_league, add_team_to_league, add_user_to_team};
 use common::live_game_helpers::*;
-use common::workout_data_helpers::{WorkoutData, WorkoutType};
+use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user};
 
 #[tokio::test]
 async fn test_complete_live_game_workflow() {
@@ -55,7 +55,12 @@ async fn test_complete_live_game_workflow() {
     assert!(api_game["away_team_name"].is_string(), "Should have away team name");
 
     // Home team user uploads workout data
-    let (stamina, strength) = upload_workout_data(&test_app, &client, &live_game_environment.home_user, WorkoutType::Intense).await;
+    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut workout_data).await;
+    assert!(response.is_ok(), "Workout upload should succeed");
+    let response_data = response.unwrap();
+    let stamina = response_data["data"]["game_stats"]["stamina_change"].as_i64().unwrap_or(0);
+    let strength = response_data["data"]["game_stats"]["strength_change"].as_i64().unwrap_or(0);
     println!("DEBUG: Home user workout generated stamina: {}, strength: {}", stamina, strength);
     
     // Verify live game was updated
@@ -70,8 +75,12 @@ async fn test_complete_live_game_workflow() {
     assert_eq!(updated_live_game.last_scorer_team, Some("home".to_string()));
 
     // Away team users upload workout data
-    upload_workout_data(&test_app, &client, &live_game_environment.away_user_1, WorkoutType::Moderate).await;
-    upload_workout_data(&test_app, &client, &live_game_environment.away_user_2, WorkoutType::Light).await;
+    let mut workout1 = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut workout2 = WorkoutData::new(WorkoutType::Light, Utc::now(), 30);
+    let response1 = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_1.token, &mut workout1).await;
+    assert!(response1.is_ok(), "Workout upload should succeed");
+    let response2 = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_2.token, &mut workout2).await;
+    assert!(response2.is_ok(), "Workout upload should succeed");
     
     // Verify live game reflects both team activities
     let final_live_game = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
@@ -118,15 +127,9 @@ async fn test_complete_live_game_workflow() {
     // Step 9: Test multiple uploads from same user (use different time to avoid duplicate detection)
     // Use a workout 30 minutes into the game (still within the 2-hour window)
     let second_workout_start = Utc::now() + Duration::minutes(30);
-    let second_workout = WorkoutData::new(WorkoutType::Intense, second_workout_start, 30);
-    let response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/health/upload_health", test_app.address),
-        &live_game_environment.home_user.token,
-        Some(json!(second_workout)),
-    ).await;
-    assert!(response.status().is_success(), "Second workout upload should succeed");
+    let mut second_workout = WorkoutData::new(WorkoutType::Intense, second_workout_start, 30);
+    let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut second_workout).await;
+    assert!(response.is_ok(), "Second workout upload should succeed");
     
     let after_second_upload = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
     assert!(after_second_upload.home_score > final_live_game.home_score, 
@@ -160,7 +163,9 @@ async fn test_live_game_edge_cases() {
     let test_user = create_test_user_and_login(&test_app.address).await;
     
     // This should not crash or cause errors
-    upload_workout_data(&test_app, &client, &test_user, WorkoutType::Intense).await;
+    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
+    assert!(response.is_ok(), "Workout upload should succeed");
 
     // Test 2: Multiple initializations of same live game
     let live_game_environment = setup_live_game_environment(&test_app).await;
@@ -291,7 +296,9 @@ async fn test_live_game_finish_workflow() {
     let live_game = initialize_live_game(&test_app, live_game_environment.first_game_id, redis_client.clone()).await;
     
     // Upload some data while game is active
-    upload_workout_data(&test_app, &client, &live_game_environment.home_user, WorkoutType::Intense).await;
+    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut workout_data).await;
+    assert!(response.is_ok(), "Workout upload should succeed");
     
     let active_game = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
     assert!(active_game.game_start_time.is_some());
@@ -324,9 +331,16 @@ async fn test_live_game_finish_workflow() {
     }
     
     // Try to upload data after game ended - should not affect scores
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
     let final_score = finished_game.home_score;
-    upload_workout_data(&test_app, &client, &live_game_environment.home_user, WorkoutType::Intense).await;
+    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut workout_data).await;
+    assert!(response.is_ok(), "Workout upload should succeed");
     
+    // Wait a bit for score recalculation
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    
+    // Verify score didn't change
     let post_finish_game = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
     assert_eq!(post_finish_game.home_score, final_score, "Score should not change after game ends");
 
@@ -356,20 +370,14 @@ async fn test_workout_timing_validation_for_live_games() {
     
     // Test 1: Workout BEFORE game start - should NOT count
     println!("\n🔬 Test 1: Uploading workout from before game start...");
-    let before_game_workout = WorkoutData::new(
+    let mut before_game_workout = WorkoutData::new(
         WorkoutType::Intense, 
         game_start - Duration::hours(2),
         30
     );
     
-    let response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/health/upload_health", test_app.address),
-        &live_game_environment.home_user.token,
-        Some(json!(before_game_workout)),
-    ).await;
-    assert!(response.status().is_success(), "Workout upload should succeed");
+    let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut before_game_workout).await;
+    assert!(response.is_ok(), "Workout upload should succeed");
     
     // Check that score didn't increase
     let game_state_1 = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
@@ -378,20 +386,14 @@ async fn test_workout_timing_validation_for_live_games() {
     
     // Test 2: Workout DURING game - should count
     println!("\n🔬 Test 2: Uploading workout during game window...");
-    let during_game_workout = WorkoutData::new(
+    let mut during_game_workout = WorkoutData::new(
         WorkoutType::Intense, 
         Utc::now(), 
         30
     );
     
-    let response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/health/upload_health", test_app.address),
-        &live_game_environment.home_user.token,
-        Some(json!(during_game_workout)),
-    ).await;
-    assert!(response.status().is_success(), "Workout upload should succeed");
+    let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut during_game_workout).await;
+    assert!(response.is_ok(), "Workout upload should succeed");
     
     // Check that score increased
     let game_state_2 = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
@@ -401,20 +403,14 @@ async fn test_workout_timing_validation_for_live_games() {
     
     // Test 3: Workout AFTER game end - should NOT count
     println!("\n🔬 Test 3: Uploading workout from after game end...");
-    let after_game_workout = WorkoutData::new(
+    let mut after_game_workout = WorkoutData::new(
         WorkoutType::Intense, 
         game_end + Duration::hours(1),
         30
     );
     
-    let response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/health/upload_health", test_app.address),
-        &live_game_environment.home_user.token,
-        Some(json!(after_game_workout)),
-    ).await;
-    assert!(response.status().is_success(), "Workout upload should succeed");
+    let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut after_game_workout).await;
+    assert!(response.is_ok(), "Workout upload should succeed");
     
     // Check that score didn't increase further
     let game_state_3 = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
@@ -423,20 +419,14 @@ async fn test_workout_timing_validation_for_live_games() {
     
     // Test 4: Workout exactly at game start - should count
     println!("\n🔬 Test 4: Uploading workout exactly at game start...");
-    let at_start_workout = WorkoutData::new(
+    let mut at_start_workout = WorkoutData::new(
         WorkoutType::Intense, 
         game_start,
         30
     );
     
-    let response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/health/upload_health", test_app.address),
-        &live_game_environment.away_user_1.token,
-        Some(json!(at_start_workout)),
-    ).await;
-    assert!(response.status().is_success(), "Workout upload should succeed");
+    let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_1.token, &mut at_start_workout).await;
+    assert!(response.is_ok(), "Workout upload should succeed");
     
     // Check that away team score increased
     let game_state_4 = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
@@ -445,20 +435,14 @@ async fn test_workout_timing_validation_for_live_games() {
     
     // Test 5: Workout exactly at game end - should NOT count (starts at boundary, ends after)
     println!("\n🔬 Test 5: Uploading workout exactly at game end...");
-    let at_end_workout = WorkoutData::new(
+    let mut at_end_workout = WorkoutData::new(
         WorkoutType::Intense, 
         game_end,
         30
     );
     
-    let response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/health/upload_health", test_app.address),
-        &live_game_environment.away_user_1.token,
-        Some(json!(at_end_workout)),
-    ).await;
-    assert!(response.status().is_success(), "Workout upload should succeed");
+    let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_1.token, &mut at_end_workout).await;
+    assert!(response.is_ok(), "Workout upload should succeed");
     
     // Check that away team score did NOT increase
     let game_state_5 = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
@@ -983,15 +967,10 @@ async fn test_live_game_workout_deletion_score_update() {
     
     // Step 1: Upload workouts and track their IDs
     // Home team workout
-    let home_workout_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/health/upload_health", test_app.address),
-        &live_game_environment.home_user.token,
-        Some(json!(WorkoutData::new(WorkoutType::Intense, Utc::now(), 30))),
-    ).await;
-    assert!(home_workout_response.status().is_success());
-    let home_workout_data: serde_json::Value = home_workout_response.json().await.unwrap();
+    let mut home_workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let home_workout_response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut home_workout_data).await;
+    assert!(home_workout_response.is_ok(), "Home workout upload should succeed");
+    let home_workout_data: serde_json::Value = home_workout_response.unwrap();
     
     // Get workout ID from the health data response
     let home_workout_id = home_workout_data["data"]["sync_id"].as_str()
@@ -1013,15 +992,10 @@ async fn test_live_game_workout_deletion_score_update() {
              home_score_before_deletion, home_score_gained);
     
     // Away team workouts
-    let away1_workout_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/health/upload_health", test_app.address),
-        &live_game_environment.away_user_1.token,
-        Some(json!(WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30))),
-    ).await;
-    assert!(away1_workout_response.status().is_success());
-    let away1_workout_data: serde_json::Value = away1_workout_response.json().await.unwrap();
+    let mut away1_workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let away1_workout_response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_1.token, &mut away1_workout_data).await;
+    assert!(away1_workout_response.is_ok(), "Away workout upload should succeed");
+    let away1_workout_data: serde_json::Value = away1_workout_response.unwrap();
     let away1_workout_id = away1_workout_data["data"]["sync_id"].as_str()
         .expect("Health upload response should contain sync_id");
     let away1_score_gained = if let Some(game_stats) = away1_workout_data["data"]["game_stats"].as_object() {
@@ -1030,15 +1004,10 @@ async fn test_live_game_workout_deletion_score_update() {
         0
     };
     
-    let away2_workout_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/health/upload_health", test_app.address),
-        &live_game_environment.away_user_2.token,
-        Some(json!(WorkoutData::new(WorkoutType::Light, Utc::now(), 30))),
-    ).await;
-    assert!(away2_workout_response.status().is_success());
-    let away2_workout_data: serde_json::Value = away2_workout_response.json().await.unwrap();
+    let mut away2_workout_data = WorkoutData::new(WorkoutType::Light, Utc::now(), 30);
+    let away2_workout_response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_2.token, &mut away2_workout_data).await;
+    assert!(away2_workout_response.is_ok(), "Away workout upload should succeed");
+    let away2_workout_data: serde_json::Value = away2_workout_response.unwrap();
     let away2_workout_id = away2_workout_data["data"]["sync_id"].as_str()
         .expect("Health upload response should contain sync_id");
     let away2_score_gained = if let Some(game_stats) = away2_workout_data["data"]["game_stats"].as_object() {
@@ -1046,6 +1015,15 @@ async fn test_live_game_workout_deletion_score_update() {
     } else {
         0
     };
+    
+    // Verify away team score increased
+    let after_all_uploads = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
+    assert!(after_all_uploads.away_score > 0, "Away score should increase after workouts");
+    let away_score_before_deletion = after_all_uploads.away_score;
+    
+    println!("📊 After all workouts - Home: {}, Away: {} (away gained: {} + {})", 
+             after_all_uploads.home_score, away_score_before_deletion, 
+             away1_score_gained, away2_score_gained);
     
     // Verify away team score increased
     let after_all_uploads = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
@@ -1104,7 +1082,9 @@ async fn test_live_game_workout_deletion_score_update() {
     println!("📊 After bulk deletion - Home: 0, Away: 0");
     
     // Step 6: Upload new workout to verify system still works
-    upload_workout_data(&test_app, &client, &live_game_environment.home_user, WorkoutType::Light).await;
+    let mut workout_data = WorkoutData::new(WorkoutType::Light, Utc::now(), 30);
+    let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut workout_data).await;
+    assert!(response.is_ok(), "Workout upload should succeed");
     
     let final_state = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
     assert!(final_state.home_score > 0, 
@@ -1164,21 +1144,16 @@ async fn test_live_game_partial_workout_deletion() {
         // Use different times for each workout (20 minutes apart) to avoid duplicate detection
         // but still within the 2-hour game window
         let workout_start = Utc::now() + Duration::minutes((i * 20) as i64);
+        let mut workout_data = WorkoutData::new(workout_type, workout_start, 30);
         
-        let response = make_authenticated_request(
-            &client,
-            reqwest::Method::POST,
-            &format!("{}/health/upload_health", test_app.address),
-            &live_game_environment.home_user.token,
-            Some(json!(WorkoutData::new(workout_type, workout_start, 30))),
-        ).await;
+        let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut workout_data).await;
         
-        let workout_data: serde_json::Value = response.json().await.unwrap();
-        let workout_id = workout_data["data"]["sync_id"].as_str()
+        let response_data = response.unwrap();
+        let workout_id = response_data["data"]["sync_id"].as_str()
             .expect("Health upload response should contain sync_id");
         workout_ids.push(workout_id.to_string());
         
-        let score_gained = if let Some(game_stats) = workout_data["data"]["game_stats"].as_object() {
+        let score_gained = if let Some(game_stats) = response_data["data"]["game_stats"].as_object() {
             game_stats["stamina_change"].as_i64().unwrap_or(0) + game_stats["strength_change"].as_i64().unwrap_or(0)
         } else {
             0
@@ -1280,17 +1255,11 @@ async fn test_user_joining_team_during_live_game() {
     let workout_start = live_game.game_start_time.unwrap() + Duration::minutes(10);
     println!("Using workout start time: {} (within game window)", workout_start);
     
-    let workout_data = WorkoutData::new(WorkoutType::Moderate, workout_start, 30);
-    let response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/health/upload_health", test_app.address),
-        &new_user.token,
-        Some(json!(workout_data)),
-    ).await;
+    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, workout_start, 30);
+    let response = upload_workout_data_for_user(&client, &test_app.address, &new_user.token, &mut workout_data).await;
     
-    assert!(response.status().is_success(), "Workout upload should succeed");
-    let response_data: serde_json::Value = response.json().await.expect("Failed to parse workout response");
+    assert!(response.is_ok(), "Workout upload should succeed");
+    let response_data = response.unwrap();
     let stamina = response_data["data"]["game_stats"]["stat_changes"]["stamina_change"].as_i64().unwrap_or(0) as i32;
     let strength = response_data["data"]["game_stats"]["stat_changes"]["strength_change"].as_i64().unwrap_or(0) as i32;
     println!("New user uploaded workout: stamina={}, strength={}", stamina, strength);
@@ -1336,15 +1305,9 @@ async fn test_user_joining_team_during_live_game() {
     
     // Test that the new user can upload another workout and it continues to work
     let second_workout_start = live_game.game_start_time.unwrap() + Duration::minutes(45);
-    let second_workout = WorkoutData::new(WorkoutType::Light, second_workout_start, 20);
-    let response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/health/upload_health", test_app.address),
-        &new_user.token,
-        Some(json!(second_workout)),
-    ).await;
-    assert!(response.status().is_success(), "Second workout should also succeed");
+    let mut second_workout = WorkoutData::new(WorkoutType::Light, second_workout_start, 20);
+    let response = upload_workout_data_for_user(&client, &test_app.address, &new_user.token, &mut second_workout).await;
+    assert!(response.is_ok(), "Second workout should also succeed");
     
     // Verify the contribution count increased
     let (after_second_contributions, _) = get_player_contributions(&test_app, live_game.id).await;
@@ -1383,7 +1346,8 @@ async fn test_admin_live_game_score_adjustment() {
     println!("📊 Initial scores - Home: 0, Away: 0");
 
     // Upload a workout to give the home team some initial score
-    upload_workout_data(&test_app, &client, &live_game_environment.home_user, WorkoutType::Intense).await;
+    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut workout_data).await;
     
     tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
     

@@ -1,5 +1,5 @@
 # Fly.io configuration for EvolveMe Backend
-app = "evolveme-backend"
+app = "riina-backend"
 primary_region = "ams"
 kill_signal = "SIGTERM"
 
