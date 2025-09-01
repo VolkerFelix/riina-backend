@@ -11,6 +11,7 @@ use secrecy::ExposeSecret;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login};
+use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user};
 use riina_backend::config::settings::get_config;
 
 #[tokio::test]
@@ -60,41 +61,13 @@ async fn test_workout_upload_sends_redis_notifications() {
     println!("✅ Subscribed to Redis channels");
     
     // Prepare workout data
-    let base_time = Utc::now();
-    let workout_data = json!({
-        "device_id": "test-redis-notification",
-        "timestamp": base_time,
-        "workout_uuid": format!("redis-test-{}", Uuid::new_v4()),
-        "workout_start": base_time - Duration::minutes(30),
-        "workout_end": base_time,
-        "heart_rate": [
-            {
-                "timestamp": base_time,
-                "heart_rate": 120
-            },
-            {
-                "timestamp": base_time + Duration::seconds(60),
-                "heart_rate": 140
-            },
-            {
-                "timestamp": base_time + Duration::seconds(120),
-                "heart_rate": 130
-            }
-        ],
-        "calories_burned": 50
-    });
+    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
     
     // Upload workout data
-    let upload_response = common::utils::make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/health/upload_health", &app.address),
-        &test_user.token,
-        Some(workout_data),
-    ).await;
+    let upload_response = upload_workout_data_for_user(&client, &app.address, &test_user.token, &mut workout_data).await;
     
-    assert_eq!(upload_response.status(), 200, "Workout upload should succeed");
-    let upload_result = upload_response.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(upload_response.is_ok(), true, "Workout upload should succeed");
+    let upload_result = upload_response.unwrap();
     assert!(upload_result["success"].as_bool().unwrap_or(false));
     println!("✅ Workout uploaded successfully");
     
