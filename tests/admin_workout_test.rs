@@ -149,19 +149,13 @@ async fn test_non_admin_cannot_delete_workouts() {
     let user = create_test_user_and_login(&test_app.address).await;
 
     // Create a workout
-    let workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
 
-    let workout_response = client
-        .post(&format!("{}/health/upload_health", &test_app.address))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&workout_data)
-        .send()
-        .await
-        .expect("Failed to execute health upload request.");
+    let workout_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout_data).await;
 
-    assert!(workout_response.status().is_success(), "Workout upload should succeed");
+    assert!(workout_response.is_ok(), "Workout upload should succeed");
 
-    let response_data = workout_response.json::<serde_json::Value>().await.unwrap();
+    let response_data = workout_response.unwrap();
     let sync_id = response_data["data"]["sync_id"].as_str().unwrap();
 
     // Regular user tries to delete workout
@@ -196,31 +190,20 @@ async fn test_admin_can_list_workouts() {
     let user2 = create_test_user_and_login(&test_app.address).await;
 
     // Create workouts for both users
-    let workout1 = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
-    let workout2 = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut workout1 = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut workout2 = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
 
-    let workout_response1 = client
-        .post(&format!("{}/health/upload_health", &test_app.address))
-        .header("Authorization", format!("Bearer {}", user1.token))
-        .json(&workout1)
-        .send()
-        .await
-        .expect("Failed to execute health upload request.");
+    let workout_response1 = upload_workout_data_for_user(&client, &test_app.address, &user1.token, &mut workout1).await;
+    let workout_response2 = upload_workout_data_for_user(&client, &test_app.address, &user2.token, &mut workout2).await;
 
-    let workout_response2 = client
-        .post(&format!("{}/health/upload_health", &test_app.address))
-        .header("Authorization", format!("Bearer {}", user2.token))
-        .json(&workout2)
-        .send()
-        .await
-        .expect("Failed to execute health upload request.");
+    assert!(workout_response1.is_ok(), "Workout upload should succeed");
+    assert!(workout_response2.is_ok(), "Workout upload should succeed");
 
-    assert!(workout_response1.status().is_success(), "Workout upload should succeed");
-    assert!(workout_response2.status().is_success(), "Workout upload should succeed");
-
-    let response_data1 = workout_response1.json::<serde_json::Value>().await.unwrap();
+    let response_data1 = workout_response1.unwrap();
+    let response_data2 = workout_response2.unwrap();
     let sync_id1 = response_data1["data"]["sync_id"].as_str().unwrap();
-    let response_data2 = workout_response2.json::<serde_json::Value>().await.unwrap();
+    let sync_id2 = response_data2["data"]["sync_id"].as_str().unwrap();
+
     // Admin lists all workouts
     let list_response = client
         .get(&format!("{}/admin/workouts?limit=10", &test_app.address))
@@ -260,19 +243,13 @@ async fn test_admin_can_view_workout_details() {
     // Create a user and workout
     let user = create_test_user_and_login(&test_app.address).await;
 
-    let workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
 
-    let workout_response = client
-        .post(&format!("{}/health/upload_health", &test_app.address))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&workout_data)
-        .send()
-        .await
-        .expect("Failed to execute health upload request.");
+    let workout_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout_data).await;
 
-    assert!(workout_response.status().is_success(), "Workout upload should succeed");
+    assert!(workout_response.is_ok(), "Workout upload should succeed");
 
-    let response_data = workout_response.json::<serde_json::Value>().await.unwrap();
+    let response_data = workout_response.unwrap();
     let sync_id1 = response_data["data"]["sync_id"].as_str().unwrap();
 
     // Admin views workout details
@@ -362,19 +339,13 @@ async fn test_workout_deletion_reverses_user_stats() {
     println!("Initial stats - Stamina: {}, Strength: {}", initial_stamina, initial_strength);
 
     // Upload a workout (this should increase user stats)
-    let workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 45);
+    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 45);
 
-    let workout_response = client
-        .post(&format!("{}/health/upload_health", &test_app.address))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&workout_data)
-        .send()
-        .await
-        .expect("Failed to execute health upload request.");
+    let workout_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout_data).await;
 
-    assert!(workout_response.status().is_success(), "Workout upload should succeed");
+    assert!(workout_response.is_ok(), "Workout upload should succeed");
 
-    let response_data = workout_response.json::<serde_json::Value>().await.unwrap();
+    let response_data = workout_response.unwrap();
     let sync_id = response_data["data"]["sync_id"].as_str().unwrap();
     
     // Extract the stat changes from the workout response
@@ -468,19 +439,13 @@ async fn test_bulk_workout_deletion_reverses_user_stats() {
             _ => WorkoutType::Light,
         };
         
-        let workout_data = WorkoutData::new(workout_type, Utc::now(), 30);
+        let mut workout_data = WorkoutData::new(workout_type, Utc::now() - chrono::Duration::hours(i as i64), 30);
 
-        let workout_response = client
-            .post(&format!("{}/health/upload_health", &test_app.address))
-            .header("Authorization", format!("Bearer {}", user.token))
-            .json(&workout_data)
-            .send()
-            .await
-            .expect("Failed to execute health upload request.");
+        let workout_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout_data).await;
 
-        assert!(workout_response.status().is_success(), "Workout upload should succeed");
+        assert!(workout_response.is_ok(), "Workout upload should succeed");
 
-        let response_data = workout_response.json::<serde_json::Value>().await.unwrap();
+        let response_data = workout_response.unwrap();
         let sync_id = response_data["data"]["sync_id"].as_str().unwrap();
         workout_ids.push(sync_id.to_string());
         
