@@ -10,6 +10,7 @@ use crate::common::{
     workout_data_helpers::{
         WorkoutData,
         WorkoutType,
+        upload_workout_data_for_user,
     },
     utils::create_test_user_and_login,
 };
@@ -51,17 +52,10 @@ async fn test_workout_history_with_data() {
     let test_user = create_test_user_and_login(&test_app.address).await;
     let token = test_user.token;
 
-    let workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
 
-    let health_response = client
-        .post(&format!("{}/health/upload_health", &test_app.address))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&workout_data)
-        .send()
-        .await
-        .expect("Failed to execute health upload request.");
-
-    assert!(health_response.status().is_success(), "Health upload should succeed");
+    let response = upload_workout_data_for_user(&client, &test_app.address, &token, &mut workout_data).await;
+    assert!(response.is_ok(), "Workout upload should succeed");
 
     // Wait a bit for processing
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -114,20 +108,14 @@ async fn test_workout_history_pagination() {
     let test_user = create_test_user_and_login(&test_app.address).await;
     let token = test_user.token;
 
-    // Upload multiple health data entries with different timestamps to avoid duplicate detection
+    // Upload multiple workouts with different timestamps to avoid duplicate detection
     for i in 0..5 {
         let workout_time = Utc::now() - chrono::Duration::hours(i as i64); // Each workout at different times
-        let workout_data = WorkoutData::new(WorkoutType::Moderate, workout_time, 30);
+        let mut workout_data = WorkoutData::new(WorkoutType::Moderate, workout_time, 30);
 
-        let health_response = client
-            .post(&format!("{}/health/upload_health", &test_app.address))
-            .header("Authorization", format!("Bearer {}", token))
-            .json(&workout_data)
-            .send()
-            .await
-            .expect("Failed to execute health upload request.");
+        let health_response = upload_workout_data_for_user(&client, &test_app.address, &token, &mut workout_data).await;
 
-        assert!(health_response.status().is_success(), "Health upload should succeed");
+        assert!(health_response.is_ok(), "Workout upload should succeed");
     }
 
     // Wait for processing
@@ -209,17 +197,11 @@ async fn test_workout_history_with_stats() {
     let token = test_user.token;
 
     // Upload workout data with high intensity to generate stats
-    let workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
 
-    let health_response = client
-        .post(&format!("{}/health/upload_health", &test_app.address))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&workout_data)
-        .send()
-        .await
-        .expect("Failed to execute health upload request.");
+    let health_response = upload_workout_data_for_user(&client, &test_app.address, &token, &mut workout_data).await;
 
-    assert!(health_response.status().is_success(), "Health upload should succeed");
+    assert!(health_response.is_ok(), "Workout upload should succeed");
 
     // Wait for processing
     tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
@@ -273,17 +255,11 @@ async fn test_workout_history_zone_breakdown() {
     let token = test_user.token;
 
     // Upload workout data with high intensity to generate zone breakdown
-    let workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
 
-    let health_response = client
-        .post(&format!("{}/health/upload_health", &test_app.address))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&workout_data)
-        .send()
-        .await
-        .expect("Failed to execute health upload request.");
+    let health_response = upload_workout_data_for_user(&client, &test_app.address, &token, &mut workout_data).await;
 
-    assert!(health_response.status().is_success(), "Health upload should succeed");
+    assert!(health_response.is_ok(), "Workout upload should succeed");
 
     // Wait for processing
     tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
