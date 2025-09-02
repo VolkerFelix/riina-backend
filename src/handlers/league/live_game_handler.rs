@@ -119,7 +119,8 @@ pub async fn get_game_live_score(
                     wd.workout_start as "workout_start?", wd.workout_end as "workout_end?",
                     wd.avg_heart_rate as "avg_heart_rate?", wd.max_heart_rate as "max_heart_rate?",
                     wd.duration_minutes as "duration_minutes?",
-                    wd.heart_rate_zones as "heart_rate_zones?"
+                    wd.heart_rate_zones as "heart_rate_zones?",
+                    wd.image_url as "image_url?", wd.video_url as "video_url?"
                 FROM live_score_events lse
                 LEFT JOIN workout_data wd ON wd.id = lse.workout_data_id
                 WHERE lse.game_id = $1
@@ -159,7 +160,9 @@ pub async fn get_game_live_score(
                             "avg_heart_rate": event.avg_heart_rate,
                             "max_heart_rate": event.max_heart_rate,
                             "duration_minutes": event.duration_minutes,
-                            "heart_rate_zones": event.heart_rate_zones
+                            "heart_rate_zones": event.heart_rate_zones,
+                            "image_url": event.image_url,
+                            "video_url": event.video_url
                         });
                     }
                     

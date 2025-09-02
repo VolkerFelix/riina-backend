@@ -13,10 +13,10 @@ kill_signal = "SIGTERM"
   APP__ENVIRONMENT = "production"
   
   # Frontend URLs for CORS (development frontends)
-  APP__FRONTEND_URL = "http://localhost:3000,https://evolveme-fantasy-dev.fly.dev,https://evolveme-admin-dev.fly.dev"
+  APP__FRONTEND_URL = "http://localhost:3000,https://riina-frontend-dev.fly.dev,https://riina-admin-dev.fly.dev"
   
   # Redis connection (development Redis instance)
-  REDIS__REDIS__HOST = "evolveme-redis-dev.internal"
+  REDIS__REDIS__HOST = "riina-redis-dev.internal"
   REDIS__REDIS__PORT = "6379"
 
 [[services]]

@@ -42,7 +42,7 @@ echo ""
 echo "📦 Running all migrations in a single transaction..."
 
 # Run all migrations at once
-fly postgres connect -a evolveme-db-dev -d evolveme_db -c "psql -v ON_ERROR_STOP=1 -f -" < "$TEMP_FILE"
+fly postgres connect -a riina-db-dev -d evolveme_db -c "psql -v ON_ERROR_STOP=1 -f -" < "$TEMP_FILE"
 
 # Clean up
 rm -f "$TEMP_FILE"
@@ -51,5 +51,5 @@ echo ""
 echo "🎉 Migrations completed!"
 echo ""
 echo "💡 You can verify the database schema by running:"
-echo "   fly postgres connect -a evolveme-db"
+echo "   fly postgres connect -a riina-db"
 echo "   Then in psql use: \\dt to list all tables"

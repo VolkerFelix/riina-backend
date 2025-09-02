@@ -50,7 +50,13 @@ impl SchedulerService {
     /// Schedule complete game management cycle for a new season
     /// Uses every-minute schedule to handle all game durations efficiently
     pub async fn schedule_season(&self, season_id: Uuid, season_name: String) -> Result<(), JobSchedulerError> {
-        let cron_expr = "0 * * * * *".to_string(); // Every minute
+        self.schedule_season_with_frequency(season_id, season_name, "0 * * * * *").await
+    }
+
+    /// Schedule complete game management cycle for a new season with custom frequency
+    /// For testing, use "*/5 * * * * *" (every 5 seconds) for faster response
+    pub async fn schedule_season_with_frequency(&self, season_id: Uuid, season_name: String, cron_expr: &str) -> Result<(), JobSchedulerError> {
+        let cron_expr = cron_expr.to_string();
         
         let scheduler = self.scheduler.lock().await;
         

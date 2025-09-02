@@ -12,7 +12,7 @@
         "Timestamptz",
         "Varchar",
         "Bool",
-        "Int4",
+        "Float8",
         "Timestamptz",
         "Timestamptz"
       ]

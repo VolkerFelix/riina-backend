@@ -25,7 +25,7 @@ pub struct LeagueSeason {
     pub evaluation_cron: Option<String>, // Cron expression for when to evaluate games
     pub evaluation_timezone: Option<String>, // Timezone for evaluation (e.g., "UTC", "America/New_York")
     pub auto_evaluation_enabled: Option<bool>, // Whether automatic evaluation is enabled
-    pub game_duration_minutes: i32, // Duration of each game in minutes (default: 8640 = 6 days)
+    pub game_duration_minutes: f64, // Duration of each game in minutes (default: 8640.0 = 6 days)
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -188,7 +188,7 @@ pub struct CreateSeasonRequest {
     pub name: String,
     pub start_date: DateTime<Utc>,
     pub team_ids: Vec<Uuid>,
-    pub game_duration_minutes: Option<i32>, // Optional, defaults to 8640 minutes (6 days) if not provided
+    pub game_duration_minutes: Option<f64>, // Optional, defaults to 8640.0 minutes (6 days) if not provided
 }
 
 #[derive(Debug, Serialize, Deserialize)]

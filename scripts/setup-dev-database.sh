@@ -13,16 +13,16 @@ fi
 
 # Create PostgreSQL app for development
 echo "📊 Creating PostgreSQL database..."
-fly postgres create evolveme-db-dev --region ams --vm-size shared-cpu-1x --volume-size 1
+fly postgres create riina-db-dev --region ams --vm-size shared-cpu-1x --volume-size 1
 
 # Attach database to the backend app
 echo "🔗 Attaching database to backend app..."
-fly postgres attach evolveme-db-dev --app riina-backend-dev
+fly postgres attach riina-db-dev --app riina-backend-dev
 
 echo "✅ PostgreSQL database created and attached!"
 echo ""
 echo "Database details:"
-echo "- Name: evolveme-db-dev"
+echo "- Name: riina-db-dev"
 echo "- Region: ams"
 echo "- VM Size: shared-cpu-1x"
 echo "- Volume: 1GB"

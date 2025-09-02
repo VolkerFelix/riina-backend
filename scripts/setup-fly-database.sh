@@ -11,7 +11,7 @@ echo ""
 echo "📦 Creating evolveme_db database if it doesn't exist..."
 
 # Create the database
-echo "CREATE DATABASE evolveme_db;" | fly postgres connect -a evolveme-db -c "psql" || echo "Database might already exist, continuing..."
+echo "CREATE DATABASE evolveme_db;" | fly postgres connect -a riina-db -c "psql" || echo "Database might already exist, continuing..."
 
 echo ""
 echo "✅ Database evolveme_db is ready"
@@ -52,7 +52,7 @@ echo ""
 echo "📦 Running all migrations on evolveme_db database..."
 
 # Run all migrations on the specific database
-fly postgres connect -a evolveme-db -d evolveme_db -c "psql -v ON_ERROR_STOP=1 -f -" < "$TEMP_FILE"
+fly postgres connect -a riina-db -d evolveme_db -c "psql -v ON_ERROR_STOP=1 -f -" < "$TEMP_FILE"
 
 # Clean up
 rm -f "$TEMP_FILE"
@@ -61,5 +61,5 @@ echo ""
 echo "🎉 Database setup completed successfully!"
 echo ""
 echo "💡 You can verify the database schema by running:"
-echo "   fly postgres connect -a evolveme-db -d evolveme_db"
+echo "   fly postgres connect -a riina-db -d evolveme_db"
 echo "   Then in psql use: \\dt to list all tables"

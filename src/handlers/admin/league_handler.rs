@@ -51,7 +51,7 @@ pub struct CreateSeasonRequest {
     pub start_date: DateTime<Utc>,
     pub evaluation_timezone: Option<String>, // Timezone (defaults to "UTC")
     pub auto_evaluation_enabled: Option<bool>, // Whether to enable automatic evaluation (defaults to true)
-    pub game_duration_minutes: Option<i32>, // Duration of games in minutes (defaults to 8640 = 6 days)
+    pub game_duration_minutes: Option<f64>, // Duration of games in minutes (defaults to 8640.0 = 6 days)
 }
 
 #[derive(Deserialize)]
@@ -71,7 +71,7 @@ pub struct AdminSeasonResponse {
     pub games_count: i64,
     pub evaluation_timezone: Option<String>,
     pub auto_evaluation_enabled: Option<bool>,
-    pub game_duration_minutes: i32,
+    pub game_duration_minutes: f64,
     pub created_at: DateTime<Utc>,
 }
 
@@ -741,12 +741,12 @@ pub async fn create_league_season(
     
     let evaluation_timezone = body.evaluation_timezone.as_deref().unwrap_or("UTC");
     let auto_evaluation_enabled = body.auto_evaluation_enabled.unwrap_or(true);
-    let game_duration_minutes = body.game_duration_minutes.unwrap_or(8640); // Default: 6 days = 8640 minutes
+    let game_duration_minutes = body.game_duration_minutes.unwrap_or(8640.0); // Default: 6 days = 8640.0 minutes
     
-    // Validate game duration (1 minute to 30 days)
-    if game_duration_minutes < 1 || game_duration_minutes > 43200 {
+    // Validate game duration (0.001 minute to 30 days)
+    if game_duration_minutes < 0.001 || game_duration_minutes > 43200.0 {
         return Err(actix_web::error::ErrorBadRequest(
-            format!("Game duration must be between 1 minute and 43200 minutes (30 days). Got: {} minutes", game_duration_minutes)
+            format!("Game duration must be between 0.001 minute and 43200.0 minutes (30 days). Got: {} minutes", game_duration_minutes)
         ));
     }
 
@@ -877,9 +877,19 @@ pub async fn create_league_season(
             if auto_evaluation_enabled {
                 tracing::info!("🕐 Scheduling automatic game evaluation for season '{}'", body.name);
                 
-                match scheduler.schedule_season(
+                // Use faster scheduling for short games (useful for testing)
+                let cron_expr = if game_duration_minutes < 1.0 {
+                    "*/5 * * * * *" // Every 5 seconds for games shorter than 1 minute
+                } else {
+                    "0 * * * * *"   // Every minute for normal games
+                };
+                
+                tracing::info!("Using scheduler frequency: {} (game duration: {} minutes)", cron_expr, game_duration_minutes);
+                
+                match scheduler.schedule_season_with_frequency(
                     season_id,
                     body.name.clone(),
+                    cron_expr,
                 ).await {
                     Ok(_) => {
                         tracing::info!("✅ Successfully scheduled evaluation for season '{}'", body.name);

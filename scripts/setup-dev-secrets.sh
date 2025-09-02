@@ -19,11 +19,11 @@ fly secrets set \
   APP__APPLICATION__USER="evolveme_dev_user" \
   APP__APPLICATION__PASSWORD="$(openssl rand -base64 32)" \
   POSTGRES__DATABASE__DB_NAME="evolveme_db" \
-  POSTGRES__DATABASE__HOST="evolveme-db-dev.internal" \
+  POSTGRES__DATABASE__HOST="riina-db-dev.internal" \
   POSTGRES__DATABASE__USER="postgres" \
   POSTGRES__DATABASE__PASSWORD="$(openssl rand -base64 32)" \
   POSTGRES__DATABASE__PORT="5432" \
-  REDIS__REDIS__HOST="evolveme-redis-dev.internal" \
+  REDIS__REDIS__HOST="riina-redis-dev.internal" \
   REDIS__REDIS__PORT="6379" \
   REDIS__REDIS__PASSWORD="$(openssl rand -base64 32)" \
   --app riina-backend-dev

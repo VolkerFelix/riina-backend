@@ -33,14 +33,14 @@ read -p "Press Enter to continue or Ctrl+C to skip..."
 echo ""
 echo "Step 5: Setting Redis password..."
 echo "Getting Redis password..."
-REDIS_PASSWORD=$(fly redis status evolveme-redis-dev | grep "Password:" | awk '{print $2}' || echo "")
+REDIS_PASSWORD=$(fly redis status riina-redis-dev | grep "Password:" | awk '{print $2}' || echo "")
 
 if [ -n "$REDIS_PASSWORD" ]; then
     fly secrets set REDIS__REDIS__PASSWORD="$REDIS_PASSWORD" --app riina-backend-dev
     echo "✅ Redis password set automatically"
 else
     echo "⚠️  Could not automatically get Redis password. Please set it manually:"
-    echo "   fly redis status evolveme-redis-dev"
+    echo "   fly redis status riina-redis-dev"
     echo "   fly secrets set REDIS__REDIS__PASSWORD=<password> --app riina-backend-dev"
 fi
 
@@ -64,8 +64,8 @@ echo "🌐 https://riina-backend-dev.fly.dev"
 echo ""
 echo "Resources created:"
 echo "- App: riina-backend-dev"
-echo "- Database: evolveme-db-dev"
-echo "- Redis: evolveme-redis-dev"
+echo "- Database: riina-db-dev"
+echo "- Redis: riina-redis-dev"
 echo ""
 echo "To check status:"
 echo "- fly status --app riina-backend-dev"

@@ -14,6 +14,6 @@ redis:
   port: 6379
 minio:
   endpoint: http://localhost:9000
-  bucket_name: evolveme-media
+  bucket_name: riina-media
   region: us-east-1
   testing: false
