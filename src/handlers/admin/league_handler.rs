@@ -49,6 +49,7 @@ pub struct GenerateScheduleRequest {
 pub struct CreateSeasonRequest {
     pub name: String,
     pub start_date: DateTime<Utc>,
+    pub evaluation_cron: Option<String>, // Cron expression for game evaluation schedule
     pub evaluation_timezone: Option<String>, // Timezone (defaults to "UTC")
     pub auto_evaluation_enabled: Option<bool>, // Whether to enable automatic evaluation (defaults to true)
     pub game_duration_minutes: Option<f64>, // Duration of games in minutes (defaults to 8640.0 = 6 days)
@@ -743,6 +744,9 @@ pub async fn create_league_season(
     let auto_evaluation_enabled = body.auto_evaluation_enabled.unwrap_or(true);
     let game_duration_minutes = body.game_duration_minutes.unwrap_or(8640.0); // Default: 6 days = 8640.0 minutes
     
+    // Use provided evaluation_cron or default to every minute
+    let evaluation_cron = body.evaluation_cron.as_deref().unwrap_or("0 * * * * *");
+    
     // Validate game duration (0.001 minute to 30 days)
     if game_duration_minutes < 0.001 || game_duration_minutes > 43200.0 {
         return Err(actix_web::error::ErrorBadRequest(
@@ -752,14 +756,15 @@ pub async fn create_league_season(
 
     let result = sqlx::query!(
         r#"
-        INSERT INTO league_seasons (id, league_id, name, start_date, end_date, evaluation_timezone, auto_evaluation_enabled, game_duration_minutes, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        INSERT INTO league_seasons (id, league_id, name, start_date, end_date, evaluation_cron, evaluation_timezone, auto_evaluation_enabled, game_duration_minutes, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         "#,
         season_id,
         league_id,
         body.name,
         body.start_date,
         end_date,
+        evaluation_cron,
         evaluation_timezone,
         auto_evaluation_enabled,
         game_duration_minutes,
@@ -876,20 +881,12 @@ pub async fn create_league_season(
             // Schedule automatic game evaluation if enabled
             if auto_evaluation_enabled {
                 tracing::info!("🕐 Scheduling automatic game evaluation for season '{}'", body.name);
-                
-                // Use faster scheduling for short games (useful for testing)
-                let cron_expr = if game_duration_minutes < 1.0 {
-                    "*/5 * * * * *" // Every 5 seconds for games shorter than 1 minute
-                } else {
-                    "0 * * * * *"   // Every minute for normal games
-                };
-                
-                tracing::info!("Using scheduler frequency: {} (game duration: {} minutes)", cron_expr, game_duration_minutes);
+                tracing::info!("Using scheduler frequency: {} (game duration: {} minutes)", evaluation_cron, game_duration_minutes);
                 
                 match scheduler.schedule_season_with_frequency(
                     season_id,
                     body.name.clone(),
-                    cron_expr,
+                    &evaluation_cron,
                 ).await {
                     Ok(_) => {
                         tracing::info!("✅ Successfully scheduled evaluation for season '{}'", body.name);

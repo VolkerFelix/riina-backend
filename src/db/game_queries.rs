@@ -24,7 +24,6 @@ impl GameQueries {
             UPDATE games 
             SET 
                 status = 'in_progress',
-                game_start_time = NOW(),
                 updated_at = NOW()
             WHERE id = $1
             "#,
@@ -141,7 +140,6 @@ impl GameQueries {
             UPDATE games 
             SET 
                 status = 'finished',
-                game_end_time = NOW(),
                 updated_at = NOW()
             WHERE id = $1
             "#,

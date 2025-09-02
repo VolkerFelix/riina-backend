@@ -43,7 +43,8 @@ impl ScheduleService {
         .await?;
         
         let game_duration_minutes = season.game_duration_minutes;
-        let game_duration = Duration::minutes(game_duration_minutes as i64);
+        let game_duration_seconds = (game_duration_minutes * 60.0) as i64;
+        let game_duration = Duration::seconds(game_duration_seconds);
 
 
         let games_per_round = team_count / 2;

@@ -72,7 +72,8 @@ impl SchedulerService {
             let season_name = season_name.clone();
             
             Box::pin(async move {
-                tracing::info!("🎮 Running scheduled game management cycle for season '{}'", season_name);
+                let now = chrono::Utc::now();
+                tracing::info!("🎮 Running scheduled game management cycle for season '{}' at {}", season_name, now.to_rfc3339());
                 
                 let manage_games = ManageGameService::new(pool.clone());
                 let evaluate_games = GameEvaluationService::new(pool, redis_client);
@@ -80,8 +81,8 @@ impl SchedulerService {
                 // Step 1: Run complete game cycle (start due games, finish ended games)
                 match manage_games.run_game_cycle().await {
                     Ok((pending_games, live_games, started_games, finished_games)) => {
-                        tracing::info!("✅ Season '{}' game cycle: {} pending, {} live, {} started, {} finished", 
-                            season_name, pending_games.len(), live_games.len(), started_games.len(), finished_games.len());
+                        tracing::info!("✅ [{}] Season '{}' game cycle: {} pending, {} live, {} started, {} finished", 
+                            now.to_rfc3339(), season_name, pending_games.len(), live_games.len(), started_games.len(), finished_games.len());
                         
                         // Step 2: Evaluate any finished games
                         let finished_games_clone = finished_games.clone();
@@ -110,7 +111,9 @@ impl SchedulerService {
         let mut active_jobs = self.active_jobs.lock().await;
         active_jobs.insert(season_id, job_id);
         
-        tracing::info!("✅ Scheduled complete game management cycle for season '{}' (every minute)", season_name_for_logging);
+        let now = chrono::Utc::now();
+        tracing::info!("✅ [{}] Scheduled complete game management cycle for season '{}' with cron: {}", 
+            now.to_rfc3339(), season_name_for_logging, cron_expr);
         
         Ok(())
     }

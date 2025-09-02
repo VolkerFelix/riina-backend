@@ -74,6 +74,9 @@ pub async fn spawn_app() -> TestApp {
             .expect("Failed to create scheduler service for tests")
     );
     
+    // Start the scheduler service for tests
+    scheduler_service.start().await.expect("Failed to start scheduler service for tests");
+    
     let server = run(
         listener, 
         connection_pool.clone(), 
