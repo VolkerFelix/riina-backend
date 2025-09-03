@@ -484,7 +484,7 @@ async fn test_first_game_starts_on_season_start_date() {
         "name": "Test Season",
         "start_date": start_date.to_rfc3339(),
         "evaluation_cron": "0 0 22 * * SAT",
-        "game_duration_minutes": 10080  // 7 days = 10080 minutes
+        "game_duration_seconds": 604800  // 7 days = 604800 seconds
     });
 
     let season_response = make_authenticated_request(
