@@ -83,7 +83,7 @@ async fn test_season_creation_with_dynamic_scheduling() {
     // Verify default values (no evaluation_cron since we use every-minute scheduling)
     assert_eq!(season_data["data"]["evaluation_timezone"].as_str().unwrap(), "UTC");
     assert_eq!(season_data["data"]["auto_evaluation_enabled"].as_bool().unwrap(), true);
-    assert_eq!(season_data["data"]["game_duration_minutes"].as_i64().unwrap(), 8640); // Default 6 days
+    assert_eq!(season_data["data"]["game_duration_minutes"].as_f64().unwrap(), 8640.0); // Default 6 days
     
     println!("✅ Created season with default schedule (every minute, 6-day games)");
 
@@ -93,7 +93,7 @@ async fn test_season_creation_with_dynamic_scheduling() {
         "start_date": (start_date + Duration::days(30)).to_rfc3339(),
         "evaluation_timezone": "UTC",
         "auto_evaluation_enabled": true,
-        "game_duration_minutes": 30
+        "game_duration_minutes": 30.0
     });
 
     let custom_season_response = make_authenticated_request(
@@ -111,7 +111,7 @@ async fn test_season_creation_with_dynamic_scheduling() {
     // Verify custom values
     assert_eq!(custom_season_data["data"]["evaluation_timezone"].as_str().unwrap(), "UTC");
     assert_eq!(custom_season_data["data"]["auto_evaluation_enabled"].as_bool().unwrap(), true);
-    assert_eq!(custom_season_data["data"]["game_duration_minutes"].as_i64().unwrap(), 30); // 30 minutes
+    assert_eq!(custom_season_data["data"]["game_duration_minutes"].as_f64().unwrap(), 30.0); // 30 minutes
     
     println!("✅ Created season with custom game duration (30-minute games)");
 
@@ -121,7 +121,7 @@ async fn test_season_creation_with_dynamic_scheduling() {
         "start_date": (start_date + Duration::days(60)).to_rfc3339(),
         "evaluation_timezone": "Europe/London",
         "auto_evaluation_enabled": false,
-        "game_duration_minutes": 1440 // 1 day = 1440 minutes
+        "game_duration_minutes": 1440.0 // 1 day = 1440 minutes
     });
 
     let disabled_season_response = make_authenticated_request(
@@ -138,7 +138,7 @@ async fn test_season_creation_with_dynamic_scheduling() {
     // Verify disabled auto-evaluation
     assert_eq!(disabled_season_data["data"]["evaluation_timezone"].as_str().unwrap(), "Europe/London");
     assert_eq!(disabled_season_data["data"]["auto_evaluation_enabled"].as_bool().unwrap(), false);
-    assert_eq!(disabled_season_data["data"]["game_duration_minutes"].as_i64().unwrap(), 1440); // 1 day
+    assert_eq!(disabled_season_data["data"]["game_duration_minutes"].as_f64().unwrap(), 1440.0); // 1 day
     
     println!("✅ Created season with disabled auto-evaluation and 1-day games");
 
@@ -196,7 +196,7 @@ async fn test_season_creation_with_dynamic_scheduling() {
         "start_date": (start_date + Duration::days(90)).to_rfc3339(),
         "evaluation_timezone": "UTC",
         "auto_evaluation_enabled": true,
-        "game_duration_minutes": 50000 // Exceeds 43200 minute (30 day) limit
+        "game_duration_minutes": 50000.0 // Exceeds 43200 minute (30 day) limit
     });
     
     let invalid_response = make_authenticated_request(
@@ -289,7 +289,7 @@ async fn test_season_scheduling_edge_cases() {
         "start_date": get_next_date(Weekday::Wed, NaiveTime::from_hms_opt(10, 0, 0).unwrap()).to_rfc3339(),
         "evaluation_timezone": "UTC",
         "auto_evaluation_enabled": true,
-        "game_duration_minutes": 60 // 1 hour games
+        "game_duration_minutes": 60.0 // 1 hour games
     });
 
     let short_response = make_authenticated_request(
@@ -312,7 +312,7 @@ async fn test_season_scheduling_edge_cases() {
         "start_date": get_next_date(Weekday::Thu, NaiveTime::from_hms_opt(12, 0, 0).unwrap()).to_rfc3339(),
         "evaluation_timezone": "Asia/Tokyo",
         "auto_evaluation_enabled": true,
-        "game_duration_minutes": 10080 // 7 days = 10080 minutes
+        "game_duration_minutes": 10080.0 // 7 days = 10080 minutes
     });
 
     let timezone_response = make_authenticated_request(
@@ -335,7 +335,7 @@ async fn test_season_scheduling_edge_cases() {
         "start_date": get_next_date(Weekday::Fri, NaiveTime::from_hms_opt(15, 0, 0).unwrap()).to_rfc3339(),
         "evaluation_timezone": "UTC",
         "auto_evaluation_enabled": true,
-        "game_duration_minutes": 43200 // 30 days = 43200 minutes (maximum allowed)
+        "game_duration_minutes": 43200.0 // 30 days = 43200 minutes (maximum allowed)
     });
 
     let max_duration_response = make_authenticated_request(
