@@ -5,6 +5,7 @@ use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::models::workout_data::HeartRateData;
+use crate::models::common::ApiResponse;
 // LiveGameService removed during table consolidation
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -108,7 +109,12 @@ pub async fn get_all_workouts(
             actix_web::error::ErrorInternalServerError("Failed to fetch workouts")
         })?;
 
-    Ok(HttpResponse::Ok().json(AdminWorkoutResponse { workouts, total }))
+    Ok(HttpResponse::Ok().json(ApiResponse {
+        success: true,
+        message: "Workouts retrieved successfully".to_string(),
+        data: Some(AdminWorkoutResponse { workouts, total }),
+        error: None,
+    }))
 }
 
 pub async fn get_workout_detail(
@@ -190,7 +196,12 @@ pub async fn get_workout_detail(
         created_at: row.get("created_at"),
     };
 
-    Ok(HttpResponse::Ok().json(workout))
+    Ok(HttpResponse::Ok().json(ApiResponse {
+        success: true,
+        message: "Workout details retrieved successfully".to_string(),
+        data: Some(workout),
+        error: None,
+    }))
 }
 
 pub async fn delete_workout(

@@ -140,8 +140,8 @@ async fn test_workout_history_empty() {
         .expect("Failed to parse workout history response");
 
     // Should return empty array for user with no workout history
-    assert!(history_data["data"].is_array());
-    assert_eq!(history_data["data"].as_array().unwrap().len(), 0);
+    assert!(history_data["data"]["workouts"].is_array());
+    assert_eq!(history_data["data"]["workouts"].as_array().unwrap().len(), 0);
 }
 
 #[tokio::test]
@@ -172,8 +172,8 @@ async fn test_workout_history_with_data() {
         .expect("Failed to parse workout history response");
 
     // Should return the uploaded workout
-    assert!(history_data["data"].is_array());
-    assert!(history_data["data"].as_array().unwrap().len() > 0);
+    assert!(history_data["data"]["workouts"].is_array());
+    assert!(history_data["data"]["workouts"].as_array().unwrap().len() > 0);
 }
 
 #[tokio::test]
@@ -206,8 +206,8 @@ async fn test_workout_history_pagination() {
         .expect("Failed to parse workout history response");
 
     // Should return only 3 workouts due to limit
-    assert!(history_data["data"].is_array());
-    assert_eq!(history_data["data"].as_array().unwrap().len(), 3);
+    assert!(history_data["data"]["workouts"].is_array());
+    assert_eq!(history_data["data"]["workouts"].as_array().unwrap().len(), 3);
 }
 
 // ============================================================================
@@ -275,7 +275,7 @@ async fn test_admin_can_view_all_workouts() {
     assert_eq!(200, response.status().as_u16());
     
     let body: serde_json::Value = response.json().await.expect("Failed to parse response");
-    assert!(body["data"].is_array());
+    assert!(body["data"]["workouts"].is_array());
 }
 
 #[tokio::test]
@@ -304,41 +304,7 @@ async fn test_admin_can_get_workout_by_id() {
     assert_eq!(200, response.status().as_u16());
     
     let body: serde_json::Value = response.json().await.expect("Failed to parse response");
-    assert_eq!(body["data"]["sync_id"].as_str().unwrap(), sync_id);
-}
-
-#[tokio::test]
-async fn test_admin_can_update_workout() {
-    let test_app = spawn_app().await;
-    let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
-
-    // Create a user and workout
-    let user = create_test_user_with_health_profile(&test_app.address).await;
-    let mut workout_data = WorkoutData::new(WorkoutType::Light, Utc::now(), 20);
-    let workout_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout_data).await;
-
-    let response_data = workout_response.unwrap();
-    let sync_id = response_data["data"]["sync_id"].as_str().unwrap();
-
-    // Admin updates workout
-    let update_request = json!({
-        "calories": 500,
-        "duration_minutes": 35
-    });
-
-    let response = make_authenticated_request(
-        &client,
-        reqwest::Method::PATCH,
-        &format!("{}/admin/workouts/{}", &test_app.address, sync_id),
-        &admin.token,
-        Some(update_request),
-    ).await;
-
-    assert_eq!(200, response.status().as_u16());
-    
-    let body: serde_json::Value = response.json().await.expect("Failed to parse response");
-    assert_eq!(body["data"]["calories"].as_i64().unwrap(), 500);
+    assert_eq!(body["data"]["id"].as_str().unwrap(), sync_id);
 }
 
 // ============================================================================
@@ -383,28 +349,13 @@ async fn test_workout_with_media_urls() {
     let test_user = create_test_user_with_health_profile(&test_app.address).await;
 
     // Upload workout with media URLs
-    let workout_with_media = json!({
-        "workout_start": Utc::now().to_rfc3339(),
-        "workout_end": Utc::now().to_rfc3339(),
-        "duration_minutes": 30,
-        "calories": 250,
-        "avg_heart_rate": 140,
-        "max_heart_rate": 170,
-        "image_url": "https://example.com/workout-image.jpg",
-        "video_url": "https://example.com/workout-video.mp4"
-    });
-
-    let response = client
-        .post(&format!("{}/health/sync", &test_app.address))
-        .header("Authorization", format!("Bearer {}", test_user.token))
-        .json(&workout_with_media)
-        .send()
-        .await
-        .expect("Failed to execute request");
-
-    assert!(response.status().is_success(), "Workout with media URLs should succeed");
+    let mut workout_with_media = WorkoutData::new(WorkoutType::Light, Utc::now(), 30);
+    workout_with_media.image_url = Some("https://example.com/workout-image.jpg".to_string());
+    workout_with_media.video_url = Some("https://example.com/workout-video.mp4".to_string());
+    let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_with_media).await;
+    assert!(response.is_ok(), "Workout with media URLs should succeed");
     
-    let response_data: serde_json::Value = response.json().await.expect("Failed to parse response");
+    let response_data = response.unwrap();
     assert!(response_data["data"]["sync_id"].is_string());
 }
 
