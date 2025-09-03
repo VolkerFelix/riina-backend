@@ -442,3 +442,126 @@ pub async fn adjust_live_game_score(
 
     Ok(HttpResponse::Ok().json(ApiResponse::success(response.message.clone(), response)))
 }
+
+/// POST /admin/games/evaluate - Manually trigger game evaluation for a specific date
+pub async fn evaluate_games_for_date(
+    pool: web::Data<PgPool>,
+    redis_client: Option<web::Data<Arc<redis::Client>>>,
+    body: web::Json<EvaluateGamesRequest>,
+) -> Result<HttpResponse> {
+    info!("Manual game evaluation requested for date: {}", body.date);
+
+    // Parse the date
+    let evaluation_date = match chrono::NaiveDate::parse_from_str(&body.date, "%Y-%m-%d") {
+        Ok(date) => date,
+        Err(e) => {
+            error!("Invalid date format '{}': {}", body.date, e);
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+                "Invalid date format. Use YYYY-MM-DD"
+            )));
+        }
+    };
+
+    // Debug: Check what games exist for this date
+    let all_games_debug = sqlx::query!(
+        r#"
+        SELECT id, status, DATE(game_start_time) as game_date, game_start_time
+        FROM games
+        WHERE DATE(game_start_time) = $1
+        "#,
+        evaluation_date
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .unwrap_or_default();
+
+    info!("Debug: Found {} games for date {}", all_games_debug.len(), body.date);
+    for game in &all_games_debug {
+        info!("Debug: Game {} has status '{}' on date {:?}", game.id, game.status, game.game_date);
+    }
+
+    // Get all finished games for the specified date
+    let finished_games = sqlx::query!(
+        r#"
+        SELECT 
+            id, season_id, home_team_id, away_team_id,
+            week_number, is_first_leg, status as "status: crate::models::league::GameStatus",
+            winner_team_id,
+            created_at, updated_at,
+            home_score, away_score, game_start_time, game_end_time,
+            last_score_time, last_scorer_id, last_scorer_name, last_scorer_team
+        FROM games
+        WHERE status = 'finished'
+        AND DATE(game_start_time) = $1
+        ORDER BY game_start_time ASC
+        "#,
+        evaluation_date
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(|e| {
+        error!("Failed to fetch finished games for date {}: {}", body.date, e);
+        actix_web::error::ErrorInternalServerError("Failed to fetch games")
+    })?;
+
+    if finished_games.is_empty() {
+        let message = format!("No finished games found for date {}", body.date);
+        info!("{}", message);
+        
+        // Return flattened response to match test expectations
+        let response = serde_json::json!({
+            "success": true,
+            "games_evaluated": 0,
+            "games_updated": 0,
+            "message": message
+        });
+        return Ok(HttpResponse::Ok().json(response));
+    }
+
+    // Initialize game evaluation service
+    let redis_client_inner = match redis_client {
+        Some(client) => client.get_ref().clone(),
+        None => {
+            error!("Redis client not available for game evaluation");
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                "Redis client not available"
+            )));
+        }
+    };
+
+    let evaluation_service = GameEvaluationService::new(
+        pool.get_ref().clone(),
+        redis_client_inner
+    );
+
+    // Convert to the expected format for evaluation
+    let games_for_evaluation: Vec<Uuid> = finished_games.into_iter().map(|row| {
+        row.id
+    }).collect();
+
+    // Evaluate the games
+    match evaluation_service.evaluate_finished_live_games(&games_for_evaluation).await {
+        Ok(evaluation_results) => {
+            let games_evaluated = evaluation_results.len();
+            let message = format!("Successfully evaluated {} games for date {}", games_evaluated, body.date);
+            
+            info!("{}", message);
+
+            // Return flattened response to match test expectations
+            let response = serde_json::json!({
+                "success": true,
+                "games_evaluated": games_evaluated,
+                "games_updated": games_evaluated,
+                "message": message
+            });
+
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            error!("Failed to evaluate games for date {}: {}", body.date, e);
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                "Game evaluation failed"
+            )))
+        }
+    }
+}

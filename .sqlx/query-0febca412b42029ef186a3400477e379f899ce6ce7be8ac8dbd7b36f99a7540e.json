@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, status, DATE(game_start_time) as game_date, game_start_time\n        FROM games\n        WHERE DATE(game_start_time) = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "game_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 3,
+        "name": "game_start_time",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      null,
+      true
+    ]
+  },
+  "hash": "0febca412b42029ef186a3400477e379f899ce6ce7be8ac8dbd7b36f99a7540e"
+}
