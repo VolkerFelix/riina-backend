@@ -218,10 +218,10 @@ pub async fn manage_games(
     let week_game_service = ManageGameService::new(pool.get_ref().clone());
     
     match week_game_service.run_game_cycle().await {
-        Ok((pending_games, live_games, started_games, finished_games)) => {
+        Ok((games_ready_to_start, live_games, started_games, finished_games)) => {
             let message = format!(
-                "Pending {} games, live {} games, started {} games, finished {} games", 
-                pending_games.len(), 
+                "Ready to start {} games, live {} games, started {} games, finished {} games", 
+                games_ready_to_start.len(), 
                 live_games.len(), 
                 started_games.len(), 
                 finished_games.len()

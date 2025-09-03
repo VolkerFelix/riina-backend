@@ -55,8 +55,8 @@
       },
       {
         "ordinal": 10,
-        "name": "game_duration_minutes",
-        "type_info": "Float8"
+        "name": "game_duration_seconds",
+        "type_info": "Int8"
       }
     ],
     "parameters": {

@@ -54,7 +54,6 @@ impl SchedulerService {
     }
 
     /// Schedule complete game management cycle for a new season with custom frequency
-    /// For testing, use "*/5 * * * * *" (every 5 seconds) for faster response
     pub async fn schedule_season_with_frequency(&self, season_id: Uuid, season_name: String, cron_expr: &str) -> Result<(), JobSchedulerError> {
         let cron_expr = cron_expr.to_string();
         
@@ -80,19 +79,20 @@ impl SchedulerService {
                 
                 // Step 1: Run complete game cycle (start due games, finish ended games)
                 match manage_games.run_game_cycle().await {
-                    Ok((pending_games, live_games, started_games, finished_games)) => {
-                        tracing::info!("✅ [{}] Season '{}' game cycle: {} pending, {} live, {} started, {} finished", 
-                            now.to_rfc3339(), season_name, pending_games.len(), live_games.len(), started_games.len(), finished_games.len());
-                        
-                        // Step 2: Evaluate any finished games
-                        let finished_games_clone = finished_games.clone();
-                        match evaluate_games.evaluate_finished_live_games(finished_games).await {
-                            Ok(result) => {
-                                tracing::info!("✅ Game day completed. Calculated final scores for {} games", result.len());
-                            }
-                            Err(e) => {
-                                let error_msg = e.to_string();
-                                tracing::error!("❌ Game day evaluation failed for games: {:?} - {}", finished_games_clone, error_msg);
+                    Ok((games_ready_to_start, live_games, started_games, finished_games)) => {
+                        tracing::info!("✅ [{}] Season '{}' game cycle: {} ready to start, {} live, {} started, {} finished", 
+                            now.to_rfc3339(), season_name, games_ready_to_start.len(), live_games.len(), started_games.len(), finished_games.len());
+
+                        if finished_games.len() > 0 {
+                            // Step 2: Evaluate any finished games
+                            match evaluate_games.evaluate_finished_live_games(&finished_games).await {
+                                Ok(result) => {
+                                    tracing::info!("✅ Game day completed. Calculated final scores for {} games", result.len());
+                                }
+                                Err(e) => {
+                                    let error_msg = e.to_string();
+                                    tracing::error!("❌ Game day evaluation failed for games: {:?} - {}", finished_games, error_msg);
+                                }
                             }
                         }
                     }

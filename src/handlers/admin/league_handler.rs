@@ -52,7 +52,7 @@ pub struct CreateSeasonRequest {
     pub evaluation_cron: Option<String>, // Cron expression for game evaluation schedule
     pub evaluation_timezone: Option<String>, // Timezone (defaults to "UTC")
     pub auto_evaluation_enabled: Option<bool>, // Whether to enable automatic evaluation (defaults to true)
-    pub game_duration_minutes: Option<f64>, // Duration of games in minutes (defaults to 8640.0 = 6 days)
+    pub game_duration_seconds: Option<i64>, // Duration of games in seconds (defaults to 518400 = 6 days)
 }
 
 #[derive(Deserialize)]
@@ -72,7 +72,7 @@ pub struct AdminSeasonResponse {
     pub games_count: i64,
     pub evaluation_timezone: Option<String>,
     pub auto_evaluation_enabled: Option<bool>,
-    pub game_duration_minutes: f64,
+    pub game_duration_seconds: i64,
     pub created_at: DateTime<Utc>,
 }
 
@@ -618,7 +618,7 @@ pub async fn get_league_seasons(
             ls.created_at,
             COUNT(DISTINCT lt.team_id) as total_teams,
             COUNT(DISTINCT lg.id) as games_count,
-            ls.game_duration_minutes
+            ls.game_duration_seconds
         FROM league_seasons ls
         LEFT JOIN league_teams lt ON ls.id = lt.season_id
         LEFT JOIN games lg ON ls.id = lg.season_id
@@ -648,7 +648,7 @@ pub async fn get_league_seasons(
             evaluation_timezone: row.evaluation_timezone,
             auto_evaluation_enabled: row.auto_evaluation_enabled,
             created_at: row.created_at,
-            game_duration_minutes: row.game_duration_minutes,
+            game_duration_seconds: row.game_duration_seconds,
         })
         .collect();
 
@@ -742,21 +742,21 @@ pub async fn create_league_season(
     
     let evaluation_timezone = body.evaluation_timezone.as_deref().unwrap_or("UTC");
     let auto_evaluation_enabled = body.auto_evaluation_enabled.unwrap_or(true);
-    let game_duration_minutes = body.game_duration_minutes.unwrap_or(8640.0); // Default: 6 days = 8640.0 minutes
+    let game_duration_seconds = body.game_duration_seconds.unwrap_or(518400); // Default: 6 days = 518400 seconds
     
     // Use provided evaluation_cron or default to every minute
     let evaluation_cron = body.evaluation_cron.as_deref().unwrap_or("0 * * * * *");
     
-    // Validate game duration (0.001 minute to 30 days)
-    if game_duration_minutes < 0.001 || game_duration_minutes > 43200.0 {
+    // Validate game duration (1 second to 30 days)
+    if game_duration_seconds < 1 || game_duration_seconds > 2592000 {
         return Err(actix_web::error::ErrorBadRequest(
-            format!("Game duration must be between 0.001 minute and 43200.0 minutes (30 days). Got: {} minutes", game_duration_minutes)
+            format!("Game duration must be between 1 second and 2592000 seconds (30 days). Got: {} seconds", game_duration_seconds)
         ));
     }
 
     let result = sqlx::query!(
         r#"
-        INSERT INTO league_seasons (id, league_id, name, start_date, end_date, evaluation_cron, evaluation_timezone, auto_evaluation_enabled, game_duration_minutes, created_at, updated_at)
+        INSERT INTO league_seasons (id, league_id, name, start_date, end_date, evaluation_cron, evaluation_timezone, auto_evaluation_enabled, game_duration_seconds, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         "#,
         season_id,
@@ -767,7 +767,7 @@ pub async fn create_league_season(
         evaluation_cron,
         evaluation_timezone,
         auto_evaluation_enabled,
-        game_duration_minutes,
+        game_duration_seconds,
         now,
         now
     )
@@ -881,7 +881,7 @@ pub async fn create_league_season(
             // Schedule automatic game evaluation if enabled
             if auto_evaluation_enabled {
                 tracing::info!("🕐 Scheduling automatic game evaluation for season '{}'", body.name);
-                tracing::info!("Using scheduler frequency: {} (game duration: {} minutes)", evaluation_cron, game_duration_minutes);
+                tracing::info!("Using scheduler frequency: {} (game duration: {} seconds)", evaluation_cron, game_duration_seconds);
                 
                 match scheduler.schedule_season_with_frequency(
                     season_id,
@@ -909,7 +909,7 @@ pub async fn create_league_season(
                 evaluation_timezone: Some(evaluation_timezone.to_string()),
                 auto_evaluation_enabled: Some(auto_evaluation_enabled),
                 created_at: now,
-                game_duration_minutes: game_duration_minutes,
+                game_duration_seconds: game_duration_seconds,
             };
 
             let response = ApiResponse {
@@ -950,7 +950,7 @@ pub async fn get_league_season_by_id(
             ls.created_at,
             COUNT(DISTINCT lt.team_id) as total_teams,
             COUNT(DISTINCT lg.id) as games_count,
-            ls.game_duration_minutes
+            ls.game_duration_seconds
         FROM league_seasons ls
         LEFT JOIN league_teams lt ON ls.id = lt.season_id
         LEFT JOIN games lg ON ls.id = lg.season_id
@@ -979,7 +979,7 @@ pub async fn get_league_season_by_id(
             evaluation_timezone: row.evaluation_timezone,
             auto_evaluation_enabled: row.auto_evaluation_enabled,
             created_at: row.created_at,
-            game_duration_minutes: row.game_duration_minutes,
+            game_duration_seconds: row.game_duration_seconds,
         };
 
         let response = ApiResponse {

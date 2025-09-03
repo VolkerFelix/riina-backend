@@ -226,7 +226,7 @@ impl LeagueService {
             name: season_name,
             start_date,
             team_ids,
-            game_duration_minutes: None, // Use default duration
+            game_duration_seconds: None, // Use default duration
         };
 
         self.create_season(request).await

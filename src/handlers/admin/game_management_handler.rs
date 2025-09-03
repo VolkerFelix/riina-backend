@@ -99,12 +99,12 @@ pub async fn start_games_now(
     let now = Utc::now();
     
     // Get duration from season if not provided in request
-    let duration_minutes = if let Some(duration) = body.duration_minutes {
-        duration
+    let duration_seconds = if let Some(duration) = body.duration_minutes {
+        duration * 60 // Convert minutes to seconds for backward compatibility
     } else {
         // Get duration from the season configuration
         let season_duration = sqlx::query!(
-            "SELECT game_duration_minutes FROM league_seasons WHERE id = $1",
+            "SELECT game_duration_seconds FROM league_seasons WHERE id = $1",
             body.season_id
         )
         .fetch_optional(&mut *tx)
@@ -115,18 +115,18 @@ pub async fn start_games_now(
         })?;
 
         match season_duration {
-            Some(season) => season.game_duration_minutes as i64,
-            None => 8640, // Default: 6 days = 8640 minutes if season not found
+            Some(season) => season.game_duration_seconds,
+            None => 518400, // Default: 6 days = 518400 seconds if season not found
         }
     };
 
-    let game_end = now + Duration::minutes(duration_minutes);
+    let game_end = now + Duration::seconds(duration_seconds);
     let mut games_started = 0;
     
-    info!("Setting game duration to {} minutes ({} hours, {} days)", 
-        duration_minutes, 
-        duration_minutes / 60, 
-        duration_minutes / (60 * 24));
+    info!("Setting game duration to {} seconds ({} hours, {} days)", 
+        duration_seconds, 
+        duration_seconds / 3600, 
+        duration_seconds / (3600 * 24));
 
     // Update all games to current time and set to in_progress
     for game in &games {
@@ -298,83 +298,6 @@ pub struct EvaluateGamesResponse {
     pub games_updated: usize,
     pub success: bool,
     pub message: String,
-}
-
-/// POST /admin/games/evaluate - Evaluate finished games for a specific date
-pub async fn evaluate_games_for_date(
-    pool: web::Data<PgPool>,
-    body: web::Json<EvaluateGamesRequest>,
-    redis_client: web::Data<Arc<redis::Client>>,
-) -> Result<HttpResponse> {
-    info!("Evaluating games for date: {}", body.date);
-
-    // Parse the date
-    let date = chrono::NaiveDate::parse_from_str(&body.date, "%Y-%m-%d")
-        .map_err(|e| {
-            error!("Invalid date format: {}", e);
-            actix_web::error::ErrorBadRequest("Invalid date format. Use YYYY-MM-DD")
-        })?;
-
-    // Get all finished games for the specified date
-    let finished_games = sqlx::query!(
-        r#"
-        SELECT id
-        FROM games
-        WHERE DATE(game_start_time AT TIME ZONE 'UTC') = $1
-        AND status = 'finished'
-        "#,
-        date
-    )
-    .fetch_all(pool.get_ref())
-    .await
-    .map_err(|e| {
-        error!("Failed to fetch finished games: {}", e);
-        actix_web::error::ErrorInternalServerError("Database error")
-    })?;
-
-    if finished_games.is_empty() {
-        return Ok(HttpResponse::Ok().json(EvaluateGamesResponse {
-            games_evaluated: 0,
-            games_updated: 0,
-            success: true,
-            message: format!("No finished games found for date {}", date),
-        }));
-    }
-
-    let game_ids: Vec<uuid::Uuid> = finished_games.iter().map(|g| g.id).collect();
-    
-    // Create the evaluation service with Redis for WebSocket notifications
-    let evaluation_service = GameEvaluationService::new(
-        pool.get_ref().clone(), 
-        redis_client.get_ref().clone()
-    );
-    
-    match evaluation_service.evaluate_finished_live_games(game_ids).await {
-        Ok(results) => {
-            let games_updated = results.len();
-            let message = format!("Successfully evaluated {} games for date {}", games_updated, date);
-            
-            info!("{}", message);
-            
-            Ok(HttpResponse::Ok().json(EvaluateGamesResponse {
-                games_evaluated: games_updated,
-                games_updated,
-                success: true,
-                message,
-            }))
-        }
-        Err(e) => {
-            let error_msg = format!("Failed to evaluate games: {}", e);
-            error!("{}", error_msg);
-            
-            Ok(HttpResponse::InternalServerError().json(EvaluateGamesResponse {
-                games_evaluated: 0,
-                games_updated: 0,
-                success: false,
-                message: error_msg,
-            }))
-        }
-    }
 }
 
 /// POST /admin/games/adjust-score - Manually adjust live game scores

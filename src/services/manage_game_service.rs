@@ -16,8 +16,8 @@ impl ManageGameService {
     }
 
     /// Start games that should be in progress (current time is within their week window)
-    pub async fn start_due_games(&self) -> Result<Vec<Uuid>, sqlx::Error> {
-        let games_to_start = self.game_queries.get_pending_games().await?;
+    async fn start_due_games(&self) -> Result<Vec<Uuid>, sqlx::Error> {
+        let games_to_start = self.game_queries.get_games_ready_to_start().await?;
 
         let mut started_game_ids = Vec::new();
 
@@ -37,7 +37,7 @@ impl ManageGameService {
     }
 
     /// Finish games where the game has ended
-    pub async fn finish_completed_games(&self) -> Result<Vec<Uuid>, sqlx::Error> {
+    async fn finish_completed_games(&self) -> Result<Vec<Uuid>, sqlx::Error> {
         let games_to_finish = self.game_queries.get_completed_games().await?;
 
         let mut finished_game_ids = Vec::new();
@@ -59,19 +59,19 @@ impl ManageGameService {
         self.game_queries.get_active_games().await
     }
 
-    /// Get all games that are pending to start
-    pub async fn get_pending_games(&self) -> Result<Vec<LeagueGame>, sqlx::Error> {
-        self.game_queries.get_pending_games().await
+    /// Get all games that are ready to start
+    async fn get_games_ready_to_start(&self) -> Result<Vec<LeagueGame>, sqlx::Error> {
+        self.game_queries.get_games_ready_to_start().await
     }
 
     /// Run the game management cycle (start new games, finish completed ones)
     pub async fn run_game_cycle(&self) -> Result<(Vec<Uuid>, Vec<Uuid>, Vec<Uuid>, Vec<Uuid>), sqlx::Error> {
-        let pending_games = self.get_pending_games().await?.iter().map(|game| game.id).collect();
+        let games_ready_to_start = self.get_games_ready_to_start().await?.iter().map(|game| game.id).collect();
         let live_games = self.get_active_games().await?.iter().map(|game| game.id).collect();
         let started_games = self.start_due_games().await?;
         let finished_games = self.finish_completed_games().await?;
 
         
-        Ok((pending_games, live_games, started_games, finished_games))
+        Ok((games_ready_to_start, live_games, started_games, finished_games))
     }
 }

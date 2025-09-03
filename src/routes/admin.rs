@@ -94,10 +94,6 @@ pub fn init_admin_routes(cfg: &mut web::ServiceConfig) {
                     .route(web::get().to(game_management_handler::get_games_status))
             )
             .service(
-                web::resource("/games/evaluate")
-                    .route(web::post().to(game_management_handler::evaluate_games_for_date))
-            )
-            .service(
                 web::resource("/games/adjust-score")
                     .route(web::post().to(game_management_handler::adjust_live_game_score))
             )

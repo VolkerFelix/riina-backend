@@ -1,6 +1,6 @@
 use sqlx::PgPool;
 use uuid::Uuid;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::sync::Arc;
 use redis::AsyncCommands;
@@ -91,20 +91,26 @@ winner_team_id,
         updated_game.status = GameStatus::Evaluated;
 
         // Update standings
-        self.standings.update_after_game_result(
+        match self.standings.update_after_game_result(
             &updated_game,
             game_stats.home_team_score as i32,
             game_stats.away_team_score as i32
-        ).await?;
-
-        tracing::info!("✅ Updated game {} and standings: {} - {}", 
-            game_id, game_stats.home_team_score, game_stats.away_team_score);
+        ).await {
+            Ok(_) => {
+                tracing::info!("✅ Successfully updated game {} and standings: {} - {}", 
+                    game_id, game_stats.home_team_score, game_stats.away_team_score);
+            }
+            Err(e) => {
+                tracing::error!("❌ Failed to update standings for game {}: {}", game_id, e);
+                return Err(e);
+            }
+        }
 
         Ok(())
     }
 
     /// Evaluate and update finished live games
-    pub async fn evaluate_finished_live_games(&self, game_ids: Vec<Uuid>) -> Result<Vec<GameStats>, sqlx::Error> {
+    pub async fn evaluate_finished_live_games(&self, game_ids: &Vec<Uuid>) -> Result<Vec<GameStats>, sqlx::Error> {
         if game_ids.is_empty() {
             tracing::info!("🎯 No games to evaluate");
             return Ok(Vec::new());
@@ -118,7 +124,7 @@ winner_team_id,
             FROM games 
             WHERE id = ANY($1) and status = 'finished'
             "#,
-            &game_ids
+            game_ids
         )
         .fetch_all(&self.pool)
         .await?;
@@ -167,6 +173,9 @@ winner_team_id,
             };
 
             // Update the game result in the database
+            tracing::info!("🎯 Processing finished game {}: {} - {}", 
+                game_id, game_stats.home_team_score, game_stats.away_team_score);
+                
             match self.update_game_result(game_id, &game_stats).await {
                 Ok(_) => {
                     tracing::info!("✅ Finished live game {} evaluated and updated: {} - {}", 
@@ -185,7 +194,7 @@ winner_team_id,
                 .map(|stats| (stats.game_id, stats.clone()))
                 .collect();
             
-            if let Err(e) = self.broadcast_game_evaluation_results(&game_results_map, chrono::Utc::now()).await {
+            if let Err(e) = self.broadcast_game_evaluation_results(&game_results_map, Utc::now()).await {
                 tracing::error!("Failed to broadcast game evaluation results: {}", e);
                 // Don't fail the entire operation for notification failures
             }
@@ -198,7 +207,7 @@ winner_team_id,
     async fn broadcast_game_evaluation_results(
         &self,
         game_results: &HashMap<Uuid, GameStats>,
-        date: chrono::DateTime<Utc>,
+        date: DateTime<Utc>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!("📡 Broadcasting game evaluation results for {} games on {}", 
             game_results.len(), date);

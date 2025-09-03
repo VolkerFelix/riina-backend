@@ -15,7 +15,7 @@ impl GameQueries {
         Self { pool }
     }
 
-    /// Start a game (update status to InProgress and set game_start_time)
+    /// Start a game (update status to InProgress - times are already set by scheduling)
     pub async fn start_game(&self, game_id: Uuid) -> Result<(), sqlx::Error> {
         info!("Starting game: {}", game_id);
 
@@ -175,7 +175,7 @@ winner_team_id,
     }
 
     /// Get games that need to be started
-    pub async fn get_pending_games(&self) -> Result<Vec<LeagueGame>, sqlx::Error> {
+    pub async fn get_games_ready_to_start(&self) -> Result<Vec<LeagueGame>, sqlx::Error> {
         let games = sqlx::query_as!(
             LeagueGame,
             r#"
@@ -200,6 +200,24 @@ winner_team_id,
 
     /// Get games that need to be finished
     pub async fn get_completed_games(&self) -> Result<Vec<LeagueGame>, sqlx::Error> {
+        // First, let's see what games are in_progress and their times
+        let in_progress_games = sqlx::query!(
+            r#"
+            SELECT id, game_start_time, game_end_time, 
+                   CURRENT_TIMESTAMP as now,
+                   (game_end_time <= CURRENT_TIMESTAMP) as should_finish
+            FROM games 
+            WHERE status = 'in_progress'
+            "#
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        for game in &in_progress_games {
+            info!("🔍 In-progress game {}: start={:?}, end={:?}, now={:?}, should_finish={:?}", 
+                game.id, game.game_start_time, game.game_end_time, game.now, game.should_finish);
+        }
+
         let games = sqlx::query_as!(
             LeagueGame,
             r#"
@@ -218,6 +236,9 @@ winner_team_id,
         )
         .fetch_all(&self.pool)
         .await?;
+
+        info!("🔍 Found {} games ready to finish out of {} in-progress games", 
+            games.len(), in_progress_games.len());
 
         Ok(games)
     }

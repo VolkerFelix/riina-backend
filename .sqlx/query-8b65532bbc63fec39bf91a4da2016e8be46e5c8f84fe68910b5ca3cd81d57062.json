@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT \n            ls.id,\n            ls.league_id,\n            ls.name,\n            ls.start_date,\n            ls.end_date,\n            ls.evaluation_cron,\n            ls.evaluation_timezone,\n            ls.auto_evaluation_enabled,\n            ls.created_at,\n            COUNT(DISTINCT lt.team_id) as total_teams,\n            COUNT(DISTINCT lg.id) as games_count,\n            ls.game_duration_minutes\n        FROM league_seasons ls\n        LEFT JOIN league_teams lt ON ls.id = lt.season_id\n        LEFT JOIN games lg ON ls.id = lg.season_id\n        WHERE ls.league_id = $1\n        GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.evaluation_cron, ls.evaluation_timezone, ls.auto_evaluation_enabled, ls.created_at\n        ORDER BY ls.created_at DESC\n        ",
+  "query": "\n        SELECT \n            ls.id,\n            ls.league_id,\n            ls.name,\n            ls.start_date,\n            ls.end_date,\n            ls.evaluation_cron,\n            ls.evaluation_timezone,\n            ls.auto_evaluation_enabled,\n            ls.created_at,\n            COUNT(DISTINCT lt.team_id) as total_teams,\n            COUNT(DISTINCT lg.id) as games_count,\n            ls.game_duration_seconds\n        FROM league_seasons ls\n        LEFT JOIN league_teams lt ON ls.id = lt.season_id\n        LEFT JOIN games lg ON ls.id = lg.season_id\n        WHERE ls.league_id = $1\n        GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.evaluation_cron, ls.evaluation_timezone, ls.auto_evaluation_enabled, ls.created_at\n        ORDER BY ls.created_at DESC\n        ",
   "describe": {
     "columns": [
       {
@@ -60,8 +60,8 @@
       },
       {
         "ordinal": 11,
-        "name": "game_duration_minutes",
-        "type_info": "Float8"
+        "name": "game_duration_seconds",
+        "type_info": "Int8"
       }
     ],
     "parameters": {
@@ -84,5 +84,5 @@
       false
     ]
   },
-  "hash": "847d169ae999a93f628f7220ee30bb1c82078611ae61187a7c8fedcbe6934f2d"
+  "hash": "8b65532bbc63fec39bf91a4da2016e8be46e5c8f84fe68910b5ca3cd81d57062"
 }

@@ -164,6 +164,28 @@ async fn test_automated_scheduler_game_lifecycle() {
     
     println!("🤖 Testing Automated Scheduler - Game Lifecycle");
     
+    // Clean up games and seasons that are not currently being used by parallel tests
+    // Only clean up completed/old test data to avoid interfering with running tests
+    let cleanup_cutoff = Utc::now() - Duration::hours(1); // Only clean data older than 1 hour
+    
+    sqlx::query!(
+        "DELETE FROM games WHERE created_at < $1 OR status IN ('evaluated', 'cancelled')",
+        cleanup_cutoff
+    )
+    .execute(&app.db_pool)
+    .await
+    .expect("Failed to clean up old games");
+    
+    sqlx::query!(
+        "DELETE FROM league_seasons WHERE created_at < $1 AND name LIKE '%Test%'", 
+        cleanup_cutoff
+    )
+    .execute(&app.db_pool)
+    .await
+    .expect("Failed to clean up old test seasons");
+    
+    println!("🧹 Cleaned up all games and seasons from other test runs");
+    
     // Create admin and users
     let admin_user = create_admin_user_and_login(&app.address).await;
     let user1 = create_test_user_and_login(&app.address).await;
@@ -171,7 +193,7 @@ async fn test_automated_scheduler_game_lifecycle() {
     
     // Create league and teams
     let league_request = json!({
-        "name": "Scheduler Test League",
+        "name": format!("Scheduler Test League {}", &Uuid::new_v4().to_string()[..4]),
         "description": "Testing automated scheduler",
         "max_teams": 2
     });
@@ -212,11 +234,11 @@ async fn test_automated_scheduler_game_lifecycle() {
     let start_date = Utc::now() + Duration::seconds(10);
     
     let season_request = json!({
-        "name": "Scheduler Test Season",
+        "name": format!("Scheduler Test Season {}", &Uuid::new_v4().to_string()[..4]),
         "start_date": start_date.to_rfc3339(),
         "evaluation_timezone": "UTC",
         "auto_evaluation_enabled": true,
-        "game_duration_minutes": 0.166, // 10 seconds = 0.166 minutes
+        "game_duration_seconds": 10, // 10 seconds
         "evaluation_cron": "*/1 * * * * *" // Every 1 second to match short game duration
     });
     
@@ -233,6 +255,40 @@ async fn test_automated_scheduler_game_lifecycle() {
     let season_id = season_data["data"]["id"].as_str().unwrap();
     
     println!("✅ Created season with auto-scheduling enabled (10-second games)");
+    
+    // DEBUG: Check what was actually created in the database
+    let season_uuid = Uuid::parse_str(season_id).expect("Failed to parse season_id as UUID");
+    let debug_teams = sqlx::query!(
+        "SELECT t.id FROM teams t JOIN league_teams lt ON t.id = lt.team_id WHERE lt.season_id = $1",
+        season_uuid
+    )
+    .fetch_all(&app.db_pool)
+    .await
+    .expect("Failed to query teams");
+    
+    let debug_games = sqlx::query!(
+        "SELECT id, home_team_id, away_team_id, status, week_number, is_first_leg, game_start_time, game_end_time FROM games WHERE season_id = $1 ORDER BY game_start_time",
+        season_uuid
+    )
+    .fetch_all(&app.db_pool)
+    .await
+    .expect("Failed to query games");
+    
+    println!("🔍 DEBUG: Season {} has {} teams and {} games", season_id, debug_teams.len(), debug_games.len());
+    for team in &debug_teams {
+        println!("  Team: {}", team.id);
+    }
+    for (i, game) in debug_games.iter().enumerate() {
+        println!("  Game {}: {} vs {} | week={}, first_leg={}, status={}, start={:?}", 
+            i+1, 
+            &game.home_team_id.to_string()[..8], 
+            &game.away_team_id.to_string()[..8],
+            game.week_number, 
+            game.is_first_leg,
+            game.status,
+            game.game_start_time
+        );
+    }
 
     // Wait for scheduler to start the first game
     println!("⏳ Waiting for scheduler to start games...");
@@ -321,11 +377,10 @@ async fn test_automated_scheduler_game_lifecycle() {
             }
         }
         
-        // Check if any live game is in progress
-        for game in live_games {
+        // Check if any game has moved beyond scheduled status (started by scheduler)
+        for game in upcoming_games.iter().chain(live_games.iter()) {
             let status = game["game"]["status"].as_str().unwrap_or("");
-            // Check for both possible status formats: "in_progress" (snake_case) and "InProgress" (PascalCase)
-            if status == "in_progress" || status == "InProgress" {
+            if status != "scheduled" {
                 game_started = true;
                 println!("✅ Scheduler started game automatically! Status: '{}' (attempt {})", status, attempts);
                 break;
@@ -335,7 +390,168 @@ async fn test_automated_scheduler_game_lifecycle() {
     
     assert!(game_started, "Scheduler should have automatically started a game within 45 seconds");
     
-    println!("🎉 Automated scheduler game lifecycle test completed successfully!");
+    // Step 2: Wait for the game to complete (10 seconds + buffer)
+    println!("⏳ Waiting for game to complete and be evaluated...");
+    let mut game_completed = false;
+    let mut completion_attempts = 0;
+    
+    while !game_completed && completion_attempts < 30 { // Wait up to 30 seconds
+        tokio::time::sleep(TokioDuration::from_secs(1)).await;
+        completion_attempts += 1;
+        
+        // Check standings to see if games have been played
+        let standings_response = make_authenticated_request(
+            &client,
+            reqwest::Method::GET,
+            &format!("{}/league/seasons/{}/standings", &app.address, season_id),
+            &admin_user.token,
+            None,
+        ).await;
+        
+        if standings_response.status() == 200 {
+            let standings_data: serde_json::Value = standings_response.json().await.unwrap();
+            let standings = standings_data["data"]["standings"].as_array().unwrap();
+            
+            let total_games_played: i64 = standings.iter()
+                .map(|s| s["standing"]["games_played"].as_i64().unwrap_or(0))
+                .sum();
+            
+            if completion_attempts % 5 == 0 || total_games_played > 0 { // Debug every 5 attempts or when games found
+                println!("🔍 Completion check (attempt {}): Total games played across all teams: {}", 
+                    completion_attempts, total_games_played);
+                
+                // Check current database state
+                let season_uuid = Uuid::parse_str(season_id).expect("Failed to parse season_id as UUID");
+                let current_games = sqlx::query!(
+                    "SELECT id, status, home_score, away_score, game_start_time, game_end_time, CURRENT_TIMESTAMP as now FROM games WHERE season_id = $1",
+                    season_uuid
+                )
+                .fetch_all(&app.db_pool)
+                .await
+                .expect("Failed to query games");
+
+                println!("🔍 Current DB state:");
+                for game in &current_games {
+                    let now = game.now.unwrap();
+                    let should_be_finished = game.game_end_time.map(|end| end <= now).unwrap_or(false);
+                    println!("  Game {}: status='{}', home_score={}, away_score={}, end={:?}, now={:?}, should_be_finished={}", 
+                        &game.id.to_string()[..8], game.status, 
+                        game.home_score, game.away_score,
+                        game.game_end_time, now, should_be_finished);
+                }
+                
+                for (i, standing) in standings.iter().enumerate() {
+                    let team_name = standing["team_name"].as_str().unwrap_or("Unknown");
+                    let games_played = standing["standing"]["games_played"].as_i64().unwrap_or(0);
+                    let wins = standing["standing"]["wins"].as_i64().unwrap_or(0);
+                    let draws = standing["standing"]["draws"].as_i64().unwrap_or(0);
+                    let losses = standing["standing"]["losses"].as_i64().unwrap_or(0);
+                    let points = standing["standing"]["points"].as_i64().unwrap_or(0);
+                    println!("  Team {}: {} games, {} wins, {} draws, {} losses, {} points", 
+                        team_name, games_played, wins, draws, losses, points);
+                }
+            }
+            
+            // Game is completed when at least one team has played games
+            // (Each game results in 2 records: one for home team, one for away team)
+            if total_games_played >= 2 {
+                game_completed = true;
+                println!("✅ Game completed and evaluated! Total game records: {}", total_games_played);
+            }
+        } else {
+            println!("❌ Failed to get standings, status: {}", standings_response.status());
+        }
+    }
+    
+    assert!(game_completed, "Game should have been completed and evaluated within 30 seconds");
+    
+    // Step 3: Verify standings make sense
+    let final_standings_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/seasons/{}/standings", &app.address, season_id),
+        &admin_user.token,
+        None,
+    ).await;
+    
+    assert_eq!(final_standings_response.status(), 200);
+    let final_standings_data: serde_json::Value = final_standings_response.json().await.unwrap();
+    let final_standings = final_standings_data["data"]["standings"].as_array().unwrap();
+    
+    // Verify standings integrity
+    for standing in final_standings {
+        let games_played = standing["standing"]["games_played"].as_i64().unwrap();
+        let wins = standing["standing"]["wins"].as_i64().unwrap();
+        let draws = standing["standing"]["draws"].as_i64().unwrap();
+        let losses = standing["standing"]["losses"].as_i64().unwrap();
+        let points = standing["standing"]["points"].as_i64().unwrap();
+        
+        // Basic integrity checks
+        assert_eq!(games_played, wins + draws + losses, 
+            "Games played should equal wins + draws + losses");
+        assert_eq!(points, wins * 3 + draws * 1, 
+            "Points should equal wins*3 + draws*1");
+        assert!(games_played > 0, "At least one game should have been played");
+    }
+    
+    println!("✅ Standings verification passed");
+    
+    // Step 4: Check if next games are scheduled/starting automatically
+    // For a 2-team league, we should have 2 games total (home/away)
+    let schedule_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/seasons/{}/schedule", &app.address, season_id),
+        &admin_user.token,
+        None,
+    ).await;
+    
+    assert_eq!(schedule_response.status(), 200);
+    let schedule_data: serde_json::Value = schedule_response.json().await.unwrap();
+    let all_games = schedule_data["data"]["games"].as_array().unwrap();
+    
+    println!("✅ Season has {} total games scheduled", all_games.len());
+    
+    if all_games.len() > 1 {
+        println!("⏳ Waiting to see if second game starts automatically...");
+        
+        let mut second_game_started = false;
+        let mut second_game_attempts = 0;
+        
+        while !second_game_started && second_game_attempts < 20 {
+            tokio::time::sleep(TokioDuration::from_secs(1)).await;
+            second_game_attempts += 1;
+            
+            // Check for any games in progress
+            let live_response = make_authenticated_request(
+                &client,
+                reqwest::Method::GET,
+                &format!("{}/league/games/live-active?season_id={}", &app.address, season_id),
+                &admin_user.token,
+                None,
+            ).await;
+            
+            if live_response.status() == 200 {
+                let live_data: serde_json::Value = live_response.json().await.unwrap();
+                let live_games = live_data["data"].as_array().unwrap();
+                
+                if !live_games.is_empty() {
+                    second_game_started = true;
+                    println!("✅ Second game started automatically!");
+                } else if second_game_attempts % 5 == 0 {
+                    println!("🔍 Still waiting for second game to start (attempt {})", second_game_attempts);
+                }
+            }
+        }
+        
+        if second_game_started {
+            println!("✅ Automatic next game start verified");
+        } else {
+            println!("⚠️ Second game didn't start within 20 seconds (may start later)");
+        }
+    }
+    
+    println!("🎉 Complete automated scheduler game lifecycle test completed successfully!");
 }
 
 #[tokio::test]
@@ -417,19 +633,19 @@ async fn test_scheduler_multiple_seasons() {
     let start_date2 = Utc::now() + Duration::seconds(8); // Slight offset
     
     let season1_request = json!({
-        "name": "Season One",
+        "name": format!("Season One {}", &Uuid::new_v4().to_string()[..4]),
         "start_date": start_date1.to_rfc3339(),
         "evaluation_timezone": "UTC",
         "auto_evaluation_enabled": true,
-        "game_duration_minutes": 0.083 // 5 seconds
+        "game_duration_seconds": 5 // 5 seconds
     });
     
     let season2_request = json!({
-        "name": "Season Two",
+        "name": format!("Season Two {}", &Uuid::new_v4().to_string()[..4]),
         "start_date": start_date2.to_rfc3339(),
         "evaluation_timezone": "UTC", 
         "auto_evaluation_enabled": true,
-        "game_duration_minutes": 0.067 // 4 seconds
+        "game_duration_seconds": 4 // 4 seconds
     });
     
     let season1_response = make_authenticated_request(

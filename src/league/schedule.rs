@@ -36,14 +36,13 @@ impl ScheduleService {
 
         // Get the season's game duration to calculate game end times
         let season = sqlx::query!(
-            "SELECT game_duration_minutes FROM league_seasons WHERE id = $1",
+            "SELECT game_duration_seconds FROM league_seasons WHERE id = $1",
             season_id
         )
         .fetch_one(&self.pool)
         .await?;
         
-        let game_duration_minutes = season.game_duration_minutes;
-        let game_duration_seconds = (game_duration_minutes * 60.0) as i64;
+        let game_duration_seconds = season.game_duration_seconds;
         let game_duration = Duration::seconds(game_duration_seconds);
 
 
@@ -63,6 +62,7 @@ impl ScheduleService {
         // FIRST LEG: Generate N-1 rounds
         for round in 0..(team_count - 1) {
             let round_counter_for_readability = round + 1;
+            tracing::info!("🏗️ FIRST LEG - Round {} (round index={})", round_counter_for_readability, round);
             let game_start_time = self.timing.calculate_game_start_time(season_start_date, round, game_duration)?;
             
             // Generate pairings for this round
@@ -121,6 +121,7 @@ impl ScheduleService {
         for round in 0..(team_count - 1) {
             let game_round = (team_count - 1) + round;
             let round_counter_for_readability = game_round + 1;
+            tracing::info!("🏗️ SECOND LEG - Round {} (round index={}, game_round={})", round_counter_for_readability, round, game_round);
             let game_start_time = self.timing.calculate_game_start_time(season_start_date, game_round, game_duration)?;
             
             // Generate pairings for this round (with home/away swapped)

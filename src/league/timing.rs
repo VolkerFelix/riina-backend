@@ -52,13 +52,14 @@ impl TimingService {
     /// Games are scheduled based on the round number and the game duration
     /// Round 0 is the first game
     pub fn calculate_game_start_time(&self, season_start_date: DateTime<Utc>, round: usize, game_duration: Duration) -> Result<DateTime<Utc>, Error> {
-        let game_start_time = season_start_date + Duration::minutes(game_duration.num_minutes() * round as i64);
+        let game_start_time = season_start_date + (game_duration * round as i32);
         
-        tracing::debug!(
-            "Calculated game start time for round {}: {} ({})",
-            round + 1,
-            game_start_time,
-            game_start_time.format("%A, %B %d at %H:%M UTC")
+        tracing::info!(
+            "🕐 Calculated game start time: season_start={}, round={}, game_duration_seconds={}, calculated_start={}",
+            season_start_date,
+            round,
+            game_duration.num_seconds(),
+            game_start_time
         );
         
         Ok(game_start_time)
