@@ -26,6 +26,7 @@ pub struct LeagueSeason {
     pub evaluation_timezone: Option<String>, // Timezone for evaluation (e.g., "UTC", "America/New_York")
     pub auto_evaluation_enabled: Option<bool>, // Whether automatic evaluation is enabled
     pub game_duration_seconds: i64, // Duration of each game in seconds (default: 518400 = 6 days)
+    pub games_per_matchup: Option<i32>, // Number of games per team matchup: 1 = single round-robin, 2 = double round-robin (default: 2)
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -189,6 +190,7 @@ pub struct CreateSeasonRequest {
     pub start_date: DateTime<Utc>,
     pub team_ids: Vec<Uuid>,
     pub game_duration_seconds: Option<i64>, // Optional, defaults to 518400 seconds (6 days) if not provided
+    pub games_per_matchup: Option<i32>, // Optional, defaults to 2 (double round-robin) if not provided
 }
 
 #[derive(Debug, Serialize, Deserialize)]

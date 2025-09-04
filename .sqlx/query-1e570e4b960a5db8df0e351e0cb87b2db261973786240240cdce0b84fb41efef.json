@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT \n            ls.id,\n            ls.league_id,\n            ls.name,\n            ls.start_date,\n            ls.end_date,\n            ls.evaluation_cron,\n            ls.evaluation_timezone,\n            ls.auto_evaluation_enabled,\n            ls.created_at,\n            COUNT(DISTINCT lt.team_id) as total_teams,\n            COUNT(DISTINCT lg.id) as games_count,\n            ls.game_duration_seconds\n        FROM league_seasons ls\n        LEFT JOIN league_teams lt ON ls.id = lt.season_id\n        LEFT JOIN games lg ON ls.id = lg.season_id\n        WHERE ls.league_id = $1\n        GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.evaluation_cron, ls.evaluation_timezone, ls.auto_evaluation_enabled, ls.created_at\n        ORDER BY ls.created_at DESC\n        ",
+  "query": "\n        SELECT \n            ls.id,\n            ls.league_id,\n            ls.name,\n            ls.start_date,\n            ls.end_date,\n            ls.evaluation_cron,\n            ls.evaluation_timezone,\n            ls.auto_evaluation_enabled,\n            ls.created_at,\n            COUNT(DISTINCT lt.team_id) as total_teams,\n            COUNT(DISTINCT lg.id) as games_count,\n            ls.game_duration_seconds,\n            ls.games_per_matchup\n        FROM league_seasons ls\n        LEFT JOIN league_teams lt ON ls.id = lt.season_id\n        LEFT JOIN games lg ON ls.id = lg.season_id\n        WHERE ls.league_id = $1\n        GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.evaluation_cron, ls.evaluation_timezone, ls.auto_evaluation_enabled, ls.created_at, ls.game_duration_seconds, ls.games_per_matchup\n        ORDER BY ls.created_at DESC\n        ",
   "describe": {
     "columns": [
       {
@@ -62,6 +62,11 @@
         "ordinal": 11,
         "name": "game_duration_seconds",
         "type_info": "Int8"
+      },
+      {
+        "ordinal": 12,
+        "name": "games_per_matchup",
+        "type_info": "Int4"
       }
     ],
     "parameters": {
@@ -81,8 +86,9 @@
       false,
       null,
       null,
-      false
+      false,
+      true
     ]
   },
-  "hash": "8b65532bbc63fec39bf91a4da2016e8be46e5c8f84fe68910b5ca3cd81d57062"
+  "hash": "1e570e4b960a5db8df0e351e0cb87b2db261973786240240cdce0b84fb41efef"
 }

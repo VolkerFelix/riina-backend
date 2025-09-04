@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            INSERT INTO league_seasons (league_id, name, start_date, end_date)\n            VALUES ($1, $2, $3, $4)\n            RETURNING *\n            ",
+  "query": "\n            INSERT INTO league_seasons (league_id, name, start_date, end_date, game_duration_seconds, games_per_matchup)\n            VALUES ($1, $2, $3, $4, $5, $6)\n            RETURNING *\n            ",
   "describe": {
     "columns": [
       {
@@ -57,6 +57,11 @@
         "ordinal": 10,
         "name": "game_duration_seconds",
         "type_info": "Int8"
+      },
+      {
+        "ordinal": 11,
+        "name": "games_per_matchup",
+        "type_info": "Int4"
       }
     ],
     "parameters": {
@@ -64,7 +69,9 @@
         "Uuid",
         "Varchar",
         "Timestamptz",
-        "Timestamptz"
+        "Timestamptz",
+        "Int8",
+        "Int4"
       ]
     },
     "nullable": [
@@ -78,8 +85,9 @@
       true,
       true,
       true,
-      false
+      false,
+      true
     ]
   },
-  "hash": "5f195d2c844e89a0a1d07008cacf626e4841581b3c1ac2d72b0ab22df1fa7d4f"
+  "hash": "2d8896a81a14d279381261fe1144fd0285be76d2fe88ed4f7b93fa4e403f8b6e"
 }

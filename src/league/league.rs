@@ -227,6 +227,7 @@ impl LeagueService {
             start_date,
             team_ids,
             game_duration_seconds: None, // Use default duration
+            games_per_matchup: None, // Use default (single round-robin)
         };
 
         self.create_season(request).await

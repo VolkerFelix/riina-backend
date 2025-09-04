@@ -118,9 +118,17 @@ impl LeagueValidator {
     /// Validate overall season feasibility
     pub fn validate_season_feasibility(&self, request: &CreateSeasonRequest) -> Result<(), sqlx::Error> {
         let team_count = request.team_ids.len();
+        let games_per_matchup = request.games_per_matchup.unwrap_or(1); // Default to single round-robin
         
-        // Calculate season duration
-        let total_weeks = (team_count - 1) * 2;
+        // Validate games_per_matchup
+        if games_per_matchup < 1 || games_per_matchup > 2 {
+            return Err(sqlx::Error::Protocol(
+                "Games per matchup must be 1 (single round-robin) or 2 (double round-robin)".into()
+            ));
+        }
+        
+        // Calculate season duration based on games per matchup
+        let total_weeks = (team_count - 1) * games_per_matchup as usize;
         let estimated_end_date = request.start_date + Duration::weeks(total_weeks as i64);
         
         // Check if season would be unreasonably long
@@ -128,16 +136,16 @@ impl LeagueValidator {
         if estimated_end_date - request.start_date > max_reasonable_duration {
             return Err(sqlx::Error::Protocol(
                 format!(
-                    "Season with {} teams would take {} weeks (over 1 year)",
-                    team_count, total_weeks
+                    "Season with {} teams and {} games per matchup would take {} weeks (over 1 year)",
+                    team_count, games_per_matchup, total_weeks
                 )
             ));
         }
 
-        // Check for reasonable minimum duration
-        if total_weeks < 2 {
+        // Check for reasonable minimum duration (single round-robin needs at least 1 week for 2 teams)
+        if total_weeks < 1 {
             return Err(sqlx::Error::Protocol(
-                "Season too short - need at least 2 weeks".into()
+                "Season too short - need at least 1 week".into()
             ));
         }
 

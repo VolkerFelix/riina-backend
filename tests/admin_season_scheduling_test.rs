@@ -367,3 +367,185 @@ async fn test_season_scheduling_edge_cases() {
     
     println!("🎉 Season scheduling with game durations test completed successfully!");
 }
+
+#[tokio::test]
+async fn test_single_vs_double_round_robin_scheduling() {
+    let app = spawn_app().await;
+    let client = Client::new();
+    
+    println!("🎯 Testing Single vs Double Round-Robin Scheduling");
+    
+    // Create admin and league
+    let admin_user = create_admin_user_and_login(&app.address).await;
+    
+    let league_request = json!({
+        "name": "Round-Robin Test League",
+        "description": "Testing single vs double round-robin",
+        "max_teams": 4
+    });
+    
+    let league_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/leagues", &app.address),
+        &admin_user.token,
+        Some(league_request),
+    ).await;
+    
+    assert_eq!(league_response.status(), 201);
+    let league_data: serde_json::Value = league_response.json().await.unwrap();
+    let league_id = league_data["data"]["id"].as_str().unwrap();
+    
+    // Create 4 teams
+    let team_ids = create_teams_for_test(&app.address, &admin_user.token, 4).await;
+    for team_id in &team_ids {
+        let assign_request = json!({"team_id": team_id});
+        let assign_response = make_authenticated_request(
+            &client,
+            reqwest::Method::POST,
+            &format!("{}/admin/leagues/{}/teams", &app.address, league_id),
+            &admin_user.token,
+            Some(assign_request),
+        ).await;
+        assert_eq!(assign_response.status(), 201);
+    }
+    
+    println!("✅ Created 4 teams for testing");
+
+    // Test 1: Single Round-Robin (games_per_matchup = 1)
+    let single_rr_request = json!({
+        "name": "Single Round-Robin Season",
+        "start_date": get_next_date(Weekday::Mon, NaiveTime::from_hms_opt(10, 0, 0).unwrap()).to_rfc3339(),
+        "evaluation_timezone": "UTC",
+        "auto_evaluation_enabled": true,
+        "game_duration_seconds": 3600, // 1 hour for testing
+        "games_per_matchup": 1
+    });
+
+    let single_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/leagues/{}/seasons", &app.address, league_id),
+        &admin_user.token,
+        Some(single_rr_request),
+    ).await;
+    
+    assert_eq!(single_response.status(), 201);
+    let single_season_data: serde_json::Value = single_response.json().await.unwrap();
+    let single_season_id = single_season_data["data"]["id"].as_str().unwrap();
+    
+    println!("✅ Created single round-robin season");
+
+    // Test 2: Double Round-Robin (games_per_matchup = 2) 
+    let double_rr_request = json!({
+        "name": "Double Round-Robin Season",
+        "start_date": get_next_date(Weekday::Wed, NaiveTime::from_hms_opt(10, 0, 0).unwrap()).to_rfc3339(),
+        "evaluation_timezone": "UTC", 
+        "auto_evaluation_enabled": true,
+        "game_duration_seconds": 3600, // 1 hour for testing
+        "games_per_matchup": 2
+    });
+
+    let double_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/leagues/{}/seasons", &app.address, league_id),
+        &admin_user.token,
+        Some(double_rr_request),
+    ).await;
+    
+    assert_eq!(double_response.status(), 201);
+    let double_season_data: serde_json::Value = double_response.json().await.unwrap();
+    let double_season_id = double_season_data["data"]["id"].as_str().unwrap();
+    
+    println!("✅ Created double round-robin season");
+
+    // Verify games_per_matchup was stored correctly
+    assert_eq!(single_season_data["data"]["games_per_matchup"].as_i64().unwrap(), 1);
+    assert_eq!(double_season_data["data"]["games_per_matchup"].as_i64().unwrap(), 2);
+    
+    // Get schedules for both seasons
+    let single_schedule_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/seasons/{}/schedule", &app.address, single_season_id),
+        &admin_user.token,
+        None,
+    ).await;
+    
+    assert_eq!(single_schedule_response.status(), 200);
+    let single_schedule: serde_json::Value = single_schedule_response.json().await.unwrap();
+    let single_games = single_schedule["data"]["games"].as_array().unwrap();
+    
+    let double_schedule_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/seasons/{}/schedule", &app.address, double_season_id),
+        &admin_user.token,
+        None,
+    ).await;
+    
+    assert_eq!(double_schedule_response.status(), 200);
+    let double_schedule: serde_json::Value = double_schedule_response.json().await.unwrap();
+    let double_games = double_schedule["data"]["games"].as_array().unwrap();
+    
+    // Verify game counts
+    // For 4 teams:
+    // - Single round-robin: C(4,2) = 6 games (each pair plays once)  
+    // - Double round-robin: C(4,2) * 2 = 12 games (each pair plays twice)
+    assert_eq!(single_games.len(), 6, "Single round-robin should have 6 games for 4 teams");
+    assert_eq!(double_games.len(), 12, "Double round-robin should have 12 games for 4 teams");
+    
+    println!("✅ Verified game counts: Single={} games, Double={} games", single_games.len(), double_games.len());
+
+    // Verify is_first_leg values
+    let single_first_leg_count = single_games.iter()
+        .filter(|game| game["game"]["is_first_leg"].as_bool().unwrap_or(false))
+        .count();
+    let double_first_leg_count = double_games.iter()
+        .filter(|game| game["game"]["is_first_leg"].as_bool().unwrap_or(false))
+        .count();
+    
+    // Single round-robin: all games should have is_first_leg = false (no concept of legs)
+    // Double round-robin: first 6 games should have is_first_leg = true, last 6 should have is_first_leg = false
+    assert_eq!(single_first_leg_count, 0, "Single round-robin games should have is_first_leg = false");
+    assert_eq!(double_first_leg_count, 6, "Double round-robin should have 6 first leg games");
+    
+    println!("✅ Verified is_first_leg values: Single={} first legs, Double={} first legs", single_first_leg_count, double_first_leg_count);
+
+    // Verify total weeks
+    let single_total_weeks = single_schedule["data"]["total_weeks"].as_i64().unwrap();
+    let double_total_weeks = double_schedule["data"]["total_weeks"].as_i64().unwrap();
+    
+    // For 4 teams: 
+    // - Single round-robin: (4-1) * 1 = 3 weeks
+    // - Double round-robin: (4-1) * 2 = 6 weeks  
+    assert_eq!(single_total_weeks, 3, "Single round-robin should have 3 weeks for 4 teams");
+    assert_eq!(double_total_weeks, 6, "Double round-robin should have 6 weeks for 4 teams");
+    
+    println!("✅ Verified total weeks: Single={} weeks, Double={} weeks", single_total_weeks, double_total_weeks);
+
+    // Test edge case: Invalid games_per_matchup
+    let invalid_request = json!({
+        "name": "Invalid Games Per Matchup Season",
+        "start_date": get_next_date(Weekday::Fri, NaiveTime::from_hms_opt(10, 0, 0).unwrap()).to_rfc3339(),
+        "evaluation_timezone": "UTC",
+        "auto_evaluation_enabled": true,
+        "game_duration_seconds": 3600,
+        "games_per_matchup": 3 // Invalid: should be 1 or 2
+    });
+
+    let invalid_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/leagues/{}/seasons", &app.address, league_id),
+        &admin_user.token,
+        Some(invalid_request),
+    ).await;
+    
+    // Should reject invalid games_per_matchup
+    assert_eq!(invalid_response.status(), 400);
+    println!("✅ Invalid games_per_matchup properly rejected");
+
+    println!("🎉 Single vs Double Round-Robin scheduling test completed successfully!");
+}

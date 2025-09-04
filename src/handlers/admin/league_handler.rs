@@ -53,6 +53,7 @@ pub struct CreateSeasonRequest {
     pub evaluation_timezone: Option<String>, // Timezone (defaults to "UTC")
     pub auto_evaluation_enabled: Option<bool>, // Whether to enable automatic evaluation (defaults to true)
     pub game_duration_seconds: Option<i64>, // Duration of games in seconds (defaults to 518400 = 6 days)
+    pub games_per_matchup: Option<i32>, // Number of games per matchup (defaults to 1 = single round-robin)
 }
 
 #[derive(Deserialize)]
@@ -73,6 +74,7 @@ pub struct AdminSeasonResponse {
     pub evaluation_timezone: Option<String>,
     pub auto_evaluation_enabled: Option<bool>,
     pub game_duration_seconds: i64,
+    pub games_per_matchup: Option<i32>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -618,12 +620,13 @@ pub async fn get_league_seasons(
             ls.created_at,
             COUNT(DISTINCT lt.team_id) as total_teams,
             COUNT(DISTINCT lg.id) as games_count,
-            ls.game_duration_seconds
+            ls.game_duration_seconds,
+            ls.games_per_matchup
         FROM league_seasons ls
         LEFT JOIN league_teams lt ON ls.id = lt.season_id
         LEFT JOIN games lg ON ls.id = lg.season_id
         WHERE ls.league_id = $1
-        GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.evaluation_cron, ls.evaluation_timezone, ls.auto_evaluation_enabled, ls.created_at
+        GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.evaluation_cron, ls.evaluation_timezone, ls.auto_evaluation_enabled, ls.created_at, ls.game_duration_seconds, ls.games_per_matchup
         ORDER BY ls.created_at DESC
         "#,
         league_id
@@ -649,6 +652,7 @@ pub async fn get_league_seasons(
             auto_evaluation_enabled: row.auto_evaluation_enabled,
             created_at: row.created_at,
             game_duration_seconds: row.game_duration_seconds,
+            games_per_matchup: row.games_per_matchup,
         })
         .collect();
 
@@ -704,14 +708,23 @@ pub async fn create_league_season(
         })));
     }
 
-    // Calculate total games: each team plays every other team twice (home & away)
-    // Formula: n * (n-1) where n = number of teams
-    // Calculate end date: N/2 games per week, so total weeks = 2*(N-1)
-    // Formula: total_games ÷ games_per_week = N*(N-1) ÷ (N/2) = 2*(N-1)
+    // Calculate total games based on games_per_matchup
+    // For single round-robin (games_per_matchup = 1): each team plays every other team once
+    // For double round-robin (games_per_matchup = 2): each team plays every other team twice (home & away)
+    // Calculate end date: N/2 games per week, so total weeks = games_per_matchup * (N-1)
+    
+    let games_per_matchup = body.games_per_matchup.unwrap_or(1); // Default to single round-robin
+    
+    // Validate games_per_matchup
+    if games_per_matchup < 1 || games_per_matchup > 2 {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Games per matchup must be 1 (single round-robin) or 2 (double round-robin)"
+        })));
+    }
 
     // Teams are guaranteed to be even due to validation
-    let total_weeks = 2 * (team_count - 1);
-    let calculated_end_date = body.start_date + chrono::Duration::weeks(total_weeks as i64);
+    let total_weeks = games_per_matchup as i64 * (team_count - 1);
+    let calculated_end_date = body.start_date + chrono::Duration::weeks(total_weeks);
 
     // Use calculated end date instead of user input
     let end_date = calculated_end_date;
@@ -756,8 +769,8 @@ pub async fn create_league_season(
 
     let result = sqlx::query!(
         r#"
-        INSERT INTO league_seasons (id, league_id, name, start_date, end_date, evaluation_cron, evaluation_timezone, auto_evaluation_enabled, game_duration_seconds, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        INSERT INTO league_seasons (id, league_id, name, start_date, end_date, evaluation_cron, evaluation_timezone, auto_evaluation_enabled, game_duration_seconds, games_per_matchup, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         "#,
         season_id,
         league_id,
@@ -768,6 +781,7 @@ pub async fn create_league_season(
         evaluation_timezone,
         auto_evaluation_enabled,
         game_duration_seconds,
+        games_per_matchup,
         now,
         now
     )
@@ -910,6 +924,7 @@ pub async fn create_league_season(
                 auto_evaluation_enabled: Some(auto_evaluation_enabled),
                 created_at: now,
                 game_duration_seconds: game_duration_seconds,
+                games_per_matchup: Some(games_per_matchup),
             };
 
             let response = ApiResponse {
@@ -950,12 +965,13 @@ pub async fn get_league_season_by_id(
             ls.created_at,
             COUNT(DISTINCT lt.team_id) as total_teams,
             COUNT(DISTINCT lg.id) as games_count,
-            ls.game_duration_seconds
+            ls.game_duration_seconds,
+            ls.games_per_matchup
         FROM league_seasons ls
         LEFT JOIN league_teams lt ON ls.id = lt.season_id
         LEFT JOIN games lg ON ls.id = lg.season_id
         WHERE ls.league_id = $1 AND ls.id = $2
-        GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.evaluation_cron, ls.evaluation_timezone, ls.auto_evaluation_enabled, ls.created_at
+        GROUP BY ls.id, ls.league_id, ls.name, ls.start_date, ls.end_date, ls.evaluation_cron, ls.evaluation_timezone, ls.auto_evaluation_enabled, ls.created_at, ls.game_duration_seconds, ls.games_per_matchup
         "#,
         league_id,
         season_id
@@ -980,6 +996,7 @@ pub async fn get_league_season_by_id(
             auto_evaluation_enabled: row.auto_evaluation_enabled,
             created_at: row.created_at,
             game_duration_seconds: row.game_duration_seconds,
+            games_per_matchup: row.games_per_matchup,
         };
 
         let response = ApiResponse {
