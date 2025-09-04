@@ -295,7 +295,8 @@ async fn test_season_creation_with_proper_round_robin_schedule() {
     let season_request = json!({
         "name": "Test Season",
         "start_date": start_date.to_rfc3339(),
-        "evaluation_cron": "0 0 22 * * SAT"
+        "evaluation_cron": "0 0 22 * * SAT",
+        "games_per_matchup": 2  // Double round-robin
     });
 
     let season_response = make_authenticated_request(
@@ -326,7 +327,6 @@ async fn test_season_creation_with_proper_round_robin_schedule() {
     let total_weeks = schedule_body["data"]["total_weeks"].as_i64().expect("Total weeks not found");
 
     // **VERIFY ROUND-ROBIN PROPERTIES**
-    
     // 1. Total games: 6 teams = 6*(6-1) = 30 total games
     assert_eq!(30, games.len(), "Should have exactly 30 games for 6 teams");
     
@@ -388,8 +388,8 @@ async fn test_season_creation_with_proper_round_robin_schedule() {
         *matchup_count.entry(pair).or_insert(0) += 1;
     }
     
-    // Should have exactly 15 unique matchups (6 choose 2 = 15)
-    assert_eq!(15, matchup_count.len(), "Should have exactly 15 unique matchups");
+    // Should have exactly 15 unique matchups
+    assert_eq!(15, matchup_count.len(), "Should have exactly 30 unique matchups");
     
     // Each matchup should occur exactly twice (home and away)
     for (pair, count) in matchup_count {

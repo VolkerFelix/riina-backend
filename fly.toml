@@ -1,5 +1,5 @@
 # Fly.io configuration for EvolveMe Backend
-app = "riina-backend"
+app = "evolveme-backend"
 primary_region = "ams"
 kill_signal = "SIGTERM"
 
@@ -12,10 +12,10 @@ kill_signal = "SIGTERM"
   APP__APPLICATION__HOST = "0.0.0.0"
   
   # Frontend URL for CORS
-  APP__FRONTEND_URL = "https://riina-frontend.fly.dev"
+  APP__FRONTEND_URL = "https://evolveme-frontend.fly.dev"
   
   # Redis connection (you'll need to set up Redis separately)
-  REDIS__REDIS__HOST = "riina-redis.internal"
+  REDIS__REDIS__HOST = "evolveme-redis.internal"
   REDIS__REDIS__PORT = "6379"
 
 [[services]]

@@ -51,7 +51,7 @@ EOF
 echo ""
 echo "⚡ Updating user role..."
 
-fly postgres connect -a riina-db -d evolveme_db < "$TEMP_SQL"
+fly postgres connect -a evolveme-db -d evolveme_db < "$TEMP_SQL"
 
 # Clean up
 rm -f "$TEMP_SQL"
