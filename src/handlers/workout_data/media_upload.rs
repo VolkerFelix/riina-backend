@@ -20,7 +20,6 @@ pub struct UploadUrlRequest {
     pub filename: String,
     pub content_type: String,
     pub expected_hash: String,
-    pub workout_id: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -45,7 +44,6 @@ pub struct ConfirmUploadResponse {
 }
 
 // Constants
-const MAX_FILE_SIZE: u64 = 50 * 1024 * 1024; // 50MB
 const ALLOWED_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "mp4", "mov", "avi"];
 
 // Request upload signed URL

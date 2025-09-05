@@ -3,13 +3,13 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
-use std::sync::Arc;
 
 use crate::models::workout_data::HeartRateData;
-use crate::services::live_game_service::LiveGameService;
+use crate::models::common::ApiResponse;
+// LiveGameService removed during table consolidation
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
-struct AdminWorkoutData {
+pub struct AdminWorkoutData {
     pub id: Uuid,
     pub user_id: Uuid,
     pub username: String,
@@ -109,7 +109,12 @@ pub async fn get_all_workouts(
             actix_web::error::ErrorInternalServerError("Failed to fetch workouts")
         })?;
 
-    Ok(HttpResponse::Ok().json(AdminWorkoutResponse { workouts, total }))
+    Ok(HttpResponse::Ok().json(ApiResponse {
+        success: true,
+        message: "Workouts retrieved successfully".to_string(),
+        data: Some(AdminWorkoutResponse { workouts, total }),
+        error: None,
+    }))
 }
 
 pub async fn get_workout_detail(
@@ -191,31 +196,29 @@ pub async fn get_workout_detail(
         created_at: row.get("created_at"),
     };
 
-    Ok(HttpResponse::Ok().json(workout))
+    Ok(HttpResponse::Ok().json(ApiResponse {
+        success: true,
+        message: "Workout details retrieved successfully".to_string(),
+        data: Some(workout),
+        error: None,
+    }))
 }
 
 pub async fn delete_workout(
     pool: web::Data<PgPool>,
     workout_id: web::Path<Uuid>,
-    redis_client: Option<web::Data<Arc<redis::Client>>>,
 ) -> Result<HttpResponse, actix_web::Error> {
     let workout_id = workout_id.into_inner();
 
-    // First check if workout exists and get associated live game and stat change info
+    // First check if workout exists and get stat change info
     let workout_info = sqlx::query(
         r#"
         SELECT 
             wd.id,
             wd.user_id as workout_user_id,
             wd.stamina_gained as workout_stamina_gained,
-            wd.strength_gained as workout_strength_gained,
-            lse.live_game_id,
-            lse.team_side,
-            lse.score_points,
-            lse.power_contribution,
-            lse.user_id
+            wd.strength_gained as workout_strength_gained
         FROM workout_data wd
-        LEFT JOIN live_score_events lse ON lse.workout_data_id = wd.id
         WHERE wd.id = $1
         "#
     )
@@ -235,11 +238,6 @@ pub async fn delete_workout(
     let workout_user_id: Uuid = workout_row.get("workout_user_id");
     let stamina_gained: Option<i32> = workout_row.try_get("workout_stamina_gained").ok();
     let strength_gained: Option<i32> = workout_row.try_get("workout_strength_gained").ok();
-    let live_game_id: Option<Uuid> = workout_row.try_get("live_game_id").ok();
-    let team_side: Option<String> = workout_row.try_get("team_side").ok();
-    let score_points: Option<i32> = workout_row.try_get("score_points").ok();
-    let power_contribution: Option<i32> = workout_row.try_get("power_contribution").ok();
-    let user_id: Option<Uuid> = workout_row.try_get("user_id").ok();
 
     // Reverse stat changes from user's avatar if they exist
     if let (Some(stamina_gained), Some(strength_gained)) = (stamina_gained, strength_gained) {
@@ -267,7 +265,13 @@ pub async fn delete_workout(
         }
     }
 
-    // Delete the workout (this will cascade delete the live_score_events)
+    // Before deleting the workout, recalculate live game scores
+    if let Err(e) = recalculate_live_game_scores_after_workout_deletion(workout_id, pool.get_ref()).await {
+        tracing::error!("Failed to recalculate live game scores after workout deletion: {}", e);
+        // Don't fail the deletion for this, just log the error
+    }
+
+    // Delete the workout (this will cascade delete any related entries)
     sqlx::query("DELETE FROM workout_data WHERE id = $1")
         .bind(workout_id)
         .execute(pool.get_ref())
@@ -276,81 +280,6 @@ pub async fn delete_workout(
             tracing::error!("Failed to delete workout: {}", e);
             actix_web::error::ErrorInternalServerError("Failed to delete workout")
         })?;
-
-    // If this workout was part of a live game, recalculate the scores
-    if let (Some(live_game_id), Some(team_side), Some(score_points), Some(power_contribution), Some(user_id)) = 
-        (live_game_id, team_side, score_points, power_contribution, user_id) {
-        
-        tracing::info!("Recalculating live game {} scores after workout deletion", live_game_id);
-        
-        // Update the live game scores by subtracting the deleted workout's contribution
-        let update_query = if team_side == "home" {
-            r#"
-            UPDATE live_games 
-            SET 
-                home_score = GREATEST(0, home_score - $1),
-                home_power = GREATEST(0, home_power - $2),
-                updated_at = NOW()
-            WHERE id = $3
-            RETURNING *
-            "#
-        } else {
-            r#"
-            UPDATE live_games 
-            SET 
-                away_score = GREATEST(0, away_score - $1),
-                away_power = GREATEST(0, away_power - $2),
-                updated_at = NOW()
-            WHERE id = $3
-            RETURNING *
-            "#
-        };
-
-        let updated_game = sqlx::query(update_query)
-            .bind(score_points)
-            .bind(power_contribution)
-            .bind(live_game_id)
-            .fetch_optional(pool.get_ref())
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to update live game scores: {}", e);
-                actix_web::error::ErrorInternalServerError("Failed to update live game scores")
-            })?;
-
-        // Broadcast the updated scores if the game was updated
-        if updated_game.is_some() {
-            let live_game_service = LiveGameService::new(pool.get_ref().clone(), redis_client.unwrap().get_ref().clone());
-            
-            // Get the updated live game and broadcast the change
-            if let Ok(Some(live_game)) = live_game_service.get_live_game_by_id(live_game_id).await {
-                let _ = live_game_service.broadcast_live_score_update(&live_game).await;
-            }
-        }
-
-        // Update player contribution
-        sqlx::query(
-            r#"
-            UPDATE live_player_contributions 
-            SET 
-                current_power = GREATEST(0, current_power - $1),
-                total_score_contribution = GREATEST(0, total_score_contribution - $2),
-                contribution_count = GREATEST(0, contribution_count - 1),
-                updated_at = NOW()
-            WHERE live_game_id = $3 AND user_id = $4
-            "#
-        )
-        .bind(power_contribution)
-        .bind(score_points)
-        .bind(live_game_id)
-        .bind(user_id)
-        .execute(pool.get_ref())
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to update player contributions: {}", e);
-            e
-        })
-        .ok();
-    }
 
     tracing::info!("Admin deleted workout: {}", workout_id);
 
@@ -368,27 +297,20 @@ pub struct BulkDeleteRequest {
 pub async fn bulk_delete_workouts(
     pool: web::Data<PgPool>,
     body: web::Json<BulkDeleteRequest>,
-    redis_client: web::Data<Arc<redis::Client>>,
 ) -> Result<HttpResponse, actix_web::Error> {
     if body.workout_ids.is_empty() {
         return Err(actix_web::error::ErrorBadRequest("No workout IDs provided"));
     }
 
-    // First, get info about all workouts that will be deleted and their live game associations
+    // First, get info about all workouts that will be deleted
     let workout_infos = sqlx::query(
         r#"
         SELECT 
             wd.id as workout_id,
             wd.user_id as workout_user_id,
             wd.stamina_gained as workout_stamina_gained,
-            wd.strength_gained as workout_strength_gained,
-            lse.live_game_id,
-            lse.team_side,
-            lse.score_points,
-            lse.power_contribution,
-            lse.user_id
+            wd.strength_gained as workout_strength_gained
         FROM workout_data wd
-        LEFT JOIN live_score_events lse ON lse.workout_data_id = wd.id
         WHERE wd.id = ANY($1)
         "#
     )
@@ -400,44 +322,8 @@ pub async fn bulk_delete_workouts(
         actix_web::error::ErrorInternalServerError("Failed to fetch workout info")
     })?;
 
-    // Group by live game to aggregate score changes
-    use std::collections::HashMap;
-    #[derive(Default)]
-    struct GameScoreAdjustment {
-        home_score_decrease: i32,
-        home_power_decrease: i32,
-        away_score_decrease: i32,
-        away_power_decrease: i32,
-        user_contributions: HashMap<Uuid, (i32, i32)>, // user_id -> (score, power)
-    }
-    
-    let mut game_adjustments: HashMap<Uuid, GameScoreAdjustment> = HashMap::new();
-    
-    for row in &workout_infos {
-        if let (Ok(Some(live_game_id)), Ok(Some(team_side)), Ok(Some(score)), Ok(Some(power)), Ok(Some(user_id))) = (
-            row.try_get::<Option<Uuid>, _>("live_game_id"),
-            row.try_get::<Option<String>, _>("team_side"),
-            row.try_get::<Option<i32>, _>("score_points"),
-            row.try_get::<Option<i32>, _>("power_contribution"),
-            row.try_get::<Option<Uuid>, _>("user_id"),
-        ) {
-            let adjustment = game_adjustments.entry(live_game_id).or_default();
-            
-            if team_side == "home" {
-                adjustment.home_score_decrease += score;
-                adjustment.home_power_decrease += power;
-            } else {
-                adjustment.away_score_decrease += score;
-                adjustment.away_power_decrease += power;
-            }
-            
-            let user_contrib = adjustment.user_contributions.entry(user_id).or_default();
-            user_contrib.0 += score;
-            user_contrib.1 += power;
-        }
-    }
-
     // Group and reverse stat changes by user
+    use std::collections::HashMap;
     let mut user_stat_changes: HashMap<Uuid, (i32, i32)> = HashMap::new(); // user_id -> (stamina, strength)
     
     for row in &workout_infos {
@@ -478,6 +364,14 @@ pub async fn bulk_delete_workouts(
         })?;
     }
 
+    // Recalculate live game scores for each workout before deletion
+    for workout_id in &body.workout_ids {
+        if let Err(e) = recalculate_live_game_scores_after_workout_deletion(*workout_id, pool.get_ref()).await {
+            tracing::error!("Failed to recalculate live game scores for workout {}: {}", workout_id, e);
+            // Don't fail the bulk deletion for this, just log the error
+        }
+    }
+
     // Delete all workouts in the list (this will cascade delete live_score_events)
     let result = sqlx::query(
         "DELETE FROM workout_data WHERE id = ANY($1)"
@@ -492,66 +386,77 @@ pub async fn bulk_delete_workouts(
 
     let deleted_count = result.rows_affected();
     
-    // Now update all affected live games
-    let live_game_service = LiveGameService::new(pool.get_ref().clone(), redis_client.get_ref().clone());
-    
-    for (live_game_id, adjustment) in game_adjustments {
-        // Update live game scores
-        let update_result = sqlx::query(
-            r#"
-            UPDATE live_games 
-            SET 
-                home_score = GREATEST(0, home_score - $1),
-                home_power = GREATEST(0, home_power - $2),
-                away_score = GREATEST(0, away_score - $3),
-                away_power = GREATEST(0, away_power - $4),
-                updated_at = NOW()
-            WHERE id = $5
-            RETURNING id
-            "#
-        )
-        .bind(adjustment.home_score_decrease)
-        .bind(adjustment.home_power_decrease)
-        .bind(adjustment.away_score_decrease)
-        .bind(adjustment.away_power_decrease)
-        .bind(live_game_id)
-        .fetch_optional(pool.get_ref())
-        .await;
-
-        if update_result.is_ok() && update_result.unwrap().is_some() {
-            // Update player contributions
-            for (user_id, (score_decrease, power_decrease)) in adjustment.user_contributions {
-                sqlx::query(
-                    r#"
-                    UPDATE live_player_contributions 
-                    SET 
-                        current_power = GREATEST(0, current_power - $1),
-                        total_score_contribution = GREATEST(0, total_score_contribution - $2),
-                        contribution_count = GREATEST(0, contribution_count - 1),
-                        updated_at = NOW()
-                    WHERE live_game_id = $3 AND user_id = $4
-                    "#
-                )
-                .bind(power_decrease)
-                .bind(score_decrease)
-                .bind(live_game_id)
-                .bind(user_id)
-                .execute(pool.get_ref())
-                .await
-                .ok();
-            }
-
-            // Broadcast the updated scores
-            if let Ok(Some(live_game)) = live_game_service.get_live_game_by_id(live_game_id).await {
-                let _ = live_game_service.broadcast_live_score_update(&live_game).await;
-            }
-        }
-    }
-    
     tracing::info!("Admin bulk deleted {} workouts", deleted_count);
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": format!("{} workouts deleted successfully", deleted_count),
         "deleted_count": deleted_count
     })))
+}
+
+/// Recalculate live game scores after a workout deletion
+async fn recalculate_live_game_scores_after_workout_deletion(
+    workout_id: Uuid,
+    pool: &sqlx::PgPool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    tracing::info!("🔄 Recalculating live game scores after workout deletion: {}", workout_id);
+
+    // Find all games that had score events from this workout
+    let affected_games = sqlx::query!(
+        r#"
+        SELECT DISTINCT lse.game_id
+        FROM live_score_events lse 
+        WHERE lse.workout_data_id = $1
+        AND lse.game_id IS NOT NULL
+        "#,
+        workout_id
+    )
+    .fetch_all(pool)
+    .await?;
+
+    for game_record in affected_games {
+        let game_id = game_record.game_id.expect("game_id should not be null due to WHERE clause");
+        tracing::info!("🔄 Recalculating scores for game: {}", game_id);
+
+        // Delete the old score events for this workout
+        sqlx::query!(
+            "DELETE FROM live_score_events WHERE workout_data_id = $1",
+            workout_id
+        )
+        .execute(pool)
+        .await?;
+
+        // Recalculate total scores for both teams from remaining score events
+        let score_totals = sqlx::query!(
+            r#"
+            SELECT 
+                COALESCE(SUM(CASE WHEN team_side = 'home' THEN score_points ELSE 0 END), 0) as home_total,
+                COALESCE(SUM(CASE WHEN team_side = 'away' THEN score_points ELSE 0 END), 0) as away_total
+            FROM live_score_events 
+            WHERE game_id = $1
+            "#,
+            game_id
+        )
+        .fetch_one(pool)
+        .await?;
+
+        // Update the game with recalculated scores
+        sqlx::query!(
+            r#"
+            UPDATE games 
+            SET home_score = $1, away_score = $2
+            WHERE id = $3
+            "#,
+            score_totals.home_total.unwrap_or(0) as i32,
+            score_totals.away_total.unwrap_or(0) as i32,
+            game_id
+        )
+        .execute(pool)
+        .await?;
+
+        tracing::info!("✅ Updated game {} scores: home={}, away={}", 
+            game_id, score_totals.home_total.unwrap_or(0), score_totals.away_total.unwrap_or(0));
+    }
+
+    Ok(())
 }

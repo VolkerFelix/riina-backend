@@ -147,7 +147,7 @@ async fn admin_generate_schedule_works() {
     let games = sqlx::query!(
         r#"
         SELECT COUNT(*) as count
-        FROM league_games
+        FROM games
         WHERE season_id = $1
         "#,
         Uuid::parse_str(&season_id).unwrap()
@@ -295,7 +295,8 @@ async fn test_season_creation_with_proper_round_robin_schedule() {
     let season_request = json!({
         "name": "Test Season",
         "start_date": start_date.to_rfc3339(),
-        "evaluation_cron": "0 0 22 * * SAT"
+        "evaluation_cron": "0 0 22 * * SAT",
+        "games_per_matchup": 2  // Double round-robin
     });
 
     let season_response = make_authenticated_request(
@@ -326,7 +327,6 @@ async fn test_season_creation_with_proper_round_robin_schedule() {
     let total_weeks = schedule_body["data"]["total_weeks"].as_i64().expect("Total weeks not found");
 
     // **VERIFY ROUND-ROBIN PROPERTIES**
-    
     // 1. Total games: 6 teams = 6*(6-1) = 30 total games
     assert_eq!(30, games.len(), "Should have exactly 30 games for 6 teams");
     
@@ -388,8 +388,8 @@ async fn test_season_creation_with_proper_round_robin_schedule() {
         *matchup_count.entry(pair).or_insert(0) += 1;
     }
     
-    // Should have exactly 15 unique matchups (6 choose 2 = 15)
-    assert_eq!(15, matchup_count.len(), "Should have exactly 15 unique matchups");
+    // Should have exactly 15 unique matchups
+    assert_eq!(15, matchup_count.len(), "Should have exactly 30 unique matchups");
     
     // Each matchup should occur exactly twice (home and away)
     for (pair, count) in matchup_count {
@@ -484,7 +484,7 @@ async fn test_first_game_starts_on_season_start_date() {
         "name": "Test Season",
         "start_date": start_date.to_rfc3339(),
         "evaluation_cron": "0 0 22 * * SAT",
-        "game_duration_minutes": 10080  // 7 days = 10080 minutes
+        "game_duration_seconds": 604800  // 7 days = 604800 seconds
     });
 
     let season_response = make_authenticated_request(
@@ -521,9 +521,9 @@ async fn test_first_game_starts_on_season_start_date() {
     assert!(!week_1_games.is_empty(), "Should have games in week 1");
     
     // Get the scheduled time of the first week's games
-    let first_game_time_str = week_1_games[0]["game"]["scheduled_time"]
+    let first_game_time_str = week_1_games[0]["game"]["game_start_time"]
         .as_str()
-        .expect("Scheduled time not found");
+        .expect("Game start time not found");
     
     let first_game_time = chrono::DateTime::parse_from_rfc3339(first_game_time_str)
         .expect("Failed to parse scheduled time")
@@ -547,9 +547,9 @@ async fn test_first_game_starts_on_season_start_date() {
         .collect();
     
     if !week_2_games.is_empty() {
-        let second_week_time_str = week_2_games[0]["game"]["scheduled_time"]
+        let second_week_time_str = week_2_games[0]["game"]["game_start_time"]
             .as_str()
-            .expect("Scheduled time not found");
+            .expect("Game start time not found");
         
         let second_week_time = chrono::DateTime::parse_from_rfc3339(second_week_time_str)
             .expect("Failed to parse scheduled time")

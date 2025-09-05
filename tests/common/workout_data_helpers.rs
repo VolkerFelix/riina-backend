@@ -11,13 +11,16 @@ pub enum WorkoutType {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WorkoutData {
-    workout_uuid: String,
-    workout_start: DateTime<Utc>,
-    workout_end: DateTime<Utc>,
+    pub workout_uuid: String,
+    pub workout_start: DateTime<Utc>,
+    pub workout_end: DateTime<Utc>,
     calories_burned: i32,
     heart_rate: Vec<serde_json::Value>,
     pub device_id: String,
     timestamp: DateTime<Utc>,
+    pub image_url: Option<String>,
+    pub video_url: Option<String>,
+    pub approval_token: Option<String>,
 }
 impl WorkoutData {
     pub fn new(workout_type: WorkoutType, workout_start: DateTime<Utc>, duration_minutes: i64) -> Self {
@@ -36,24 +39,16 @@ impl WorkoutData {
             heart_rate: heart_rate_data,
             device_id: format!("test-device-{}", &Uuid::new_v4().to_string()[..8]),
             timestamp: Utc::now(),
+            image_url: None,
+            video_url: None,
+            approval_token: None,
+
         }
     }
     
     pub fn new_with_offset_hours(workout_type: WorkoutType, hours_ago: i64, duration_minutes: i64) -> Self {
         let workout_start = Utc::now() - Duration::hours(hours_ago);
         Self::new(workout_type, workout_start, duration_minutes)
-    }
-
-    pub fn to_json(&self) -> serde_json::Value {
-        json!({
-            "workout_uuid": self.workout_uuid,
-            "workout_start": self.workout_start,
-            "workout_end": self.workout_end,
-            "calories_burned": self.calories_burned,
-            "heart_rate": self.heart_rate,
-            "device_id": self.device_id,
-            "timestamp": self.timestamp,
-        })
     }
 }
 
@@ -88,19 +83,63 @@ fn generate_light_workout_data(start_time: DateTime<Utc>, duration_minutes: i64)
     (heart_rate_data, calories)
 }
 
+#[derive(Debug, Serialize)]
+pub struct WorkoutSyncRequest {
+    pub start: DateTime<Utc>,
+    pub end: DateTime<Utc>,
+    pub id: String,
+}
+
 /// Helper function to upload health data for a user
 pub async fn upload_workout_data_for_user(
     client: &reqwest::Client,
     app_address: &str,
     token: &str,
-    workout_data: &WorkoutData,
+    workout_data: &mut WorkoutData,
 ) -> Result<serde_json::Value, String> {
+    let workout_sync_request = WorkoutSyncRequest {
+        start: workout_data.workout_start,
+        end: workout_data.workout_end,
+        id: workout_data.workout_uuid.clone(),
+    };
+
+    let sync_response = crate::common::utils::make_authenticated_request(
+        client,
+        reqwest::Method::POST,
+        &format!("{}/health/check_sync_status", app_address),
+        token,
+        Some(json!({
+            "workouts": [workout_sync_request]
+        })),
+    ).await;
+    if !sync_response.status().is_success() {
+        let status = sync_response.status();
+        let error_body = sync_response.text().await.map_err(|e| e.to_string())?;
+        return Err(format!("Health data sync failed with status {}: {}", status, error_body));
+    }
+    let sync_response_data: serde_json::Value = sync_response.json().await.map_err(|e| e.to_string())?;
+    
+    // Check if we have the new approved_workouts format
+    if let Some(approved_workouts) = sync_response_data["data"]["approved_workouts"].as_array() {
+        // Find the approval for this workout
+        for approval in approved_workouts {
+            if approval["workout_id"].as_str() == Some(&workout_data.workout_uuid) {
+                if let Some(token) = approval["approval_token"].as_str() {
+                    workout_data.approval_token = Some(token.to_string());
+                    break;
+                }
+            }
+        }
+    }
+    
+    // If no approval token found, workout might already be synced or approval is not required
+    // The upload will proceed without token for backwards compatibility
     let response = crate::common::utils::make_authenticated_request(
         client,
         reqwest::Method::POST,
         &format!("{}/health/upload_health", app_address),
         token,
-        Some(workout_data.to_json()),
+        Some(json!(workout_data)),
     ).await;
 
     let status = response.status();

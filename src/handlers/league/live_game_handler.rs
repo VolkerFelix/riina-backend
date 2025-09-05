@@ -6,7 +6,8 @@ use std::sync::Arc;
 
 use crate::services::ManageGameService;
 use crate::middleware::auth::Claims;
-use crate::db::live_game_queries::LiveGameQueries;
+use crate::models::league::PaginationQuery;
+// Removed unused import: use crate::db::game_queries::GameQueries;
 
 #[derive(Serialize)]
 pub struct LiveGameScore {
@@ -37,10 +38,10 @@ pub struct GameManagementResponse {
 /// Get live scores for all currently active games - now just returns active games without scores
 pub async fn get_live_scores(
     pool: web::Data<PgPool>,
-    redis_client: web::Data<Arc<redis::Client>>,
+    _redis_client: web::Data<Arc<redis::Client>>,
     _claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
-    let week_game_service = ManageGameService::new(pool.get_ref().clone(), redis_client.get_ref().clone());
+    let week_game_service = ManageGameService::new(pool.get_ref().clone());
     
     match week_game_service.get_active_games().await {
         Ok(games) => {
@@ -79,37 +80,29 @@ pub async fn get_live_scores(
 pub async fn get_game_live_score(
     pool: web::Data<PgPool>,
     path: web::Path<Uuid>,
+    query: web::Query<PaginationQuery>,
     _claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
     let game_id = path.into_inner();
     
-    // First try to get live game data if it exists
-    let live_game = sqlx::query!(
-        r#"
-        SELECT 
-            lg.id, lg.home_score, lg.away_score,
-            lg.is_active, lg.game_start_time, lg.game_end_time
-        FROM live_games lg
-        WHERE lg.game_id = $1 AND lg.is_active = true
-        ORDER BY lg.created_at DESC
-        LIMIT 1
-        "#,
-        game_id
-    )
-    .fetch_optional(pool.get_ref())
-    .await;
-
-    // Get basic game info
+    // Set pagination defaults
+    let page = query.page.unwrap_or(1).max(1);
+    let limit = query.limit.unwrap_or(10).min(100).max(1);
+    let offset = (page - 1) * limit;
+    
+    // Get game info with live scoring data from unified games table
     let game = sqlx::query!(
         r#"
         SELECT 
-            lg.id, lg.week_number, lg.status,
+            g.id, g.week_number, g.status,
+            g.home_score, g.away_score,
+            g.game_start_time, g.game_end_time,
             ht.team_name as home_team_name,
             at.team_name as away_team_name
-        FROM league_games lg
-        JOIN teams ht ON lg.home_team_id = ht.id
-        JOIN teams at ON lg.away_team_id = at.id
-        WHERE lg.id = $1
+        FROM games g
+        JOIN teams ht ON g.home_team_id = ht.id
+        JOIN teams at ON g.away_team_id = at.id
+        WHERE g.id = $1
         "#,
         game_id
     )
@@ -118,25 +111,90 @@ pub async fn get_game_live_score(
 
     match game {
         Ok(Some(game_data)) => {
-            let (home_score, away_score, game_start_time, game_end_time) = 
-                if let Ok(Some(ref live_data)) = live_game {
-                    // Use live game data if available
-                    (live_data.home_score as u32, live_data.away_score as u32, 
-                     Some(live_data.game_start_time), Some(live_data.game_end_time))
-                } else {
-                    // No live game data, return zeros
-                    (0, 0, None, None)
-                };
+            let home_score = game_data.home_score as u32;
+            let away_score = game_data.away_score as u32;
+            
+            // Get total count of scoring events for pagination
+            let total_count = sqlx::query!(
+                r#"
+                SELECT COUNT(*) as "count!"
+                FROM live_score_events
+                WHERE game_id = $1
+                "#,
+                game_id
+            )
+            .fetch_one(pool.get_ref())
+            .await
+            .map(|r| r.count)
+            .unwrap_or(0);
+            
+            // Fetch scoring events from live_score_events table with workout details
+            let scoring_events = sqlx::query!(
+                r#"
+                SELECT 
+                    lse.id, lse.user_id, lse.score_points,
+                    lse.occurred_at, lse.event_type::text as "event_type!", lse.description,
+                    lse.username, lse.team_id, lse.team_side, lse.workout_data_id,
+                    lse.stamina_gained, lse.strength_gained,
+                    wd.id as "workout_id?", wd.created_at as "workout_date?",
+                    wd.workout_start as "workout_start?", wd.workout_end as "workout_end?",
+                    wd.avg_heart_rate as "avg_heart_rate?", wd.max_heart_rate as "max_heart_rate?",
+                    wd.duration_minutes as "duration_minutes?",
+                    wd.heart_rate_zones as "heart_rate_zones?",
+                    wd.image_url as "image_url?", wd.video_url as "video_url?"
+                FROM live_score_events lse
+                LEFT JOIN workout_data wd ON wd.id = lse.workout_data_id
+                WHERE lse.game_id = $1
+                ORDER BY lse.occurred_at DESC
+                LIMIT $2 OFFSET $3
+                "#,
+                game_id,
+                limit,
+                offset
+            )
+            .fetch_all(pool.get_ref())
+            .await
+            .unwrap_or_else(|_| vec![]);
 
-            // Fetch scoring events with workout details if we have live game data
-            let mut scoring_events: Vec<serde_json::Value> = Vec::new();
-            if let Ok(Some(ref live_data)) = live_game {
-                let live_game_queries = LiveGameQueries::new(pool.get_ref().clone());
-                if let Ok(events) = live_game_queries.get_recent_score_events_with_workout_details(live_data.id, 50).await {
-                    scoring_events = events;
-                }
-            }
+            let scoring_events_json: Vec<serde_json::Value> = scoring_events
+                .into_iter()
+                .map(|event| {
+                    let mut event_json = serde_json::json!({
+                        "id": event.id,
+                        "user_id": event.user_id,
+                        "username": event.username,
+                        "team_id": event.team_id,
+                        "team_side": event.team_side,
+                        "score_points": event.score_points,
+                        "occurred_at": event.occurred_at,
+                        "event_type": event.event_type.to_string(),
+                        "description": event.description
+                    });
+                    
+                    // Add workout details if available
+                    if event.workout_id.is_some() {
+                        event_json["workout_details"] = serde_json::json!({
+                            "id": event.workout_id,
+                            "workout_date": event.workout_date,
+                            "workout_start": event.workout_start,
+                            "workout_end": event.workout_end,
+                            "stamina_gained": event.stamina_gained,
+                            "strength_gained": event.strength_gained,
+                            "avg_heart_rate": event.avg_heart_rate,
+                            "max_heart_rate": event.max_heart_rate,
+                            "duration_minutes": event.duration_minutes,
+                            "heart_rate_zones": event.heart_rate_zones,
+                            "image_url": event.image_url,
+                            "video_url": event.video_url
+                        });
+                    }
+                    
+                    event_json
+                })
+                .collect();
 
+            let total_pages = ((total_count as f64) / (limit as f64)).ceil() as i64;
+            
             let mut game_info = serde_json::json!({
                 "game_id": game_id,
                 "home_team_name": game_data.home_team_name,
@@ -145,14 +203,22 @@ pub async fn get_game_live_score(
                 "away_score": away_score,
                 "week_number": game_data.week_number,
                 "status": game_data.status,
-                "scoring_events": scoring_events
+                "scoring_events": scoring_events_json,
+                "pagination": {
+                    "page": page,
+                    "limit": limit,
+                    "total_count": total_count,
+                    "total_pages": total_pages,
+                    "has_next": page < total_pages,
+                    "has_prev": page > 1
+                }
             });
 
-            // Add optional game timing fields if we have live data
-            if let Some(start_time) = game_start_time {
+            // Add optional game timing fields
+            if let Some(start_time) = game_data.game_start_time {
                 game_info["game_start_time"] = serde_json::Value::String(start_time.to_rfc3339());
             }
-            if let Some(end_time) = game_end_time {
+            if let Some(end_time) = game_data.game_end_time {
                 game_info["game_end_time"] = serde_json::Value::String(end_time.to_rfc3339());
             }
 
@@ -180,15 +246,15 @@ pub async fn get_game_live_score(
 /// Admin endpoint to manually trigger game management cycle
 pub async fn manage_games(
     pool: web::Data<PgPool>,
-    redis_client: web::Data<Arc<redis::Client>>,
+    _redis_client: web::Data<Arc<redis::Client>>,
 ) -> Result<HttpResponse> {
-    let week_game_service = ManageGameService::new(pool.get_ref().clone(), redis_client.get_ref().clone());
+    let week_game_service = ManageGameService::new(pool.get_ref().clone());
     
     match week_game_service.run_game_cycle().await {
-        Ok((pending_games, live_games, started_games, finished_games)) => {
+        Ok((games_ready_to_start, live_games, started_games, finished_games)) => {
             let message = format!(
-                "Pending {} games, live {} games, started {} games, finished {} games", 
-                pending_games.len(), 
+                "Ready to start {} games, live {} games, started {} games, finished {} games", 
+                games_ready_to_start.len(), 
                 live_games.len(), 
                 started_games.len(), 
                 finished_games.len()
@@ -216,10 +282,10 @@ pub async fn manage_games(
 /// Get all currently active games
 pub async fn get_active_games(
     pool: web::Data<PgPool>,
-    redis_client: web::Data<Arc<redis::Client>>,
+    _redis_client: web::Data<Arc<redis::Client>>,
     _claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
-    let week_game_service = ManageGameService::new(pool.get_ref().clone(), redis_client.get_ref().clone());
+    let week_game_service = ManageGameService::new(pool.get_ref().clone());
     
     match week_game_service.get_active_games().await {
         Ok(games) => {

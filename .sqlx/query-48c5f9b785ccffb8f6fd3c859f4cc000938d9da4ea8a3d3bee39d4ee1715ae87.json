@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE games \n            SET home_score = $1, away_score = $2\n            WHERE id = $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Int4",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "48c5f9b785ccffb8f6fd3c859f4cc000938d9da4ea8a3d3bee39d4ee1715ae87"
+}

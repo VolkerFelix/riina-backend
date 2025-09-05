@@ -13,7 +13,7 @@ kill_signal = "SIGTERM"
   APP__ENVIRONMENT = "production"
   
   # Frontend URLs for CORS (development frontends)
-  APP__FRONTEND_URL = "http://localhost:3000,https://evolveme-fantasy-dev.fly.dev,https://evolveme-admin-dev.fly.dev"
+  APP__FRONTEND_URL = "http://localhost:3000,https://evolveme-frontend-dev.fly.dev,https://evolveme-admin-dev.fly.dev"
   
   # Redis connection (development Redis instance)
   REDIS__REDIS__HOST = "evolveme-redis-dev.internal"
@@ -22,9 +22,9 @@ kill_signal = "SIGTERM"
 [[services]]
   protocol = "tcp"
   internal_port = 8080
-  auto_stop_machines = "stop"
+  auto_stop_machines = "off"
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
   
   [[services.ports]]
     port = 443

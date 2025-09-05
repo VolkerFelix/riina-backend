@@ -118,8 +118,6 @@ pub enum GameEvent {
         away_team_name: String,
         home_score: u32,
         away_score: u32,
-        home_power: u32,
-        away_power: u32,
         game_progress: f32, // 0.0 to 100.0 percentage
         game_time_remaining: Option<String>,
         is_active: bool,

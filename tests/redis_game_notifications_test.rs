@@ -15,7 +15,7 @@ use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_re
 use common::admin_helpers::{create_admin_user_and_login, create_league_season};
 use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user};
 
-use evolveme_backend::config::settings::get_config;
+use riina_backend::config::settings::get_config;
 
 #[tokio::test]
 async fn test_redis_game_evaluation_notifications() {
@@ -47,8 +47,10 @@ async fn test_redis_game_evaluation_notifications() {
     let user2 = create_test_user_and_login(&app.address).await;
     
     // Upload health data
-    upload_workout_data_for_user(&client, &app.address, &user1.token, &WorkoutData::new(WorkoutType::Intense, Utc::now(), 30)).await.unwrap();
-    upload_workout_data_for_user(&client, &app.address, &user2.token, &WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30)).await.unwrap();
+    let mut workout1 = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let mut workout2 = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    upload_workout_data_for_user(&client, &app.address, &user1.token, &mut workout1).await.unwrap();
+    upload_workout_data_for_user(&client, &app.address, &user2.token, &mut workout2).await.unwrap();
     
     let unique_suffix = &Uuid::new_v4().to_string()[..8];
     // Create league
@@ -160,7 +162,7 @@ async fn test_redis_game_evaluation_notifications() {
     
     // Check game statuses after cycle
     let games_after_cycle = sqlx::query!(
-        "SELECT id, status FROM league_games WHERE season_id IN (SELECT id FROM league_seasons WHERE league_id = $1)",
+        "SELECT id, status FROM games WHERE season_id IN (SELECT id FROM league_seasons WHERE league_id = $1)",
         Uuid::parse_str(league_id).expect("Invalid league ID")
     )
     .fetch_all(&app.db_pool)
@@ -191,7 +193,7 @@ async fn test_redis_game_evaluation_notifications() {
     
     // Check final game statuses
     let games_final = sqlx::query!(
-        "SELECT id, status FROM league_games WHERE season_id IN (SELECT id FROM league_seasons WHERE league_id = $1)",
+        "SELECT id, status FROM games WHERE season_id IN (SELECT id FROM league_seasons WHERE league_id = $1)",
         Uuid::parse_str(league_id).expect("Invalid league ID")
     )
     .fetch_all(&app.db_pool)
@@ -217,18 +219,6 @@ async fn test_redis_game_evaluation_notifications() {
     user2_pubsub.subscribe(&user2_channel).await.expect("Failed to subscribe to user2 channel");
     
     println!("✅ Subscribed to user-specific Redis channels");
-    
-    // Clean up old finished games without live game data to avoid noise
-    let cleanup_result = sqlx::query!(
-        "DELETE FROM league_games WHERE status = 'finished' AND id NOT IN (SELECT DISTINCT game_id FROM live_games WHERE game_id IS NOT NULL)"
-    )
-    .execute(&app.db_pool)
-    .await
-    .expect("Failed to clean up old games");
-    
-    if cleanup_result.rows_affected() > 0 {
-        println!("🧹 Cleaned up {} old finished games without live game data", cleanup_result.rows_affected());
-    }
 
     // Step 3: Trigger game evaluation
     println!("🎮 Triggering game evaluation...");
@@ -373,23 +363,21 @@ async fn test_redis_game_evaluation_notifications() {
 
 async fn update_games_to_current_time(app: &common::utils::TestApp, league_id: &str) {
     let now = chrono::Utc::now();
-    let today_start = chrono::Utc::now().date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc();
-    let week_end = now + chrono::Duration::seconds(10); // Give more time for processing
+    let game_end = now + chrono::Duration::seconds(10); // Give more time for processing
     let league_uuid = uuid::Uuid::parse_str(league_id).expect("Invalid league ID");
     
     // Update all games in the league to current time for natural game cycle processing
-    // Set week_start_date to beginning of today (so CURRENT_DATE BETWEEN works) and week_end_date to 5 seconds later
+    // Set game_start_time to now and game_end_time to 10 seconds later
     sqlx::query!(
         r#"
-        UPDATE league_games 
-        SET scheduled_time = $1, week_start_date = $2, week_end_date = $3
+        UPDATE games 
+        SET game_start_time = $1, game_end_time = $2
         WHERE season_id IN (
-            SELECT id FROM league_seasons WHERE league_id = $4
+            SELECT id FROM league_seasons WHERE league_id = $3
         )
         "#,
         now,
-        today_start,
-        week_end,
+        game_end,
         league_uuid.clone()
     )
     .execute(&app.db_pool)
@@ -400,7 +388,7 @@ async fn update_games_to_current_time(app: &common::utils::TestApp, league_id: &
     
     // Check game statuses right after update
     let games_check = sqlx::query!(
-        "SELECT id, status, scheduled_time, week_start_date, week_end_date FROM league_games WHERE season_id IN (SELECT id FROM league_seasons WHERE league_id = $1)",
+        "SELECT id, status, game_start_time, game_end_time FROM games WHERE season_id IN (SELECT id FROM league_seasons WHERE league_id = $1)",
         league_uuid
     )
     .fetch_all(&app.db_pool)
@@ -409,8 +397,8 @@ async fn update_games_to_current_time(app: &common::utils::TestApp, league_id: &
     
     println!("📋 Game statuses after update:");
     for game in &games_check {
-        println!("   Game {}: status='{}', scheduled={:?}, start={:?}, end={:?}", 
-            game.id, game.status, game.scheduled_time, game.week_start_date, game.week_end_date);
+        println!("   Game {}: status='{}', start={:?}, end={:?}", 
+            game.id, game.status, game.game_start_time, game.game_end_time);
     }
     
     // Wait a moment for the times to be in the past

@@ -5,6 +5,14 @@ use sqlx::FromRow;
 use uuid::Uuid;
 use std::fmt;
 
+// Live game score update structure
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LiveGameScoreUpdate {
+    pub user_id: Uuid,
+    pub username: String,
+    pub score_increase: i32,
+}
+
 #[derive(Debug, FromRow, Serialize, Deserialize, Clone)]
 pub struct LeagueSeason {
     pub id: Uuid,
@@ -17,7 +25,8 @@ pub struct LeagueSeason {
     pub evaluation_cron: Option<String>, // Cron expression for when to evaluate games
     pub evaluation_timezone: Option<String>, // Timezone for evaluation (e.g., "UTC", "America/New_York")
     pub auto_evaluation_enabled: Option<bool>, // Whether automatic evaluation is enabled
-    pub game_duration_minutes: i32, // Duration of each game in minutes (default: 8640 = 6 days)
+    pub game_duration_seconds: i64, // Duration of each game in seconds (default: 518400 = 6 days)
+    pub games_per_matchup: Option<i32>, // Number of games per team matchup: 1 = single round-robin, 2 = double round-robin (default: 2)
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -37,17 +46,103 @@ pub struct LeagueGame {
     pub season_id: Uuid,
     pub home_team_id: Uuid,
     pub away_team_id: Uuid,
-    pub scheduled_time: DateTime<Utc>,
     pub week_number: i32,
     pub is_first_leg: bool,
     pub status: GameStatus,
-    pub home_score_final: Option<i32>,
-    pub away_score_final: Option<i32>,
     pub winner_team_id: Option<Uuid>,
-    pub week_start_date: Option<DateTime<Utc>>,
-    pub week_end_date: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    // New consolidated fields from live_games table
+    pub home_score: i32,
+    pub away_score: i32,
+    #[serde(default)]
+    pub game_start_time: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub game_end_time: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub last_score_time: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub last_scorer_id: Option<Uuid>,
+    #[serde(default)]
+    pub last_scorer_name: Option<String>,
+    #[serde(default)]
+    pub last_scorer_team: Option<String>,
+}
+
+impl LeagueGame {
+    /// Create a LeagueGame with all the original fields, setting new consolidated fields to defaults
+    pub fn with_defaults(
+        id: Uuid,
+        season_id: Uuid,
+        home_team_id: Uuid,
+        away_team_id: Uuid,
+        week_number: i32,
+        is_first_leg: bool,
+        status: GameStatus,
+        winner_team_id: Option<Uuid>,
+        created_at: DateTime<Utc>,
+        updated_at: DateTime<Utc>,
+    ) -> Self {
+        Self {
+            id,
+            season_id,
+            home_team_id,
+            away_team_id,
+            week_number,
+            is_first_leg,
+            status,
+            winner_team_id,
+            created_at,
+            updated_at,
+            // Default values for new consolidated fields
+            home_score: 0,
+            away_score: 0,
+            game_start_time: None,
+            game_end_time: None,
+            last_score_time: None,
+            last_scorer_id: None,
+            last_scorer_name: None,
+            last_scorer_team: None,
+        }
+    }
+    
+    /// Create a new LeagueGame with basic fields, defaulting new consolidated fields to None
+    pub fn new_basic(
+        id: Uuid,
+        season_id: Uuid,
+        home_team_id: Uuid,
+        away_team_id: Uuid,
+        week_number: i32,
+        is_first_leg: bool,
+        status: GameStatus,
+        home_score: i32,
+        away_score: i32,
+        winner_team_id: Option<Uuid>,
+        created_at: DateTime<Utc>,
+        updated_at: DateTime<Utc>,
+    ) -> Self {
+        Self {
+            id,
+            season_id,
+            home_team_id,
+            away_team_id,
+            week_number,
+            is_first_leg,
+            status,
+            winner_team_id,
+            created_at,
+            updated_at,
+            // Default new consolidated fields
+            home_score,
+            away_score,
+            game_start_time: None,
+            game_end_time: None,
+            last_score_time: None,
+            last_scorer_id: None,
+            last_scorer_name: None,
+            last_scorer_team: None,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, sqlx::Type)]
@@ -55,7 +150,6 @@ pub struct LeagueGame {
 pub enum GameStatus {
     Scheduled,
     InProgress,
-    Live,
     Finished,
     Evaluated,
     Postponed,
@@ -65,7 +159,6 @@ impl From<String> for GameStatus {
     fn from(s: String) -> Self {
         match s.to_lowercase().as_str() {
             "in_progress" | "in-progress" => GameStatus::InProgress,
-            "live" => GameStatus::Live,
             "finished" => GameStatus::Finished,
             "evaluated" => GameStatus::Evaluated,
             "postponed" => GameStatus::Postponed,
@@ -96,7 +189,8 @@ pub struct CreateSeasonRequest {
     pub name: String,
     pub start_date: DateTime<Utc>,
     pub team_ids: Vec<Uuid>,
-    pub game_duration_minutes: Option<i32>, // Optional, defaults to 8640 minutes (6 days) if not provided
+    pub game_duration_seconds: Option<i64>, // Optional, defaults to 518400 seconds (6 days) if not provided
+    pub games_per_matchup: Option<i32>, // Optional, defaults to 2 (double round-robin) if not provided
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -198,7 +292,6 @@ impl GameStatus {
         match self {
             GameStatus::Scheduled => "scheduled",
             GameStatus::InProgress => "in_progress",
-            GameStatus::Live => "live",
             GameStatus::Finished => "finished",
             GameStatus::Evaluated => "evaluated",
             GameStatus::Postponed => "postponed",

@@ -3,6 +3,7 @@ use aws_sdk_s3::{config::Builder as S3ConfigBuilder, Client as S3Client};
 use aws_config::Region;
 use aws_sdk_s3::config::{Credentials, SharedCredentialsProvider};
 use secrecy::{ExposeSecret, SecretString};
+use aws_smithy_runtime::client::http::hyper_014::HyperClientBuilder;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct MinIOSettings {
@@ -33,12 +34,17 @@ impl MinIOSettings {
             "custom-minio", // Provider name
         );
 
+        // Create custom HTTPS connector with webpki roots to avoid native cert issues
+        let https_connector = Self::create_https_connector();
+        let http_client = HyperClientBuilder::new().build(https_connector);
+
         let config = S3ConfigBuilder::new()
             .endpoint_url(&self.endpoint)
             .credentials_provider(SharedCredentialsProvider::new(creds))
             .region(Region::new(self.region.clone()))
             .force_path_style(true) // Important for MinIO
             .behavior_version_latest() // Required by AWS SDK v1.102+
+            .http_client(http_client)
             .build();
 
         S3Client::from_conf(config)
@@ -53,17 +59,53 @@ impl MinIOSettings {
                 None, // No expiration
                 "custom-minio", // Provider name
             );
+            
+            // Create custom HTTPS connector with webpki roots
+            let https_connector = Self::create_https_connector();
+            let http_client = HyperClientBuilder::new().build(https_connector);
+            
             let config = S3ConfigBuilder::new()
                 .endpoint_url(external_endpoint.clone())
                 .credentials_provider(SharedCredentialsProvider::new(creds))
                 .region(Region::new(self.region.clone()))
                 .force_path_style(true) // Important for MinIO
                 .behavior_version_latest() // Required by AWS SDK v1.102+
+                .http_client(http_client)
                 .build();
 
             Some(S3Client::from_conf(config))
         } else {
             None
         }
+    }
+
+    /// Creates an HTTPS connector using webpki-roots instead of native certificates
+    fn create_https_connector() -> hyper_rustls::HttpsConnector<hyper::client::HttpConnector> {
+        let mut roots = rustls::RootCertStore::empty();
+        roots.add_trust_anchors(
+            webpki_roots::TLS_SERVER_ROOTS
+                .iter()
+                .map(|ta| {
+                    rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
+                        ta.subject,
+                        ta.spki,
+                        ta.name_constraints,
+                    )
+                })
+        );
+
+        let config = rustls::ClientConfig::builder()
+            .with_safe_defaults()
+            .with_root_certificates(roots)
+            .with_no_client_auth();
+
+        let https = hyper_rustls::HttpsConnectorBuilder::new()
+            .with_tls_config(config)
+            .https_or_http()
+            .enable_http1()
+            .enable_http2()
+            .build();
+
+        https
     }
 }

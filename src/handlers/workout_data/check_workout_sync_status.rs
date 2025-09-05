@@ -2,19 +2,37 @@ use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
+use chrono::{DateTime, Utc};
 
 use crate::middleware::auth::Claims;
 use crate::models::common::ApiResponse;
+use crate::db::workout_data::check_workout_exists_by_time;
+use crate::utils::workout_approval::WorkoutApprovalToken;
+use crate::config::jwt::JwtSettings;
+
+#[derive(Debug, Deserialize)]
+pub struct WorkoutTimeRange {
+    pub start: DateTime<Utc>,
+    pub end: DateTime<Utc>,
+    pub id: String,  // Keep original ID for frontend reference
+}
 
 #[derive(Debug, Deserialize)]
 pub struct CheckSyncStatusRequest {
-    pub workout_uuids: Vec<String>,
+    pub workouts: Vec<WorkoutTimeRange>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct WorkoutApproval {
+    pub workout_id: String,
+    pub approval_token: String,
+    pub expires_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct SyncStatusResponse {
-    pub synced_workouts: Vec<String>,
-    pub unsynced_workouts: Vec<String>,
+    pub unsynced_workouts: Vec<String>,  // IDs of workouts to be synced (for backwards compatibility)
+    pub approved_workouts: Vec<WorkoutApproval>,  // New field with approval tokens
 }
 
 #[tracing::instrument(
@@ -22,15 +40,17 @@ pub struct SyncStatusResponse {
     skip(pool, claims, request),
     fields(
         username = %claims.username,
-        workout_uuids = %request.workout_uuids.join(", ")
+        workout_count = %request.workouts.len()
     )
 )]
 pub async fn check_workout_sync_status(
     pool: web::Data<PgPool>,
     claims: web::ReqData<Claims>,
     request: web::Json<CheckSyncStatusRequest>,
+    jwt_settings: web::Data<JwtSettings>,
 ) -> HttpResponse {
-    tracing::info!("🎮 Checking workout sync status for user: {}", claims.username);
+    tracing::info!("🎮 Checking workout sync status for user: {} ({} workouts)", 
+        claims.username, request.workouts.len());
 
     let user_id = match Uuid::parse_str(&claims.sub) {
         Ok(id) => {
@@ -44,45 +64,84 @@ pub async fn check_workout_sync_status(
             );
         }
     };
-    let workout_uuids = &request.workout_uuids;
 
-    // Query to find which workout UUIDs already exist for this user
-    let existing_uuids = match sqlx::query_scalar!(
-        r#"
-        SELECT workout_uuid 
-        FROM workout_data 
-        WHERE user_id = $1 
-        AND workout_uuid = ANY($2)
-        "#,
-        user_id,
-        workout_uuids
-    )
-    .fetch_all(pool.get_ref())
-    .await {
-        Ok(uuids) => uuids,
-        Err(e) => {
-            tracing::error!("Database error checking workout sync status: {:?}", e);
-            return HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error("Failed to check sync status")
-            );
+    let mut synced_workouts = Vec::new();
+    let mut unsynced_workouts = Vec::new();
+    let mut approved_workouts = Vec::new();
+
+    // Check each workout using the time-based duplicate detection function
+    for workout in &request.workouts {
+        match check_workout_exists_by_time(pool.get_ref(), user_id, &workout.start, &workout.end).await {
+            Ok(exists) => {
+                if exists {
+                    tracing::debug!("Workout {} already synced (time match)", workout.id);
+                    synced_workouts.push(workout.id.clone());
+                } else {
+                    tracing::debug!("Workout {} not synced", workout.id);
+                    unsynced_workouts.push(workout.id.clone());
+                    
+                    // Generate approval token for this workout
+                    let token_data = WorkoutApprovalToken::new(
+                        user_id,
+                        workout.id.clone(),
+                        workout.start,
+                        workout.end,
+                        5, // 5 minutes validity
+                    );
+                    
+                    match token_data.generate_token(&jwt_settings.secret) {
+                        Ok(token) => {
+                            approved_workouts.push(WorkoutApproval {
+                                workout_id: workout.id.clone(),
+                                approval_token: token,
+                                expires_at: token_data.expires_at,
+                            });
+                        },
+                        Err(e) => {
+                            tracing::error!("Failed to generate approval token for workout {}: {}", workout.id, e);
+                            // Still allow sync but without token validation
+                        }
+                    }
+                }
+            },
+            Err(e) => {
+                tracing::error!("Error checking workout {}: {}", workout.id, e);
+                // Treat as unsynced on error to allow retry
+                unsynced_workouts.push(workout.id.clone());
+                
+                // Generate approval token even on error to allow upload
+                let token_data = WorkoutApprovalToken::new(
+                    user_id,
+                    workout.id.clone(),
+                    workout.start,
+                    workout.end,
+                    5, // 5 minutes validity
+                );
+                
+                match token_data.generate_token(&jwt_settings.secret) {
+                    Ok(token) => {
+                        approved_workouts.push(WorkoutApproval {
+                            workout_id: workout.id.clone(),
+                            approval_token: token,
+                            expires_at: token_data.expires_at,
+                        });
+                    },
+                    Err(e) => {
+                        tracing::error!("Failed to generate approval token for workout {}: {}", workout.id, e);
+                    }
+                }
+            }
         }
-    };
-
-    // Since workout_uuid is now NOT NULL, we can directly use the results
-    let synced_workouts: Vec<String> = existing_uuids;
-    
-    let unsynced_workouts: Vec<String> = workout_uuids
-        .iter()
-        .filter(|uuid| !synced_workouts.contains(uuid))
-        .cloned()
-        .collect();
+    }
 
     let response = SyncStatusResponse {
-        synced_workouts,
         unsynced_workouts,
+        approved_workouts,
     };
 
-    tracing::info!("✅ Sync status check completed successfully");
+    tracing::info!("✅ Sync status check completed: {} synced, {} unsynced, {} approved", 
+        synced_workouts.len(), response.unsynced_workouts.len(), response.approved_workouts.len());
+    
     HttpResponse::Ok().json(ApiResponse::success(
         "Sync status retrieved successfully",
         response,

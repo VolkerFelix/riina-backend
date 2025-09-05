@@ -290,7 +290,7 @@ pub async fn get_first_game_for_teams(test_app: &TestApp, season_id: Uuid, team1
     let game = sqlx::query!(
         r#"
         SELECT id, home_team_id, away_team_id
-        FROM league_games 
+        FROM games 
         WHERE season_id = $1 
         AND ((home_team_id = $2 AND away_team_id = $3) OR (home_team_id = $3 AND away_team_id = $2))
         ORDER BY week_number
@@ -316,14 +316,13 @@ pub async fn create_test_game(test_app: &TestApp, home_team_id: Uuid, away_team_
     // Insert game directly into database for testing
     sqlx::query!(
         r#"
-        INSERT INTO league_games (id, home_team_id, away_team_id, season_id, week_number, scheduled_time, status, week_start_date, week_end_date)
-        VALUES ($1, $2, $3, $4, 1, $5, 'in_progress', $6, $7)
+        INSERT INTO games (id, home_team_id, away_team_id, season_id, week_number, game_start_time, game_end_time, status)
+        VALUES ($1, $2, $3, $4, 1, $5, $6, 'in_progress')
         "#,
         game_id,
         home_team_id,
         away_team_id,
         season_id,
-        game_start,
         game_start,
         game_end
     )
@@ -340,8 +339,8 @@ pub async fn update_game_to_short_duration(test_app: &TestApp, game_id: Uuid) {
     
     sqlx::query!(
         r#"
-        UPDATE league_games 
-        SET week_start_date = $1, week_end_date = $2, scheduled_time = $1
+        UPDATE games 
+        SET game_start_time = $1, game_end_time = $2
         WHERE id = $3
         "#,
         game_start,
@@ -359,8 +358,8 @@ pub async fn update_game_times_to_now(test_app: &TestApp, game_id: Uuid) {
     
     sqlx::query!(
         r#"
-        UPDATE league_games 
-        SET scheduled_time = $1, week_start_date = $1, week_end_date = $2
+        UPDATE games 
+        SET game_start_time = $1, game_end_time = $2
         WHERE id = $3
         "#,
         now,
@@ -373,8 +372,19 @@ pub async fn update_game_times_to_now(test_app: &TestApp, game_id: Uuid) {
 }
 
 pub async fn start_test_game(test_app: &TestApp, game_id: Uuid) {
+    let now = Utc::now();
+    let game_end = now + Duration::hours(2);
+    
     sqlx::query!(
-        "UPDATE league_games SET status = 'in_progress' WHERE id = $1",
+        r#"
+        UPDATE games 
+        SET status = 'in_progress', 
+            game_start_time = $1,
+            game_end_time = $2
+        WHERE id = $3
+        "#,
+        now,
+        game_end,
         game_id
     )
     .execute(&test_app.db_pool)
@@ -382,20 +392,16 @@ pub async fn start_test_game(test_app: &TestApp, game_id: Uuid) {
     .expect("Failed to start test game");
 }
 
-pub async fn initialize_live_game(test_app: &TestApp, game_id: Uuid, redis_client: Arc<redis::Client>) -> LiveGameRow {
-    // Create live game service and initialize
-    let live_game_service = evolveme_backend::services::LiveGameService::new(test_app.db_pool.clone(), redis_client);
-    
-    live_game_service.initialize_live_game(game_id)
-        .await
-        .expect("Failed to initialize live game");
-
+pub async fn initialize_live_game(test_app: &TestApp, game_id: Uuid, _redis_client: Arc<redis::Client>) -> LiveGameRow {
+    // In the consolidated architecture, games don't need separate initialization
+    // Just start the game directly and return its state
+    start_test_game(test_app, game_id).await;
     get_live_game_state(test_app, game_id).await
 }
 
 pub async fn get_season_id_for_game(test_app: &TestApp, game_id: Uuid) -> Uuid {
     let row = sqlx::query!(
-        "SELECT season_id FROM league_games WHERE id = $1",
+        "SELECT season_id FROM games WHERE id = $1",
         game_id
     )
     .fetch_one(&test_app.db_pool)
@@ -427,19 +433,20 @@ pub async fn get_live_games_via_api(test_app: &TestApp, client: &Client, token: 
 }
 
 pub async fn get_live_game_state(test_app: &TestApp, game_id: Uuid) -> LiveGameRow {
-    // For tests that need detailed live game info, we still need to query the database
-    // as the API endpoint returns league game data, not live game scoring data
+    // Query the consolidated games table with team names
     let row = sqlx::query!(
         r#"
         SELECT 
-            id, game_id, home_team_id, home_team_name, away_team_id, away_team_name,
-            home_score, away_score, home_power, away_power,
-            game_start_time, game_end_time, last_score_time, last_scorer_id,
-            last_scorer_name, last_scorer_team, is_active, created_at, updated_at
-        FROM live_games 
-        WHERE game_id = $1
-        ORDER BY created_at DESC
-        LIMIT 1
+            g.id, g.home_team_id, g.away_team_id,
+            ht.team_name as home_team_name, at.team_name as away_team_name,
+            g.home_score, g.away_score, g.status,
+            g.game_start_time, g.game_end_time, g.last_score_time, 
+            g.last_scorer_id, g.last_scorer_name, g.last_scorer_team,
+            g.created_at, g.updated_at
+        FROM games g
+        JOIN teams ht ON g.home_team_id = ht.id
+        JOIN teams at ON g.away_team_id = at.id
+        WHERE g.id = $1
         "#,
         game_id
     )
@@ -449,91 +456,24 @@ pub async fn get_live_game_state(test_app: &TestApp, game_id: Uuid) -> LiveGameR
 
     LiveGameRow {
         id: row.id,
-        game_id: row.game_id,
+        game_id: row.id, // In consolidated table, id IS the game_id
         home_team_name: row.home_team_name,
         away_team_name: row.away_team_name,
         home_score: row.home_score,
         away_score: row.away_score,
-        home_power: row.home_power,
-        away_power: row.away_power,
         game_start_time: row.game_start_time,
         game_end_time: row.game_end_time,
         last_score_time: row.last_score_time,
         last_scorer_id: row.last_scorer_id,
         last_scorer_name: row.last_scorer_name,
-        last_scorer_team: row.last_scorer_team,
-        is_active: row.is_active,
+        last_scorer_team: row.last_scorer_team
     }
-}
-
-pub async fn upload_workout_data(
-    test_app: &TestApp, 
-    client: &Client, 
-    user: &UserRegLoginResponse, 
-    workout_type: WorkoutType
-) -> (i32, i32) {
-    // Use current time for first workout
-    upload_workout_data_with_time(test_app, client, user, workout_type, Utc::now()).await
-}
-
-pub async fn upload_workout_data_with_offset(
-    test_app: &TestApp, 
-    client: &Client, 
-    user: &UserRegLoginResponse, 
-    workout_type: WorkoutType,
-    hours_ago: i64
-) -> (i32, i32) {
-    // Use offset time for subsequent workouts to avoid duplicate detection
-    let workout_start = Utc::now() - Duration::hours(hours_ago);
-    upload_workout_data_with_time(test_app, client, user, workout_type, workout_start).await
-}
-
-async fn upload_workout_data_with_time(
-    test_app: &TestApp, 
-    client: &Client, 
-    user: &UserRegLoginResponse, 
-    workout_type: WorkoutType,
-    workout_start: DateTime<Utc>
-) -> (i32, i32) {
-    let workout_data = WorkoutData::new(workout_type, workout_start, 30);
-
-    let response = make_authenticated_request(
-        client,
-        reqwest::Method::POST,
-        &format!("{}/health/upload_health", test_app.address),
-        &user.token,
-        Some(workout_data.to_json()),
-    ).await;
-
-    assert!(response.status().is_success(), "Health data upload should succeed");
-    
-    // Return actual calculated values based on the response
-    let response_data: serde_json::Value = response.json().await.unwrap();
-    
-    // Check if this is a duplicate workout response
-    if let Some(is_duplicate) = response_data["data"]["is_duplicate"].as_bool() {
-        if is_duplicate {
-            // Duplicate workouts don't contribute stats, return zero
-            return (0, 0);
-        }
-    }
-    
-    if let Some(game_stats) = response_data["data"]["game_stats"].as_object() {
-        if let Some(stat_changes) = game_stats["stat_changes"].as_object() {
-            let stamina = stat_changes["stamina_change"].as_i64().unwrap_or(0) as i32;
-            let strength = stat_changes["strength_change"].as_i64().unwrap_or(0) as i32;
-            return (stamina, strength);
-        }
-    }
-    
-    // Fallback - this shouldn't happen if the response is successful
-    panic!("Failed to extract stat changes from response: {:?}", response_data);
 }
 
 pub async fn get_player_contributions(test_app: &TestApp, live_game_id: Uuid) -> (Vec<PlayerContribution>, Vec<PlayerContribution>) {
     // Get the live game info first
     let live_game = sqlx::query!(
-        "SELECT home_team_id, away_team_id FROM live_games WHERE id = $1",
+        "SELECT home_team_id, away_team_id FROM games WHERE id = $1",
         live_game_id
     )
     .fetch_one(&test_app.db_pool)
@@ -560,7 +500,7 @@ pub async fn get_player_contributions(test_app: &TestApp, live_game_id: Uuid) ->
         FROM team_members tm
         JOIN users u ON tm.user_id = u.id
         JOIN teams t ON tm.team_id = t.id
-        LEFT JOIN live_score_events lse ON lse.live_game_id = $1 AND lse.user_id = tm.user_id
+        LEFT JOIN live_score_events lse ON lse.game_id = $1 AND lse.user_id = tm.user_id
         WHERE tm.status = 'active'
         AND (tm.team_id = $2 OR tm.team_id = $3)
         GROUP BY tm.user_id, u.username, tm.team_id, t.team_name
@@ -606,7 +546,7 @@ pub async fn get_recent_score_events(test_app: &TestApp, live_game_id: Uuid) -> 
         r#"
         SELECT user_id, team_side, score_points, occurred_at
         FROM live_score_events 
-        WHERE live_game_id = $1
+        WHERE game_id = $1
         ORDER BY occurred_at DESC
         "#,
         live_game_id
@@ -623,13 +563,15 @@ pub async fn get_recent_score_events(test_app: &TestApp, live_game_id: Uuid) -> 
     }).collect()
 }
 
-pub async fn finish_live_game(test_app: &TestApp, live_game_id: Uuid, redis_client: Arc<redis::Client>) {
-    // Use the actual backend service instead of direct database calls
-    let live_game_service = evolveme_backend::services::LiveGameService::new(test_app.db_pool.clone(), redis_client);
-    
-    live_game_service.finish_live_game(live_game_id)
-        .await
-        .expect("Failed to finish live game using service");
+pub async fn finish_live_game(test_app: &TestApp, game_id: Uuid, _redis_client: Arc<redis::Client>) {
+    // In the consolidated architecture, just update the game status to finished
+    sqlx::query!(
+        "UPDATE games SET status = 'finished' WHERE id = $1",
+        game_id
+    )
+    .execute(&test_app.db_pool)
+    .await
+    .expect("Failed to finish test game");
 }
 
 // Test data structures
@@ -641,30 +583,33 @@ pub struct LiveGameRow {
     pub away_team_name: String,
     pub home_score: i32,
     pub away_score: i32,
-    pub home_power: i32,
-    pub away_power: i32,
-    pub game_start_time: DateTime<Utc>,
-    pub game_end_time: DateTime<Utc>,
+    pub game_start_time: Option<DateTime<Utc>>,
+    pub game_end_time: Option<DateTime<Utc>>,
     pub last_score_time: Option<DateTime<Utc>>,
     pub last_scorer_id: Option<Uuid>,
     pub last_scorer_name: Option<String>,
     pub last_scorer_team: Option<String>,
-    pub is_active: bool,
 }
 
 impl LiveGameRow {
     /// Calculate game progress as percentage (0-100)
     pub fn game_progress(&self) -> f32 {
         let now = Utc::now();
-        if now < self.game_start_time {
-            return 0.0;
-        }
-        if now >= self.game_end_time {
-            return 100.0;
-        }
+        let game_start_time = match self.game_start_time {
+            Some(time) => time,
+            // Game hasn't started yet
+            None => return 0.0,
+        };
+        let game_end_time = match self.game_end_time {
+            Some(time) => time,
+            // Game has ended
+            None => {
+                panic!("Game end time is not set");
+            }
+        };
         
-        let total_duration = (self.game_end_time - self.game_start_time).num_milliseconds() as f32;
-        let elapsed = (now - self.game_start_time).num_milliseconds() as f32;
+        let total_duration = (game_end_time - game_start_time).num_milliseconds() as f32;
+        let elapsed = (now - game_start_time).num_milliseconds() as f32;
         
         (elapsed / total_duration * 100.0).clamp(0.0, 100.0)
     }
@@ -672,11 +617,18 @@ impl LiveGameRow {
     /// Get time remaining in human readable format
     pub fn time_remaining(&self) -> Option<String> {
         let now = Utc::now();
-        if now >= self.game_end_time || !self.is_active {
+        let game_end_time = match self.game_end_time {
+            Some(time) => time,
+            // Game has ended
+            None => {
+                panic!("Game end time is not set");
+            }
+        };
+        if now >= game_end_time {
             return Some("Final".to_string());
         }
 
-        let remaining = self.game_end_time - now;
+        let remaining = game_end_time - now;
         let hours = remaining.num_hours();
         let minutes = remaining.num_minutes() % 60;
 

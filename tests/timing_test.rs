@@ -1,5 +1,5 @@
 use chrono::{Datelike, Timelike, Weekday};
-use evolveme_backend::league::timing::{TimingService, UrgencyLevel};
+use riina_backend::league::timing::{TimingService, UrgencyLevel};
 
 #[test]
 fn test_next_game_time_is_saturday() {

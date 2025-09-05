@@ -55,7 +55,12 @@
       },
       {
         "ordinal": 10,
-        "name": "game_duration_minutes",
+        "name": "game_duration_seconds",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 11,
+        "name": "games_per_matchup",
         "type_info": "Int4"
       }
     ],
@@ -78,7 +83,8 @@
       true,
       true,
       true,
-      false
+      false,
+      true
     ]
   },
   "hash": "e046ad5a685d1e56f4b67d1e9c41c96014a7152c149224aaf1ebae586dfb0a2d"

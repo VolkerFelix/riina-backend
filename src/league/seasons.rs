@@ -16,33 +16,38 @@ impl SeasonService {
 
     /// Create a new league season
     pub async fn create_season(&self, request: CreateSeasonRequest) -> Result<LeagueSeason, sqlx::Error> {
-        // Calculate end date based on number of teams
+        // Calculate end date based on number of teams and games per matchup
         let team_count = request.team_ids.len();
-        let total_weeks = (team_count - 1) * 2; // Each team plays every other team twice
+        let games_per_matchup = request.games_per_matchup.unwrap_or(1); // Default to single round-robin
+        let total_weeks = (team_count - 1) * games_per_matchup as usize;
         let end_date = request.start_date + Duration::weeks(total_weeks as i64);
 
-        // No longer need to manage active/inactive status
+        // Use provided game duration or default
+        let game_duration_seconds = request.game_duration_seconds.unwrap_or(518400); // Default: 6 days
 
         // Create new season
         let season = sqlx::query_as!(
             LeagueSeason,
             r#"
-            INSERT INTO league_seasons (league_id, name, start_date, end_date)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO league_seasons (league_id, name, start_date, end_date, game_duration_seconds, games_per_matchup)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING *
             "#,
             request.league_id,
             request.name,
             request.start_date,
-            end_date
+            end_date,
+            game_duration_seconds,
+            games_per_matchup
         )
         .fetch_one(&self.pool)
         .await?;
 
         tracing::info!(
-            "Created new season '{}' with {} teams, running from {} to {}",
+            "Created new season '{}' with {} teams and {} games per matchup, running from {} to {}",
             season.name,
             team_count,
+            games_per_matchup,
             season.start_date,
             season.end_date
         );
@@ -155,7 +160,7 @@ impl SeasonService {
             .execute(&mut *tx)
             .await?;
 
-        sqlx::query!("DELETE FROM league_games WHERE season_id = $1", season_id)
+        sqlx::query!("DELETE FROM games WHERE season_id = $1", season_id)
             .execute(&mut *tx)
             .await?;
 
@@ -181,7 +186,7 @@ impl SeasonService {
                 SUM(CASE WHEN lg.status = 'finished' THEN 1 ELSE 0 END) as completed_games,
                 COUNT(DISTINCT ls.team_id) as total_teams,
                 MAX(lg.week_number) as total_weeks
-            FROM league_games lg
+            FROM games lg
             LEFT JOIN league_standings ls ON ls.season_id = lg.season_id
             WHERE lg.season_id = $1
             "#,

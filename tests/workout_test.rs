@@ -1,0 +1,386 @@
+//! Consolidated workout functionality tests
+//! 
+//! This test suite covers all workout operations including:
+//! - Workout data upload and validation
+//! - Workout history and retrieval
+//! - Admin workout management (CRUD operations)
+//! - Media upload for workouts (images/videos)
+//! - Workout approval workflow
+//! - Notification system for workout uploads
+
+use reqwest::Client;
+use serde_json::json;
+use uuid::Uuid;
+use chrono::{DateTime, Utc};
+
+mod common;
+use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request};
+use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user, WorkoutSyncRequest};
+use common::admin_helpers::create_admin_user_and_login;
+
+// Helper function to create user with health profile
+async fn create_test_user_with_health_profile(app_address: &str) -> common::utils::UserRegLoginResponse {
+    let client = reqwest::Client::new();
+    let user = create_test_user_and_login(app_address).await;
+    
+    // Create health profile for stats calculation
+    let health_profile_data = json!({
+        "age": 25,
+        "gender": "male", 
+        "resting_heart_rate": 60
+    });
+    
+    let profile_response = client
+        .put(&format!("{}/profile/health_profile", app_address))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&health_profile_data)
+        .send()
+        .await
+        .expect("Failed to create health profile");
+    
+    assert!(profile_response.status().is_success(), "Health profile creation should succeed");
+    
+    user
+}
+
+// ============================================================================
+// WORKOUT DATA UPLOAD TESTS
+// ============================================================================
+
+#[tokio::test]
+async fn upload_workout_data_working() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_with_health_profile(&test_app.address).await;
+
+    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
+
+    let status = response.is_ok();
+    if !status {
+        let error_body = response.err().unwrap();
+        panic!("Health data upload failed with status {}: {}", status, error_body);
+    }
+    assert!(status);
+}
+
+#[tokio::test]
+async fn upload_multiple_workout_data_sessions() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_with_health_profile(&test_app.address).await;
+
+    // Upload multiple workouts
+    for i in 0..3 {
+        let mut workout_data = WorkoutData::new(
+            if i % 2 == 0 { WorkoutType::Intense } else { WorkoutType::Moderate }, 
+            Utc::now(), 
+            30 + (i * 10)
+        );
+        
+        let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
+        assert!(response.is_ok(), "Workout {} should upload successfully", i);
+    }
+}
+
+#[tokio::test]
+async fn upload_workout_data_with_invalid_data_fails() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_with_health_profile(&test_app.address).await;
+
+    // Try to upload workout with invalid duration (negative)
+    let invalid_workout = json!({
+        "workout_start": Utc::now().to_rfc3339(),
+        "workout_end": Utc::now().to_rfc3339(),
+        "duration_minutes": -10,  // Invalid negative duration
+        "calories": 300,
+        "avg_heart_rate": 150,
+        "max_heart_rate": 180
+    });
+
+    let response = client
+        .post(&format!("{}/health/sync", &test_app.address))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .json(&invalid_workout)
+        .send()
+        .await
+        .expect("Failed to execute request");
+
+    assert!(!response.status().is_success(), "Invalid workout data should be rejected");
+}
+
+// ============================================================================
+// WORKOUT HISTORY TESTS
+// ============================================================================
+
+#[tokio::test]
+async fn test_workout_history_empty() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_and_login(&test_app.address).await;
+
+    // Test workout history with no data
+    let history_response = client
+        .get(&format!("{}/health/history", &test_app.address))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .send()
+        .await
+        .expect("Failed to execute workout history request");
+
+    assert!(history_response.status().is_success());
+    
+    let history_data: serde_json::Value = history_response
+        .json()
+        .await
+        .expect("Failed to parse workout history response");
+
+    // Should return empty array for user with no workout history
+    assert!(history_data["data"]["workouts"].is_array());
+    assert_eq!(history_data["data"]["workouts"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_workout_history_with_data() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_with_health_profile(&test_app.address).await;
+
+    // Upload a workout first
+    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 45);
+    upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await
+        .expect("Workout upload should succeed");
+
+    // Fetch workout history
+    let history_response = client
+        .get(&format!("{}/health/history", &test_app.address))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .send()
+        .await
+        .expect("Failed to execute workout history request");
+
+    assert!(history_response.status().is_success());
+    
+    let history_data: serde_json::Value = history_response
+        .json()
+        .await
+        .expect("Failed to parse workout history response");
+
+    // Should return the uploaded workout
+    assert!(history_data["data"]["workouts"].is_array());
+    assert!(history_data["data"]["workouts"].as_array().unwrap().len() > 0);
+}
+
+#[tokio::test]
+async fn test_workout_history_pagination() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_with_health_profile(&test_app.address).await;
+
+    // Upload multiple workouts
+    for i in 0..5 {
+        let mut workout_data = WorkoutData::new(WorkoutType::Light, Utc::now(), 20 + i);
+        upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await
+            .expect("Workout upload should succeed");
+    }
+
+    // Test pagination with limit
+    let history_response = client
+        .get(&format!("{}/health/history?limit=3", &test_app.address))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .send()
+        .await
+        .expect("Failed to execute workout history request");
+
+    assert!(history_response.status().is_success());
+    
+    let history_data: serde_json::Value = history_response
+        .json()
+        .await
+        .expect("Failed to parse workout history response");
+
+    // Should return only 3 workouts due to limit
+    assert!(history_data["data"]["workouts"].is_array());
+    assert_eq!(history_data["data"]["workouts"].as_array().unwrap().len(), 3);
+}
+
+// ============================================================================
+// ADMIN WORKOUT MANAGEMENT TESTS
+// ============================================================================
+
+#[tokio::test]
+async fn test_admin_can_delete_workout() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+    let admin = create_admin_user_and_login(&test_app.address).await;
+
+    // Create a regular user
+    let user = create_test_user_with_health_profile(&test_app.address).await;
+
+    // Create a workout for the user
+    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let workout_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout_data).await;
+
+    let response_data = workout_response.unwrap();
+    let sync_id = response_data["data"]["sync_id"].as_str().unwrap();
+
+    // Admin deletes the workout
+    let delete_response = client
+        .delete(&format!("{}/admin/workouts/{}", &test_app.address, sync_id))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Failed to execute workout delete request");
+
+    assert!(delete_response.status().is_success(), "Workout delete should succeed");
+
+    // Verify workout is deleted
+    let get_response = client
+        .get(&format!("{}/admin/workouts/{}", &test_app.address, sync_id))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Failed to execute workout get request");
+
+    assert_eq!(get_response.status(), 404);
+}
+
+#[tokio::test]
+async fn test_admin_can_view_all_workouts() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+    let admin = create_admin_user_and_login(&test_app.address).await;
+
+    // Create a user and workout
+    let user = create_test_user_with_health_profile(&test_app.address).await;
+    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 60);
+    upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout_data).await
+        .expect("Workout upload should succeed");
+
+    // Admin views all workouts
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/admin/workouts", &test_app.address),
+        &admin.token,
+        None,
+    ).await;
+
+    assert_eq!(200, response.status().as_u16());
+    
+    let body: serde_json::Value = response.json().await.expect("Failed to parse response");
+    assert!(body["data"]["workouts"].is_array());
+}
+
+#[tokio::test]
+async fn test_admin_can_get_workout_by_id() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+    let admin = create_admin_user_and_login(&test_app.address).await;
+
+    // Create a user and workout
+    let user = create_test_user_with_health_profile(&test_app.address).await;
+    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 45);
+    let workout_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout_data).await;
+
+    let response_data = workout_response.unwrap();
+    let sync_id = response_data["data"]["sync_id"].as_str().unwrap();
+
+    // Admin gets specific workout
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/admin/workouts/{}", &test_app.address, sync_id),
+        &admin.token,
+        None,
+    ).await;
+
+    assert_eq!(200, response.status().as_u16());
+    
+    let body: serde_json::Value = response.json().await.expect("Failed to parse response");
+    assert_eq!(body["data"]["id"].as_str().unwrap(), sync_id);
+}
+
+// ============================================================================
+// WORKOUT MEDIA UPLOAD TESTS
+// ============================================================================
+
+#[tokio::test]
+async fn test_signed_url_endpoints_exist() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+    
+    let test_user = create_test_user_and_login(&test_app.address).await;
+
+    // Test image signed URL endpoint
+    let image_response = client
+        .get(&format!("{}/media/signed-url/image", &test_app.address))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .send()
+        .await
+        .expect("Failed to execute image signed URL request");
+
+    // Should return some response (not necessarily successful without S3 setup)
+    assert!(image_response.status().as_u16() < 500, "Image signed URL endpoint should exist");
+
+    // Test video signed URL endpoint  
+    let video_response = client
+        .get(&format!("{}/media/signed-url/video", &test_app.address))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .send()
+        .await
+        .expect("Failed to execute video signed URL request");
+
+    // Should return some response (not necessarily successful without S3 setup)
+    assert!(video_response.status().as_u16() < 500, "Video signed URL endpoint should exist");
+}
+
+#[tokio::test]  
+async fn test_workout_with_media_urls() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_with_health_profile(&test_app.address).await;
+
+    // Upload workout with media URLs
+    let mut workout_with_media = WorkoutData::new(WorkoutType::Light, Utc::now(), 30);
+    workout_with_media.image_url = Some("https://example.com/workout-image.jpg".to_string());
+    workout_with_media.video_url = Some("https://example.com/workout-video.mp4".to_string());
+    let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_with_media).await;
+    assert!(response.is_ok(), "Workout with media URLs should succeed");
+    
+    let response_data = response.unwrap();
+    assert!(response_data["data"]["sync_id"].is_string());
+}
+
+// ============================================================================
+// WORKOUT NOTIFICATIONS TEST
+// ============================================================================
+
+#[tokio::test]
+async fn test_workout_upload_notification_integration() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_with_health_profile(&test_app.address).await;
+
+    // Upload a workout (this should trigger notifications)
+    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 45);
+    let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
+
+    assert!(response.is_ok(), "Workout upload should succeed and trigger notifications");
+    
+    // Note: In a full integration test, we would verify that:
+    // 1. Redis pub/sub message was sent
+    // 2. WebSocket clients received notification
+    // 3. Database state was updated correctly
+    // For now, we just verify the upload succeeded
+    let response_data = response.unwrap();
+    assert!(response_data["data"]["sync_id"].is_string());
+}

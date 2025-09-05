@@ -50,7 +50,12 @@ impl SchedulerService {
     /// Schedule complete game management cycle for a new season
     /// Uses every-minute schedule to handle all game durations efficiently
     pub async fn schedule_season(&self, season_id: Uuid, season_name: String) -> Result<(), JobSchedulerError> {
-        let cron_expr = "0 * * * * *".to_string(); // Every minute
+        self.schedule_season_with_frequency(season_id, season_name, "0 * * * * *").await
+    }
+
+    /// Schedule complete game management cycle for a new season with custom frequency
+    pub async fn schedule_season_with_frequency(&self, season_id: Uuid, season_name: String, cron_expr: &str) -> Result<(), JobSchedulerError> {
+        let cron_expr = cron_expr.to_string();
         
         let scheduler = self.scheduler.lock().await;
         
@@ -66,26 +71,28 @@ impl SchedulerService {
             let season_name = season_name.clone();
             
             Box::pin(async move {
-                tracing::info!("🎮 Running scheduled game management cycle for season '{}'", season_name);
+                let now = chrono::Utc::now();
+                tracing::info!("🎮 Running scheduled game management cycle for season '{}' at {}", season_name, now.to_rfc3339());
                 
-                let manage_games = ManageGameService::new(pool.clone(), redis_client.clone());
+                let manage_games = ManageGameService::new(pool.clone());
                 let evaluate_games = GameEvaluationService::new(pool, redis_client);
                 
                 // Step 1: Run complete game cycle (start due games, finish ended games)
                 match manage_games.run_game_cycle().await {
-                    Ok((pending_games, live_games, started_games, finished_games)) => {
-                        tracing::info!("✅ Season '{}' game cycle: {} pending, {} live, {} started, {} finished", 
-                            season_name, pending_games.len(), live_games.len(), started_games.len(), finished_games.len());
-                        
-                        // Step 2: Evaluate any finished games
-                        let finished_games_clone = finished_games.clone();
-                        match evaluate_games.evaluate_finished_live_games(finished_games).await {
-                            Ok(result) => {
-                                tracing::info!("✅ Game day completed. Calculated final scores for {} games", result.len());
-                            }
-                            Err(e) => {
-                                let error_msg = e.to_string();
-                                tracing::error!("❌ Game day evaluation failed for games: {:?} - {}", finished_games_clone, error_msg);
+                    Ok((games_ready_to_start, live_games, started_games, finished_games)) => {
+                        tracing::info!("✅ [{}] Season '{}' game cycle: {} ready to start, {} live, {} started, {} finished", 
+                            now.to_rfc3339(), season_name, games_ready_to_start.len(), live_games.len(), started_games.len(), finished_games.len());
+
+                        if finished_games.len() > 0 {
+                            // Step 2: Evaluate any finished games
+                            match evaluate_games.evaluate_finished_live_games(&finished_games).await {
+                                Ok(result) => {
+                                    tracing::info!("✅ Game day completed. Calculated final scores for {} games", result.len());
+                                }
+                                Err(e) => {
+                                    let error_msg = e.to_string();
+                                    tracing::error!("❌ Game day evaluation failed for games: {:?} - {}", finished_games, error_msg);
+                                }
                             }
                         }
                     }
@@ -104,7 +111,9 @@ impl SchedulerService {
         let mut active_jobs = self.active_jobs.lock().await;
         active_jobs.insert(season_id, job_id);
         
-        tracing::info!("✅ Scheduled complete game management cycle for season '{}' (every minute)", season_name_for_logging);
+        let now = chrono::Utc::now();
+        tracing::info!("✅ [{}] Scheduled complete game management cycle for season '{}' with cron: {}", 
+            now.to_rfc3339(), season_name_for_logging, cron_expr);
         
         Ok(())
     }

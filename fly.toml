@@ -12,7 +12,7 @@ kill_signal = "SIGTERM"
   APP__APPLICATION__HOST = "0.0.0.0"
   
   # Frontend URL for CORS
-  APP__FRONTEND_URL = "https://evolveme-fantasy.fly.dev"
+  APP__FRONTEND_URL = "https://evolveme-frontend.fly.dev"
   
   # Redis connection (you'll need to set up Redis separately)
   REDIS__REDIS__HOST = "evolveme-redis.internal"

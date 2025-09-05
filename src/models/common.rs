@@ -74,30 +74,6 @@ impl PlayerStats {
     }
 }
 
-/// Represents changes to player statistics
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct StatChanges {
-    pub stamina_change: i32,
-    pub strength_change: i32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reasoning: Option<String>,
-}
-
-impl StatChanges {
-    pub fn new(stamina_change: i32, strength_change: i32) -> Self {
-        Self {
-            stamina_change,
-            strength_change,
-            reasoning: None,
-        }
-    }
-
-    pub fn with_reasoning(mut self, reasoning: impl Into<String>) -> Self {
-        self.reasoning = Some(reasoning.into());
-        self
-    }
-}
-
 /// Common match result enum used across game-related modules
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]

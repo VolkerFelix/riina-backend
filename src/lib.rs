@@ -9,7 +9,7 @@ pub mod config;
 mod routes;
 mod handlers;
 pub mod models;
-mod utils;
+pub mod utils;
 mod middleware;
 mod db;
 pub mod game;
@@ -18,7 +18,7 @@ mod workout;
 pub mod services;
 use crate::routes::init_routes;
 use crate::config::jwt::JwtSettings;
-use crate::services::{SchedulerService, LiveGameService, MinIOService};
+use crate::services::{SchedulerService, MinIOService};
 use std::sync::Arc;
 
 pub fn run(
@@ -35,8 +35,6 @@ pub fn run(
     let scheduler_service = web::Data::new(scheduler_service);
     let redis_client_data = web::Data::new(redis_client.clone());
     
-    // Create LiveGameService
-    let live_game_service = web::Data::new(LiveGameService::new(db_pool, redis_client_data.get_ref().clone()));
     
     // Wrap MinIOService
     let minio_service_data = web::Data::new(minio_service);
@@ -68,7 +66,6 @@ pub fn run(
             .app_data(db_pool_data.clone())
             .app_data(jwt_settings.clone())
             .app_data(scheduler_service.clone())
-            .app_data(live_game_service.clone())
             .app_data(minio_service_data.clone());
         app = app.app_data(redis_client_data.clone());
 

@@ -50,6 +50,9 @@ impl StandingsService {
         home_score: i32,
         away_score: i32,
     ) -> Result<(), sqlx::Error> {
+        tracing::info!("🏆 Updating standings for game {}: {} - {} (home team: {}, away team: {})", 
+            game.id, home_score, away_score, game.home_team_id, game.away_team_id);
+
         let mut tx = self.pool.begin().await?;
 
         // Determine points for each team
@@ -61,16 +64,24 @@ impl StandingsService {
             (1, 1) // Draw
         };
 
-        // Update home team standings
-        sqlx::query!(
+        tracing::info!("🏆 Points awarded: home team {} gets {} points, away team {} gets {} points", 
+            game.home_team_id, home_points, game.away_team_id, away_points);
+
+        // Update home team standings - use UPSERT to handle missing records
+        let home_result = sqlx::query!(
             r#"
-            UPDATE league_standings 
-            SET games_played = games_played + 1,
-                wins = wins + CASE WHEN $1 = 3 THEN 1 ELSE 0 END,
-                draws = draws + CASE WHEN $1 = 1 THEN 1 ELSE 0 END,
-                losses = losses + CASE WHEN $1 = 0 THEN 1 ELSE 0 END,
+            INSERT INTO league_standings (season_id, team_id, games_played, wins, draws, losses, position, last_updated)
+            VALUES ($2, $3, 1, 
+                CASE WHEN $1 = 3 THEN 1 ELSE 0 END,
+                CASE WHEN $1 = 1 THEN 1 ELSE 0 END,
+                CASE WHEN $1 = 0 THEN 1 ELSE 0 END,
+                1, NOW())
+            ON CONFLICT (season_id, team_id) DO UPDATE SET
+                games_played = league_standings.games_played + 1,
+                wins = league_standings.wins + CASE WHEN $1 = 3 THEN 1 ELSE 0 END,
+                draws = league_standings.draws + CASE WHEN $1 = 1 THEN 1 ELSE 0 END,
+                losses = league_standings.losses + CASE WHEN $1 = 0 THEN 1 ELSE 0 END,
                 last_updated = NOW()
-            WHERE season_id = $2 AND team_id = $3
             "#,
             home_points,
             game.season_id,
@@ -79,16 +90,22 @@ impl StandingsService {
         .execute(&mut *tx)
         .await?;
 
-        // Update away team standings
-        sqlx::query!(
+
+        // Update away team standings - use UPSERT to handle missing records
+        let away_result = sqlx::query!(
             r#"
-            UPDATE league_standings 
-            SET games_played = games_played + 1,
-                wins = wins + CASE WHEN $1 = 3 THEN 1 ELSE 0 END,
-                draws = draws + CASE WHEN $1 = 1 THEN 1 ELSE 0 END,
-                losses = losses + CASE WHEN $1 = 0 THEN 1 ELSE 0 END,
+            INSERT INTO league_standings (season_id, team_id, games_played, wins, draws, losses, position, last_updated)
+            VALUES ($2, $3, 1, 
+                CASE WHEN $1 = 3 THEN 1 ELSE 0 END,
+                CASE WHEN $1 = 1 THEN 1 ELSE 0 END,
+                CASE WHEN $1 = 0 THEN 1 ELSE 0 END,
+                1, NOW())
+            ON CONFLICT (season_id, team_id) DO UPDATE SET
+                games_played = league_standings.games_played + 1,
+                wins = league_standings.wins + CASE WHEN $1 = 3 THEN 1 ELSE 0 END,
+                draws = league_standings.draws + CASE WHEN $1 = 1 THEN 1 ELSE 0 END,
+                losses = league_standings.losses + CASE WHEN $1 = 0 THEN 1 ELSE 0 END,
                 last_updated = NOW()
-            WHERE season_id = $2 AND team_id = $3
             "#,
             away_points,
             game.season_id,
@@ -96,6 +113,7 @@ impl StandingsService {
         )
         .execute(&mut *tx)
         .await?;
+
 
         // Recalculate positions
         self.recalculate_positions_in_tx(&mut tx, game.season_id).await?;
@@ -135,6 +153,7 @@ impl StandingsService {
         )
         .fetch_all(&self.pool)
         .await?;
+
 
         // Calculate team powers
         let team_ids: Vec<Uuid> = standings_with_teams.iter().map(|row| row.team_id).collect();

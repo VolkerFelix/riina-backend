@@ -41,7 +41,7 @@ export DATABASE_URL="postgres://$DB_USER:$DB_PASSWORD@$DB_HOST:$DB_PORT/$DB_NAME
 
 # Check if PostgreSQL container is already running
 check_postgres() {
-    if [ "$(docker ps -q -f name=evolveme-postgres-test)" ]; then
+    if [ "$(docker ps -q -f name=riina-postgres-test)" ]; then
         echo -e "${GREEN}PostgreSQL container is already running.${NC}"
     else
         echo -e "${RED}PostgreSQL container is not running.${NC}"
@@ -51,7 +51,7 @@ check_postgres() {
 
 # Check if Redis container is already running
 check_redis() {
-    if [ "$(docker ps -q -f name=evolveme-redis-test)" ]; then
+    if [ "$(docker ps -q -f name=riina-redis-test)" ]; then
         echo -e "${GREEN}Redis container is already running.${NC}"
     else
         echo -e "${RED}Redis container is not running.${NC}"
@@ -62,7 +62,7 @@ check_redis() {
 # Check if MinIO container is already running
 
 check_minio() {
-    if [ "$(docker ps -q -f name=evolveme-minio-test)" ]; then
+    if [ "$(docker ps -q -f name=riina-minio-test)" ]; then
         echo -e "${GREEN}MinIO container is already running.${NC}"
     else
         echo -e "${RED}MinIO container is not running.${NC}"
@@ -73,11 +73,11 @@ check_minio() {
 # Spin up postgres container
 spin_up_postgres() {
     echo -e "${YELLOW}Spinning up PostgreSQL container for tests...${NC}"
-    docker run --name evolveme-postgres-test \
+    docker run --name riina-postgres-test \
         -e POSTGRES_USER=${POSTGRES__DATABASE__USER} \
         -e POSTGRES_PASSWORD=${POSTGRES__DATABASE__PASSWORD} \
         -e POSTGRES_DB=${DB_NAME} \
-        -v evolveme-postgres-test-data:/var/lib/postgresql/data \
+        -v riina-postgres-test-data:/var/lib/postgresql/data \
         -p ${DB_PORT}:5432 \
         -d postgres
 }
@@ -85,9 +85,9 @@ spin_up_postgres() {
 # Spin up redis container
 spin_up_redis() {
     echo -e "${YELLOW}Spinning up Redis container for tests...${NC}"
-    docker run --name evolveme-redis-test \
+    docker run --name riina-redis-test \
         -e REDIS_PASSWORD=${REDIS__REDIS__PASSWORD} \
-        -v evolveme-redis-test-data:/data \
+        -v riina-redis-test-data:/data \
         -p 6379:6379 \
         -d redis \
         redis-server --requirepass ${REDIS__REDIS__PASSWORD}
@@ -97,10 +97,10 @@ spin_up_redis() {
 
 spin_up_minio() {
     echo -e "${YELLOW}Spinning up MinIO container for tests...${NC}"
-    docker run --name evolveme-minio-test \
+    docker run --name riina-minio-test \
         -e MINIO_ACCESS_KEY=${MINIO__MINIO__ACCESS_KEY} \
         -e MINIO_SECRET_KEY=${MINIO__MINIO__SECRET_KEY} \
-        -v evolveme-minio-test-data:/data \
+        -v riina-minio-test-data:/data \
         -p 9000:9000 \
         -d minio/minio server /data
 }
@@ -110,32 +110,32 @@ clean_up() {
     echo -e "${YELLOW}Cleaning up PostgreSQL, Redis and MinIO containers...${NC}"
     
     # Stop and remove containers if they exist
-    if [ "$(docker ps -aq -f name=evolveme-postgres-test)" ]; then
-        docker stop evolveme-postgres-test 2>/dev/null || true
-        docker rm evolveme-postgres-test 2>/dev/null || true
+    if [ "$(docker ps -aq -f name=riina-postgres-test)" ]; then
+        docker stop riina-postgres-test 2>/dev/null || true
+        docker rm riina-postgres-test 2>/dev/null || true
     fi
     
-    if [ "$(docker ps -aq -f name=evolveme-redis-test)" ]; then
-        docker stop evolveme-redis-test 2>/dev/null || true
-        docker rm evolveme-redis-test 2>/dev/null || true
+    if [ "$(docker ps -aq -f name=riina-redis-test)" ]; then
+        docker stop riina-redis-test 2>/dev/null || true
+        docker rm riina-redis-test 2>/dev/null || true
     fi
 
-    if [ "$(docker ps -aq -f name=evolveme-minio-test)" ]; then
-        docker stop evolveme-minio-test 2>/dev/null || true
-        docker rm evolveme-minio-test 2>/dev/null || true
+    if [ "$(docker ps -aq -f name=riina-minio-test)" ]; then
+        docker stop riina-minio-test 2>/dev/null || true
+        docker rm riina-minio-test 2>/dev/null || true
     fi
 
     # Remove volumes if they exist
-    if [ "$(docker volume ls -q -f name=evolveme-postgres-test-data)" ]; then
-        docker volume rm evolveme-postgres-test-data 2>/dev/null || true
+    if [ "$(docker volume ls -q -f name=riina-postgres-test-data)" ]; then
+        docker volume rm riina-postgres-test-data 2>/dev/null || true
     fi
     
-    if [ "$(docker volume ls -q -f name=evolveme-redis-test-data)" ]; then
-        docker volume rm evolveme-redis-test-data 2>/dev/null || true
+    if [ "$(docker volume ls -q -f name=riina-redis-test-data)" ]; then
+        docker volume rm riina-redis-test-data 2>/dev/null || true
     fi
 
-    if [ "$(docker volume ls -q -f name=evolveme-minio-test-data)" ]; then
-        docker volume rm evolveme-minio-test-data 2>/dev/null || true
+    if [ "$(docker volume ls -q -f name=riina-minio-test-data)" ]; then
+        docker volume rm riina-minio-test-data 2>/dev/null || true
     fi
 }
 

@@ -82,16 +82,16 @@ then
 
     # Start PostgreSQL container
     echo "Starting PostgreSQL container..."
-    if container_running "evolveme-postgres"; then
+    if container_running "riina-postgres"; then
         echo "PostgreSQL container already running"
     else
-        if container_exists "evolveme-postgres"; then
+        if container_exists "riina-postgres"; then
             echo "Starting existing PostgreSQL container..."
-            docker start evolveme-postgres
+            docker start riina-postgres
         else
             echo "Creating new PostgreSQL container..."
             docker run \
-                --name evolveme-postgres \
+                --name riina-postgres \
                 -e POSTGRES_USER=${POSTGRES__DATABASE__USER} \
                 -e POSTGRES_PASSWORD=${POSTGRES__DATABASE__PASSWORD} \
                 -e POSTGRES_DB=evolveme_db \
@@ -103,16 +103,16 @@ then
 
     # Start Redis container
     echo "Starting Redis container..."
-    if container_running "evolveme-redis"; then
+    if container_running "riina-redis"; then
         echo "Redis container already running"
     else
-        if container_exists "evolveme-redis"; then
+        if container_exists "riina-redis"; then
             echo "Starting existing Redis container..."
-            docker start evolveme-redis
+            docker start riina-redis
         else
             echo "Creating new Redis container..."
             docker run \
-                --name evolveme-redis \
+                --name riina-redis \
                 -e REDIS_PASSWORD=${REDIS__REDIS__PASSWORD} \
                 -p 6379:6379 \
                 -d redis \
