@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use crate::services::ManageGameService;
 use crate::middleware::auth::Claims;
+use crate::models::league::PaginationQuery;
 // Removed unused import: use crate::db::game_queries::GameQueries;
 
 #[derive(Serialize)]
@@ -79,9 +80,15 @@ pub async fn get_live_scores(
 pub async fn get_game_live_score(
     pool: web::Data<PgPool>,
     path: web::Path<Uuid>,
+    query: web::Query<PaginationQuery>,
     _claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
     let game_id = path.into_inner();
+    
+    // Set pagination defaults
+    let page = query.page.unwrap_or(1).max(1);
+    let limit = query.limit.unwrap_or(10).min(100).max(1);
+    let offset = (page - 1) * limit;
     
     // Get game info with live scoring data from unified games table
     let game = sqlx::query!(
@@ -107,6 +114,20 @@ pub async fn get_game_live_score(
             let home_score = game_data.home_score as u32;
             let away_score = game_data.away_score as u32;
             
+            // Get total count of scoring events for pagination
+            let total_count = sqlx::query!(
+                r#"
+                SELECT COUNT(*) as "count!"
+                FROM live_score_events
+                WHERE game_id = $1
+                "#,
+                game_id
+            )
+            .fetch_one(pool.get_ref())
+            .await
+            .map(|r| r.count)
+            .unwrap_or(0);
+            
             // Fetch scoring events from live_score_events table with workout details
             let scoring_events = sqlx::query!(
                 r#"
@@ -125,9 +146,11 @@ pub async fn get_game_live_score(
                 LEFT JOIN workout_data wd ON wd.id = lse.workout_data_id
                 WHERE lse.game_id = $1
                 ORDER BY lse.occurred_at DESC
-                LIMIT 50
+                LIMIT $2 OFFSET $3
                 "#,
-                game_id
+                game_id,
+                limit,
+                offset
             )
             .fetch_all(pool.get_ref())
             .await
@@ -170,6 +193,8 @@ pub async fn get_game_live_score(
                 })
                 .collect();
 
+            let total_pages = ((total_count as f64) / (limit as f64)).ceil() as i64;
+            
             let mut game_info = serde_json::json!({
                 "game_id": game_id,
                 "home_team_name": game_data.home_team_name,
@@ -178,7 +203,15 @@ pub async fn get_game_live_score(
                 "away_score": away_score,
                 "week_number": game_data.week_number,
                 "status": game_data.status,
-                "scoring_events": scoring_events_json
+                "scoring_events": scoring_events_json,
+                "pagination": {
+                    "page": page,
+                    "limit": limit,
+                    "total_count": total_count,
+                    "total_pages": total_pages,
+                    "has_next": page < total_pages,
+                    "has_prev": page > 1
+                }
             });
 
             // Add optional game timing fields

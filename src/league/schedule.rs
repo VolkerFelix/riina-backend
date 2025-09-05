@@ -477,7 +477,7 @@ impl ScheduleService {
             return 0;
         }
         // Teams are guaranteed to be even due to validation
-        (games_per_matchup * (team_count - 1) as i32)
+        games_per_matchup * (team_count - 1) as i32
     }
 
     /// Calculate total number of games in a complete season
@@ -485,14 +485,6 @@ impl ScheduleService {
         if team_count < 2 {
             return 0;
         }
-        // Each team plays every other team once or twice: games_per_matchup * n * (n-1) / 2
-        // But since we generate all pairings: games_per_matchup * n * (n-1) / 2 * 2 = games_per_matchup * n * (n-1)
-        // Actually the formula is: (n * (n-1) / 2) * games_per_matchup total unique matchups
-        // But we generate each game individually, so it's: n * (n-1) / 2 * games_per_matchup total games
-        // Wait, for 4 teams single round-robin: A-B, A-C, A-D, B-C, B-D, C-D = 6 games = 4*3/2 = 6 ✓
-        // For 4 teams double round-robin: above + reverse = 12 games = 4*3 = 12 ✓
-        // So the formula is: (team_count * (team_count - 1) / 2) * games_per_matchup for unique games
-        // But we track home/away separately, so it's: team_count * (team_count - 1) / 2 * games_per_matchup
         (team_count * (team_count - 1) / 2 * games_per_matchup as usize) as i32
     }
 

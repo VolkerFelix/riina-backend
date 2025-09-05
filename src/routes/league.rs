@@ -243,11 +243,12 @@ async fn get_live_scores(
 #[get("/games/{game_id}/live")]
 async fn get_game_live_score(
     path: web::Path<Uuid>,
+    query: web::Query<crate::models::league::PaginationQuery>,
     pool: web::Data<PgPool>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
     use crate::handlers::league::live_game_handler;
-    live_game_handler::get_game_live_score(pool, path, claims).await
+    live_game_handler::get_game_live_score(pool, path, query, claims).await
 }
 
 /// Get all currently active games

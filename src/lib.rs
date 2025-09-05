@@ -44,10 +44,10 @@ pub fn run(
         let cors = Cors::default()
             .allowed_origin("http://localhost:3000")
             .allowed_origin("http://localhost:3001")
-            .allowed_origin("https://riina-frontend.fly.dev")
-            .allowed_origin("https://riina-admin.fly.dev")
-            .allowed_origin("https://riina-frontend-dev.fly.dev")
-            .allowed_origin("https://riina-admin-dev.fly.dev")
+            .allowed_origin("https://evolveme-frontend.fly.dev")
+            .allowed_origin("https://evolveme-admin.fly.dev")
+            .allowed_origin("https://evolveme-frontend-dev.fly.dev")
+            .allowed_origin("https://evolveme-admin-dev.fly.dev")
             .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "PATCH"])
             .allowed_headers(vec![
                 http::header::AUTHORIZATION,
