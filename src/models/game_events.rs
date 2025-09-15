@@ -123,6 +123,54 @@ pub enum GameEvent {
         is_active: bool,
         last_updated: DateTime<Utc>,
     },
+
+    // Social Events
+    #[serde(rename = "workout_reaction_added")]
+    WorkoutReactionAdded {
+        workout_id: Uuid,
+        user_id: Uuid,
+        username: String,
+        reaction_type: String,
+        timestamp: DateTime<Utc>,
+    },
+
+    #[serde(rename = "workout_reaction_removed")]
+    WorkoutReactionRemoved {
+        workout_id: Uuid,
+        user_id: Uuid,
+        username: String,
+        timestamp: DateTime<Utc>,
+    },
+
+    #[serde(rename = "workout_comment_added")]
+    WorkoutCommentAdded {
+        workout_id: Uuid,
+        comment_id: Uuid,
+        user_id: Uuid,
+        username: String,
+        content: String,
+        parent_id: Option<Uuid>,
+        timestamp: DateTime<Utc>,
+    },
+
+    #[serde(rename = "workout_comment_updated")]
+    WorkoutCommentUpdated {
+        workout_id: Uuid,
+        comment_id: Uuid,
+        user_id: Uuid,
+        username: String,
+        content: String,
+        timestamp: DateTime<Utc>,
+    },
+
+    #[serde(rename = "workout_comment_deleted")]
+    WorkoutCommentDeleted {
+        workout_id: Uuid,
+        comment_id: Uuid,
+        user_id: Uuid,
+        username: String,
+        timestamp: DateTime<Utc>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

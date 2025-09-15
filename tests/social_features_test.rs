@@ -12,6 +12,10 @@ use reqwest::Client;
 use serde_json::json;
 use uuid::Uuid;
 use chrono::Utc;
+use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use futures_util::{StreamExt, SinkExt};
+use std::time::Duration;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, TestApp, UserRegLoginResponse};
@@ -758,4 +762,208 @@ async fn test_get_comments_requires_authentication() {
         .expect("Failed to get comments with auth");
 
     assert!(response.status().is_success(), "Getting comments should work with authentication");
+}
+
+// ============================================================================
+// WEBSOCKET INTEGRATION TESTS
+// ============================================================================
+
+#[tokio::test]
+async fn test_websocket_reaction_events_broadcast() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    // Allow some time for the app to fully initialize
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    let (user, workout_id) = create_user_with_workout(&test_app.address).await;
+
+    // Connect to WebSocket using the same pattern as existing tests
+    let ws_url = format!("{}/game-ws?token={}", test_app.address.replace("http", "ws"), user.token);
+    let request = ws_url.into_client_request().expect("Failed to create request");
+
+    let (mut ws_stream, _) = connect_async(request)
+        .await
+        .expect("Failed to connect to WebSocket server");
+
+    // Wait for welcome message (player_joined) and consume it
+    let _welcome_msg = ws_stream.next().await.expect("No welcome message received").unwrap();
+
+    // Add a reaction
+    let reaction_data = json!({"reaction_type": "fire"});
+    let response = client
+        .post(&format!("{}/social/workouts/{}/reactions", test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&reaction_data)
+        .send()
+        .await
+        .expect("Failed to add reaction");
+
+    assert!(response.status().is_success(), "Adding reaction should succeed");
+
+    // Listen for WebSocket events with timeout
+    let mut reaction_event_received = false;
+    for _ in 0..10 { // Try up to 10 times with increasing timeout
+        if let Ok(Some(Ok(Message::Text(text)))) = tokio::time::timeout(Duration::from_millis(500), ws_stream.next()).await {
+            println!("Received WebSocket message: {}", text);
+            if let Ok(event) = serde_json::from_str::<serde_json::Value>(&text) {
+                if event["event_type"] == "workout_reaction_added" &&
+                   event["workout_id"] == workout_id.to_string() &&
+                   event["reaction_type"] == "fire" &&
+                   event["username"] == user.username {
+                    reaction_event_received = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    assert!(reaction_event_received, "WebSocket reaction added event should be received");
+
+    // Test reaction removal
+    let response = client
+        .delete(&format!("{}/social/workouts/{}/reactions", test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Failed to remove reaction");
+
+    assert!(response.status().is_success(), "Removing reaction should succeed");
+
+    // Listen for reaction removed event
+    let mut reaction_removed_received = false;
+    for _ in 0..10 {
+        if let Ok(Some(Ok(Message::Text(text)))) = tokio::time::timeout(Duration::from_millis(500), ws_stream.next()).await {
+            println!("Received WebSocket message: {}", text);
+            if let Ok(event) = serde_json::from_str::<serde_json::Value>(&text) {
+                if event["event_type"] == "workout_reaction_removed" &&
+                   event["workout_id"] == workout_id.to_string() &&
+                   event["username"] == user.username {
+                    reaction_removed_received = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    assert!(reaction_removed_received, "WebSocket reaction removed event should be received");
+}
+
+#[tokio::test]
+async fn test_websocket_comment_events_broadcast() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    // Allow time for app initialization
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    let (user, workout_id) = create_user_with_workout(&test_app.address).await;
+
+    // Connect to WebSocket
+    let ws_url = format!("{}/game-ws?token={}", test_app.address.replace("http", "ws"), user.token);
+    let request = ws_url.into_client_request().expect("Failed to create request");
+
+    let (mut ws_stream, _) = connect_async(request)
+        .await
+        .expect("Failed to connect to WebSocket server");
+
+    // Consume welcome message
+    let _welcome_msg = ws_stream.next().await.expect("No welcome message received").unwrap();
+
+    // Add a comment
+    let comment_data = json!({
+        "content": "WebSocket test comment",
+        "parent_id": null
+    });
+
+    let response = client
+        .post(&format!("{}/social/workouts/{}/comments", test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&comment_data)
+        .send()
+        .await
+        .expect("Failed to add comment");
+
+    assert!(response.status().is_success(), "Adding comment should succeed");
+
+    let comment: serde_json::Value = response.json().await.expect("Failed to parse comment response");
+    let comment_id = comment["id"].as_str().unwrap();
+
+    // Listen for comment added event
+    let mut comment_event_received = false;
+    for _ in 0..10 {
+        if let Ok(Some(Ok(Message::Text(text)))) = tokio::time::timeout(Duration::from_millis(500), ws_stream.next()).await {
+            println!("Received WebSocket message: {}", text);
+            if let Ok(event) = serde_json::from_str::<serde_json::Value>(&text) {
+                if event["event_type"] == "workout_comment_added" &&
+                   event["workout_id"] == workout_id.to_string() &&
+                   event["content"] == "WebSocket test comment" &&
+                   event["username"] == user.username {
+                    comment_event_received = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    assert!(comment_event_received, "WebSocket comment added event should be received");
+
+    // Test comment update
+    let update_data = json!({"content": "Updated WebSocket test comment"});
+    let response = client
+        .put(&format!("{}/social/comments/{}", test_app.address, comment_id))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&update_data)
+        .send()
+        .await
+        .expect("Failed to update comment");
+
+    assert!(response.status().is_success(), "Updating comment should succeed");
+
+    // Listen for comment updated event
+    let mut comment_updated_received = false;
+    for _ in 0..10 {
+        if let Ok(Some(Ok(Message::Text(text)))) = tokio::time::timeout(Duration::from_millis(500), ws_stream.next()).await {
+            println!("Received WebSocket message: {}", text);
+            if let Ok(event) = serde_json::from_str::<serde_json::Value>(&text) {
+                if event["event_type"] == "workout_comment_updated" &&
+                   event["comment_id"] == comment_id &&
+                   event["content"] == "Updated WebSocket test comment" &&
+                   event["username"] == user.username {
+                    comment_updated_received = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    assert!(comment_updated_received, "WebSocket comment updated event should be received");
+
+    // Test comment deletion
+    let response = client
+        .delete(&format!("{}/social/comments/{}", test_app.address, comment_id))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Failed to delete comment");
+
+    assert!(response.status().is_success(), "Deleting comment should succeed");
+
+    // Listen for comment deleted event
+    let mut comment_deleted_received = false;
+    for _ in 0..10 {
+        if let Ok(Some(Ok(Message::Text(text)))) = tokio::time::timeout(Duration::from_millis(500), ws_stream.next()).await {
+            println!("Received WebSocket message: {}", text);
+            if let Ok(event) = serde_json::from_str::<serde_json::Value>(&text) {
+                if event["event_type"] == "workout_comment_deleted" &&
+                   event["comment_id"] == comment_id &&
+                   event["username"] == user.username {
+                    comment_deleted_received = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    assert!(comment_deleted_received, "WebSocket comment deleted event should be received");
 }

@@ -4,6 +4,7 @@ pub mod manage_game_service;
 pub mod minio_service;
 pub mod telemetry;
 pub mod redis_service;
+pub mod social_events;
 
 pub use game_evaluation_service::GameEvaluationService;
 pub use scheduler::SchedulerService;
