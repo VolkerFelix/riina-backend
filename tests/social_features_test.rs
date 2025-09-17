@@ -1649,8 +1649,8 @@ async fn test_newsfeed_basic() {
     let client = Client::new();
 
     // Create two users with workouts
-    let (user1, workout1_id) = create_user_with_workout(&test_app.address).await;
-    let (user2, workout2_id) = create_user_with_workout(&test_app.address).await;
+    let (user1, _workout1_id) = create_user_with_workout(&test_app.address).await;
+    let (user2, _workout2_id) = create_user_with_workout(&test_app.address).await;
 
     // Get newsfeed for user1
     let response = client
