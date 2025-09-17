@@ -27,14 +27,14 @@ jobs:
               - 5432:5432
           
           redis:
-            image: redis:7-alpine
+            image: bitnami/redis:latest
+            env:
+              REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
             ports:
               - 6379:6379
-            options: >-
-              --command redis-server --requirepass ${{ secrets.REDIS_PASSWORD }}
 
           minio:
-            image: minio/minio:latest
+            image: bitnami/minio:latest
             env:
               MINIO_ROOT_USER: ${{ secrets.MINIO_ACCESS_KEY }}
               MINIO_ROOT_PASSWORD: ${{ secrets.MINIO_SECRET_KEY }}
@@ -42,8 +42,7 @@ jobs:
               - 9000:9000
               - 9001:9001
             options: >-
-              --command server /data --console-address :9001
-              --health-cmd "curl -f http://localhost:9000/minio/health/live"
+              --health-cmd "curl -f http://localhost:9000/minio/health/ready"
               --health-interval 10s
               --health-timeout 5s
               --health-retries 5
