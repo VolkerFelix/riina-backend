@@ -6,6 +6,7 @@ use sqlx::PgPool;
 use chrono::{DateTime, Utc};
 
 use crate::middleware::auth::Claims;
+use crate::db::game_queries::GameQueries;
 
 #[derive(Debug, Serialize)]
 pub struct FeedWorkoutItem {
@@ -29,12 +30,71 @@ pub struct FeedWorkoutItem {
     pub comment_count: i64,
     pub user_has_reacted: bool,
     pub visibility: String,
+    pub is_participating_in_live_game: bool,
+    pub live_game_info: Option<LiveGameInfo>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct LiveGameInfo {
+    pub game_id: Uuid,
+    pub opponent_team_name: String,
+    pub user_team_name: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct NewsfeedQuery {
     pub limit: Option<i32>,
     pub cursor: Option<String>, // ISO 8601 timestamp for cursor-based pagination
+}
+
+/// Get live game information for a user if they are participating
+async fn get_user_live_game_info(user_id: Uuid, pool: &PgPool) -> Option<LiveGameInfo> {
+    let result = sqlx::query!(
+        r#"
+        SELECT 
+            g.id as game_id,
+            CASE 
+                WHEN tm.team_id = g.home_team_id THEN ht.team_name
+                WHEN tm.team_id = g.away_team_id THEN at.team_name
+                ELSE NULL
+            END as user_team_name,
+            CASE 
+                WHEN tm.team_id = g.home_team_id THEN at.team_name
+                WHEN tm.team_id = g.away_team_id THEN ht.team_name
+                ELSE NULL
+            END as opponent_team_name
+        FROM games g
+        JOIN team_members tm ON (tm.team_id = g.home_team_id OR tm.team_id = g.away_team_id)
+        JOIN teams ht ON ht.id = g.home_team_id
+        JOIN teams at ON at.id = g.away_team_id
+        WHERE g.status = 'in_progress' 
+        AND tm.user_id = $1 
+        AND tm.status = 'active'
+        LIMIT 1
+        "#,
+        user_id
+    )
+    .fetch_optional(pool)
+    .await;
+
+    match result {
+        Ok(Some(row)) => {
+            if let (Some(user_team), Some(opponent_team)) = (row.user_team_name, row.opponent_team_name) {
+                Some(LiveGameInfo {
+                    game_id: row.game_id,
+                    user_team_name: user_team,
+                    opponent_team_name: opponent_team,
+                })
+            } else {
+                None
+            }
+        },
+        Ok(None) => None,
+        Err(e) => {
+            tracing::error!("Failed to get user live game info: {}", e);
+            None
+        }
+    }
 }
 
 #[tracing::instrument(
@@ -120,7 +180,21 @@ pub async fn get_newsfeed(
     .await
     {
         Ok(rows) => {
+            // Get unique user IDs to check for live game participation
+            let user_ids: Vec<Uuid> = rows.iter().map(|row| row.user_id).collect::<std::collections::HashSet<_>>().into_iter().collect();
+            
+            // Get live game info for each user
+            let mut user_live_game_info = std::collections::HashMap::new();
+            for user_id in user_ids {
+                if let Some(game_info) = get_user_live_game_info(user_id, &**pool).await {
+                    user_live_game_info.insert(user_id, game_info);
+                }
+            }
+
             rows.into_iter().map(|row| {
+                let live_game_info = user_live_game_info.get(&row.user_id).cloned();
+                let is_participating = live_game_info.is_some();
+
                 FeedWorkoutItem {
                     id: row.id,
                     user_id: row.user_id,
@@ -142,6 +216,8 @@ pub async fn get_newsfeed(
                     comment_count: row.comment_count.unwrap_or(0) as i64,
                     user_has_reacted: row.user_has_reacted.unwrap_or(false),
                     visibility: row.visibility.unwrap_or_else(|| "public".to_string()),
+                    is_participating_in_live_game: is_participating,
+                    live_game_info,
                 }
             }).collect()
         },
