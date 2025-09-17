@@ -11,6 +11,7 @@ pub mod profile;
 pub mod health_activity;
 pub mod admin;
 pub mod social;
+pub mod feed;
 
 use crate::middleware::auth::AuthMiddleware;
 
@@ -90,5 +91,12 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
         web::scope("/social")
             .wrap(AuthMiddleware)
             .configure(social::init_social_routes)
+    );
+
+    // Feed routes (require authentication)
+    cfg.service(
+        web::scope("/feed")
+            .wrap(AuthMiddleware)
+            .configure(feed::init_feed_routes)
     );
 }

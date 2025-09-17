@@ -6,3 +6,4 @@ pub mod league;
 pub mod profile;
 pub mod admin;
 pub mod social;
+pub mod feed;
