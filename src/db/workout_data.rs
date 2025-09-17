@@ -74,7 +74,7 @@ pub async fn insert_workout_data(
         INSERT INTO workout_data (
             user_id,
             device_id,
-            heart_rate_data, 
+            heart_rate_data,
             calories_burned,
             workout_uuid,
             workout_start,
@@ -88,9 +88,10 @@ pub async fn insert_workout_data(
             strength_gained,
             total_points_gained,
             image_url,
-            video_url
+            video_url,
+            visibility
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
         RETURNING id
         "#,
         user_id,
@@ -109,7 +110,8 @@ pub async fn insert_workout_data(
         workout_stats.changes.strength_change,
         workout_stats.changes.stamina_change + workout_stats.changes.strength_change,
         data.image_url.as_deref(),
-        data.video_url.as_deref()
+        data.video_url.as_deref(),
+        "public"  // Default visibility for all workouts
     )
     .fetch_one(pool)
     .await?;
