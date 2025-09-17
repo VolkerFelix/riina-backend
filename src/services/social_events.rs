@@ -117,6 +117,46 @@ pub async fn broadcast_comment_deleted(
     Ok(())
 }
 
+/// Broadcast comment reaction added event via Redis
+pub async fn broadcast_comment_reaction_added(
+    redis_client: &web::Data<Arc<redis::Client>>,
+    comment_id: Uuid,
+    user_id: Uuid,
+    username: String,
+    reaction_type: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let event = GameEvent::CommentReactionAdded {
+        comment_id,
+        user_id,
+        username: username.clone(),
+        reaction_type: reaction_type.clone(),
+        timestamp: Utc::now(),
+    };
+
+    broadcast_event(redis_client, &event).await?;
+    tracing::info!("📢 Broadcasted comment reaction added: {} reacted with {} to comment {}", username, reaction_type, comment_id);
+    Ok(())
+}
+
+/// Broadcast comment reaction removed event via Redis
+pub async fn broadcast_comment_reaction_removed(
+    redis_client: &web::Data<Arc<redis::Client>>,
+    comment_id: Uuid,
+    user_id: Uuid,
+    username: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let event = GameEvent::CommentReactionRemoved {
+        comment_id,
+        user_id,
+        username: username.clone(),
+        timestamp: Utc::now(),
+    };
+
+    broadcast_event(redis_client, &event).await?;
+    tracing::info!("📢 Broadcasted comment reaction removed: {} removed reaction from comment {}", username, comment_id);
+    Ok(())
+}
+
 /// Helper function to broadcast any GameEvent to the global channel
 async fn broadcast_event(
     redis_client: &web::Data<Arc<redis::Client>>,

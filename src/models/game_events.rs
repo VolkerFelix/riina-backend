@@ -171,6 +171,23 @@ pub enum GameEvent {
         username: String,
         timestamp: DateTime<Utc>,
     },
+
+    #[serde(rename = "comment_reaction_added")]
+    CommentReactionAdded {
+        comment_id: Uuid,
+        user_id: Uuid,
+        username: String,
+        reaction_type: String,
+        timestamp: DateTime<Utc>,
+    },
+
+    #[serde(rename = "comment_reaction_removed")]
+    CommentReactionRemoved {
+        comment_id: Uuid,
+        user_id: Uuid,
+        username: String,
+        timestamp: DateTime<Utc>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

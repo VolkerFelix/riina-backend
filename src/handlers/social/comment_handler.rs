@@ -185,13 +185,14 @@ pub async fn get_comments(
     pool: web::Data<PgPool>,
     workout_id: web::Path<Uuid>,
     query: web::Query<CommentQueryParams>,
-    _claims: web::ReqData<Claims>,
+    claims: web::ReqData<Claims>,
 ) -> HttpResponse {
     let workout_id = workout_id.into_inner();
     let page = query.page.unwrap_or(1).max(1);
     let per_page = query.per_page.unwrap_or(20).min(100);
+    let current_user_id = Uuid::parse_str(&claims.sub.clone()).ok();
 
-    match get_workout_comments(&pool, workout_id, page, per_page).await {
+    match get_workout_comments(&pool, workout_id, page, per_page, current_user_id).await {
         Ok(response) => HttpResponse::Ok().json(response),
         Err(e) => {
             tracing::error!("Failed to get comments: {}", e);

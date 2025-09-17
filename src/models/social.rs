@@ -6,40 +6,20 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "text")]
 pub enum ReactionType {
-    #[serde(rename = "like")]
-    Like,
-    #[serde(rename = "love")]
-    Love,
     #[serde(rename = "fire")]
     Fire,
-    #[serde(rename = "muscle")]
-    Muscle,
-    #[serde(rename = "star")]
-    Star,
-    #[serde(rename = "rocket")]
-    Rocket,
 }
 
 impl ReactionType {
     pub fn as_str(&self) -> &'static str {
         match self {
-            ReactionType::Like => "like",
-            ReactionType::Love => "love",
             ReactionType::Fire => "fire",
-            ReactionType::Muscle => "muscle",
-            ReactionType::Star => "star",
-            ReactionType::Rocket => "rocket",
         }
     }
 
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
-            "like" => Some(ReactionType::Like),
-            "love" => Some(ReactionType::Love),
             "fire" => Some(ReactionType::Fire),
-            "muscle" => Some(ReactionType::Muscle),
-            "star" => Some(ReactionType::Star),
-            "rocket" => Some(ReactionType::Rocket),
             _ => None,
         }
     }
@@ -75,6 +55,13 @@ pub struct ReactionSummary {
     pub user_reacted: bool,
 }
 
+#[derive(Debug, Serialize)]
+pub struct WorkoutReactionSummary {
+    pub workout_id: Uuid,
+    pub fire_count: i64,
+    pub user_reacted: bool,
+}
+
 #[derive(Debug, FromRow, Serialize, Deserialize)]
 pub struct WorkoutComment {
     pub id: Uuid,
@@ -99,6 +86,8 @@ pub struct WorkoutCommentWithUser {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub replies: Vec<WorkoutCommentWithUser>,
+    pub fire_count: i64,
+    pub user_reacted: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -124,4 +113,35 @@ pub struct CommentListResponse {
 pub struct CommentQueryParams {
     pub page: Option<i32>,
     pub per_page: Option<i32>,
+}
+
+// Comment Reaction Models
+#[derive(Debug, FromRow, Serialize, Deserialize)]
+pub struct CommentReaction {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub comment_id: Uuid,
+    pub reaction_type: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CommentReactionWithUser {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub username: String,
+    pub reaction_type: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CommentReactionSummary {
+    pub comment_id: Uuid,
+    pub fire_count: i64,
+    pub user_reacted: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateCommentReactionRequest {
+    pub reaction_type: String,
 }

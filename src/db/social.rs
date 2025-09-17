@@ -3,7 +3,8 @@ use uuid::Uuid;
 
 use crate::models::social::{
     CommentListResponse, WorkoutComment, WorkoutCommentWithUser, WorkoutReaction,
-    WorkoutReactionWithUser, ReactionSummary,
+    WorkoutReactionWithUser, WorkoutReactionSummary,
+    CommentReaction, CommentReactionWithUser, CommentReactionSummary,
 };
 
 pub async fn create_reaction(
@@ -53,31 +54,27 @@ pub async fn get_workout_reactions(
     pool: &PgPool,
     workout_id: Uuid,
     current_user_id: Option<Uuid>,
-) -> Result<Vec<ReactionSummary>, sqlx::Error> {
-    let summaries = sqlx::query(
+) -> Result<WorkoutReactionSummary, sqlx::Error> {
+    // Get count of fire reactions and whether current user reacted
+    let result = sqlx::query(
         r#"
         SELECT
-            wr.reaction_type,
-            COUNT(wr.id) as count,
-            BOOL_OR(wr.user_id = $2) as user_reacted
+            COALESCE(COUNT(wr.id), 0) as fire_count,
+            COALESCE(BOOL_OR(wr.user_id = $2), false) as user_reacted
         FROM workout_reactions wr
-        WHERE wr.workout_id = $1
-        GROUP BY wr.reaction_type
+        WHERE wr.workout_id = $1 AND wr.reaction_type = 'fire'
         "#,
     )
     .bind(workout_id)
     .bind(current_user_id)
-    .fetch_all(pool)
-    .await?
-    .into_iter()
-    .map(|row| ReactionSummary {
-        reaction_type: row.get("reaction_type"),
-        count: row.get("count"),
-        user_reacted: row.get("user_reacted"),
-    })
-    .collect();
+    .fetch_one(pool)
+    .await?;
 
-    Ok(summaries)
+    Ok(WorkoutReactionSummary {
+        workout_id,
+        fire_count: result.get("fire_count"),
+        user_reacted: result.get("user_reacted"),
+    })
 }
 
 pub async fn get_reaction_users(
@@ -205,6 +202,7 @@ pub async fn get_workout_comments(
     workout_id: Uuid,
     page: i32,
     per_page: i32,
+    current_user_id: Option<Uuid>,
 ) -> Result<CommentListResponse, sqlx::Error> {
     let offset = (page - 1) * per_page;
 
@@ -219,7 +217,7 @@ pub async fn get_workout_comments(
     .fetch_one(pool)
     .await?;
 
-    // Get top-level comments first
+    // Get top-level comments first with reaction data
     let top_level_comments = sqlx::query(
         r#"
         SELECT
@@ -231,10 +229,14 @@ pub async fn get_workout_comments(
             c.content,
             c.is_edited,
             c.created_at,
-            c.updated_at
+            c.updated_at,
+            COALESCE(COUNT(cr.id), 0) as fire_count,
+            COALESCE(BOOL_OR(cr.user_id = $4), false) as user_reacted
         FROM workout_comments c
         INNER JOIN users u ON u.id = c.user_id
+        LEFT JOIN comment_reactions cr ON cr.comment_id = c.id AND cr.reaction_type = 'fire'
         WHERE c.workout_id = $1 AND c.parent_id IS NULL
+        GROUP BY c.id, c.user_id, u.username, c.workout_id, c.parent_id, c.content, c.is_edited, c.created_at, c.updated_at
         ORDER BY c.created_at DESC
         LIMIT $2 OFFSET $3
         "#,
@@ -242,6 +244,7 @@ pub async fn get_workout_comments(
     .bind(workout_id)
     .bind(per_page)
     .bind(offset)
+    .bind(current_user_id)
     .fetch_all(pool)
     .await?;
 
@@ -259,9 +262,11 @@ pub async fn get_workout_comments(
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
             replies: Vec::new(),
+            fire_count: row.get("fire_count"),
+            user_reacted: row.get("user_reacted"),
         };
 
-        // Get replies for this comment
+        // Get replies for this comment with reaction data
         let replies = sqlx::query(
             r#"
             SELECT
@@ -273,14 +278,19 @@ pub async fn get_workout_comments(
                 c.content,
                 c.is_edited,
                 c.created_at,
-                c.updated_at
+                c.updated_at,
+                COALESCE(COUNT(cr.id), 0) as fire_count,
+                COALESCE(BOOL_OR(cr.user_id = $2), false) as user_reacted
             FROM workout_comments c
             INNER JOIN users u ON u.id = c.user_id
+            LEFT JOIN comment_reactions cr ON cr.comment_id = c.id AND cr.reaction_type = 'fire'
             WHERE c.parent_id = $1
+            GROUP BY c.id, c.user_id, u.username, c.workout_id, c.parent_id, c.content, c.is_edited, c.created_at, c.updated_at
             ORDER BY c.created_at ASC
             "#,
         )
         .bind(comment.id)
+        .bind(current_user_id)
         .fetch_all(pool)
         .await?;
 
@@ -296,6 +306,8 @@ pub async fn get_workout_comments(
                 created_at: reply_row.get("created_at"),
                 updated_at: reply_row.get("updated_at"),
                 replies: Vec::new(),
+                fire_count: reply_row.get("fire_count"),
+                user_reacted: reply_row.get("user_reacted"),
             };
             comment.replies.push(reply);
         }
@@ -346,7 +358,137 @@ pub async fn get_comment_by_id(
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
         replies: Vec::new(),
+        fire_count: 0,
+        user_reacted: false,
     });
 
     Ok(comment)
+}
+
+// ============================================================================
+// COMMENT REACTION FUNCTIONS
+// ============================================================================
+
+pub async fn create_comment_reaction(
+    pool: &PgPool,
+    user_id: Uuid,
+    comment_id: Uuid,
+    reaction_type: &str,
+) -> Result<CommentReaction, sqlx::Error> {
+    let reaction = sqlx::query_as::<_, CommentReaction>(
+        r#"
+        INSERT INTO comment_reactions (user_id, comment_id, reaction_type)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (user_id, comment_id)
+        DO UPDATE SET reaction_type = $3, created_at = NOW()
+        RETURNING id, user_id, comment_id, reaction_type, created_at
+        "#,
+    )
+    .bind(user_id)
+    .bind(comment_id)
+    .bind(reaction_type)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(reaction)
+}
+
+pub async fn delete_comment_reaction(
+    pool: &PgPool,
+    user_id: Uuid,
+    comment_id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query(
+        r#"
+        DELETE FROM comment_reactions
+        WHERE user_id = $1 AND comment_id = $2
+        "#,
+    )
+    .bind(user_id)
+    .bind(comment_id)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() > 0)
+}
+
+pub async fn get_comment_reactions(
+    pool: &PgPool,
+    comment_id: Uuid,
+    current_user_id: Option<Uuid>,
+) -> Result<CommentReactionSummary, sqlx::Error> {
+    // Get count of fire reactions and whether current user reacted
+    let result = sqlx::query(
+        r#"
+        SELECT
+            COALESCE(COUNT(cr.id), 0) as fire_count,
+            COALESCE(BOOL_OR(cr.user_id = $2), false) as user_reacted
+        FROM comment_reactions cr
+        WHERE cr.comment_id = $1 AND cr.reaction_type = 'fire'
+        "#,
+    )
+    .bind(comment_id)
+    .bind(current_user_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(CommentReactionSummary {
+        comment_id,
+        fire_count: result.get("fire_count"),
+        user_reacted: result.get("user_reacted"),
+    })
+}
+
+pub async fn get_comment_reaction_users(
+    pool: &PgPool,
+    comment_id: Uuid,
+    reaction_type: Option<&str>,
+) -> Result<Vec<CommentReactionWithUser>, sqlx::Error> {
+    let query = if let Some(reaction_type) = reaction_type {
+        sqlx::query(
+            r#"
+            SELECT
+                cr.id,
+                cr.user_id,
+                u.username,
+                cr.reaction_type,
+                cr.created_at
+            FROM comment_reactions cr
+            INNER JOIN users u ON u.id = cr.user_id
+            WHERE cr.comment_id = $1 AND cr.reaction_type = $2
+            ORDER BY cr.created_at DESC
+            "#,
+        )
+        .bind(comment_id)
+        .bind(reaction_type)
+    } else {
+        sqlx::query(
+            r#"
+            SELECT
+                cr.id,
+                cr.user_id,
+                u.username,
+                cr.reaction_type,
+                cr.created_at
+            FROM comment_reactions cr
+            INNER JOIN users u ON u.id = cr.user_id
+            WHERE cr.comment_id = $1
+            ORDER BY cr.created_at DESC
+            "#,
+        )
+        .bind(comment_id)
+    };
+
+    let rows = query.fetch_all(pool).await?;
+    let reactions = rows
+        .into_iter()
+        .map(|row| CommentReactionWithUser {
+            id: row.get("id"),
+            user_id: row.get("user_id"),
+            username: row.get("username"),
+            reaction_type: row.get("reaction_type"),
+            created_at: row.get("created_at"),
+        })
+        .collect();
+    Ok(reactions)
 }
