@@ -29,6 +29,7 @@ impl WorkoutData {
             WorkoutType::Moderate => generate_moderate_workout_data(workout_start, duration_minutes),
             WorkoutType::Light => generate_light_workout_data(workout_start, duration_minutes),
         };
+        
         let workout_uuid = Uuid::new_v4().to_string();
         let workout_end = workout_start + Duration::minutes(duration_minutes);
         Self {
@@ -42,7 +43,6 @@ impl WorkoutData {
             image_url: None,
             video_url: None,
             approval_token: None,
-
         }
     }
     
@@ -51,6 +51,7 @@ impl WorkoutData {
         Self::new(workout_type, workout_start, duration_minutes)
     }
 }
+
 
 // Helper functions for generating workout data
 fn generate_intense_workout_data(start_time: DateTime<Utc>, duration_minutes: i64) -> (Vec<serde_json::Value>, i32) {

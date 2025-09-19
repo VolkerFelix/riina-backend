@@ -33,17 +33,12 @@ pub struct WorkoutHistoryQuery {
 }
 
 fn calculate_duration_minutes(start: DateTime<Utc>, end: DateTime<Utc>) -> Option<i32> {
-    match (start, end) {
-        (s, e) => {
-            let duration = e.signed_duration_since(s);
-            // Only return positive durations
-            if duration > Duration::zero() {
-                Some((duration.num_seconds() / 60) as i32)
-            } else {
-                None
-            }
-        }
-        _ => None
+    let duration = end.signed_duration_since(start);
+    // Only return positive durations
+    if duration > Duration::zero() {
+        Some((duration.num_seconds() / 60) as i32)
+    } else {
+        None
     }
 }
 
@@ -143,7 +138,7 @@ pub async fn get_workout_history(
                     calories_burned: row.calories_burned,
                     avg_heart_rate,
                     max_heart_rate,
-                    heart_rate_zones: row.heart_rate_zones, // Now directly from workout_data
+                    heart_rate_zones: row.heart_rate_zones,
                     stamina_gained: row.stamina_gained.unwrap_or(0) as i32,
                     strength_gained: row.strength_gained.unwrap_or(0) as i32,
                     image_url: row.image_url,

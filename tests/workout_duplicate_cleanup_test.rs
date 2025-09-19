@@ -7,6 +7,7 @@ use common::utils::{spawn_app, create_test_user_and_login, TestApp};
 use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user};
 
 /// Helper function to create multiple overlapping workouts in a single batch
+
 async fn create_overlapping_workouts_batch(
     test_app: &TestApp,
     user_token: &str,
@@ -23,6 +24,7 @@ async fn create_overlapping_workouts_batch(
         if let Some(cal) = calories {
             workout_data.calories_burned = cal;
         }
+        
         workout_data_vec.push(workout_data);
     }
     
@@ -143,7 +145,7 @@ async fn test_exact_duplicate_workouts_are_detected() {
     let start_time = Utc::now();
     let end_time = start_time + Duration::hours(1);
 
-    create_overlapping_workouts_batch(
+    let _ = create_overlapping_workouts_batch(
         &test_app,
         &user.token,
         vec![
@@ -184,7 +186,7 @@ async fn test_cleanup_keeps_higher_calorie_workout() {
     let start_time = Utc::now();
     let end_time = start_time + Duration::hours(1);
 
-    create_overlapping_workouts_batch(
+    let _ = create_overlapping_workouts_batch(
         &test_app,
         &user.token,
         vec![
@@ -212,6 +214,20 @@ async fn test_cleanup_keeps_higher_calorie_workout() {
     let workouts = history_data["data"]["workouts"].as_array().unwrap();
     assert_eq!(workouts.len(), 1, "Should have 1 workout remaining");
     assert_eq!(workouts[0]["calories_burned"], 500, "Should keep the high calorie workout");
+    
+    // Verify that the remaining workout has proper stats calculated
+    let remaining_workout = &workouts[0];
+    assert!(remaining_workout["stamina_gained"].is_number(), "Remaining workout should have stamina gains");
+    assert!(remaining_workout["strength_gained"].is_number(), "Remaining workout should have strength gains");
+    
+    // Verify the stats are reasonable for a 60-minute moderate workout
+    let stamina_gained = remaining_workout["stamina_gained"].as_i64().unwrap();
+    let strength_gained = remaining_workout["strength_gained"].as_i64().unwrap();
+    let total_points = stamina_gained + strength_gained; // Calculate total points
+    
+    assert!(stamina_gained >= 0, "Stamina gains should be non-negative");
+    assert!(strength_gained >= 0, "Strength gains should be non-negative");
+    assert!(total_points > 0, "Total points should be positive for a 60-minute workout");
 }
 
 #[tokio::test]
@@ -223,7 +239,7 @@ async fn test_cleanup_handles_null_calories() {
     let start_time = Utc::now();
     let end_time = start_time + Duration::hours(1);
 
-    create_overlapping_workouts_batch(
+    let _ = create_overlapping_workouts_batch(
         &test_app,
         &user.token,
         vec![
@@ -262,7 +278,7 @@ async fn test_cleanup_with_multiple_duplicates() {
     let start_time = Utc::now();
     let end_time = start_time + Duration::hours(1);
 
-    create_overlapping_workouts_batch(
+    let _ = create_overlapping_workouts_batch(
         &test_app,
         &user.token,
         vec![
@@ -304,7 +320,7 @@ async fn test_cleanup_keeps_older_when_calories_tied() {
     let end_time = start_time + Duration::hours(1);
 
     // Create two workouts with same times and same calories
-    create_overlapping_workouts_batch(
+    let _ = create_overlapping_workouts_batch(
         &test_app,
         &user.token,
         vec![
@@ -385,7 +401,7 @@ async fn test_multiple_users_automatic_cleanup_isolated() {
     let start_time = Utc::now();
     let end_time = start_time + Duration::hours(1);
 
-    create_overlapping_workouts_batch(
+    let _ = create_overlapping_workouts_batch(
         &test_app,
         &user1.token,
         vec![
@@ -394,7 +410,7 @@ async fn test_multiple_users_automatic_cleanup_isolated() {
         ],
     ).await.expect("Failed to create user1 overlapping workouts");
 
-    create_overlapping_workouts_batch(
+    let _ = create_overlapping_workouts_batch(
         &test_app,
         &user2.token,
         vec![
@@ -441,4 +457,112 @@ async fn test_multiple_users_automatic_cleanup_isolated() {
     let user2_workouts = user2_history_data["data"]["workouts"].as_array().unwrap();
     assert_eq!(user2_workouts.len(), 1, "User2 should have 1 workout after automatic cleanup");
     assert_eq!(user2_workouts[0]["calories_burned"], 350, "User2 should keep the higher calorie workout");
+}
+
+#[tokio::test]
+async fn test_duplicate_cleanup_preserves_stats_for_remaining_workout() {
+    let test_app = spawn_app().await;
+    let user = create_test_user_and_login(&test_app.address).await;
+
+    // Create two overlapping workouts with different calories
+    let start_time = Utc::now();
+    let end_time = start_time + Duration::hours(1);
+
+    // First, upload a baseline workout at a different time to get the expected stats
+    let baseline_start = start_time - Duration::hours(2); // 2 hours earlier
+    let baseline_end = baseline_start + Duration::hours(1);
+    
+    let mut baseline_workout = WorkoutData::new(WorkoutType::Moderate, baseline_start, 60);
+    baseline_workout.workout_end = baseline_end;
+    baseline_workout.calories_burned = 500; // Same calories as the workout that should remain
+    
+    let client = reqwest::Client::new();
+    let _response = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut baseline_workout).await
+        .expect("Failed to upload baseline workout");
+    
+    // Get the actual stats from the backend for this baseline workout
+    let history_response = client
+        .get(&format!("{}/health/history", &test_app.address))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Failed to execute workout history request");
+    
+    let history_data: serde_json::Value = history_response
+        .json()
+        .await
+        .expect("Failed to parse workout history response");
+    
+    let workouts = history_data["data"]["workouts"].as_array().unwrap();
+    assert_eq!(workouts.len(), 1, "Should have 1 workout after baseline upload");
+    
+    let baseline_workout_data = &workouts[0];
+    let baseline_stamina = baseline_workout_data["stamina_gained"].as_i64().unwrap();
+    let baseline_strength = baseline_workout_data["strength_gained"].as_i64().unwrap();
+    let baseline_total = baseline_stamina + baseline_strength;
+    
+    println!("Baseline stats: stamina={}, strength={}, total={}", baseline_stamina, baseline_strength, baseline_total);
+    
+    // Now create overlapping workouts to test duplicate cleanup
+    let _ = create_overlapping_workouts_batch(
+        &test_app,
+        &user.token,
+        vec![
+            (start_time, end_time, Some(200)), // Lower calorie - should be removed
+            (start_time, end_time, Some(500)), // Higher calorie - should remain
+        ],
+    ).await.expect("Failed to create overlapping workouts");
+
+    // Verify that only one workout remains and it has the correct stats
+    let history_response = client
+        .get(&format!("{}/health/history", &test_app.address))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Failed to execute workout history request");
+
+    assert!(history_response.status().is_success());
+
+    let history_data: serde_json::Value = history_response
+        .json()
+        .await
+        .expect("Failed to parse workout history response");
+
+    let workouts = history_data["data"]["workouts"].as_array().unwrap();
+
+    // Should have 2 workouts: the baseline workout and the remaining overlapping workout
+    assert_eq!(workouts.len(), 2, "Should have 2 workouts: baseline + remaining overlapping workout");
+
+    // Find the workout with 500 calories (the one that should have remained from the overlapping pair)
+    // We need to find the one that's NOT the baseline workout (which was 2 hours earlier)
+    let remaining_workout = workouts.iter()
+        .find(|w| {
+            w["calories_burned"] == 500 && 
+            w["workout_start"] != baseline_start.to_rfc3339()
+        })
+        .expect("Should find the remaining 500-calorie workout");
+
+    // Verify that strength and stamina gains are applied to the remaining workout
+    assert!(remaining_workout["stamina_gained"].is_number(), "Remaining workout should have stamina gains");
+    assert!(remaining_workout["strength_gained"].is_number(), "Remaining workout should have strength gains");
+    
+    // Get the actual stats from the remaining workout
+    let final_stamina = remaining_workout["stamina_gained"].as_i64().unwrap();
+    let final_strength = remaining_workout["strength_gained"].as_i64().unwrap();
+    let final_total = final_stamina + final_strength;
+    
+    println!("Final stats: stamina={}, strength={}, total={}", final_stamina, final_strength, final_total);
+    
+    // Verify that the stats match the baseline (same workout type, same calories, same duration)
+    assert_eq!(final_stamina, baseline_stamina, 
+        "Stamina gains should match baseline. Expected: {}, Got: {}", baseline_stamina, final_stamina);
+    assert_eq!(final_strength, baseline_strength, 
+        "Strength gains should match baseline. Expected: {}, Got: {}", baseline_strength, final_strength);
+    assert_eq!(final_total, baseline_total, 
+        "Total points should match baseline. Expected: {}, Got: {}", baseline_total, final_total);
+    
+    // Verify the gains are reasonable
+    assert!(final_stamina >= 0, "Stamina gains should be non-negative");
+    assert!(final_strength >= 0, "Strength gains should be non-negative");
+    assert!(final_total > 0, "Total points should be positive for a 60-minute workout");
 }
