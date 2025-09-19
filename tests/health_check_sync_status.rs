@@ -57,16 +57,19 @@ async fn test_check_workout_sync_status() {
                 "id": workout_uuid,
                 "start": workout_data.workout_start,
                 "end": workout_data.workout_end,
+                "calories": workout_data.calories_burned
             },
             {
                 "id": "non-existent-uuid-1",
                 "start": "2024-01-01T12:00:00Z",
-                "end": "2024-01-01T13:00:00Z"
+                "end": "2024-01-01T13:00:00Z",
+                "calories": 100
             },
             {
                 "id": "non-existent-uuid-2",
                 "start": "2024-01-01T14:00:00Z",
-                "end": "2024-01-01T15:00:00Z"
+                "end": "2024-01-01T15:00:00Z",
+                "calories": 100
             }
         ]
     });

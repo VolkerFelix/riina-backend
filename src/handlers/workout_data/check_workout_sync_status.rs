@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
+use std::collections::HashMap;
 
 use crate::middleware::auth::Claims;
 use crate::models::common::ApiResponse;
@@ -10,16 +11,17 @@ use crate::db::workout_data::check_workout_exists_by_time;
 use crate::utils::workout_approval::WorkoutApprovalToken;
 use crate::config::jwt::JwtSettings;
 
-#[derive(Debug, Deserialize)]
-pub struct WorkoutTimeRange {
+#[derive(Debug, Deserialize, Clone)]
+pub struct WorkoutSyncRequest {
     pub start: DateTime<Utc>,
     pub end: DateTime<Utc>,
+    pub calories: i32,
     pub id: String,  // Keep original ID for frontend reference
 }
 
 #[derive(Debug, Deserialize)]
 pub struct CheckSyncStatusRequest {
-    pub workouts: Vec<WorkoutTimeRange>,
+    pub workouts: Vec<WorkoutSyncRequest>,
 }
 
 #[derive(Debug, Serialize)]
@@ -31,7 +33,7 @@ pub struct WorkoutApproval {
 
 #[derive(Debug, Serialize)]
 pub struct SyncStatusResponse {
-    pub unsynced_workouts: Vec<String>,  // IDs of workouts to be synced (for backwards compatibility)
+    pub unsynced_workouts: Vec<String>,
     pub approved_workouts: Vec<WorkoutApproval>,  // New field with approval tokens
 }
 
@@ -69,8 +71,10 @@ pub async fn check_workout_sync_status(
     let mut unsynced_workouts = Vec::new();
     let mut approved_workouts = Vec::new();
 
+    let unique_workouts = remove_duplicates(request.workouts.clone());
+
     // Check each workout using the time-based duplicate detection function
-    for workout in &request.workouts {
+    for workout in &unique_workouts {
         match check_workout_exists_by_time(pool.get_ref(), user_id, &workout.start, &workout.end).await {
             Ok(exists) => {
                 if exists {
@@ -146,4 +150,20 @@ pub async fn check_workout_sync_status(
         "Sync status retrieved successfully",
         response,
     ))
+}
+
+fn remove_duplicates(workouts: Vec<WorkoutSyncRequest>) -> Vec<WorkoutSyncRequest> {
+    let mut unique_workouts: HashMap<(DateTime<Utc>, DateTime<Utc>), WorkoutSyncRequest> = HashMap::new();
+
+    for workout in workouts {
+        let key = (workout.start, workout.end);
+        unique_workouts.entry(key)
+            .and_modify(|existing| {
+                if workout.calories > existing.calories {
+                    *existing = workout.clone();
+                }
+            })
+            .or_insert(workout);
+    }
+    unique_workouts.into_values().collect()
 }
