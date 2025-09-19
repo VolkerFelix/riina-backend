@@ -14,7 +14,7 @@ pub struct WorkoutData {
     pub workout_uuid: String,
     pub workout_start: DateTime<Utc>,
     pub workout_end: DateTime<Utc>,
-    calories_burned: i32,
+    pub calories_burned: i32,
     heart_rate: Vec<serde_json::Value>,
     pub device_id: String,
     timestamp: DateTime<Utc>,

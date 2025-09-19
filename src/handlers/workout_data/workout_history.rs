@@ -11,8 +11,8 @@ use crate::{middleware::auth::Claims, models::workout_data::HeartRateData};
 pub struct WorkoutHistoryItem {
     pub id: Uuid,
     pub workout_date: DateTime<Utc>,
-    pub workout_start: Option<DateTime<Utc>>,
-    pub workout_end: Option<DateTime<Utc>>,
+    pub workout_start: DateTime<Utc>,
+    pub workout_end: DateTime<Utc>,
     pub duration_minutes: Option<i32>,
     pub calories_burned: Option<i32>,
     pub avg_heart_rate: Option<i32>,
@@ -32,9 +32,9 @@ pub struct WorkoutHistoryQuery {
     pub offset: Option<i32>,
 }
 
-fn calculate_duration_minutes(start: Option<DateTime<Utc>>, end: Option<DateTime<Utc>>) -> Option<i32> {
+fn calculate_duration_minutes(start: DateTime<Utc>, end: DateTime<Utc>) -> Option<i32> {
     match (start, end) {
-        (Some(s), Some(e)) => {
+        (s, e) => {
             let duration = e.signed_duration_since(s);
             // Only return positive durations
             if duration > Duration::zero() {

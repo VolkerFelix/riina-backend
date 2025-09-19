@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use crate::models::workout_data::HeartRateData;
 use crate::models::common::ApiResponse;
+use crate::db::workout_duplicate_cleanup::{cleanup_duplicate_workouts_for_user, cleanup_duplicate_workouts_all_users};
 // LiveGameService removed during table consolidation
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -459,4 +460,48 @@ async fn recalculate_live_game_scores_after_workout_deletion(
     }
 
     Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CleanupDuplicatesRequest {
+    pub user_id: Option<Uuid>,
+}
+
+pub async fn cleanup_duplicate_workouts(
+    pool: web::Data<PgPool>,
+    body: web::Json<CleanupDuplicatesRequest>,
+) -> Result<HttpResponse, actix_web::Error> {
+    tracing::info!("Admin requested duplicate workout cleanup");
+
+    let removed_count = if let Some(user_id) = body.user_id {
+        // Cleanup for specific user
+        tracing::info!("Cleaning up duplicates for user: {}", user_id);
+        cleanup_duplicate_workouts_for_user(pool.get_ref(), user_id)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to cleanup duplicates for user {}: {}", user_id, e);
+                actix_web::error::ErrorInternalServerError("Failed to cleanup duplicate workouts")
+            })?
+    } else {
+        // Cleanup for all users
+        tracing::info!("Cleaning up duplicates for all users");
+        cleanup_duplicate_workouts_all_users(pool.get_ref())
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to cleanup duplicates for all users: {}", e);
+                actix_web::error::ErrorInternalServerError("Failed to cleanup duplicate workouts")
+            })?
+    };
+
+    tracing::info!("Duplicate cleanup completed: {} workouts removed", removed_count);
+
+    Ok(HttpResponse::Ok().json(ApiResponse {
+        success: true,
+        message: format!("Successfully removed {} duplicate workout(s)", removed_count),
+        data: Some(serde_json::json!({
+            "removed_count": removed_count,
+            "user_id": body.user_id
+        })),
+        error: None,
+    }))
 }
