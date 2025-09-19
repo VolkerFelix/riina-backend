@@ -193,9 +193,6 @@ async fn test_cleanup_keeps_higher_calorie_workout() {
         ],
     ).await.expect("Failed to create overlapping workouts");
 
-    // The backend automatically handles duplicate cleanup during upload
-    // No need to manually call cleanup function
-
     // Check that high calorie workout was kept by querying workout history
     let client = reqwest::Client::new();
     let history_response = client
@@ -234,9 +231,6 @@ async fn test_cleanup_handles_null_calories() {
             (start_time, end_time, Some(300)),
         ],
     ).await.expect("Failed to create overlapping workouts");
-
-    // The backend automatically handles duplicate cleanup during upload
-    // No need to manually call cleanup function
 
     // Check that workout with calories was kept by querying workout history
     let client = reqwest::Client::new();
@@ -318,9 +312,6 @@ async fn test_cleanup_keeps_older_when_calories_tied() {
             (start_time, end_time, Some(300)),
         ],
     ).await.expect("Failed to create overlapping workouts");
-
-    // The backend automatically handles duplicate cleanup during upload
-    // No need to manually call cleanup function
 
     // Check that first (older) workout was kept by querying workout history
     let client = reqwest::Client::new();
@@ -411,9 +402,6 @@ async fn test_multiple_users_automatic_cleanup_isolated() {
             (start_time, end_time, Some(350)),
         ],
     ).await.expect("Failed to create user2 overlapping workouts");
-
-    // The backend automatically handles duplicate cleanup during upload
-    // No need to manually call cleanup function
 
     // Check user1 has 1 workout by querying workout history
     let client = reqwest::Client::new();
