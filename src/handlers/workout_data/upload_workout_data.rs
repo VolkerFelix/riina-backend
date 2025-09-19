@@ -6,6 +6,7 @@ use redis::AsyncCommands;
 use std::sync::Arc;
 use crate::middleware::auth::Claims;
 use crate::db::workout_data::insert_workout_data;
+use crate::db::workout_duplicate_cleanup::cleanup_duplicate_workouts_for_user;
 use crate::models::workout_data::{WorkoutDataSyncRequest, WorkoutUploadResponse, StatChanges, WorkoutStats};
 use crate::models::common::ApiResponse;
 use crate::game::stats_calculator::WorkoutStatsCalculator;
@@ -88,43 +89,124 @@ pub async fn upload_workout_data(
         }
     }
 
-    // 🎲 CALCULATE GAME STATS FROM WORKOUT DATA
-    let workout_stats = match WorkoutStatsCalculator::calculate_stat_changes(&pool, user_id, &data).await {
-        Ok(stats) => stats,
-        Err(e) => {
-            tracing::error!("❌ Error calculating workout stats: {}", e);
-            return HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error("Error calculating workout stats")
-            );
-        }
-    };
-    tracing::info!("📊 Calculated stat changes for {}: +{} stamina, +{} strength",
-        claims.username, workout_stats.changes.stamina_change, workout_stats.changes.strength_change, 
-    );
-
-    let update_result = update_user_stats(user_id, &workout_stats.changes, &pool).await;
-
-    match update_result {
-        Ok(_) => {
-            tracing::info!("✅ Successfully updated user stats for {}", claims.username);
-        }
-        Err(e) => {
-            tracing::error!("❌ Failed to update user stats for {}: {}", claims.username, e);
-            return HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error("Failed to update user stats")
-            );
-        }
-    }
-
-    // Insert workout data into database
-    tracing::info!("💾 Inserting workout data into database for user: {} with workout_uuid: {:?}", 
+    // Insert workout data into database FIRST (with temporary/placeholder stats)
+    tracing::info!("💾 Inserting workout data into database for user: {} with workout_uuid: {:?}",
         claims.username, data.workout_uuid);
-    let insert_result = insert_workout_data(&pool, user_id, &data, &workout_stats).await;
+
+    // Create placeholder stats for initial insertion
+    let placeholder_stats = WorkoutStats {
+        changes: StatChanges::new(),
+        zone_breakdown: None,
+    };
+
+    let insert_result = insert_workout_data(&pool, user_id, &data, &placeholder_stats).await;
     
     match insert_result {
         Ok(sync_id) => {
-            tracing::info!("✅ Workout data inserted successfully with sync_id: {} for user: {}", 
+            tracing::info!("✅ Workout data inserted successfully with sync_id: {} for user: {}",
                 sync_id, claims.username);
+
+            // 🧹 CLEANUP DUPLICATE WORKOUTS (for users with multiple wearables)
+            let mut was_deleted = false;
+            match cleanup_duplicate_workouts_for_user(&pool, user_id).await {
+                Ok(removed_count) => {
+                    if removed_count > 0 {
+                        tracing::info!("🧹 Removed {} duplicate workout(s) for user {}",
+                            removed_count, claims.username);
+
+                        // Check if our just-inserted workout still exists
+                        let still_exists = sqlx::query!(
+                            "SELECT id FROM workout_data WHERE id = $1",
+                            sync_id
+                        )
+                        .fetch_optional(pool.get_ref())
+                        .await
+                        .unwrap_or(None)
+                        .is_some();
+
+                        if !still_exists {
+                            was_deleted = true;
+                            tracing::info!("⚠️ The newly inserted workout was removed as a duplicate (lower calories)");
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("⚠️ Failed to cleanup duplicate workouts for user {}: {}",
+                        claims.username, e);
+                    // Don't fail the request if cleanup fails
+                }
+            }
+
+            // If the workout was deleted as a duplicate, return early
+            if was_deleted {
+                return HttpResponse::Ok().json(
+                    ApiResponse::success(
+                        "Workout was a duplicate with lower calories and was not saved",
+                        serde_json::json!({
+                            "message": "A workout with higher calories already exists for this time period",
+                            "action": "duplicate_removed"
+                        })
+                    )
+                );
+            }
+
+            // 🎲 NOW CALCULATE GAME STATS (only for the surviving workout)
+            let workout_stats = match WorkoutStatsCalculator::calculate_stat_changes(&pool, user_id, &data).await {
+                Ok(stats) => stats,
+                Err(e) => {
+                    tracing::error!("❌ Error calculating workout stats: {}", e);
+                    return HttpResponse::InternalServerError().json(
+                        ApiResponse::<()>::error("Error calculating workout stats")
+                    );
+                }
+            };
+            tracing::info!("📊 Calculated stat changes for {}: +{} stamina, +{} strength",
+                claims.username, workout_stats.changes.stamina_change, workout_stats.changes.strength_change,
+            );
+
+            // Update the workout record with the calculated stats
+            match sqlx::query!(
+                r#"
+                UPDATE workout_data
+                SET stamina_gained = $1,
+                    strength_gained = $2,
+                    total_points_gained = $3,
+                    heart_rate_zones = $4
+                WHERE id = $5
+                "#,
+                workout_stats.changes.stamina_change,
+                workout_stats.changes.strength_change,
+                workout_stats.changes.stamina_change + workout_stats.changes.strength_change,
+                workout_stats.zone_breakdown.as_ref()
+                    .map(|breakdown| serde_json::to_value(breakdown).unwrap_or(serde_json::Value::Null)),
+                sync_id
+            )
+            .execute(pool.get_ref())
+            .await {
+                Ok(_) => {
+                    tracing::debug!("Successfully updated workout stats");
+                }
+                Err(e) => {
+                    tracing::error!("Failed to update workout stats: {}", e);
+                    return HttpResponse::InternalServerError().json(
+                        ApiResponse::<()>::error("Failed to update workout stats")
+                    );
+                }
+            }
+
+            // Update user avatar stats
+            let update_result = update_user_stats(user_id, &workout_stats.changes, &pool).await;
+            match update_result {
+                Ok(_) => {
+                    tracing::info!("✅ Successfully updated user stats for {}", claims.username);
+                }
+                Err(e) => {
+                    tracing::error!("❌ Failed to update user stats for {}: {}", claims.username, e);
+                    return HttpResponse::InternalServerError().json(
+                        ApiResponse::<()>::error("Failed to update user stats")
+                    );
+                }
+            }
 
             // 🏆 CHECK FOR ACTIVE GAMES AND UPDATE SCORES
             match check_and_update_active_games(

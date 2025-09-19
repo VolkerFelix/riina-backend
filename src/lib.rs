@@ -11,7 +11,7 @@ mod handlers;
 pub mod models;
 pub mod utils;
 mod middleware;
-mod db;
+pub mod db;
 pub mod game;
 pub mod league;
 mod workout;

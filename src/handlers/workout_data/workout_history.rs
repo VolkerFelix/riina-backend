@@ -11,8 +11,8 @@ use crate::{middleware::auth::Claims, models::workout_data::HeartRateData};
 pub struct WorkoutHistoryItem {
     pub id: Uuid,
     pub workout_date: DateTime<Utc>,
-    pub workout_start: Option<DateTime<Utc>>,
-    pub workout_end: Option<DateTime<Utc>>,
+    pub workout_start: DateTime<Utc>,
+    pub workout_end: DateTime<Utc>,
     pub duration_minutes: Option<i32>,
     pub calories_burned: Option<i32>,
     pub avg_heart_rate: Option<i32>,
@@ -32,18 +32,13 @@ pub struct WorkoutHistoryQuery {
     pub offset: Option<i32>,
 }
 
-fn calculate_duration_minutes(start: Option<DateTime<Utc>>, end: Option<DateTime<Utc>>) -> Option<i32> {
-    match (start, end) {
-        (Some(s), Some(e)) => {
-            let duration = e.signed_duration_since(s);
-            // Only return positive durations
-            if duration > Duration::zero() {
-                Some((duration.num_seconds() / 60) as i32)
-            } else {
-                None
-            }
-        }
-        _ => None
+fn calculate_duration_minutes(start: DateTime<Utc>, end: DateTime<Utc>) -> Option<i32> {
+    let duration = end.signed_duration_since(start);
+    // Only return positive durations
+    if duration > Duration::zero() {
+        Some((duration.num_seconds() / 60) as i32)
+    } else {
+        None
     }
 }
 
@@ -143,7 +138,7 @@ pub async fn get_workout_history(
                     calories_burned: row.calories_burned,
                     avg_heart_rate,
                     max_heart_rate,
-                    heart_rate_zones: row.heart_rate_zones, // Now directly from workout_data
+                    heart_rate_zones: row.heart_rate_zones,
                     stamina_gained: row.stamina_gained.unwrap_or(0) as i32,
                     strength_gained: row.strength_gained.unwrap_or(0) as i32,
                     image_url: row.image_url,

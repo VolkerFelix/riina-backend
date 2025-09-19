@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT DISTINCT user_id\n        FROM workout_data\n        WHERE workout_start IS NOT NULL\n            AND workout_end IS NOT NULL\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "7f595672e92db38f1b9704b40021bd6580dffd9b53c84323ad096dde1752bd5c"
+}
