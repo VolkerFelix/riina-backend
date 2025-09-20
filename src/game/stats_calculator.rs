@@ -31,17 +31,24 @@ impl WorkoutStatsCalculator {
             HeartRateZones::new(hrr, resting_heart_rate, max_heart_rate)
         };
         
+        // Check if heart rate data exists and is not empty
         if let Some(ref heart_rate_data) = workout_data.heart_rate {
+            if heart_rate_data.is_empty() {
+                tracing::warn!("⚠️ Heart rate data array is empty - returning zero stats");
+                let mut workout_stats = WorkoutStats::new();
+                workout_stats.changes.stamina_change = 0;
+                workout_stats.changes.strength_change = 0;
+                return Ok(workout_stats);
+            }
+
             tracing::info!("📊 Processing {} heart rate data points", heart_rate_data.len());
             let avg_hr: i32 = heart_rate_data.iter().map(|hr| hr.heart_rate).sum::<i32>() / heart_rate_data.len() as i32;
-            tracing::info!("💗 Heart rate range: avg={:.1}, min={:.1}, max={:.1}", 
+            tracing::info!("💗 Heart rate range: avg={:.1}, min={:.1}, max={:.1}",
                 avg_hr,
                 heart_rate_data.iter().map(|hr| hr.heart_rate).fold(i32::MAX, i32::min),
                 heart_rate_data.iter().map(|hr| hr.heart_rate).fold(0, i32::max)
             );
-        }
-        
-        if let Some(heart_rate_data) = &workout_data.heart_rate {
+
             if let Some(workout_analysis) = WorkoutAnalyzer::new(heart_rate_data, &heart_rate_zones) {
                 tracing::info!("✅ WorkoutAnalyzer created successfully");
                 for (zone, minutes) in &workout_analysis.zone_durations {
@@ -49,7 +56,7 @@ impl WorkoutStatsCalculator {
                 }
                 let workout_stats = Self::calc_points_and_breakdown_from_workout_analysis(&workout_analysis, &heart_rate_zones);
 
-                tracing::info!("🎯 Final stat changes: stamina +{}, strength +{}", 
+                tracing::info!("🎯 Final stat changes: stamina +{}, strength +{}",
                     workout_stats.changes.stamina_change, workout_stats.changes.strength_change);
                 return Ok(workout_stats);
             } else {
@@ -63,10 +70,10 @@ impl WorkoutStatsCalculator {
         let mut workout_stats = WorkoutStats::new();
         workout_stats.changes.stamina_change = 0;
         workout_stats.changes.strength_change = 0;
-        
-        tracing::info!("🎯 Final stat changes: stamina +{}, strength +{}", 
+
+        tracing::info!("🎯 Final stat changes: stamina +{}, strength +{}",
             workout_stats.changes.stamina_change, workout_stats.changes.strength_change);
-            
+
         Ok(workout_stats)
     }
 
