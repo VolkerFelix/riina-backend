@@ -2,7 +2,7 @@ use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 
 use crate::models::game::*;
-use crate::models::workout_data::{WorkoutDataSyncRequest, HeartRateZones, ZoneName, ZoneBreakdown, WorkoutStats};
+use crate::models::workout_data::{WorkoutDataSyncRequest, HeartRateZones, ZoneName, ZoneBreakdown, WorkoutStats, UserProfile, Gender};
 use crate::game::helper::{get_user_profile, calc_max_heart_rate};
 use crate::workout::workout_analyzer::WorkoutAnalyzer;
 
@@ -11,7 +11,20 @@ pub struct WorkoutStatsCalculator;
 impl WorkoutStatsCalculator {
     /// Calculate base stats from HRR zones based on heart rate
     pub async fn calculate_stat_changes(pool: &Pool<Postgres>, user_id: Uuid, workout_data: &WorkoutDataSyncRequest) -> Result<WorkoutStats, Box<dyn std::error::Error>> {
-        let user_profile = get_user_profile(pool, user_id).await.unwrap();
+        let user_profile = match get_user_profile(pool, user_id).await {
+            Ok(profile) => profile,
+            Err(e) => {
+                tracing::warn!("⚠️ Could not get user profile for {}: {}. Using default values.", user_id, e);
+                // Return default user profile if not found
+                UserProfile {
+                    age: 30,
+                    gender: Gender::Other,
+                    resting_heart_rate: Some(60),
+                    max_heart_rate: None,
+                    stored_heart_rate_zones: None,
+                }
+            }
+        };
         
         // Use stored heart rate zones if available, otherwise calculate them
         let heart_rate_zones = if let Some(stored_zones) = user_profile.stored_heart_rate_zones {
@@ -31,17 +44,24 @@ impl WorkoutStatsCalculator {
             HeartRateZones::new(hrr, resting_heart_rate, max_heart_rate)
         };
         
+        // Check if heart rate data exists and is not empty
         if let Some(ref heart_rate_data) = workout_data.heart_rate {
+            if heart_rate_data.is_empty() {
+                tracing::warn!("⚠️ Heart rate data array is empty - returning zero stats");
+                let mut workout_stats = WorkoutStats::new();
+                workout_stats.changes.stamina_change = 0;
+                workout_stats.changes.strength_change = 0;
+                return Ok(workout_stats);
+            }
+
             tracing::info!("📊 Processing {} heart rate data points", heart_rate_data.len());
             let avg_hr: i32 = heart_rate_data.iter().map(|hr| hr.heart_rate).sum::<i32>() / heart_rate_data.len() as i32;
-            tracing::info!("💗 Heart rate range: avg={:.1}, min={:.1}, max={:.1}", 
+            tracing::info!("💗 Heart rate range: avg={:.1}, min={:.1}, max={:.1}",
                 avg_hr,
                 heart_rate_data.iter().map(|hr| hr.heart_rate).fold(i32::MAX, i32::min),
                 heart_rate_data.iter().map(|hr| hr.heart_rate).fold(0, i32::max)
             );
-        }
-        
-        if let Some(heart_rate_data) = &workout_data.heart_rate {
+
             if let Some(workout_analysis) = WorkoutAnalyzer::new(heart_rate_data, &heart_rate_zones) {
                 tracing::info!("✅ WorkoutAnalyzer created successfully");
                 for (zone, minutes) in &workout_analysis.zone_durations {
@@ -49,7 +69,7 @@ impl WorkoutStatsCalculator {
                 }
                 let workout_stats = Self::calc_points_and_breakdown_from_workout_analysis(&workout_analysis, &heart_rate_zones);
 
-                tracing::info!("🎯 Final stat changes: stamina +{}, strength +{}", 
+                tracing::info!("🎯 Final stat changes: stamina +{}, strength +{}",
                     workout_stats.changes.stamina_change, workout_stats.changes.strength_change);
                 return Ok(workout_stats);
             } else {
@@ -63,10 +83,10 @@ impl WorkoutStatsCalculator {
         let mut workout_stats = WorkoutStats::new();
         workout_stats.changes.stamina_change = 0;
         workout_stats.changes.strength_change = 0;
-        
-        tracing::info!("🎯 Final stat changes: stamina +{}, strength +{}", 
+
+        tracing::info!("🎯 Final stat changes: stamina +{}, strength +{}",
             workout_stats.changes.stamina_change, workout_stats.changes.strength_change);
-            
+
         Ok(workout_stats)
     }
 
