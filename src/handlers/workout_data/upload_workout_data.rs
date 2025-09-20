@@ -6,7 +6,7 @@ use redis::AsyncCommands;
 use std::sync::Arc;
 use crate::middleware::auth::Claims;
 use crate::db::workout_data::insert_workout_data;
-use crate::models::workout_data::{WorkoutDataSyncRequest, WorkoutUploadResponse, StatChanges, WorkoutStats};
+use crate::models::workout_data::{WorkoutDataUploadRequest, WorkoutUploadResponse, StatChanges, WorkoutStats};
 use crate::models::common::ApiResponse;
 use crate::game::stats_calculator::WorkoutStatsCalculator;
 use crate::models::league::{LiveGameScoreUpdate, LeagueGame};
@@ -24,7 +24,7 @@ use crate::config::jwt::JwtSettings;
     )
 )]
 pub async fn upload_workout_data(
-    data: web::Json<WorkoutDataSyncRequest>,
+    data: web::Json<WorkoutDataUploadRequest>,
     pool: web::Data<sqlx::PgPool>,
     redis: Option<web::Data<Arc<redis::Client>>>,
     claims: web::ReqData<Claims>,

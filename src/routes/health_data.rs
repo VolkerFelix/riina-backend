@@ -2,14 +2,14 @@ use actix_web::{post, get, web, HttpResponse};
 use crate::handlers::workout_data::upload_workout_data::upload_workout_data;
 use crate::handlers::workout_data::media_upload::{request_upload_signed_url, confirm_upload, get_download_signed_url, UploadUrlRequest, ConfirmUploadRequest};
 use crate::middleware::auth::Claims;
-use crate::models::workout_data::WorkoutDataSyncRequest;
+use crate::models::workout_data::WorkoutDataUploadRequest;
 use crate::services::MinIOService;
 use crate::config::jwt::JwtSettings;
 use std::sync::Arc;
 
 #[post("/upload_health")]
 async fn upload_health(
-    data: web::Json<WorkoutDataSyncRequest>,
+    data: web::Json<WorkoutDataUploadRequest>,
     pool: web::Data<sqlx::PgPool>,
     redis: Option<web::Data<Arc<redis::Client>>>,
     claims: web::ReqData<Claims>,
