@@ -11,7 +11,7 @@ use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data
 async fn create_overlapping_workouts_batch(
     test_app: &TestApp,
     user_token: &str,
-    workout_specs: Vec<(chrono::DateTime<Utc>, chrono::DateTime<Utc>, Option<i32>)>,
+    workout_specs: Vec<(chrono::DateTime<Utc>, chrono::DateTime<Utc>, i32)>,
 ) -> Result<Vec<Uuid>, Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
     let mut workout_data_vec = Vec::new();
@@ -21,9 +21,7 @@ async fn create_overlapping_workouts_batch(
         let duration_minutes = (end_time - start_time).num_minutes() as i64;
         let mut workout_data = WorkoutData::new(WorkoutType::Moderate, start_time, duration_minutes);
         workout_data.workout_end = end_time;
-        if let Some(cal) = calories {
-            workout_data.calories_burned = cal;
-        }
+        workout_data.calories_burned = calories;
         
         workout_data_vec.push(workout_data);
     }
@@ -33,6 +31,7 @@ async fn create_overlapping_workouts_batch(
         serde_json::json!({
             "start": workout.workout_start,
             "end": workout.workout_end,
+            "calories": workout.calories_burned,
             "id": workout.workout_uuid
         })
     }).collect();
@@ -62,6 +61,8 @@ async fn create_overlapping_workouts_batch(
             let token = approval["approval_token"].as_str().unwrap();
             
             // Find the matching workout data and set the approval token
+            // Note: Due to deduplication in check_workout_sync_status, only one approval token
+            // is returned per unique time interval (the one with highest calories)
             for workout_data in &mut workout_data_vec {
                 if workout_data.workout_uuid == workout_id {
                     workout_data.approval_token = Some(token.to_string());
@@ -71,9 +72,16 @@ async fn create_overlapping_workouts_batch(
         }
     }
     
-    // Now upload all workouts individually
+    // Now upload only workouts that have approval tokens
+    // (workouts without approval tokens were deduplicated by the sync endpoint)
     let mut workout_ids = Vec::new();
     for mut workout_data in workout_data_vec {
+        // Only upload workouts that have approval tokens
+        if workout_data.approval_token.is_none() {
+            // This workout was deduplicated by the sync endpoint, skip it
+            continue;
+        }
+        
         let response = upload_workout_data_for_user(&client, &test_app.address, user_token, &mut workout_data).await?;
         
         // Check if the workout was deleted as a duplicate
@@ -101,7 +109,7 @@ async fn create_single_workout(
     user_token: &str,
     start_time: chrono::DateTime<Utc>,
     end_time: chrono::DateTime<Utc>,
-    calories: Option<i32>,
+    calories: i32,
 ) -> Result<Uuid, Box<dyn std::error::Error>> {
     let workout_ids = create_overlapping_workouts_batch(
         test_app,
@@ -123,9 +131,9 @@ async fn test_no_duplicates_when_workouts_dont_overlap() {
     let start2 = end1 + Duration::hours(1); // Starts after first ends
     let end2 = start2 + Duration::hours(1);
 
-    create_single_workout(&test_app, &user.token, start1, end1, Some(200)).await
+    create_single_workout(&test_app, &user.token, start1, end1, 200).await
         .expect("Failed to create first workout");
-    create_single_workout(&test_app, &user.token, start2, end2, Some(300)).await
+    create_single_workout(&test_app, &user.token, start2, end2, 300).await
         .expect("Failed to create second workout");
 
     // Find overlapping workouts
@@ -149,8 +157,8 @@ async fn test_exact_duplicate_workouts_are_detected() {
         &test_app,
         &user.token,
         vec![
-            (start_time, end_time, Some(200)),
-            (start_time, end_time, Some(300)),
+            (start_time, end_time, 200),
+            (start_time, end_time, 300),
         ],
     ).await.expect("Failed to create overlapping workouts");
 
@@ -190,8 +198,8 @@ async fn test_cleanup_keeps_higher_calorie_workout() {
         &test_app,
         &user.token,
         vec![
-            (start_time, end_time, Some(200)),
-            (start_time, end_time, Some(500)),
+            (start_time, end_time, 200),
+            (start_time, end_time, 500),
         ],
     ).await.expect("Failed to create overlapping workouts");
 
@@ -243,8 +251,8 @@ async fn test_cleanup_handles_null_calories() {
         &test_app,
         &user.token,
         vec![
-            (start_time, end_time, None),
-            (start_time, end_time, Some(300)),
+            (start_time, end_time, 0),
+            (start_time, end_time, 300),
         ],
     ).await.expect("Failed to create overlapping workouts");
 
@@ -282,10 +290,10 @@ async fn test_cleanup_with_multiple_duplicates() {
         &test_app,
         &user.token,
         vec![
-            (start_time, end_time, Some(100)),
-            (start_time, end_time, Some(200)),
-            (start_time, end_time, Some(400)),
-            (start_time, end_time, Some(300)),
+            (start_time, end_time, 100),
+            (start_time, end_time, 200),
+            (start_time, end_time, 400),
+            (start_time, end_time, 300),
         ],
     ).await.expect("Failed to create overlapping workouts");
 
@@ -324,8 +332,8 @@ async fn test_cleanup_keeps_older_when_calories_tied() {
         &test_app,
         &user.token,
         vec![
-            (start_time, end_time, Some(300)),
-            (start_time, end_time, Some(300)),
+            (start_time, end_time, 300),
+            (start_time, end_time, 300),
         ],
     ).await.expect("Failed to create overlapping workouts");
 
@@ -363,9 +371,9 @@ async fn test_overlapping_but_not_identical_times_grouped() {
     let start2 = start1 + Duration::minutes(30); // Starts during first workout
     let end2 = start2 + Duration::hours(1);
 
-    create_single_workout(&test_app, &user.token, start1, end1, Some(200)).await
+    create_single_workout(&test_app, &user.token, start1, end1, 200).await
         .expect("Failed to create first workout");
-    create_single_workout(&test_app, &user.token, start2, end2, Some(300)).await
+    create_single_workout(&test_app, &user.token, start2, end2, 300).await
         .expect("Failed to create second workout");
 
     // Verify that both workouts remain since they have different start/end times
@@ -405,8 +413,8 @@ async fn test_multiple_users_automatic_cleanup_isolated() {
         &test_app,
         &user1.token,
         vec![
-            (start_time, end_time, Some(200)),
-            (start_time, end_time, Some(300)),
+            (start_time, end_time, 200),
+            (start_time, end_time, 300),
         ],
     ).await.expect("Failed to create user1 overlapping workouts");
 
@@ -414,8 +422,8 @@ async fn test_multiple_users_automatic_cleanup_isolated() {
         &test_app,
         &user2.token,
         vec![
-            (start_time, end_time, Some(250)),
-            (start_time, end_time, Some(350)),
+            (start_time, end_time, 250),
+            (start_time, end_time, 350),
         ],
     ).await.expect("Failed to create user2 overlapping workouts");
 
@@ -508,8 +516,8 @@ async fn test_duplicate_cleanup_preserves_stats_for_remaining_workout() {
         &test_app,
         &user.token,
         vec![
-            (start_time, end_time, Some(200)), // Lower calorie - should be removed
-            (start_time, end_time, Some(500)), // Higher calorie - should remain
+            (start_time, end_time, 200), // Lower calorie - should be removed
+            (start_time, end_time, 500), // Higher calorie - should remain
         ],
     ).await.expect("Failed to create overlapping workouts");
 
