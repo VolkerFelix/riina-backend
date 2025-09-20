@@ -1,5 +1,5 @@
 use riina_backend::game::stats_calculator::WorkoutStatsCalculator;
-use riina_backend::models::workout_data::{HeartRateData, WorkoutDataSyncRequest};
+use riina_backend::models::workout_data::{HeartRateData, WorkoutDataUploadRequest};
 use chrono::{Duration, Utc};
 use uuid::Uuid;
 
@@ -53,14 +53,15 @@ async fn test_zone_1_active_recovery() {
         });
     }
     
-    let workout_data = WorkoutDataSyncRequest {
+    let workout_data = WorkoutDataUploadRequest {
         workout_uuid: Uuid::new_v4().to_string(),
         device_id: "test".to_string(),
         timestamp: now,
         workout_start: workout_start,
         workout_end: workout_end,
         heart_rate: Some(heart_rate_data),
-        calories_burned: Some(150),
+        calories_burned: 150,
+        activity_name: None,
         image_url: None,
         video_url: None,
         approval_token: None,
@@ -123,14 +124,15 @@ async fn test_zone_2_aerobic_base() {
         });
     }
 
-    let workout_data = WorkoutDataSyncRequest {
+    let workout_data = WorkoutDataUploadRequest {
         workout_uuid: Uuid::new_v4().to_string(),
         device_id: "test".to_string(),
         timestamp: now,
         workout_start: workout_start,
         workout_end: workout_end,
         heart_rate: Some(heart_rate_data),
-        calories_burned: Some(225),
+        calories_burned: 225,
+        activity_name: None,
         image_url: None,
         video_url: None,
         approval_token: None,
@@ -193,14 +195,15 @@ async fn test_zone_4_lactate_threshold() {
         });
     }
     
-    let workout_data = WorkoutDataSyncRequest {
+    let workout_data = WorkoutDataUploadRequest {
         workout_uuid: Uuid::new_v4().to_string(),
         device_id: "test".to_string(),
         timestamp: now,
         workout_start: workout_start,
         workout_end: workout_end,
         heart_rate: Some(heart_rate_data),
-        calories_burned: Some(300),
+        calories_burned: 300,
+        activity_name: None,
         image_url: None,
         video_url: None,
         approval_token: None,
@@ -263,14 +266,15 @@ async fn test_zone_5_neuromuscular_power() {
         });
     }
     
-    let workout_data = WorkoutDataSyncRequest {
+    let workout_data = WorkoutDataUploadRequest {
         workout_uuid: Uuid::new_v4().to_string(),
         device_id: "test".to_string(),
         timestamp: now,
         workout_start: workout_start,
         workout_end: workout_end,
         heart_rate: Some(heart_rate_data),
-        calories_burned: Some(400),
+        calories_burned: 400,
+        activity_name: None,
         image_url: None,
         video_url: None,
         approval_token: None,
@@ -322,14 +326,15 @@ async fn test_no_heart_rate_no_gains() {
     let workout_start = now - Duration::minutes(30);
     let workout_end = now;
     
-    let workout_data = WorkoutDataSyncRequest {
+    let workout_data = WorkoutDataUploadRequest {
         workout_uuid: Uuid::new_v4().to_string(),
         device_id: "test".to_string(),
         timestamp: now,
         workout_start: workout_start,
         workout_end: workout_end,
         heart_rate: None,
-        calories_burned: Some(200),
+        calories_burned: 200,
+        activity_name: None,
         image_url: None,
         video_url: None,
         approval_token: None,
