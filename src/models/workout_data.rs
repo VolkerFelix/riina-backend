@@ -14,6 +14,7 @@ pub struct WorkoutData {
     pub heart_rate: Option<Vec<HeartRateData>>,
     pub calories_burned: Option<i32>,
     pub created_at: DateTime<Utc>,
+    pub activity_name: Option<String>,
     pub image_url: Option<String>,
     pub video_url: Option<String>,
 }
