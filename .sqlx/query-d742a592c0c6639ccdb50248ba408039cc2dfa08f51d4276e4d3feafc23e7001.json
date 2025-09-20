@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            wd.id,\n            wd.user_id,\n            u.username,\n            COALESCE(wd.workout_start, wd.created_at) as workout_date,\n            wd.workout_start,\n            wd.workout_end,\n            wd.created_at,\n            wd.calories_burned,\n            wd.duration_minutes,\n            wd.avg_heart_rate,\n            wd.max_heart_rate,\n            wd.heart_rate_zones,\n            COALESCE(wd.stamina_gained, 0) as stamina_gained,\n            COALESCE(wd.strength_gained, 0) as strength_gained,\n            COALESCE(wd.stamina_gained, 0) + COALESCE(wd.strength_gained, 0) as total_points_gained,\n            wd.image_url,\n            wd.video_url,\n            COALESCE(wd.visibility, 'public') as visibility,\n            (SELECT COUNT(*) FROM workout_reactions WHERE workout_id = wd.id) as reaction_count,\n            (SELECT COUNT(*) FROM workout_comments WHERE workout_id = wd.id) as comment_count,\n            EXISTS(\n                SELECT 1 FROM workout_reactions\n                WHERE workout_id = wd.id AND user_id = $1\n            ) as user_has_reacted\n        FROM workout_data wd\n        INNER JOIN users u ON u.id = wd.user_id\n        WHERE\n            COALESCE(wd.visibility, 'public') = 'public'\n            AND (wd.calories_burned > 100 OR wd.heart_rate_data IS NOT NULL)\n            AND ($2::timestamptz IS NULL OR COALESCE(wd.workout_start, wd.created_at) < $2)\n        ORDER BY COALESCE(wd.workout_start, wd.created_at) DESC\n        LIMIT $3\n        ",
+  "query": "\n        SELECT\n            wd.id,\n            wd.user_id,\n            u.username,\n            COALESCE(wd.workout_start, wd.created_at) as workout_date,\n            wd.workout_start,\n            wd.workout_end,\n            wd.created_at,\n            wd.calories_burned,\n            wd.duration_minutes,\n            wd.activity_name,\n            wd.avg_heart_rate,\n            wd.max_heart_rate,\n            wd.heart_rate_zones,\n            COALESCE(wd.stamina_gained, 0) as stamina_gained,\n            COALESCE(wd.strength_gained, 0) as strength_gained,\n            COALESCE(wd.stamina_gained, 0) + COALESCE(wd.strength_gained, 0) as total_points_gained,\n            wd.image_url,\n            wd.video_url,\n            COALESCE(wd.visibility, 'public') as visibility,\n            (SELECT COUNT(*) FROM workout_reactions WHERE workout_id = wd.id) as reaction_count,\n            (SELECT COUNT(*) FROM workout_comments WHERE workout_id = wd.id) as comment_count,\n            EXISTS(\n                SELECT 1 FROM workout_reactions\n                WHERE workout_id = wd.id AND user_id = $1\n            ) as user_has_reacted\n        FROM workout_data wd\n        INNER JOIN users u ON u.id = wd.user_id\n        WHERE\n            COALESCE(wd.visibility, 'public') = 'public'\n            AND (wd.calories_burned > 100 OR wd.heart_rate_data IS NOT NULL)\n            AND ($2::timestamptz IS NULL OR COALESCE(wd.workout_start, wd.created_at) < $2)\n        ORDER BY COALESCE(wd.workout_start, wd.created_at) DESC\n        LIMIT $3\n        ",
   "describe": {
     "columns": [
       {
@@ -50,61 +50,66 @@
       },
       {
         "ordinal": 9,
+        "name": "activity_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 10,
         "name": "avg_heart_rate",
         "type_info": "Int4"
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "max_heart_rate",
         "type_info": "Int4"
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "heart_rate_zones",
         "type_info": "Jsonb"
       },
       {
-        "ordinal": 12,
+        "ordinal": 13,
         "name": "stamina_gained",
         "type_info": "Int4"
       },
       {
-        "ordinal": 13,
+        "ordinal": 14,
         "name": "strength_gained",
         "type_info": "Int4"
       },
       {
-        "ordinal": 14,
+        "ordinal": 15,
         "name": "total_points_gained",
         "type_info": "Int4"
       },
       {
-        "ordinal": 15,
+        "ordinal": 16,
         "name": "image_url",
         "type_info": "Text"
       },
       {
-        "ordinal": 16,
+        "ordinal": 17,
         "name": "video_url",
         "type_info": "Text"
       },
       {
-        "ordinal": 17,
+        "ordinal": 18,
         "name": "visibility",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 18,
+        "ordinal": 19,
         "name": "reaction_count",
         "type_info": "Int8"
       },
       {
-        "ordinal": 19,
+        "ordinal": 20,
         "name": "comment_count",
         "type_info": "Int8"
       },
       {
-        "ordinal": 20,
+        "ordinal": 21,
         "name": "user_has_reacted",
         "type_info": "Bool"
       }
@@ -129,6 +134,7 @@
       true,
       true,
       true,
+      true,
       null,
       null,
       null,
@@ -140,5 +146,5 @@
       null
     ]
   },
-  "hash": "80218c7443ecc3e6c812340f3c3d5a2b051d983a1200cd602f1977f5b72b22eb"
+  "hash": "d742a592c0c6639ccdb50248ba408039cc2dfa08f51d4276e4d3feafc23e7001"
 }

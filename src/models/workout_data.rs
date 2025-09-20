@@ -14,6 +14,7 @@ pub struct WorkoutData {
     pub heart_rate: Option<Vec<HeartRateData>>,
     pub calories_burned: Option<i32>,
     pub created_at: DateTime<Utc>,
+    pub activity_name: Option<String>,
     pub image_url: Option<String>,
     pub video_url: Option<String>,
 }
@@ -25,14 +26,15 @@ pub struct HeartRateData {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct WorkoutDataSyncRequest {
+pub struct WorkoutDataUploadRequest {
     pub device_id: String,
     pub timestamp: DateTime<Utc>,
     pub heart_rate: Option<Vec<HeartRateData>>,
-    pub calories_burned: Option<i32>,
+    pub calories_burned: i32,
     pub workout_uuid: String,
     pub workout_start: DateTime<Utc>,
     pub workout_end: DateTime<Utc>,
+    pub activity_name: Option<String>,
     pub image_url: Option<String>,
     pub video_url: Option<String>,
     pub approval_token: Option<String>,

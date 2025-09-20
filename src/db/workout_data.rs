@@ -2,13 +2,13 @@ use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 use chrono::{Duration, DateTime, Utc};
 
-use crate::models::workout_data::{WorkoutDataSyncRequest, HeartRateData, WorkoutStats};
+use crate::models::workout_data::{WorkoutDataUploadRequest, HeartRateData, WorkoutStats};
 
 /// Time tolerance in seconds for workout duplicate detection
 const WORKOUT_TIME_TOLERANCE_SECONDS: i64 = 1;
 
 /// Calculate duration in minutes from start/end times
-fn calculate_duration_minutes(data: &WorkoutDataSyncRequest) -> Option<i32> {
+fn calculate_duration_minutes(data: &WorkoutDataUploadRequest) -> Option<i32> {
     let duration = data.workout_end.signed_duration_since(data.workout_start);
         if duration > Duration::zero() {
             Some((duration.num_seconds() / 60) as i32)
@@ -49,7 +49,7 @@ fn calculate_min_heart_rate(heart_rate_data: &[HeartRateData]) -> Option<i32> {
 pub async fn insert_workout_data(
     pool: &Pool<Postgres>,
     user_id: Uuid,
-    data: &WorkoutDataSyncRequest,
+    data: &WorkoutDataUploadRequest,
     workout_stats: &WorkoutStats,
 ) -> Result<Uuid, sqlx::Error> {
     tracing::info!("Attempting to insert workout data for user");
@@ -87,11 +87,12 @@ pub async fn insert_workout_data(
             stamina_gained,
             strength_gained,
             total_points_gained,
+            activity_name,
             image_url,
             video_url,
             visibility
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
         RETURNING id
         "#,
         user_id,
@@ -109,6 +110,7 @@ pub async fn insert_workout_data(
         workout_stats.changes.stamina_change,
         workout_stats.changes.strength_change,
         workout_stats.changes.stamina_change + workout_stats.changes.strength_change,
+        data.activity_name.as_deref(),
         data.image_url.as_deref(),
         data.video_url.as_deref(),
         "public"  // Default visibility for all workouts

@@ -6,7 +6,6 @@ use sqlx::PgPool;
 use chrono::{DateTime, Utc};
 
 use crate::middleware::auth::Claims;
-use crate::db::game_queries::GameQueries;
 
 #[derive(Debug, Serialize)]
 pub struct FeedWorkoutItem {
@@ -18,6 +17,7 @@ pub struct FeedWorkoutItem {
     pub workout_end: DateTime<Utc>,
     pub duration_minutes: Option<i32>,
     pub calories_burned: Option<i32>,
+    pub activity_name: Option<String>,
     pub avg_heart_rate: Option<i32>,
     pub max_heart_rate: Option<i32>,
     pub heart_rate_zones: Option<serde_json::Value>,
@@ -148,6 +148,7 @@ pub async fn get_newsfeed(
             wd.created_at,
             wd.calories_burned,
             wd.duration_minutes,
+            wd.activity_name,
             wd.avg_heart_rate,
             wd.max_heart_rate,
             wd.heart_rate_zones,
@@ -204,6 +205,7 @@ pub async fn get_newsfeed(
                     workout_end: row.workout_end,
                     duration_minutes: row.duration_minutes,
                     calories_burned: row.calories_burned,
+                    activity_name: row.activity_name,
                     avg_heart_rate: row.avg_heart_rate,
                     max_heart_rate: row.max_heart_rate,
                     heart_rate_zones: row.heart_rate_zones,

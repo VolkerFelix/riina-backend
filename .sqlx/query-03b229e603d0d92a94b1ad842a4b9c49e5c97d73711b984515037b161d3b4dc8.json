@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT \n            wd.id,\n            COALESCE(wd.workout_start, wd.created_at) as workout_date,\n            wd.workout_start,\n            wd.workout_end,\n            wd.created_at,\n            wd.calories_burned as calories_burned,\n            wd.duration_minutes,\n            wd.avg_heart_rate,\n            wd.max_heart_rate,\n            wd.heart_rate_data,\n            wd.heart_rate_zones,\n            COALESCE(wd.stamina_gained, 0) as stamina_gained,\n            COALESCE(wd.strength_gained, 0) as strength_gained,\n            wd.image_url,\n            wd.video_url\n        FROM workout_data wd\n        WHERE wd.user_id = $1\n        AND (wd.calories_burned > 100 OR wd.heart_rate_data IS NOT NULL)\n        ORDER BY COALESCE(wd.workout_start, wd.created_at) DESC\n        LIMIT $2 OFFSET $3\n        ",
+  "query": "\n        SELECT \n            wd.id,\n            COALESCE(wd.workout_start, wd.created_at) as workout_date,\n            wd.workout_start,\n            wd.workout_end,\n            wd.created_at,\n            wd.calories_burned as calories_burned,\n            wd.duration_minutes,\n            wd.activity_name,\n            wd.avg_heart_rate,\n            wd.max_heart_rate,\n            wd.heart_rate_data,\n            wd.heart_rate_zones,\n            COALESCE(wd.stamina_gained, 0) as stamina_gained,\n            COALESCE(wd.strength_gained, 0) as strength_gained,\n            wd.image_url,\n            wd.video_url\n        FROM workout_data wd\n        WHERE wd.user_id = $1\n        AND (wd.calories_burned > 100 OR wd.heart_rate_data IS NOT NULL)\n        ORDER BY COALESCE(wd.workout_start, wd.created_at) DESC\n        LIMIT $2 OFFSET $3\n        ",
   "describe": {
     "columns": [
       {
@@ -40,41 +40,46 @@
       },
       {
         "ordinal": 7,
+        "name": "activity_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
         "name": "avg_heart_rate",
         "type_info": "Int4"
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "max_heart_rate",
         "type_info": "Int4"
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "heart_rate_data",
         "type_info": "Jsonb"
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "heart_rate_zones",
         "type_info": "Jsonb"
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "stamina_gained",
         "type_info": "Int4"
       },
       {
-        "ordinal": 12,
+        "ordinal": 13,
         "name": "strength_gained",
         "type_info": "Int4"
       },
       {
-        "ordinal": 13,
+        "ordinal": 14,
         "name": "image_url",
         "type_info": "Text"
       },
       {
-        "ordinal": 14,
+        "ordinal": 15,
         "name": "video_url",
         "type_info": "Text"
       }
@@ -96,6 +101,7 @@
       true,
       true,
       true,
+      true,
       false,
       true,
       null,
@@ -104,5 +110,5 @@
       true
     ]
   },
-  "hash": "cf3853b654037c170ee479fa877b7673be7d5c9426e5f0b6646178e94cd5887e"
+  "hash": "03b229e603d0d92a94b1ad842a4b9c49e5c97d73711b984515037b161d3b4dc8"
 }
