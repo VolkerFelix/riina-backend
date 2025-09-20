@@ -116,9 +116,5 @@ pub fn init_admin_routes(cfg: &mut web::ServiceConfig) {
                     .route(web::get().to(workout_handler::get_workout_detail))
                     .route(web::delete().to(workout_handler::delete_workout))
             )
-            .service(
-                web::resource("/workouts/cleanup-duplicates")
-                    .route(web::post().to(workout_handler::cleanup_duplicate_workouts))
-            )
     );
 }

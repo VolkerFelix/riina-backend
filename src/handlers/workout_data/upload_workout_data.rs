@@ -6,7 +6,6 @@ use redis::AsyncCommands;
 use std::sync::Arc;
 use crate::middleware::auth::Claims;
 use crate::db::workout_data::insert_workout_data;
-use crate::db::workout_duplicate_cleanup::cleanup_duplicate_workouts_for_user;
 use crate::models::workout_data::{WorkoutDataSyncRequest, WorkoutUploadResponse, StatChanges, WorkoutStats};
 use crate::models::common::ApiResponse;
 use crate::game::stats_calculator::WorkoutStatsCalculator;
@@ -106,49 +105,6 @@ pub async fn upload_workout_data(
             tracing::info!("✅ Workout data inserted successfully with sync_id: {} for user: {}",
                 sync_id, claims.username);
 
-            // 🧹 CLEANUP DUPLICATE WORKOUTS (for users with multiple wearables)
-            let mut was_deleted = false;
-            match cleanup_duplicate_workouts_for_user(&pool, user_id).await {
-                Ok(removed_count) => {
-                    if removed_count > 0 {
-                        tracing::info!("🧹 Removed {} duplicate workout(s) for user {}",
-                            removed_count, claims.username);
-
-                        // Check if our just-inserted workout still exists
-                        let still_exists = sqlx::query!(
-                            "SELECT id FROM workout_data WHERE id = $1",
-                            sync_id
-                        )
-                        .fetch_optional(pool.get_ref())
-                        .await
-                        .unwrap_or(None)
-                        .is_some();
-
-                        if !still_exists {
-                            was_deleted = true;
-                            tracing::info!("⚠️ The newly inserted workout was removed as a duplicate (lower calories)");
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!("⚠️ Failed to cleanup duplicate workouts for user {}: {}",
-                        claims.username, e);
-                    // Don't fail the request if cleanup fails
-                }
-            }
-
-            // If the workout was deleted as a duplicate, return early
-            if was_deleted {
-                return HttpResponse::Ok().json(
-                    ApiResponse::success(
-                        "Workout was a duplicate with lower calories and was not saved",
-                        serde_json::json!({
-                            "message": "A workout with higher calories already exists for this time period",
-                            "action": "duplicate_removed"
-                        })
-                    )
-                );
-            }
 
             // 🎲 NOW CALCULATE GAME STATS (only for the surviving workout)
             let workout_stats = match WorkoutStatsCalculator::calculate_stat_changes(&pool, user_id, &data).await {

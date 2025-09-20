@@ -88,6 +88,7 @@ fn generate_light_workout_data(start_time: DateTime<Utc>, duration_minutes: i64)
 pub struct WorkoutSyncRequest {
     pub start: DateTime<Utc>,
     pub end: DateTime<Utc>,
+    pub calories: i32,
     pub id: String,
 }
 
@@ -101,6 +102,7 @@ pub async fn upload_workout_data_for_user(
     let workout_sync_request = WorkoutSyncRequest {
         start: workout_data.workout_start,
         end: workout_data.workout_end,
+        calories: workout_data.calories_burned,
         id: workout_data.workout_uuid.clone(),
     };
 
@@ -132,9 +134,6 @@ pub async fn upload_workout_data_for_user(
             }
         }
     }
-    
-    // If no approval token found, workout might already be synced or approval is not required
-    // The upload will proceed without token for backwards compatibility
     let response = crate::common::utils::make_authenticated_request(
         client,
         reqwest::Method::POST,
