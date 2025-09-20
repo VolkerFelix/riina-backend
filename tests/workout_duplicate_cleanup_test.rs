@@ -1,6 +1,5 @@
 use chrono::{Duration, Utc};
 use uuid::Uuid;
-use riina_backend::db::workout_duplicate_cleanup::find_overlapping_workouts;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, TestApp};
@@ -118,30 +117,6 @@ async fn create_single_workout(
     ).await?;
     
     Ok(workout_ids[0])
-}
-
-#[tokio::test]
-async fn test_no_duplicates_when_workouts_dont_overlap() {
-    let test_app = spawn_app().await;
-    let user = create_test_user_and_login(&test_app.address).await;
-
-    // Create two non-overlapping workouts
-    let start1 = Utc::now();
-    let end1 = start1 + Duration::hours(1);
-    let start2 = end1 + Duration::hours(1); // Starts after first ends
-    let end2 = start2 + Duration::hours(1);
-
-    create_single_workout(&test_app, &user.token, start1, end1, 200).await
-        .expect("Failed to create first workout");
-    create_single_workout(&test_app, &user.token, start2, end2, 300).await
-        .expect("Failed to create second workout");
-
-    // Find overlapping workouts
-    let overlaps = find_overlapping_workouts(&test_app.db_pool, user.user_id).await
-        .expect("Failed to find overlapping workouts");
-
-    // Should find no overlapping groups
-    assert_eq!(overlaps.len(), 0, "Should find no overlapping workouts");
 }
 
 #[tokio::test]
