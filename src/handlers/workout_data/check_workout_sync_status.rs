@@ -15,7 +15,7 @@ use crate::config::jwt::JwtSettings;
 pub struct WorkoutSyncRequest {
     pub start: DateTime<Utc>,
     pub end: DateTime<Utc>,
-    pub calories: i32,
+    pub calories: Option<i32>,
     pub id: String,  // Keep original ID for frontend reference
 }
 
@@ -159,7 +159,7 @@ fn remove_duplicates(workouts: Vec<WorkoutSyncRequest>) -> Vec<WorkoutSyncReques
         let key = (workout.start, workout.end);
         unique_workouts.entry(key)
             .and_modify(|existing| {
-                if workout.calories > existing.calories {
+                if workout.calories.unwrap_or(0) > existing.calories.unwrap_or(0) {
                     *existing = workout.clone();
                 }
             })

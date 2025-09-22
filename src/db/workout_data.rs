@@ -98,7 +98,7 @@ pub async fn insert_workout_data(
         user_id,
         &data.device_id,
         serde_json::to_value(&data.heart_rate).unwrap_or(serde_json::Value::Null),
-        data.calories_burned,
+        data.calories_burned.unwrap_or(0),
         data.workout_uuid,
         data.workout_start,
         data.workout_end,
