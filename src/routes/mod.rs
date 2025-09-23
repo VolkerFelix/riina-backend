@@ -8,7 +8,7 @@ pub mod health_data;
 pub mod websocket;
 pub mod league;
 pub mod profile;
-pub mod workout_sync_status;
+pub mod workout_sync;
 pub mod admin;
 pub mod social;
 pub mod feed;
@@ -33,10 +33,10 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .service(health_data::request_upload_url)
             .service(health_data::confirm_upload_handler)
             .service(health_data::get_download_url)
-            .service(workout_sync_status::get_activity_sum)
-            .service(workout_sync_status::get_zone_ana)
-            .service(workout_sync_status::get_workout_hist)
-            .service(workout_sync_status::check_sync_status)
+            .service(workout_sync::get_activity_sum)
+            .service(workout_sync::get_zone_ana)
+            .service(workout_sync::get_workout_hist)
+            .service(workout_sync::check_workout_sync_handler)
     );
     // Profile routes (require authentication)
     cfg.service(

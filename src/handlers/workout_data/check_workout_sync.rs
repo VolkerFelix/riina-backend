@@ -39,20 +39,20 @@ pub struct SyncStatusResponse {
 }
 
 #[tracing::instrument(
-    name = "Check workout sync status",
+    name = "Approve workout sync",
     skip(pool, claims, request),
     fields(
         username = %claims.username,
         workout_count = %request.workouts.len()
     )
 )]
-pub async fn check_workout_sync_status(
+pub async fn check_workout_sync(
     pool: web::Data<PgPool>,
     claims: web::ReqData<Claims>,
     request: web::Json<CheckSyncStatusRequest>,
     jwt_settings: web::Data<JwtSettings>,
 ) -> HttpResponse {
-    tracing::info!("🎮 Checking workout sync status for user: {} ({} workouts)", 
+    tracing::info!("🎮 Checking workout sync for user: {} ({} workouts)", 
         claims.username, request.workouts.len());
 
     let user_id = match Uuid::parse_str(&claims.sub) {
