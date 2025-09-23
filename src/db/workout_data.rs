@@ -4,9 +4,6 @@ use chrono::{Duration, DateTime, Utc};
 
 use crate::models::workout_data::{WorkoutDataUploadRequest, HeartRateData, WorkoutStats};
 
-/// Time tolerance in seconds for workout duplicate detection
-const WORKOUT_TIME_TOLERANCE_SECONDS: i64 = 1;
-
 /// Calculate duration in minutes from start/end times
 fn calculate_duration_minutes(data: &WorkoutDataUploadRequest) -> Option<i32> {
     let duration = data.workout_end.signed_duration_since(data.workout_start);
@@ -141,7 +138,10 @@ pub async fn check_workout_exists_by_time(
     user_id: Uuid,
     workout_start: &DateTime<Utc>,
     workout_end: &DateTime<Utc>,
+    time_tolerance: Duration,
 ) -> Result<bool, sqlx::Error> {
+    let time_tolerance_seconds = time_tolerance.num_seconds() as f64;
+
     let record = sqlx::query!(
         r#"
         SELECT id
@@ -149,14 +149,14 @@ pub async fn check_workout_exists_by_time(
         WHERE user_id = $1
         AND workout_start IS NOT NULL
         AND workout_end IS NOT NULL
-        AND ABS(EXTRACT(EPOCH FROM (workout_start - $2))) <= $4
-        AND ABS(EXTRACT(EPOCH FROM (workout_end - $3))) <= $4
+        AND ABS(EXTRACT(EPOCH FROM (workout_start - $2))::float8) <= $4
+        AND ABS(EXTRACT(EPOCH FROM (workout_end - $3))::float8) <= $4
         LIMIT 1
         "#,
         user_id,
         workout_start,
         workout_end,
-        WORKOUT_TIME_TOLERANCE_SECONDS as f64
+        time_tolerance_seconds
     )
     .fetch_optional(pool)
     .await?;

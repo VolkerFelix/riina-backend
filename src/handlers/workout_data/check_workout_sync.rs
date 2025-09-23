@@ -12,6 +12,9 @@ use crate::db::workout_data::check_workout_exists_by_time;
 use crate::utils::workout_approval::WorkoutApprovalToken;
 use crate::config::jwt::JwtSettings;
 
+/// Time tolerance in seconds for workout duplicate detection
+const WORKOUT_TIME_TOLERANCE: Duration = Duration::seconds(2);
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct WorkoutSyncRequest {
     pub start: DateTime<Utc>,
@@ -72,11 +75,11 @@ pub async fn check_workout_sync(
     let mut unsynced_workouts = Vec::new();
     let mut approved_workouts = Vec::new();
 
-    let unique_workouts = remove_duplicates(request.workouts.clone());
+    let unique_workouts = remove_duplicates(request.workouts.clone(), WORKOUT_TIME_TOLERANCE);
 
     // Check each workout using the time-based duplicate detection function
     for workout in &unique_workouts {
-        match check_workout_exists_by_time(pool.get_ref(), user_id, &workout.start, &workout.end).await {
+        match check_workout_exists_by_time(pool.get_ref(), user_id, &workout.start, &workout.end, WORKOUT_TIME_TOLERANCE).await {
             Ok(exists) => {
                 if exists {
                     tracing::debug!("Workout {} already synced (time match)", workout.id);
@@ -153,9 +156,7 @@ pub async fn check_workout_sync(
     ))
 }
 
-fn remove_duplicates(mut workouts: Vec<WorkoutSyncRequest>) -> Vec<WorkoutSyncRequest> {
-    let tolerance = Duration::seconds(2);
-
+fn remove_duplicates(mut workouts: Vec<WorkoutSyncRequest>, tolerance: Duration) -> Vec<WorkoutSyncRequest> {
     // Sort by start times, then by end times
     workouts.sort_unstable_by(|a, b| {
         match a.start.cmp(&b.start) {
