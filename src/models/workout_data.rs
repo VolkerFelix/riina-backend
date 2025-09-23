@@ -30,7 +30,7 @@ pub struct WorkoutDataUploadRequest {
     pub device_id: String,
     pub timestamp: DateTime<Utc>,
     pub heart_rate: Option<Vec<HeartRateData>>,
-    pub calories_burned: i32,
+    pub calories_burned: Option<i32>,
     pub workout_uuid: String,
     pub workout_start: DateTime<Utc>,
     pub workout_end: DateTime<Utc>,

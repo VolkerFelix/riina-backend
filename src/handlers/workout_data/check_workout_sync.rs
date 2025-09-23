@@ -2,8 +2,9 @@ use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc, Duration};
 use std::collections::HashMap;
+use std::cmp::Ordering;
 
 use crate::middleware::auth::Claims;
 use crate::models::common::ApiResponse;
@@ -11,11 +12,14 @@ use crate::db::workout_data::check_workout_exists_by_time;
 use crate::utils::workout_approval::WorkoutApprovalToken;
 use crate::config::jwt::JwtSettings;
 
+/// Time tolerance in seconds for workout duplicate detection
+const WORKOUT_TIME_TOLERANCE: Duration = Duration::seconds(2);
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct WorkoutSyncRequest {
     pub start: DateTime<Utc>,
     pub end: DateTime<Utc>,
-    pub calories: i32,
+    pub calories: Option<i32>,
     pub id: String,  // Keep original ID for frontend reference
 }
 
@@ -38,20 +42,20 @@ pub struct SyncStatusResponse {
 }
 
 #[tracing::instrument(
-    name = "Check workout sync status",
+    name = "Approve workout sync",
     skip(pool, claims, request),
     fields(
         username = %claims.username,
         workout_count = %request.workouts.len()
     )
 )]
-pub async fn check_workout_sync_status(
+pub async fn check_workout_sync(
     pool: web::Data<PgPool>,
     claims: web::ReqData<Claims>,
     request: web::Json<CheckSyncStatusRequest>,
     jwt_settings: web::Data<JwtSettings>,
 ) -> HttpResponse {
-    tracing::info!("🎮 Checking workout sync status for user: {} ({} workouts)", 
+    tracing::info!("🎮 Checking workout sync for user: {} ({} workouts)", 
         claims.username, request.workouts.len());
 
     let user_id = match Uuid::parse_str(&claims.sub) {
@@ -71,11 +75,11 @@ pub async fn check_workout_sync_status(
     let mut unsynced_workouts = Vec::new();
     let mut approved_workouts = Vec::new();
 
-    let unique_workouts = remove_duplicates(request.workouts.clone());
+    let unique_workouts = remove_duplicates(request.workouts.clone(), WORKOUT_TIME_TOLERANCE);
 
     // Check each workout using the time-based duplicate detection function
     for workout in &unique_workouts {
-        match check_workout_exists_by_time(pool.get_ref(), user_id, &workout.start, &workout.end).await {
+        match check_workout_exists_by_time(pool.get_ref(), user_id, &workout.start, &workout.end, WORKOUT_TIME_TOLERANCE).await {
             Ok(exists) => {
                 if exists {
                     tracing::debug!("Workout {} already synced (time match)", workout.id);
@@ -152,18 +156,42 @@ pub async fn check_workout_sync_status(
     ))
 }
 
-fn remove_duplicates(workouts: Vec<WorkoutSyncRequest>) -> Vec<WorkoutSyncRequest> {
-    let mut unique_workouts: HashMap<(DateTime<Utc>, DateTime<Utc>), WorkoutSyncRequest> = HashMap::new();
+fn remove_duplicates(mut workouts: Vec<WorkoutSyncRequest>, tolerance: Duration) -> Vec<WorkoutSyncRequest> {
+    // Sort by start times, then by end times
+    workouts.sort_unstable_by(|a, b| {
+        match a.start.cmp(&b.start) {
+            Ordering::Equal => a.end.cmp(&b.end),
+            ordering => ordering, // Short for Ordering::Less => Ordering::Less, Ordering::Greater => Ordering::Greater
+        }
+    });
 
-    for workout in workouts {
-        let key = (workout.start, workout.end);
-        unique_workouts.entry(key)
-            .and_modify(|existing| {
-                if workout.calories > existing.calories {
-                    *existing = workout.clone();
+    let mut unique_workouts: Vec<WorkoutSyncRequest> = Vec::with_capacity(workouts.len());
+
+    'outer: for workout in workouts {
+        // Scan recent uniques in reverse; break early once overlaps can't happen
+        for u in unique_workouts.iter_mut().rev() {
+            if u.end + tolerance < workout.start {
+                // Since unique is sorted by start and we scan backward,
+                // earlier items will end even earlier -> no more overlaps possible.
+                break;
+            }
+            if time_intervals_overlap((&u.start, &u.end), (&workout.start, &workout.end), tolerance) {
+                if workout.calories.unwrap_or(0) > u.calories.unwrap_or(0) {
+                    *u = workout.clone();
                 }
-            })
-            .or_insert(workout);
+                continue 'outer;
+            }
+        }
+        unique_workouts.push(workout);
     }
-    unique_workouts.into_values().collect()
+    unique_workouts
+}
+
+// Check if two time intervals overlap
+fn time_intervals_overlap(
+    interval1: (&DateTime<Utc>, &DateTime<Utc>),
+    interval2: (&DateTime<Utc>, &DateTime<Utc>),
+    tolerance: Duration,
+) -> bool {
+    interval1.0 <= &(*interval2.1 + tolerance) && interval1.1 >= &(*interval2.0 - tolerance)
 }
