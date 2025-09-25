@@ -8,3 +8,4 @@ pub mod game;
 pub mod profile;
 pub mod common;
 pub mod social;
+pub mod health;

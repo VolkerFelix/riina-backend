@@ -5,13 +5,17 @@ use uuid::Uuid;
 use redis::AsyncCommands;
 use std::sync::Arc;
 use crate::middleware::auth::Claims;
-use crate::db::workout_data::insert_workout_data;
-use crate::models::workout_data::{WorkoutDataUploadRequest, WorkoutUploadResponse, StatChanges, WorkoutStats};
-use crate::models::common::ApiResponse;
+use crate::db::{
+    workout_data::insert_workout_data,
+    game_queries::GameQueries,
+};
+use crate::models::{
+    workout_data::{WorkoutDataUploadRequest, WorkoutUploadResponse, StatChanges, WorkoutStats},
+    common::ApiResponse,
+    league::{LeagueGame, LiveGameScoreUpdate},
+    game_events::GameEvent,
+};
 use crate::game::stats_calculator::WorkoutStatsCalculator;
-use crate::models::league::{LiveGameScoreUpdate, LeagueGame};
-use crate::db::game_queries::GameQueries;
-use crate::models::game_events::GameEvent;
 use crate::utils::workout_approval::WorkoutApprovalToken;
 use crate::config::jwt::JwtSettings;
 

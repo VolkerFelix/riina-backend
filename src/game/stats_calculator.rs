@@ -2,16 +2,18 @@ use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 
 use crate::models::game::*;
-use crate::models::workout_data::{WorkoutDataUploadRequest, HeartRateZones, ZoneName, ZoneBreakdown, WorkoutStats};
-use crate::game::helper::{get_user_profile, calc_max_heart_rate};
+use crate::models::workout_data::{WorkoutDataUploadRequest, ZoneBreakdown, WorkoutStats};
+use crate::models::health::{HeartRateZones, ZoneName};
+use crate::utils::health_calculations::calc_max_heart_rate;
 use crate::workout::workout_analyzer::WorkoutAnalyzer;
+use crate::db::health_data::get_user_health_profile_details;
 
 pub struct WorkoutStatsCalculator;
 
 impl WorkoutStatsCalculator {
     /// Calculate base stats from HRR zones based on heart rate
     pub async fn calculate_stat_changes(pool: &Pool<Postgres>, user_id: Uuid, workout_data: &WorkoutDataUploadRequest) -> Result<WorkoutStats, Box<dyn std::error::Error>> {
-        let user_profile = get_user_profile(pool, user_id).await.unwrap();
+        let user_profile = get_user_health_profile_details(pool, user_id).await.unwrap();
         
         // Use stored heart rate zones if available, otherwise calculate them
         let heart_rate_zones = if let Some(stored_zones) = user_profile.stored_heart_rate_zones {
