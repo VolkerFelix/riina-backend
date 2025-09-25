@@ -14,7 +14,7 @@ pub struct WorkoutAnalyzer {
 }
 
 impl WorkoutAnalyzer {
-    pub fn new(heart_rate: &Vec<HeartRateData>, zones: &HeartRateZones) -> Option<Self> {
+    pub fn new(heart_rate: Vec<HeartRateData>, zones: &HeartRateZones) -> Option<Self> {
         if heart_rate.is_empty() {
             return None;
         }

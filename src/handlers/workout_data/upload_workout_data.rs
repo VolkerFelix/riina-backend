@@ -8,6 +8,7 @@ use crate::middleware::auth::Claims;
 use crate::db::{
     workout_data::insert_workout_data,
     game_queries::GameQueries,
+    health_data::get_user_health_profile_details,
 };
 use crate::models::{
     workout_data::{WorkoutDataUploadRequest, WorkoutUploadResponse, StatChanges, WorkoutStats},
@@ -16,7 +17,10 @@ use crate::models::{
     game_events::GameEvent,
 };
 use crate::game::stats_calculator::WorkoutStatsCalculator;
-use crate::utils::workout_approval::WorkoutApprovalToken;
+use crate::utils::{
+    workout_approval::WorkoutApprovalToken,
+    parse_user::parse_user_id_from_jwt_token,
+};
 use crate::config::jwt::JwtSettings;
 
 #[tracing::instrument(
@@ -36,15 +40,11 @@ pub async fn upload_workout_data(
 ) -> HttpResponse {
     tracing::info!("🎮 Processing workout data with game mechanics for user: {}", claims.username);
     
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => {
-            tracing::info!("User ID parsed successfully: {}", id);
-            id
-        },
+    let user_id = match parse_user_id_from_jwt_token(&claims.sub) {
+        Ok(id) => id,
         Err(e) => {
-            tracing::error!("Failed to parse user ID: {}", e);
             return HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error("Invalid user ID")
+                ApiResponse::<()>::error(e.to_string())
             );
         }
     };
@@ -109,9 +109,20 @@ pub async fn upload_workout_data(
             tracing::info!("✅ Workout data inserted successfully with sync_id: {} for user: {}",
                 sync_id, claims.username);
 
-
+            // Do we have heart rate data?
+            let heart_rate_data = data.heart_rate.clone().unwrap_or_default();
+            if heart_rate_data.is_empty() {
+                tracing::warn!("⚠️ No heart rate data provided - returning zero stats");
+                return HttpResponse::BadRequest().json(
+                    ApiResponse::<()>::error("No heart rate data provided")
+                );
+            }
+            // Get user health profile
+            let user_health_profile = get_user_health_profile_details(&pool, user_id).await.unwrap();
+            
             // 🎲 NOW CALCULATE GAME STATS (only for the surviving workout)
-            let workout_stats = match WorkoutStatsCalculator::calculate_stat_changes(&pool, user_id, &data).await {
+            let calculator = WorkoutStatsCalculator::with_hr_zone_based();
+            let workout_stats = match calculator.calculate_stat_changes(user_health_profile, heart_rate_data).await {
                 Ok(stats) => stats,
                 Err(e) => {
                     tracing::error!("❌ Error calculating workout stats: {}", e);
