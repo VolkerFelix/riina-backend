@@ -5,7 +5,7 @@ use sqlx::PgPool;
 
 use crate::middleware::auth::Claims;
 use crate::models::profile::{HealthProfileResponse, UpdateHealthProfileRequest};
-use crate::models::health::{HeartRateZones, ZoneName};
+use crate::models::health::{HeartRateZones, HeartRateZoneName};
 
 #[tracing::instrument(
     name = "Get health profile",
@@ -164,11 +164,11 @@ pub async fn update_health_profile(
                     WHERE user_id = $7
                     "#,
                     max_heart_rate,
-                    zones.zones.get(&ZoneName::Zone1).map(|z| z.high),
-                    zones.zones.get(&ZoneName::Zone2).map(|z| z.high),
-                    zones.zones.get(&ZoneName::Zone3).map(|z| z.high),
-                    zones.zones.get(&ZoneName::Zone4).map(|z| z.high),
-                    zones.zones.get(&ZoneName::Zone5).map(|z| z.high),
+                    zones.zones.get(&HeartRateZoneName::Zone1).map(|z| z.high),
+                    zones.zones.get(&HeartRateZoneName::Zone2).map(|z| z.high),
+                    zones.zones.get(&HeartRateZoneName::Zone3).map(|z| z.high),
+                    zones.zones.get(&HeartRateZoneName::Zone4).map(|z| z.high),
+                    zones.zones.get(&HeartRateZoneName::Zone5).map(|z| z.high),
                     user_id
                 )
                 .execute(&**pool)

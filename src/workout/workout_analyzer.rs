@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use crate::models::workout_data::{HeartRateData};
-use crate::models::health::{HeartRateZones, ZoneName};
+use crate::models::health::{HeartRateZones, HeartRateZoneName};
 
 pub struct WorkoutAnalyzer {
     pub total_duration_min: i32,
-    pub zone_durations: HashMap<ZoneName, f32>,
+    pub zone_durations: HashMap<HeartRateZoneName, f32>,
     pub avg_heart_rate: f32,
     pub peak_heart_rate: f32,
     time_above_aerobic_threshold: i32,
@@ -69,7 +69,7 @@ impl WorkoutAnalyzer {
                 *analyzer.zone_durations.entry(zone_name).or_insert(0.0) += duration_min;
                 // Count time in aerobic zones
                 match zone_name {
-                    ZoneName::Zone3 | ZoneName::Zone4 | ZoneName::Zone5 => {
+                    HeartRateZoneName::Zone3 | HeartRateZoneName::Zone4 | HeartRateZoneName::Zone5 => {
                         analyzer.time_above_aerobic_threshold += duration_min as i32;
                     }
                     _ => {}

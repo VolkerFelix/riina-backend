@@ -2,7 +2,7 @@ use std::io::Error;
 
 use crate::models::{
     workout_data::{WorkoutStats, HeartRateData, ZoneBreakdown},
-    health::{HeartRateZones, ZoneName, UserHealthProfile},
+    health::{HeartRateZones, HeartRateZoneName, UserHealthProfile},
 };
 use crate::game::stats_calculator::ScoringMethod;
 use crate::utils::health_calculations::calc_max_heart_rate;
@@ -98,11 +98,11 @@ fn calc_points_and_breakdown_from_workout_analysis(workout_analysis: &WorkoutAna
 
     for (zone, duration_minutes) in &workout_analysis.zone_durations {
         let (stamina_per_min, strength_per_min) = match zone {
-            ZoneName::Zone1 => (ZONE_1_STAMINA_POINTS_PER_MIN, ZONE_1_STRENGTH_POINTS_PER_MIN),
-            ZoneName::Zone2 => (ZONE_2_STAMINA_POINTS_PER_MIN, ZONE_2_STRENGTH_POINTS_PER_MIN),
-            ZoneName::Zone3 => (ZONE_3_STAMINA_POINTS_PER_MIN, ZONE_3_STRENGTH_POINTS_PER_MIN),
-            ZoneName::Zone4 => (ZONE_4_STAMINA_POINTS_PER_MIN, ZONE_4_STRENGTH_POINTS_PER_MIN),
-            ZoneName::Zone5 => (ZONE_5_STAMINA_POINTS_PER_MIN, ZONE_5_STRENGTH_POINTS_PER_MIN),
+            HeartRateZoneName::Zone1 => (ZONE_1_STAMINA_POINTS_PER_MIN, ZONE_1_STRENGTH_POINTS_PER_MIN),
+            HeartRateZoneName::Zone2 => (ZONE_2_STAMINA_POINTS_PER_MIN, ZONE_2_STRENGTH_POINTS_PER_MIN),
+            HeartRateZoneName::Zone3 => (ZONE_3_STAMINA_POINTS_PER_MIN, ZONE_3_STRENGTH_POINTS_PER_MIN),
+            HeartRateZoneName::Zone4 => (ZONE_4_STAMINA_POINTS_PER_MIN, ZONE_4_STRENGTH_POINTS_PER_MIN),
+            HeartRateZoneName::Zone5 => (ZONE_5_STAMINA_POINTS_PER_MIN, ZONE_5_STRENGTH_POINTS_PER_MIN),
         };
         
         let zone_stamina = (duration_minutes * stamina_per_min as f32) as i32;
