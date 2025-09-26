@@ -9,6 +9,7 @@ const P_VT0: f32 = 0.4;
 const P_VT1: f32 = 0.72;
 const P_VT2: f32 = 0.88;
 
+#[derive(Debug)]
 struct ZoneScore {
     duration: Duration,
     points: i32,
@@ -45,6 +46,8 @@ fn calculate_score_from_training_zones(training_zones: TrainingZones, hr_data: V
     let mut moderate = ZoneScore::new();
     let mut hard = ZoneScore::new();
 
+    tracing::info!("📊 Processing {} heart rate data points", hr_data.len());
+
     for window in hr_data.windows(2) {
         let current_hr_sample = &window[0];
         let next_hr_sample = &window[1];
@@ -55,39 +58,45 @@ fn calculate_score_from_training_zones(training_zones: TrainingZones, hr_data: V
                 return Err(Error::new(ErrorKind::InvalidData, "No training rate zone found for heart rate"));
             }
         };
-        let (next_zone, _next_intensity) = match training_zones.get_zone_name_and_intensity(next_hr_sample.heart_rate) {
+        let (_next_zone, _next_intensity) = match training_zones.get_zone_name_and_intensity(next_hr_sample.heart_rate) {
             Some((zone, intensity)) => (zone, intensity),
             None => {
                 tracing::error!("No training rate zone found for heart rate {}", next_hr_sample.heart_rate);
                 return Err(Error::new(ErrorKind::InvalidData, "No training rate zone found for heart rate"));
             }
         };
-        if current_zone == next_zone {
-            // Same zone, add duration to the zone
-            let duration = next_hr_sample.timestamp.signed_duration_since(current_hr_sample.timestamp);
-            let duration_secs = duration.num_seconds() as f32;
-            
-            match current_zone {
-                TrainingZoneName::REST => {
-                    rest.duration += duration;
-                    rest.points += (duration_secs * current_intensity) as i32;
-                }
-                TrainingZoneName::EASY => {
-                    easy.duration += duration;
-                    easy.points += (duration_secs * current_intensity) as i32;
-                }
-                TrainingZoneName::MODERATE => {
-                    moderate.duration += duration;
-                    moderate.points += (duration_secs * current_intensity) as i32;
-                }
-                TrainingZoneName::HARD => {
-                    hard.duration += duration;
-                    hard.points += (duration_secs * current_intensity) as i32;
-                }
+
+        // Always account for the time interval, attributing it to the current zone
+        let duration = next_hr_sample.timestamp.signed_duration_since(current_hr_sample.timestamp);
+        let duration_mins = duration.num_minutes() as f32;
+
+        match current_zone {
+            TrainingZoneName::REST => {
+                rest.duration += duration;
+                rest.points += (duration_mins * current_intensity) as i32;
+            }
+            TrainingZoneName::EASY => {
+                easy.duration += duration;
+                easy.points += (duration_mins * current_intensity) as i32;
+            }
+            TrainingZoneName::MODERATE => {
+                moderate.duration += duration;
+                moderate.points += (duration_mins * current_intensity) as i32;
+            }
+            TrainingZoneName::HARD => {
+                hard.duration += duration;
+                hard.points += (duration_mins * current_intensity) as i32;
             }
         }
 
     }
+
+    let total_duration = rest.duration + easy.duration + moderate.duration + hard.duration;
+    tracing::info!("⏱️ Total workout duration: {:?} minutes (from {} data points)", total_duration.num_minutes(), hr_data.len());
+    tracing::info!("🎯 Rest zone: Duration={:?} min, Points={:?}", rest.duration.num_minutes(), rest.points);
+    tracing::info!("🎯 Easy zone: Duration={:?} min, Points={:?}", easy.duration.num_minutes(), easy.points);
+    tracing::info!("🎯 Moderate zone: Duration={:?} , Points={:?}", moderate.duration.num_minutes(), moderate.points);
+    tracing::info!("🎯 Hard zone: Duration={:?} , Points={:?}", hard.duration.num_minutes(), hard.points);
 
     workout_stats.changes.stamina_change =  moderate.points + hard.points;
     workout_stats.changes.strength_change = rest.points + easy.points;

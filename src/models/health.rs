@@ -156,9 +156,10 @@ pub struct TrainingZone {
 }
 
 impl TrainingZone {
-    pub fn calculate_intensity(&self, heart_rate: f32) -> f32 {
+    pub fn get_intensity_multiplier(&self, heart_rate: f32) -> f32 {
+        // Return points per minute for this zone
         match &self.intensity_type {
-            IntensityType::Linear => heart_rate * self.intensity_multiplier,
+            IntensityType::Linear => self.intensity_multiplier,
             IntensityType::Exponential { threshold, base, exponent } => {
                 self.intensity_multiplier * base * E.powf(exponent * (heart_rate - threshold))
             }
@@ -192,25 +193,25 @@ impl TrainingZones {
         Self { zones: HashMap::from([
             (TrainingZoneName::REST, TrainingZone {
                 zone: rest_zone,
-                intensity_multiplier: 0.5,
+                intensity_multiplier: 1.0,
                 intensity_type: IntensityType::Linear,
             }),
             (TrainingZoneName::EASY, TrainingZone {
                 zone: easy_zone,
-                intensity_multiplier: 1.0,
+                intensity_multiplier: 2.0,
                 intensity_type: IntensityType::Linear,
             }),
             (TrainingZoneName::MODERATE, TrainingZone {
                 zone: moderate_zone,
-                intensity_multiplier: 2.0,
+                intensity_multiplier: 4.0,
                 intensity_type: IntensityType::Linear,
             }),
             (TrainingZoneName::HARD, TrainingZone {
                 zone: hard_zone,
-                intensity_multiplier: 1.0,
+                intensity_multiplier: 4.0,
                 intensity_type: IntensityType::Exponential {
                     threshold: hard_zone.low as f32,
-                    base: 2.0,
+                    base: 1.0,
                     exponent: 0.04,
                 },
             }),
@@ -220,7 +221,7 @@ impl TrainingZones {
     pub fn get_zone_name_and_intensity(&self, heart_rate: i32) -> Option<(TrainingZoneName, f32)> {
         for (zone_name, zone) in &self.zones {
             if heart_rate >= zone.zone.low && heart_rate <= zone.zone.high {
-                let intensity = zone.calculate_intensity(heart_rate as f32);
+                let intensity = zone.get_intensity_multiplier(heart_rate as f32);
                 return Some((*zone_name, intensity));
             }
         }
