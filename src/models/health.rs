@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::f32::consts::E;
 
+use crate::utils::health_calculations::calc_max_heart_rate;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ZoneRange {
     pub low: i32,
@@ -16,13 +18,27 @@ pub enum HeartRateZoneName {
     Zone5,
 }
 
+impl std::fmt::Display for HeartRateZoneName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HeartRateZoneName::Zone1 => write!(f, "Zone1"),
+            HeartRateZoneName::Zone2 => write!(f, "Zone2"),
+            HeartRateZoneName::Zone3 => write!(f, "Zone3"),
+            HeartRateZoneName::Zone4 => write!(f, "Zone4"),
+            HeartRateZoneName::Zone5 => write!(f, "Zone5"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct HeartRateZones {
     pub zones: HashMap<HeartRateZoneName, ZoneRange>,
 }
 
 impl HeartRateZones {
-    pub fn new(hhr: i32, resting_heart_rate: i32, max_heart_rate: i32) -> Self {
+    pub fn new(age: i32, gender: Gender, resting_heart_rate: i32) -> Self {
+        let max_heart_rate = calc_max_heart_rate(age, gender);
+        let hhr = max_heart_rate - resting_heart_rate;
         let zone_1 = ZoneRange {
             low: 0, // Zone 1 starts from 0 bpm to capture all heart rates including below resting
             high: resting_heart_rate + (hhr as f32 * 0.6) as i32 - 1,
@@ -102,7 +118,7 @@ impl HeartRateZones {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Gender {
     Male,
     Female,

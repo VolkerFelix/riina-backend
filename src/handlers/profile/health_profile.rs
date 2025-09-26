@@ -4,8 +4,11 @@ use uuid::Uuid;
 use sqlx::PgPool;
 
 use crate::middleware::auth::Claims;
-use crate::models::profile::{HealthProfileResponse, UpdateHealthProfileRequest};
-use crate::models::health::{HeartRateZones, HeartRateZoneName};
+use crate::models::{
+    profile::{HealthProfileResponse, UpdateHealthProfileRequest},
+    health::{HeartRateZones, HeartRateZoneName, Gender},
+};
+use crate::utils::health_calculations::calc_max_heart_rate;
 
 #[tracing::instrument(
     name = "Get health profile",
@@ -144,12 +147,15 @@ pub async fn update_health_profile(
             
             // Calculate and store heart rate zones if we have age and resting heart rate
             if let (Some(age), Some(resting_heart_rate)) = (profile_record.age, profile_record.resting_heart_rate) {
-                // Calculate max heart rate using 220 - age formula
-                let max_heart_rate = 220 - age;
-                let hhr = max_heart_rate - resting_heart_rate; // Heart Rate Reserve
+                let gender = match profile_data.gender.as_deref() {
+                    Some("male") | Some("m") => Gender::Male,
+                    Some("female") | Some("f") => Gender::Female,
+                    _ => Gender::Other,
+                };
+                let max_heart_rate = calc_max_heart_rate(age, gender);
                 
                 // Calculate zone thresholds using HeartRateZones
-                let zones = HeartRateZones::new(hhr, resting_heart_rate, max_heart_rate);
+                let zones = HeartRateZones::new(age, gender, resting_heart_rate);
                 
                 // Update the profile with calculated zone thresholds
                 if let Err(e) = sqlx::query!(

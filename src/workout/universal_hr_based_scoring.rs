@@ -35,9 +35,7 @@ async fn calculate_stats_universal_hr_based(user_health_profile: UserHealthProfi
     let hr_reserve = hr_max - hr_rest;
     let training_zones = TrainingZones::new(hr_rest, hr_reserve, P_VT0, P_VT1, P_VT2);
 
-    // Go through heart rate data and calculate time spent in each zone + intensity
-
-    Ok(WorkoutStats::new())
+    calculate_score_from_training_zones(training_zones, hr_data)
 }
 
 fn calculate_score_from_training_zones(training_zones: TrainingZones, hr_data: Vec<HeartRateData>) -> Result<WorkoutStats, Error> {

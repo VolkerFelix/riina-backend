@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::models::workout_data::{HeartRateData};
+use crate::models::workout_data::{HeartRateData, ZoneBreakdown};
 use crate::models::health::{HeartRateZones, HeartRateZoneName};
 
 pub struct WorkoutAnalyzer {
@@ -14,7 +14,7 @@ pub struct WorkoutAnalyzer {
 }
 
 impl WorkoutAnalyzer {
-    pub fn new(heart_rate: Vec<HeartRateData>, zones: &HeartRateZones) -> Option<Self> {
+    pub fn new(heart_rate: &Vec<HeartRateData>, zones: &HeartRateZones) -> Option<Self> {
         if heart_rate.is_empty() {
             return None;
         }
@@ -90,6 +90,21 @@ impl WorkoutAnalyzer {
         analyzer.heart_rate_variability = calc_hrv(&hr_values_for_hrv);
 
         Some(analyzer)
+    }
+
+    pub fn to_zone_breakdown(&self) -> Vec<ZoneBreakdown> {
+        let mut zone_breakdown = Vec::new();
+        for (zone, duration) in &self.zone_durations {
+            zone_breakdown.push(ZoneBreakdown {
+                zone: zone.to_string(),
+                minutes: *duration,
+                stamina_gained: 0,
+                strength_gained: 0,
+                hr_min: None,
+                hr_max: None,
+            });
+        }
+        zone_breakdown
     }
 }
 

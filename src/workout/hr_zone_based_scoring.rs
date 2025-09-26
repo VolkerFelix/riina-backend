@@ -5,7 +5,6 @@ use crate::models::{
     health::{HeartRateZones, HeartRateZoneName, UserHealthProfile},
 };
 use crate::game::stats_calculator::ScoringMethod;
-use crate::utils::health_calculations::calc_max_heart_rate;
 use crate::workout::workout_analyzer::WorkoutAnalyzer;
 
 // Stamina gains (cardiovascular endurance)
@@ -35,25 +34,13 @@ async fn calculate_stats_hr_zone_based(user_health_profile: UserHealthProfile, h
         stored_zones
     } else {
         tracing::info!("⚠️ No stored zones found, calculating heart rate zones");
-        let max_heart_rate = user_health_profile.max_heart_rate.unwrap_or_else(|| 
-            calc_max_heart_rate(user_health_profile.age, user_health_profile.gender)
-        );
-        let resting_heart_rate = user_health_profile.resting_heart_rate.unwrap_or(60);
-        let hrr = max_heart_rate - resting_heart_rate;
-        
-        tracing::info!("💓 Heart rate calculation: max_hr={}, resting_hr={}, hrr={}", 
-            max_heart_rate, resting_heart_rate, hrr);
-        
-        HeartRateZones::new(hrr, resting_heart_rate, max_heart_rate)
+        HeartRateZones::new(user_health_profile.age, user_health_profile.gender, user_health_profile.resting_heart_rate.unwrap_or(60))
     };
     
     // Check if heart rate data exists and is not empty
     if hr_data.is_empty() {
         tracing::warn!("⚠️ Heart rate data array is empty - returning zero stats");
-        let mut workout_stats = WorkoutStats::new();
-        workout_stats.changes.stamina_change = 0;
-        workout_stats.changes.strength_change = 0;
-        return Ok(workout_stats);
+        return Ok(WorkoutStats::new());
     }
 
     tracing::info!("📊 Processing {} heart rate data points", hr_data.len());
@@ -64,7 +51,7 @@ async fn calculate_stats_hr_zone_based(user_health_profile: UserHealthProfile, h
         hr_data.iter().map(|hr| hr.heart_rate).fold(0, i32::max)
     );
 
-    if let Some(workout_analysis) = WorkoutAnalyzer::new(hr_data, &heart_rate_zones) {
+    if let Some(workout_analysis) = WorkoutAnalyzer::new(&hr_data, &heart_rate_zones) {
         tracing::info!("✅ WorkoutAnalyzer created successfully");
         for (zone, minutes) in &workout_analysis.zone_durations {
             tracing::info!("📈 Zone {:?}: {:.1} minutes", zone, minutes);
@@ -79,9 +66,7 @@ async fn calculate_stats_hr_zone_based(user_health_profile: UserHealthProfile, h
     }
 
     // Return zero stats if no heart rate data or workout analysis failed
-    let mut workout_stats = WorkoutStats::new();
-    workout_stats.changes.stamina_change = 0;
-    workout_stats.changes.strength_change = 0;
+    let workout_stats = WorkoutStats::new();
 
     tracing::info!("🎯 Final stat changes: stamina +{}, strength +{}",
         workout_stats.changes.stamina_change, workout_stats.changes.strength_change);
