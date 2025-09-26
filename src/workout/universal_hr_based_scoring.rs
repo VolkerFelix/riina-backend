@@ -6,8 +6,8 @@ use crate::models::health::{UserHealthProfile, TrainingZones, TrainingZoneName};
 use crate::game::stats_calculator::ScoringMethod;
 
 const P_VT0: f32 = 0.4;
-const P_VT1: f32 = 0.72;
-const P_VT2: f32 = 0.88;
+const P_VT1: f32 = 0.65;
+const P_VT2: f32 = 0.8;
 
 #[derive(Debug)]
 struct ZoneScore {

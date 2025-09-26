@@ -208,12 +208,8 @@ impl TrainingZones {
             }),
             (TrainingZoneName::HARD, TrainingZone {
                 zone: hard_zone,
-                intensity_multiplier: 4.0,
-                intensity_type: IntensityType::Exponential {
-                    threshold: hard_zone.low as f32,
-                    base: 1.0,
-                    exponent: 0.04,
-                },
+                intensity_multiplier: 8.0,
+                intensity_type: IntensityType::Linear,
             }),
         ]) }
     }
