@@ -60,7 +60,7 @@ pub async fn get_user_health_profile_details(pool: &Pool<Postgres>, user_id: Uui
             Ok(UserHealthProfile {
                 age: 30,
                 gender: Gender::Other,
-                resting_heart_rate: None,
+                resting_heart_rate: Some(60),
                 max_heart_rate: None,
                 stored_heart_rate_zones: None,
             })

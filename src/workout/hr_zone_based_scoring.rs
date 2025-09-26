@@ -33,7 +33,8 @@ async fn calculate_stats_hr_zone_based(user_health_profile: UserHealthProfile, h
     let heart_rate_zones = if let Some(stored_zones) = user_health_profile.stored_heart_rate_zones {
         stored_zones
     } else {
-        tracing::info!("⚠️ No stored zones found, calculating heart rate zones");
+        tracing::info!("⚠️ No stored zones found, calculating heart rate zones for age={}, gender={:?}, resting_hr={}",
+            user_health_profile.age, user_health_profile.gender, user_health_profile.resting_heart_rate.unwrap_or(60));
         HeartRateZones::new(user_health_profile.age, user_health_profile.gender, user_health_profile.resting_heart_rate.unwrap_or(60))
     };
     
@@ -51,26 +52,16 @@ async fn calculate_stats_hr_zone_based(user_health_profile: UserHealthProfile, h
         hr_data.iter().map(|hr| hr.heart_rate).fold(0, i32::max)
     );
 
-    if let Some(workout_analysis) = WorkoutAnalyzer::new(&hr_data, &heart_rate_zones) {
-        tracing::info!("✅ WorkoutAnalyzer created successfully");
-        for (zone, minutes) in &workout_analysis.zone_durations {
-            tracing::info!("📈 Zone {:?}: {:.1} minutes", zone, minutes);
-        }
-        let workout_stats = calc_points_and_breakdown_from_workout_analysis(&workout_analysis, &heart_rate_zones);
-
-        tracing::info!("🎯 Final stat changes: stamina +{}, strength +{}",
-            workout_stats.changes.stamina_change, workout_stats.changes.strength_change);
-        return Ok(workout_stats);
-    } else {
-        tracing::error! ("❌ WorkoutAnalyzer::new() returned None - no stats calculated");
+    let workout_analysis = WorkoutAnalyzer::new(&hr_data, &heart_rate_zones);
+    tracing::info!("✅ WorkoutAnalyzer created successfully");
+    tracing::info!("🎯 Heart rate zones: {:?}", heart_rate_zones.zones);
+    for (zone, minutes) in &workout_analysis.zone_durations {
+        tracing::info!("📈 Zone {:?}: {:.1} minutes", zone, minutes);
     }
-
-    // Return zero stats if no heart rate data or workout analysis failed
-    let workout_stats = WorkoutStats::new();
+    let workout_stats = calc_points_and_breakdown_from_workout_analysis(&workout_analysis, &heart_rate_zones);
 
     tracing::info!("🎯 Final stat changes: stamina +{}, strength +{}",
         workout_stats.changes.stamina_change, workout_stats.changes.strength_change);
-
     Ok(workout_stats)
 }
 

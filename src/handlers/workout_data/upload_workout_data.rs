@@ -126,7 +126,7 @@ pub async fn upload_workout_data(
             );
             // Heart rate zone breakdown
             let zone_analysis = WorkoutAnalyzer::new(&heart_rate_data, &heart_rate_zones);
-            let zone_breakdown = zone_analysis.as_ref().unwrap().to_zone_breakdown();
+            let zone_breakdown = zone_analysis.to_zone_breakdown();
             // Insert zone analysis into workout data
 
             // 🎲 NOW CALCULATE GAME STATS

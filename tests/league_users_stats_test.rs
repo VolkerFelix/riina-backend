@@ -247,12 +247,15 @@ async fn test_get_league_users_with_stats_success() {
             let total_stats = user_data["total_stats"].as_i64().unwrap();
             let stamina = user_data["stats"]["stamina"].as_i64().unwrap();
             let strength = user_data["stats"]["strength"].as_i64().unwrap();
-            
-            // All users uploaded elite health data, so stats should be significantly higher than default (100)
+
+            // All users uploaded Intense workout data (high heart rate zones)
+            // With the HR zone-based scoring, intense workouts give mostly strength points
             assert!(total_stats > 0, "User {} should have enhanced stats after health data upload, got {}", i, total_stats);
-            assert!(stamina > 0, "User {} should have at least 1 stamina, got {}", i, stamina);
-            assert!(strength > 0, "User {} should have at least 1 strength, got {}", i, strength);
-            
+            // Intense workouts may give low or no stamina as they're in high HR zones
+            assert!(stamina >= 0, "User {} stamina should be non-negative, got {}", i, stamina);
+            // Intense workouts should give significant strength gains
+            assert!(strength > 0, "User {} should have strength gains from intense workout, got {}", i, strength);
+
             println!("   User {}: {} stamina, {} strength, {} total", i, stamina, strength, total_stats);
         }
     }

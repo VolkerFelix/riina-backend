@@ -14,9 +14,17 @@ pub struct WorkoutAnalyzer {
 }
 
 impl WorkoutAnalyzer {
-    pub fn new(heart_rate: &Vec<HeartRateData>, zones: &HeartRateZones) -> Option<Self> {
+    pub fn new(heart_rate: &Vec<HeartRateData>, zones: &HeartRateZones) -> Self {
         if heart_rate.is_empty() {
-            return None;
+            return Self {
+                total_duration_min: 0,
+                zone_durations: HashMap::new(),
+                avg_heart_rate: 0.0,
+                peak_heart_rate: 0.0,
+                time_above_aerobic_threshold: 0,
+                heart_rate_variability: 0.0,
+                zone_changes: 0,
+            };
         }
 
         let mut analyzer = WorkoutAnalyzer {
@@ -89,7 +97,7 @@ impl WorkoutAnalyzer {
         analyzer.avg_heart_rate = hr_sum / sorted_data.len() as f32;
         analyzer.heart_rate_variability = calc_hrv(&hr_values_for_hrv);
 
-        Some(analyzer)
+        analyzer
     }
 
     pub fn to_zone_breakdown(&self) -> Vec<ZoneBreakdown> {
