@@ -121,7 +121,7 @@ pub async fn upload_workout_data(
             let user_health_profile = get_user_health_profile_details(&pool, user_id).await.unwrap();
             
             // 🎲 NOW CALCULATE GAME STATS (only for the surviving workout)
-            let calculator = WorkoutStatsCalculator::with_hr_zone_based();
+            let calculator = WorkoutStatsCalculator::with_universal_hr_based();
             let workout_stats = match calculator.calculate_stat_changes(user_health_profile, heart_rate_data).await {
                 Ok(stats) => stats,
                 Err(e) => {

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::f32::consts::E;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ZoneRange {
     pub low: i32,
     pub high: i32,
@@ -126,19 +126,33 @@ pub enum TrainingZoneName {
     HARD
 }
 
-struct IntensityWeight {
-    weighting_fn: Box<dyn Fn(f32) -> f32>,
+#[derive(Debug, Clone)]
+pub enum IntensityType {
+    Linear,
+    Exponential { threshold: f32, base: f32, exponent: f32 },
 }
 
-impl std::fmt::Debug for IntensityWeight {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "IntensityWeight {{ weighting_fn: <closure> }}")
+#[derive(Debug, Clone)]
+pub struct TrainingZone {
+    pub zone: ZoneRange,
+    pub intensity_multiplier: f32,
+    pub intensity_type: IntensityType,
+}
+
+impl TrainingZone {
+    pub fn calculate_intensity(&self, heart_rate: f32) -> f32 {
+        match &self.intensity_type {
+            IntensityType::Linear => heart_rate * self.intensity_multiplier,
+            IntensityType::Exponential { threshold, base, exponent } => {
+                self.intensity_multiplier * base * E.powf(exponent * (heart_rate - threshold))
+            }
+        }
     }
 }
 
 #[derive(Debug)]
 pub struct TrainingZones {
-    pub zones: HashMap<TrainingZoneName, (ZoneRange, IntensityWeight)>,
+    pub zones: HashMap<TrainingZoneName, TrainingZone>,
 }
 
 impl TrainingZones {
@@ -160,14 +174,40 @@ impl TrainingZones {
             high: 300,
         };
         Self { zones: HashMap::from([
-            (TrainingZoneName::REST, (rest_zone, IntensityWeight { weighting_fn: Box::new(|x| x * 0.0) })),
-            (TrainingZoneName::EASY, (easy_zone, IntensityWeight { weighting_fn: Box::new(|x| x * 1.0) })),
-            (TrainingZoneName::MODERATE, (moderate_zone, IntensityWeight { weighting_fn: Box::new(|x| x * 2.0) })),
-            (TrainingZoneName::HARD, (hard_zone.clone(), IntensityWeight { weighting_fn: Box::new(move |hr| intensity_weight_heart_rate(hr, hard_zone.low as f32)) })),
+            (TrainingZoneName::REST, TrainingZone {
+                zone: rest_zone,
+                intensity_multiplier: 0.5,
+                intensity_type: IntensityType::Linear,
+            }),
+            (TrainingZoneName::EASY, TrainingZone {
+                zone: easy_zone,
+                intensity_multiplier: 1.0,
+                intensity_type: IntensityType::Linear,
+            }),
+            (TrainingZoneName::MODERATE, TrainingZone {
+                zone: moderate_zone,
+                intensity_multiplier: 2.0,
+                intensity_type: IntensityType::Linear,
+            }),
+            (TrainingZoneName::HARD, TrainingZone {
+                zone: hard_zone,
+                intensity_multiplier: 1.0,
+                intensity_type: IntensityType::Exponential {
+                    threshold: hard_zone.low as f32,
+                    base: 2.0,
+                    exponent: 0.04,
+                },
+            }),
         ]) }
     }
-}
 
-fn intensity_weight_heart_rate(hr: f32, vt2_high: f32) -> f32 {
-    2.0 * E.powf(0.04 * (hr - vt2_high))
+    pub fn get_zone_name_and_intensity(&self, heart_rate: i32) -> Option<(TrainingZoneName, f32)> {
+        for (zone_name, zone) in &self.zones {
+            if heart_rate >= zone.zone.low && heart_rate <= zone.zone.high {
+                let intensity = zone.calculate_intensity(heart_rate as f32);
+                return Some((*zone_name, intensity));
+            }
+        }
+        None
+    }
 }
