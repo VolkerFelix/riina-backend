@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
-use crate::models::workout_data::{HeartRateData, HeartRateZones, ZoneName};
+use crate::models::workout_data::{HeartRateData, ZoneBreakdown};
+use crate::models::health::{HeartRateZones, HeartRateZoneName};
 
 pub struct WorkoutAnalyzer {
     pub total_duration_min: i32,
-    pub zone_durations: HashMap<ZoneName, f32>,
+    pub zone_durations: HashMap<HeartRateZoneName, f32>,
     pub avg_heart_rate: f32,
     pub peak_heart_rate: f32,
     time_above_aerobic_threshold: i32,
@@ -13,9 +14,17 @@ pub struct WorkoutAnalyzer {
 }
 
 impl WorkoutAnalyzer {
-    pub fn new(heart_rate: &Vec<HeartRateData>, zones: &HeartRateZones) -> Option<Self> {
+    pub fn new(heart_rate: &Vec<HeartRateData>, zones: &HeartRateZones) -> Self {
         if heart_rate.is_empty() {
-            return None;
+            return Self {
+                total_duration_min: 0,
+                zone_durations: HashMap::new(),
+                avg_heart_rate: 0.0,
+                peak_heart_rate: 0.0,
+                time_above_aerobic_threshold: 0,
+                heart_rate_variability: 0.0,
+                zone_changes: 0,
+            };
         }
 
         let mut analyzer = WorkoutAnalyzer {
@@ -68,7 +77,7 @@ impl WorkoutAnalyzer {
                 *analyzer.zone_durations.entry(zone_name).or_insert(0.0) += duration_min;
                 // Count time in aerobic zones
                 match zone_name {
-                    ZoneName::Zone3 | ZoneName::Zone4 | ZoneName::Zone5 => {
+                    HeartRateZoneName::Zone3 | HeartRateZoneName::Zone4 | HeartRateZoneName::Zone5 => {
                         analyzer.time_above_aerobic_threshold += duration_min as i32;
                     }
                     _ => {}
@@ -88,7 +97,22 @@ impl WorkoutAnalyzer {
         analyzer.avg_heart_rate = hr_sum / sorted_data.len() as f32;
         analyzer.heart_rate_variability = calc_hrv(&hr_values_for_hrv);
 
-        Some(analyzer)
+        analyzer
+    }
+
+    pub fn to_zone_breakdown(&self) -> Vec<ZoneBreakdown> {
+        let mut zone_breakdown = Vec::new();
+        for (zone, duration) in &self.zone_durations {
+            zone_breakdown.push(ZoneBreakdown {
+                zone: zone.to_string(),
+                minutes: *duration,
+                stamina_gained: 0,
+                strength_gained: 0,
+                hr_min: None,
+                hr_max: None,
+            });
+        }
+        zone_breakdown
     }
 }
 

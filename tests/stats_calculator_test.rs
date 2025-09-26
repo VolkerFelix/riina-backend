@@ -1,5 +1,6 @@
 use riina_backend::game::stats_calculator::WorkoutStatsCalculator;
 use riina_backend::models::workout_data::{HeartRateData, WorkoutDataUploadRequest};
+use riina_backend::db::health_data::get_user_health_profile_details;
 use chrono::{Duration, Utc};
 use uuid::Uuid;
 
@@ -67,7 +68,10 @@ async fn test_zone_1_active_recovery() {
         approval_token: None,
     };
 
-    let workout_stats = WorkoutStatsCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
+    let user_health_profile = get_user_health_profile_details(&test_app.db_pool, user_id).await.unwrap();
+    let heart_rate_data = workout_data.heart_rate.clone().unwrap_or_default();
+
+    let workout_stats = WorkoutStatsCalculator::with_hr_zone_based().calculate_stat_changes(user_health_profile, heart_rate_data).await;
     
     // Around 5 minutes * 2 points per minute ≈ 10 stamina points (9-10 due to rounding)
     assert!(workout_stats.as_ref().unwrap().changes.stamina_change >= 9 && workout_stats.as_ref().unwrap().changes.stamina_change <= 10);
@@ -138,7 +142,10 @@ async fn test_zone_2_aerobic_base() {
         approval_token: None,
     };
 
-    let workout_stats = WorkoutStatsCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
+    let user_health_profile = get_user_health_profile_details(&test_app.db_pool, user_id).await.unwrap();
+    let heart_rate_data = workout_data.heart_rate.clone().unwrap_or_default();
+
+    let workout_stats = WorkoutStatsCalculator::with_hr_zone_based().calculate_stat_changes(user_health_profile, heart_rate_data).await;
     
     // Around 3 minutes * 5 stamina + 1 strength points per minute (14-15 stamina, 2-3 strength due to rounding)
     assert!(workout_stats.as_ref().unwrap().changes.stamina_change >= 14 && workout_stats.as_ref().unwrap().changes.stamina_change <= 15);
@@ -209,7 +216,10 @@ async fn test_zone_4_lactate_threshold() {
         approval_token: None,
     };
 
-    let workout_stats = WorkoutStatsCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
+    let user_health_profile = get_user_health_profile_details(&test_app.db_pool, user_id).await.unwrap();
+    let heart_rate_data = workout_data.heart_rate.clone().unwrap_or_default();
+
+    let workout_stats = WorkoutStatsCalculator::with_hr_zone_based().calculate_stat_changes(user_health_profile, heart_rate_data).await;
     
     // Around 2 minutes * 2 stamina + 5 strength points per minute (3-4 stamina, 9-10 strength due to rounding)
     assert!(workout_stats.as_ref().unwrap().changes.stamina_change >= 3 && workout_stats.as_ref().unwrap().changes.stamina_change <= 4);
@@ -280,7 +290,10 @@ async fn test_zone_5_neuromuscular_power() {
         approval_token: None,
     };
 
-    let workout_stats = WorkoutStatsCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
+    let user_health_profile = get_user_health_profile_details(&test_app.db_pool, user_id).await.unwrap();
+    let heart_rate_data = workout_data.heart_rate.clone().unwrap_or_default();
+
+    let workout_stats = WorkoutStatsCalculator::with_hr_zone_based().calculate_stat_changes(user_health_profile, heart_rate_data).await;
     
     // Around 1.5 minutes * 1 stamina + 8 strength points per minute (1-2 stamina, 11-12 strength due to rounding)
     assert!(workout_stats.as_ref().unwrap().changes.stamina_change >= 1 && workout_stats.as_ref().unwrap().changes.stamina_change <= 2);
@@ -340,7 +353,10 @@ async fn test_no_heart_rate_no_gains() {
         approval_token: None,
     };
 
-    let workout_stats = WorkoutStatsCalculator::calculate_stat_changes(&test_app.db_pool, user_id, &workout_data).await;
+    let user_health_profile = get_user_health_profile_details(&test_app.db_pool, user_id).await.unwrap();
+    let heart_rate_data = workout_data.heart_rate.clone().unwrap_or_default();
+
+    let workout_stats = WorkoutStatsCalculator::with_universal_hr_based().calculate_stat_changes(user_health_profile, heart_rate_data).await;
     assert_eq!(workout_stats.as_ref().unwrap().changes.stamina_change, 0);
     assert_eq!(workout_stats.as_ref().unwrap().changes.strength_change, 0);
     assert_eq!(workout_stats.as_ref().unwrap().zone_breakdown.is_none(), true);

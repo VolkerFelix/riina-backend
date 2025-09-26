@@ -4,7 +4,7 @@ pub mod workout_data;
 pub mod game_events;
 pub mod league;
 pub mod team;
-pub mod game;
 pub mod profile;
 pub mod common;
 pub mod social;
+pub mod health;

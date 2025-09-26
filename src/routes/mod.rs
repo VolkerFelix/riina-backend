@@ -3,7 +3,6 @@ use actix_web::web;
 pub mod registration;
 pub mod backend_health;
 pub mod auth;
-pub mod protected;
 pub mod health_data;
 pub mod websocket;
 pub mod league;
@@ -19,11 +18,6 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(registration::register)
         .service(backend_health::backend_health)
         .service(auth::login);
-
-    cfg.service(
-        web::scope("/protected")
-            .service(protected::protected_resource)
-    );
     // Health routes (require authentication)
     cfg.service(
         web::scope("/health")
@@ -33,8 +27,6 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .service(health_data::request_upload_url)
             .service(health_data::confirm_upload_handler)
             .service(health_data::get_download_url)
-            .service(workout_sync::get_activity_sum)
-            .service(workout_sync::get_zone_ana)
             .service(workout_sync::get_workout_hist)
             .service(workout_sync::check_workout_sync_handler)
     );
