@@ -28,6 +28,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .service(health_data::confirm_upload_handler)
             .service(health_data::get_download_url)
             .service(workout_sync::get_workout_hist)
+            .service(workout_sync::get_workout_detail_handler)
             .service(workout_sync::check_workout_sync_handler)
     );
     // Profile routes (require authentication)
