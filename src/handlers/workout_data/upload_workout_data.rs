@@ -34,7 +34,7 @@ use crate::config::jwt::JwtSettings;
     )
 )]
 pub async fn upload_workout_data(
-    data: web::Json<WorkoutDataUploadRequest>,
+    mut data: web::Json<WorkoutDataUploadRequest>,
     pool: web::Data<sqlx::PgPool>,
     redis: Option<web::Data<Arc<redis::Client>>>,
     claims: web::ReqData<Claims>,
@@ -93,195 +93,205 @@ pub async fn upload_workout_data(
             );
         }
     }
+    // Do we have heart rate data?
+    let heart_rate_data = match data.heart_rate.as_mut() {
+        Some(data) => data,
+        None => {
+            tracing::warn!("⚠️ No heart rate data provided - returning zero stats");
+            return HttpResponse::BadRequest().json(
+                ApiResponse::<()>::error("No heart rate data provided")
+            );
+        }
+    };
+    
+    if heart_rate_data.is_empty() {
+        tracing::warn!("⚠️ No heart rate data provided - returning zero stats");
+        return HttpResponse::BadRequest().json(
+            ApiResponse::<()>::error("No heart rate data provided")
+        );
+    }    
+    // Are the time stamps in ascending order? Test for first and second point
+    if heart_rate_data[0].timestamp > heart_rate_data[1].timestamp {
+        tracing::info!("⚠️ Heart rate data timestamps are not in ascending order - reversing");
+        heart_rate_data.reverse();
+    }
+    
+    // Convert to owned value to release the mutable borrow
+    let heart_rate_data = heart_rate_data.clone();
 
     // Insert workout data into database FIRST (with temporary/placeholder stats)
     tracing::info!("💾 Inserting workout data into database for user: {} with workout_uuid: {:?}",
-        claims.username, data.workout_uuid);
+    claims.username, data.workout_uuid);
 
     // Create placeholder stats for initial insertion
     let placeholder_stats = WorkoutStats {
         changes: StatChanges::new(),
         zone_breakdown: None,
     };
-
-    let insert_result = insert_workout_data(&pool, user_id, &data, &placeholder_stats).await;
-    
-    match insert_result {
-        Ok(sync_id) => {
-            tracing::info!("✅ Workout data inserted successfully with sync_id: {} for user: {}",
-                sync_id, claims.username);
-
-            // Do we have heart rate data?
-            let heart_rate_data = data.heart_rate.clone().unwrap_or_default();
-            if heart_rate_data.is_empty() {
-                tracing::warn!("⚠️ No heart rate data provided - returning zero stats");
-                return HttpResponse::BadRequest().json(
-                    ApiResponse::<()>::error("No heart rate data provided")
-                );
-            }
-            // Get user health profile
-            let user_health_profile = get_user_health_profile_details(&pool, user_id).await.unwrap();
-            let heart_rate_zones = user_health_profile.stored_heart_rate_zones.clone().unwrap_or(
-                HeartRateZones::new(user_health_profile.age, user_health_profile.gender, user_health_profile.resting_heart_rate.unwrap_or(60))
+    let sync_id = match insert_workout_data(&pool, user_id, &data, &placeholder_stats).await {
+        Ok(id) => id,
+        Err(e) => {
+            tracing::error!("❌ Error inserting workout data: {}", e);
+            return HttpResponse::InternalServerError().json(
+                ApiResponse::<()>::error("Error inserting workout data")
             );
-            // Heart rate zone breakdown
-            let zone_analysis = WorkoutAnalyzer::new(&heart_rate_data, &heart_rate_zones);
-            let zone_breakdown = zone_analysis.to_zone_breakdown();
-            // Insert zone analysis into workout data
+        }
+    };
 
-            // 🎲 NOW CALCULATE GAME STATS
-            let calculator = WorkoutStatsCalculator::with_universal_hr_based();
-            let workout_stats = match calculator.calculate_stat_changes(user_health_profile, heart_rate_data).await {
-                Ok(stats) => stats,
-                Err(e) => {
-                    tracing::error!("❌ Error calculating workout stats: {}", e);
-                    return HttpResponse::InternalServerError().json(
-                        ApiResponse::<()>::error("Error calculating workout stats")
-                    );
-                }
-            };
-            tracing::info!("📊 Calculated stat changes for {}: +{} stamina, +{} strength",
-                claims.username, workout_stats.changes.stamina_change, workout_stats.changes.strength_change,
+    // Get user health profile
+    let user_health_profile = get_user_health_profile_details(&pool, user_id).await.unwrap();
+    let heart_rate_zones = user_health_profile.stored_heart_rate_zones.clone().unwrap_or(
+        HeartRateZones::new(user_health_profile.age, user_health_profile.gender, user_health_profile.resting_heart_rate.unwrap_or(60))
+    );
+    // 🎲 NOW CALCULATE GAME STATS
+    let calculator = WorkoutStatsCalculator::with_universal_hr_based();
+    let workout_stats = match calculator.calculate_stat_changes(user_health_profile, heart_rate_data.clone()).await {
+        Ok(stats) => stats,
+        Err(e) => {
+            tracing::error!("❌ Error calculating workout stats: {}", e);
+            return HttpResponse::InternalServerError().json(
+                ApiResponse::<()>::error("Error calculating workout stats")
             );
+        }
+    };
+    tracing::info!("📊 Calculated stat changes for {}: +{} stamina, +{} strength",
+        claims.username, workout_stats.changes.stamina_change, workout_stats.changes.strength_change,
+    );
 
-            // Update the workout record with the calculated stats
-            match sqlx::query!(
-                r#"
-                UPDATE workout_data
-                SET stamina_gained = $1,
-                    strength_gained = $2,
-                    total_points_gained = $3,
-                    heart_rate_zones = $4
-                WHERE id = $5
-                "#,
-                workout_stats.changes.stamina_change,
-                workout_stats.changes.strength_change,
-                workout_stats.changes.stamina_change + workout_stats.changes.strength_change,
-                serde_json::to_value(&zone_breakdown).unwrap_or(serde_json::Value::Null),
-                sync_id
-            )
-            .execute(pool.get_ref())
-            .await {
-                Ok(_) => {
-                    tracing::debug!("Successfully updated workout stats");
-                }
-                Err(e) => {
-                    tracing::error!("Failed to update workout stats: {}", e);
-                    return HttpResponse::InternalServerError().json(
-                        ApiResponse::<()>::error("Failed to update workout stats")
-                    );
-                }
-            }
+    // Heart rate zone breakdown
+    let zone_analysis = WorkoutAnalyzer::new(&heart_rate_data, &heart_rate_zones);
+    let zone_breakdown = zone_analysis.to_zone_breakdown();
 
-            // Update user avatar stats
-            let update_result = update_user_stats(user_id, &workout_stats.changes, &pool).await;
-            match update_result {
-                Ok(_) => {
-                    tracing::info!("✅ Successfully updated user stats for {}", claims.username);
-                }
-                Err(e) => {
-                    tracing::error!("❌ Failed to update user stats for {}: {}", claims.username, e);
-                    return HttpResponse::InternalServerError().json(
-                        ApiResponse::<()>::error("Failed to update user stats")
-                    );
-                }
-            }
-
-            // 🏆 CHECK FOR ACTIVE GAMES AND UPDATE SCORES
-            match check_and_update_active_games(
-                user_id, 
-                &claims.username,
-                sync_id,
-                &workout_stats,
-                &data.workout_start,
-                &data.workout_end,
-                &pool,
-            ).await {
-                Ok(_) => {
-                    tracing::info!("✅ Successfully updated game scores for user {}", claims.username);
-                }
-                Err(e) => {
-                    tracing::error!("❌ Failed to update game scores for user {}: {}", claims.username, e);
-                }
-            }
-            // 🎯 PREPARE GAME EVENT FOR REAL-TIME NOTIFICATION
-            let game_event = json!({
-                "event_type": "workout_data_processed",
-                "user_id": user_id.to_string(),
-                "username": claims.username,
-                "sync_id": sync_id.to_string(),
-                "stat_changes": {
-                    "stamina_change": workout_stats.changes.stamina_change,
-                    "strength_change": workout_stats.changes.strength_change,
-                },
-                "timestamp": Utc::now().to_rfc3339()
-            });
-
-            // 📡 PUBLISH TO REDIS FOR REAL-TIME NOTIFICATION
-            if let Some(redis_client) = &redis {
-                let user_channel = format!("game:events:user:{}", user_id);
-                let global_channel = "game:events:global".to_string();
-                let event_str = serde_json::to_string(&game_event)
-                    .unwrap_or_else(|e| {
-                        tracing::error!("Failed to serialize game event: {}", e);
-                        "{}".to_string()
-                    });
-
-                let redis_client = redis_client.clone();
-                let event_str_clone = event_str.clone();
-                let username_clone = claims.username.clone();
-                
-                tokio::spawn(async move {
-                    match redis_client.get_async_connection().await {
-                        Ok(mut conn) => {
-                            // Publish to user-specific channel
-                            let user_result: Result<i32, redis::RedisError> = 
-                                conn.publish(&user_channel, &event_str).await;
-                            
-                            // Also publish to global channel for leaderboards/social features
-                            let global_result: Result<i32, redis::RedisError> = 
-                                conn.publish(&global_channel, &event_str_clone).await;
-                            
-                            match (user_result, global_result) {
-                                (Ok(user_receivers), Ok(global_receivers)) => {
-                                    tracing::info!("🎮 Published game event for {} to {} user subscribers and {} global subscribers", 
-                                        username_clone, user_receivers, global_receivers);
-                                }
-                                (Err(e), _) | (_, Err(e)) => {
-                                    tracing::error!("❌ Failed to publish game event for {}: {}", username_clone, e);
-                                }
-                            }
-                        },
-                        Err(e) => {
-                            tracing::error!("❌ Redis connection failed during game event publishing: {}", e);
-                        }
-                    }
-                });
-            } else {
-                tracing::warn!("⚠️  Redis not available - game events will not be published in real-time");
-            }
-
-            // 🎉 RESPONSE WITH GAME STATS
-            let message = "Workout data synced and game stats calculated!";
-            let response = WorkoutUploadResponse {
-                sync_id,
-                timestamp: Utc::now(),
-                game_stats: workout_stats.changes,
-            };
-
-            tracing::info!("✅ Workout data processed successfully for {}: {}", 
-                claims.username, sync_id);
-            HttpResponse::Ok().json(
-                ApiResponse::success(message, response)
-            )
+    // Update the workout record with the calculated stats
+    match sqlx::query!(
+        r#"
+        UPDATE workout_data
+        SET stamina_gained = $1,
+            strength_gained = $2,
+            total_points_gained = $3,
+            heart_rate_zones = $4
+        WHERE id = $5
+        "#,
+        workout_stats.changes.stamina_change,
+        workout_stats.changes.strength_change,
+        workout_stats.changes.stamina_change + workout_stats.changes.strength_change,
+        serde_json::to_value(&zone_breakdown).unwrap_or(serde_json::Value::Null),
+        sync_id
+    )
+    .execute(pool.get_ref())
+    .await {
+        Ok(_) => {
+            tracing::debug!("Successfully updated workout stats");
         }
         Err(e) => {
-            tracing::error!("❌ Failed to sync workout data for {}: {}", claims.username, e);
-            HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error(format!("Failed to sync workout data: {}", e))
-            )
+            tracing::error!("Failed to update workout stats: {}", e);
+            return HttpResponse::InternalServerError().json(
+                ApiResponse::<()>::error("Failed to update workout stats")
+            );
         }
     }
+
+    // Update user avatar stats
+    let update_result = update_user_stats(user_id, &workout_stats.changes, &pool).await;
+    match update_result {
+        Ok(_) => {
+            tracing::info!("✅ Successfully updated user stats for {}", claims.username);
+        }
+        Err(e) => {
+            tracing::error!("❌ Failed to update user stats for {}: {}", claims.username, e);
+            return HttpResponse::InternalServerError().json(
+                ApiResponse::<()>::error("Failed to update user stats")
+            );
+        }
+    }
+
+    // 🏆 CHECK FOR ACTIVE GAMES AND UPDATE SCORES
+    match check_and_update_active_games(
+        user_id, 
+        &claims.username,
+        sync_id,
+        &workout_stats,
+        &data.workout_start,
+        &data.workout_end,
+        &pool,
+    ).await {
+        Ok(_) => {
+            tracing::info!("✅ Successfully updated game scores for user {}", claims.username);
+        }
+        Err(e) => {
+            tracing::error!("❌ Failed to update game scores for user {}: {}", claims.username, e);
+        }
+    }
+    // 🎯 PREPARE GAME EVENT FOR REAL-TIME NOTIFICATION
+    let game_event = json!({
+        "event_type": "workout_data_processed",
+        "user_id": user_id.to_string(),
+        "username": claims.username,
+        "sync_id": sync_id.to_string(),
+        "stat_changes": {
+            "stamina_change": workout_stats.changes.stamina_change,
+            "strength_change": workout_stats.changes.strength_change,
+        },
+        "timestamp": Utc::now().to_rfc3339()
+    });
+
+    // 📡 PUBLISH TO REDIS FOR REAL-TIME NOTIFICATION
+    if let Some(redis_client) = &redis {
+        let user_channel = format!("game:events:user:{}", user_id);
+        let global_channel = "game:events:global".to_string();
+        let event_str = serde_json::to_string(&game_event)
+            .unwrap_or_else(|e| {
+                tracing::error!("Failed to serialize game event: {}", e);
+                "{}".to_string()
+            });
+
+        let redis_client = redis_client.clone();
+        let event_str_clone = event_str.clone();
+        let username_clone = claims.username.clone();
+        
+        tokio::spawn(async move {
+            match redis_client.get_async_connection().await {
+                Ok(mut conn) => {
+                    // Publish to user-specific channel
+                    let user_result: Result<i32, redis::RedisError> = 
+                        conn.publish(&user_channel, &event_str).await;
+                    
+                    // Also publish to global channel for leaderboards/social features
+                    let global_result: Result<i32, redis::RedisError> = 
+                        conn.publish(&global_channel, &event_str_clone).await;
+                    
+                    match (user_result, global_result) {
+                        (Ok(user_receivers), Ok(global_receivers)) => {
+                            tracing::info!("🎮 Published game event for {} to {} user subscribers and {} global subscribers", 
+                                username_clone, user_receivers, global_receivers);
+                        }
+                        (Err(e), _) | (_, Err(e)) => {
+                            tracing::error!("❌ Failed to publish game event for {}: {}", username_clone, e);
+                        }
+                    }
+                },
+                Err(e) => {
+                    tracing::error!("❌ Redis connection failed during game event publishing: {}", e);
+                }
+            }
+        });
+    } else {
+        tracing::warn!("⚠️  Redis not available - game events will not be published in real-time");
+    }
+
+    // 🎉 RESPONSE WITH GAME STATS
+    let message = "Workout data synced and game stats calculated!";
+    let response = WorkoutUploadResponse {
+        sync_id,
+        timestamp: Utc::now(),
+        game_stats: workout_stats.changes,
+    };
+
+    tracing::info!("✅ Workout data processed successfully for {}: {}", 
+        claims.username, sync_id);
+    HttpResponse::Ok().json(
+        ApiResponse::success(message, response)
+    )
 }
 
 /// Check if user is in any active games and update scores using consolidated architecture

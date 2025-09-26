@@ -198,12 +198,12 @@ impl TrainingZones {
             }),
             (TrainingZoneName::EASY, TrainingZone {
                 zone: easy_zone,
-                intensity_multiplier: 2.0,
+                intensity_multiplier: 4.0,
                 intensity_type: IntensityType::Linear,
             }),
             (TrainingZoneName::MODERATE, TrainingZone {
                 zone: moderate_zone,
-                intensity_multiplier: 4.0,
+                intensity_multiplier: 6.0,
                 intensity_type: IntensityType::Linear,
             }),
             (TrainingZoneName::HARD, TrainingZone {

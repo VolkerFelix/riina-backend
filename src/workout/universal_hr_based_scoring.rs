@@ -1,23 +1,22 @@
 use std::io::{Error, ErrorKind};
-use chrono::Duration;
 
 use crate::models::workout_data::{WorkoutStats, HeartRateData};
 use crate::models::health::{UserHealthProfile, TrainingZones, TrainingZoneName};
 use crate::game::stats_calculator::ScoringMethod;
 
-pub const P_VT0: f32 = 0.4;
+pub const P_VT0: f32 = 0.35;
 pub const P_VT1: f32 = 0.65;
 pub const P_VT2: f32 = 0.8;
 
 #[derive(Debug)]
 struct ZoneScore {
-    duration: Duration,
-    points: i32,
+    duration_mins: f32,
+    points: f32,
 }
 
 impl ZoneScore {
     pub fn new() -> Self {
-        Self { duration: Duration::seconds(0), points: 0 }
+        Self { duration_mins: 0.0, points: 0.0 }
     }
 }
 
@@ -68,38 +67,38 @@ fn calculate_score_from_training_zones(training_zones: TrainingZones, hr_data: V
 
         // Always account for the time interval, attributing it to the current zone
         let duration = next_hr_sample.timestamp.signed_duration_since(current_hr_sample.timestamp);
-        let duration_mins = duration.num_minutes() as f32;
+        let duration_mins = duration.num_seconds().abs() as f32 / 60.0;
 
         match current_zone {
             TrainingZoneName::REST => {
-                rest.duration += duration;
-                rest.points += (duration_mins * current_intensity) as i32;
+                rest.duration_mins += duration_mins;
+                rest.points += duration_mins * current_intensity
             }
             TrainingZoneName::EASY => {
-                easy.duration += duration;
-                easy.points += (duration_mins * current_intensity) as i32;
+                easy.duration_mins += duration_mins;
+                easy.points += duration_mins * current_intensity;
             }
             TrainingZoneName::MODERATE => {
-                moderate.duration += duration;
-                moderate.points += (duration_mins * current_intensity) as i32;
+                moderate.duration_mins += duration_mins;
+                moderate.points += duration_mins * current_intensity;
             }
             TrainingZoneName::HARD => {
-                hard.duration += duration;
-                hard.points += (duration_mins * current_intensity) as i32;
+                hard.duration_mins += duration_mins;
+                hard.points += duration_mins * current_intensity;
             }
         }
 
     }
 
-    let total_duration = rest.duration + easy.duration + moderate.duration + hard.duration;
-    tracing::info!("⏱️ Total workout duration: {:?} minutes (from {} data points)", total_duration.num_minutes(), hr_data.len());
-    tracing::info!("🎯 Rest zone: Duration={:?} min, Points={:?}", rest.duration.num_minutes(), rest.points);
-    tracing::info!("🎯 Easy zone: Duration={:?} min, Points={:?}", easy.duration.num_minutes(), easy.points);
-    tracing::info!("🎯 Moderate zone: Duration={:?} , Points={:?}", moderate.duration.num_minutes(), moderate.points);
-    tracing::info!("🎯 Hard zone: Duration={:?} , Points={:?}", hard.duration.num_minutes(), hard.points);
+    let total_duration = rest.duration_mins + easy.duration_mins + moderate.duration_mins + hard.duration_mins;
+    tracing::info!("⏱️ Total workout duration: {:?} minutes (from {} data points)", total_duration, hr_data.len());
+    tracing::info!("🎯 Rest zone: Duration={:?} min, Points={:?}", rest.duration_mins, rest.points);
+    tracing::info!("🎯 Easy zone: Duration={:?} min, Points={:?}", easy.duration_mins, easy.points);
+    tracing::info!("🎯 Moderate zone: Duration={:?} , Points={:?}", moderate.duration_mins, moderate.points);
+    tracing::info!("🎯 Hard zone: Duration={:?} , Points={:?}", hard.duration_mins, hard.points);
 
-    workout_stats.changes.stamina_change =  moderate.points + hard.points;
-    workout_stats.changes.strength_change = rest.points + easy.points;
+    workout_stats.changes.stamina_change =  (moderate.points + hard.points) as i32;
+    workout_stats.changes.strength_change = (rest.points + easy.points) as i32;
 
     Ok(workout_stats)
 }
