@@ -74,6 +74,19 @@ pub struct ZoneBreakdown {
     pub hr_max: Option<i32>, // Upper heart rate limit for this zone
 }
 
+impl ZoneBreakdown {
+    pub fn new(zone: String) -> Self {
+        Self {
+            zone,
+            minutes: 0.0,
+            stamina_gained: 0.0,
+            strength_gained: 0.0,
+            hr_min: None,
+            hr_max: None,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct WorkoutStats {
     pub changes: StatChanges,

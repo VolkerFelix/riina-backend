@@ -12,7 +12,7 @@ use crate::db::{
 };
 use crate::models::{
     workout_data::{WorkoutDataUploadRequest, WorkoutUploadResponse, StatChanges, WorkoutStats},
-    health::{HeartRateZones, HeartRateZoneName},
+    health::HeartRateZones,
     common::ApiResponse,
     league::{LeagueGame, LiveGameScoreUpdate},
     game_events::GameEvent,
@@ -160,38 +160,6 @@ pub async fn upload_workout_data(
 
     // Heart rate zone breakdown - always use the scoring system's zone breakdown
     let zone_breakdown = workout_stats.zone_breakdown.clone().unwrap_or_default();
-    
-    // Create zone mapper function based on the scoring system used
-    let zone_mapper = |zone_name: &str| -> Option<HeartRateZoneName> {
-        match zone_name {
-            // Universal HR based scoring zones
-            "Rest" => Some(HeartRateZoneName::Zone1),
-            "Easy" => Some(HeartRateZoneName::Zone2),
-            "Moderate" => Some(HeartRateZoneName::Zone3),
-            "Hard" => Some(HeartRateZoneName::Zone4),
-            // HR zone based scoring zones
-            "Zone1" => Some(HeartRateZoneName::Zone1),
-            "Zone2" => Some(HeartRateZoneName::Zone2),
-            "Zone3" => Some(HeartRateZoneName::Zone3),
-            "Zone4" => Some(HeartRateZoneName::Zone4),
-            "Zone5" => Some(HeartRateZoneName::Zone5),
-            // Legacy zone names
-            "Aerobic" => Some(HeartRateZoneName::Zone3),
-            "Lactate Threshold" => Some(HeartRateZoneName::Zone4),
-            "VO2 Max" => Some(HeartRateZoneName::Zone5),
-            _ => None, // Unknown zone name
-        }
-    };
-    
-    // Create workout analyzer from the zone breakdown for additional analysis
-    let zone_analysis = WorkoutAnalyzer::from_zone_breakdown(&heart_rate_data, &zone_breakdown, zone_mapper);
-    
-    // Log zone time breakdown for debugging/analysis
-    let zone_time_breakdown = zone_analysis.get_zone_time_breakdown_with_original_names(&zone_breakdown);
-    tracing::info!("📊 Zone time breakdown for {}:", claims.username);
-    for (zone_name, minutes, percentage) in zone_time_breakdown {
-        tracing::info!("  {}: {:.1} minutes ({:.1}%)", zone_name, minutes, percentage);
-    }
 
     // Update the workout record with the calculated stats
     match sqlx::query!(

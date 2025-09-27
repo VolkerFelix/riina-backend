@@ -99,21 +99,6 @@ impl WorkoutAnalyzer {
 
         analyzer
     }
-
-    pub fn to_zone_breakdown(&self) -> Vec<ZoneBreakdown> {
-        let mut zone_breakdown = Vec::new();
-        for (zone, duration) in &self.zone_durations {
-            zone_breakdown.push(ZoneBreakdown {
-                zone: zone.to_string(),
-                minutes: *duration,
-                stamina_gained: 0,
-                strength_gained: 0,
-                hr_min: None,
-                hr_max: None,
-            });
-        }
-        zone_breakdown
-    }
 }
 
 fn calc_hrv(hr_values: &Vec<i32>) -> f32 {
