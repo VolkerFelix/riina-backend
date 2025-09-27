@@ -91,7 +91,7 @@ pub async fn get_teams(
             t.created_at,
             t.user_id as owner_id,
             COUNT(tm.user_id) as member_count,
-            COALESCE(SUM(ua.stamina + ua.strength), 0) as total_power
+            COALESCE(SUM(ua.stamina + ua.strength), 0.0) as total_power
         FROM teams t
         LEFT JOIN team_members tm ON t.id = tm.team_id
         LEFT JOIN user_avatars ua ON tm.user_id = ua.user_id
@@ -187,7 +187,7 @@ pub async fn get_team_by_id(
             t.created_at,
             t.user_id as owner_id,
             COUNT(tm.user_id) as member_count,
-            COALESCE(SUM(ua.stamina + ua.strength), 0) as total_power
+            COALESCE(SUM(ua.stamina + ua.strength), 0.0) as total_power
         FROM teams t
         LEFT JOIN team_members tm ON t.id = tm.team_id
         LEFT JOIN user_avatars ua ON tm.user_id = ua.user_id
@@ -432,9 +432,9 @@ pub async fn get_team_members(
             tm.joined_at,
             u.username,
             u.email,
-            COALESCE(ua.stamina, 0) as stamina,
-            COALESCE(ua.strength, 0) as strength,
-            COALESCE(ua.stamina + ua.strength, 0) as total_stats,
+            COALESCE(ua.stamina, 0.0) as stamina,
+            COALESCE(ua.strength, 0.0) as strength,
+            COALESCE(ua.stamina + ua.strength, 0.0) as total_stats,
             COALESCE(ua.avatar_style, 'warrior') as avatar_style
         FROM team_members tm
         JOIN users u ON tm.user_id = u.id
@@ -529,9 +529,9 @@ pub async fn add_team_member(
                     tm.joined_at,
                     u.username,
                     u.email,
-                    COALESCE(ua.stamina, 0) as stamina,
-                    COALESCE(ua.strength, 0) as strength,
-                    COALESCE(ua.stamina + ua.strength, 0) as total_stats,
+                    COALESCE(ua.stamina, 0.0) as stamina,
+                    COALESCE(ua.strength, 0.0) as strength,
+                    COALESCE(ua.stamina + ua.strength, 0.0) as total_stats,
                     COALESCE(ua.avatar_style, 'warrior') as avatar_style
                 FROM team_members tm
                 JOIN users u ON tm.user_id = u.id

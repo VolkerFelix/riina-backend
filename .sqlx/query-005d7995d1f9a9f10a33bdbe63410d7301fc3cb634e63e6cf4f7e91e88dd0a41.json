@@ -11,10 +11,10 @@
         "Varchar",
         "Uuid",
         "Varchar",
+        "Float4",
         "Int4",
-        "Int4",
-        "Int4",
-        "Int4",
+        "Float4",
+        "Float4",
         "Text",
         "Uuid"
       ]

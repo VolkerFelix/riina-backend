@@ -21,8 +21,8 @@ pub struct WorkoutHistoryItem {
     pub heart_rate_zones: Option<serde_json::Value>,
     pub heart_rate_data: Option<Vec<HeartRateData>>,
     // Game stats gained from this workout
-    pub stamina_gained: i32,
-    pub strength_gained: i32,
+    pub stamina_gained: f32,
+    pub strength_gained: f32,
     // Media attachments
     pub image_url: Option<String>,
     pub video_url: Option<String>,
@@ -97,8 +97,8 @@ pub async fn get_workout_history(
             wd.max_heart_rate,
             wd.heart_rate_data,
             wd.heart_rate_zones,
-            COALESCE(wd.stamina_gained, 0) as stamina_gained,
-            COALESCE(wd.strength_gained, 0) as strength_gained,
+            COALESCE(wd.stamina_gained, 0.0) as stamina_gained,
+            COALESCE(wd.strength_gained, 0.0) as strength_gained,
             wd.image_url,
             wd.video_url
         FROM workout_data wd
@@ -156,8 +156,8 @@ pub async fn get_workout_history(
                     max_heart_rate,
                     heart_rate_zones: row.heart_rate_zones,
                     heart_rate_data,
-                    stamina_gained: row.stamina_gained.unwrap_or(0) as i32,
-                    strength_gained: row.strength_gained.unwrap_or(0) as i32,
+                    stamina_gained: row.stamina_gained.unwrap_or(0.0),
+                    strength_gained: row.strength_gained.unwrap_or(0.0),
                     image_url: row.image_url,
                     video_url: row.video_url,
                 }

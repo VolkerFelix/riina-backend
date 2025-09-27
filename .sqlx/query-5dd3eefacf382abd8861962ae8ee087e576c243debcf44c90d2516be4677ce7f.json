@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT \n            wd.id,\n            COALESCE(wd.workout_start, wd.created_at) as workout_date,\n            wd.workout_start,\n            wd.workout_end,\n            wd.created_at,\n            wd.calories_burned as calories_burned,\n            wd.duration_minutes,\n            wd.activity_name,\n            wd.avg_heart_rate,\n            wd.max_heart_rate,\n            wd.heart_rate_data,\n            wd.heart_rate_zones,\n            COALESCE(wd.stamina_gained, 0) as stamina_gained,\n            COALESCE(wd.strength_gained, 0) as strength_gained,\n            wd.image_url,\n            wd.video_url\n        FROM workout_data wd\n        WHERE wd.id = $1 AND wd.user_id = $2\n        ",
+  "query": "\n        SELECT \n            wd.id,\n            COALESCE(wd.workout_start, wd.created_at) as workout_date,\n            wd.workout_start,\n            wd.workout_end,\n            wd.created_at,\n            wd.calories_burned as calories_burned,\n            wd.duration_minutes,\n            wd.activity_name,\n            wd.avg_heart_rate,\n            wd.max_heart_rate,\n            wd.heart_rate_data,\n            wd.heart_rate_zones,\n            COALESCE(wd.stamina_gained, 0.0) as stamina_gained,\n            COALESCE(wd.strength_gained, 0.0) as strength_gained,\n            wd.image_url,\n            wd.video_url\n        FROM workout_data wd\n        WHERE wd.user_id = $1\n        AND (wd.calories_burned > 100 OR wd.heart_rate_data IS NOT NULL)\n        ORDER BY COALESCE(wd.workout_start, wd.created_at) DESC\n        LIMIT $2 OFFSET $3\n        ",
   "describe": {
     "columns": [
       {
@@ -66,12 +66,12 @@
       {
         "ordinal": 12,
         "name": "stamina_gained",
-        "type_info": "Int4"
+        "type_info": "Float4"
       },
       {
         "ordinal": 13,
         "name": "strength_gained",
-        "type_info": "Int4"
+        "type_info": "Float4"
       },
       {
         "ordinal": 14,
@@ -87,7 +87,8 @@
     "parameters": {
       "Left": [
         "Uuid",
-        "Uuid"
+        "Int8",
+        "Int8"
       ]
     },
     "nullable": [
@@ -109,5 +110,5 @@
       true
     ]
   },
-  "hash": "c5a410a4f21515d6d6ec4055d68fc0c97ae2e7d8833ea9149c86788e189235fb"
+  "hash": "5dd3eefacf382abd8861962ae8ee087e576c243debcf44c90d2516be4677ce7f"
 }

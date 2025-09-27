@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 use chrono::{DateTime, Utc, Duration};
-use std::collections::HashMap;
 use std::cmp::Ordering;
 
 use crate::middleware::auth::Claims;

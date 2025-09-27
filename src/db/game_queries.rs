@@ -91,7 +91,7 @@ impl GameQueries {
                     WHERE id = $1
                     "#,
                     game_id,
-                    update.score_increase,
+                    update.score_increase as i32,
                     update.user_id,
                     update.username
                 )
@@ -112,7 +112,7 @@ impl GameQueries {
                     WHERE id = $1
                     "#,
                     game_id,
-                    update.score_increase,
+                    update.score_increase as i32,
                     update.user_id,
                     update.username
                 )

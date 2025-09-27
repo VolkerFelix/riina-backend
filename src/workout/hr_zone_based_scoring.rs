@@ -96,17 +96,17 @@ fn calc_points_and_breakdown_from_workout_analysis(workout_analysis: &WorkoutAna
 
         // Add zone breakdown for this zone
         zone_breakdown.push(ZoneBreakdown {
-            zone: format!("{:?}", zone),
+            zone: format!("{}", zone),
             minutes: *duration_minutes,
-            stamina_gained: zone_stamina,
-            strength_gained: zone_strength,
+            stamina_gained: zone_stamina as f32,
+            strength_gained: zone_strength as f32,
             hr_min,
             hr_max,
         });
     }
 
-    workout_stats.changes.stamina_change = total_stamina as i32;
-    workout_stats.changes.strength_change = total_strength as i32;
+    workout_stats.changes.stamina_change = total_stamina as f32;
+    workout_stats.changes.strength_change = total_strength as f32;
     workout_stats.zone_breakdown = Some(zone_breakdown);
     workout_stats
 }

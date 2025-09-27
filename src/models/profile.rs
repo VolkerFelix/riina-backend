@@ -8,15 +8,15 @@ pub struct UserProfileResponse {
     pub stats: GameStats,
     pub rank: i32,
     pub avatar_style: String,
-    pub total_stats: i32,
+    pub total_stats: f32,
     pub created_at: DateTime<Utc>,
     pub last_login: Option<DateTime<Utc>>,
 }
 
 #[derive(serde::Serialize)]
 pub struct GameStats {
-    pub stamina: i32,
-    pub strength: i32,
+    pub stamina: f32,
+    pub strength: f32,
 }
 
 #[derive(sqlx::FromRow, serde::Serialize)]

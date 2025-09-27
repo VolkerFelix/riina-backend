@@ -5,8 +5,8 @@
     "columns": [],
     "parameters": {
       "Left": [
-        "Int4",
-        "Int4",
+        "Float4",
+        "Float4",
         "Int4",
         "Jsonb",
         "Uuid"

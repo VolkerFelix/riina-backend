@@ -10,7 +10,7 @@ use std::fmt;
 pub struct LiveGameScoreUpdate {
     pub user_id: Uuid,
     pub username: String,
-    pub score_increase: i32,
+    pub score_increase: f32,
 }
 
 #[derive(Debug, FromRow, Serialize, Deserialize, Clone)]
@@ -208,8 +208,8 @@ pub struct GameWithTeams {
     pub away_team_name: String,
     pub home_team_color: String,
     pub away_team_color: String,
-    pub home_team_power: Option<i32>,
-    pub away_team_power: Option<i32>,
+    pub home_team_power: Option<f32>,
+    pub away_team_power: Option<f32>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -225,7 +225,7 @@ pub struct StandingWithTeam {
     pub team_name: String,
     pub team_color: String,
     pub recent_form: Vec<char>, // W, D, L for last 5 games
-    pub team_power: i32,
+    pub team_power: f32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

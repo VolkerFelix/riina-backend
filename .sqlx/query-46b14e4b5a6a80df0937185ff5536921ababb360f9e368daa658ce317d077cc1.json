@@ -11,12 +11,12 @@
       {
         "ordinal": 1,
         "name": "stamina",
-        "type_info": "Int4"
+        "type_info": "Float4"
       },
       {
         "ordinal": 2,
         "name": "strength",
-        "type_info": "Int4"
+        "type_info": "Float4"
       }
     ],
     "parameters": {

@@ -80,7 +80,7 @@ pub async fn get_users(
             ua.avatar_style,
             tm.team_id,
             tm.role as team_role,
-            COALESCE(ua.stamina + ua.strength, 0) as total_stats,
+            COALESCE(ua.stamina + ua.strength, 0.0) as total_stats,
             u.updated_at as last_active_at
         FROM users u
         LEFT JOIN user_avatars ua ON u.id = ua.user_id
@@ -200,7 +200,7 @@ pub async fn get_user_by_id(
             ua.avatar_style,
             tm.team_id,
             tm.role as team_role,
-            COALESCE(ua.stamina + ua.strength, 0) as total_stats,
+            COALESCE(ua.stamina + ua.strength, 0.0) as total_stats,
             u.updated_at as last_active_at
         FROM users u
         LEFT JOIN user_avatars ua ON u.id = ua.user_id
@@ -281,7 +281,7 @@ pub async fn get_users_without_team(
             ua.stamina,
             ua.strength,
             ua.avatar_style,
-            COALESCE(ua.stamina + ua.strength, 0) as total_stats,
+            COALESCE(ua.stamina + ua.strength, 0.0) as total_stats,
             u.updated_at as last_active_at
         FROM users u
         LEFT JOIN user_avatars ua ON u.id = ua.user_id

@@ -21,8 +21,8 @@ pub struct WorkoutDetail {
     pub heart_rate_zones: Option<serde_json::Value>,
     pub heart_rate_data: Option<Vec<HeartRateData>>,
     // Game stats gained from this workout
-    pub stamina_gained: Option<i32>,
-    pub strength_gained: Option<i32>,
+    pub stamina_gained: Option<f32>,
+    pub strength_gained: Option<f32>,
     // Media attachments
     pub image_url: Option<String>,
     pub video_url: Option<String>,
@@ -90,8 +90,8 @@ pub async fn get_workout_detail(
             wd.max_heart_rate,
             wd.heart_rate_data,
             wd.heart_rate_zones,
-            COALESCE(wd.stamina_gained, 0) as stamina_gained,
-            COALESCE(wd.strength_gained, 0) as strength_gained,
+            COALESCE(wd.stamina_gained, 0.0) as stamina_gained,
+            COALESCE(wd.strength_gained, 0.0) as strength_gained,
             wd.image_url,
             wd.video_url
         FROM workout_data wd

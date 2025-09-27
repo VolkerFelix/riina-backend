@@ -253,7 +253,7 @@ pub async fn get_team_information(
         Ok(power) => power,
         Err(e) => {
             tracing::error!("Failed to calculate team power for {}: {}", team_id, e);
-            0 // Default to 0 if calculation fails
+            0.0 // Default to 0 if calculation fails
         }
     };
 
@@ -335,7 +335,7 @@ pub async fn get_all_registered_teams(
     let teams_with_power: Vec<TeamInfoWithPower> = teams
         .into_iter()
         .map(|team| TeamInfoWithPower {
-            total_power: team_powers.get(&team.id).copied().unwrap_or(0),
+            total_power: team_powers.get(&team.id).copied().unwrap_or(0.0),
             id: team.id,
             user_id: team.user_id,
             team_name: team.team_name,

@@ -1,24 +1,13 @@
 use std::io::{Error, ErrorKind};
 
 use crate::models::workout_data::{WorkoutStats, HeartRateData, ZoneBreakdown};
-use crate::models::health::{UserHealthProfile, TrainingZones, TrainingZoneName};
+use crate::models::health::{UserHealthProfile, TrainingZones};
 use crate::game::stats_calculator::ScoringMethod;
 
 pub const P_VT0: f32 = 0.35;
 pub const P_VT1: f32 = 0.65;
 pub const P_VT2: f32 = 0.8;
 
-#[derive(Debug)]
-struct ZoneScore {
-    duration_mins: f32,
-    points: f32,
-}
-
-impl ZoneScore {
-    pub fn new() -> Self {
-        Self { duration_mins: 0.0, points: 0.0 }
-    }
-}
 
 pub struct UniversalHRBasedScoring;
 
@@ -40,7 +29,7 @@ async fn calculate_stats_universal_hr_based(user_health_profile: UserHealthProfi
 
 fn calculate_score_from_training_zones(training_zones: TrainingZones, hr_data: Vec<HeartRateData>) -> Result<WorkoutStats, Error> {
     let mut workout_stats = WorkoutStats::new();
-    let mut points = 0;
+    let mut points = 0.0;
     let mut zone_breakdown = Vec::new();
 
     tracing::info!("📊 Processing {} heart rate data points", hr_data.len());
@@ -66,13 +55,14 @@ fn calculate_score_from_training_zones(training_zones: TrainingZones, hr_data: V
         // Always account for the time interval, attributing it to the current zone
         let duration = next_hr_sample.timestamp.signed_duration_since(current_hr_sample.timestamp);
         let duration_mins = duration.num_seconds().abs() as f32 / 60.0;
-        points += (duration_mins * current_intensity) as i32;
+        let points_for_this_interval = duration_mins * current_intensity;
+        points += points_for_this_interval;
 
         zone_breakdown.push(ZoneBreakdown {
-            zone: format!("{:?}", current_zone),
+            zone: format!("{}", current_zone),
             minutes: duration_mins,
-            stamina_gained: points,
-            strength_gained: 0,
+            stamina_gained: points_for_this_interval,
+            strength_gained: 0.0,
             hr_min: None,
             hr_max: None,
         });
@@ -80,7 +70,7 @@ fn calculate_score_from_training_zones(training_zones: TrainingZones, hr_data: V
     }
 
     workout_stats.changes.stamina_change = points;
-    workout_stats.changes.strength_change = 0;
+    workout_stats.changes.strength_change = 0.0;
     workout_stats.zone_breakdown = Some(zone_breakdown);
 
     Ok(workout_stats)

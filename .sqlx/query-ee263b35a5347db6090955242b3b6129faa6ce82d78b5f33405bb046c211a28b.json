@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT \n            t.id,\n            t.team_name as name,\n            t.team_color as color,\n            t.created_at,\n            t.user_id as owner_id,\n            COUNT(tm.user_id) as member_count,\n            COALESCE(SUM(ua.stamina + ua.strength), 0) as total_power\n        FROM teams t\n        LEFT JOIN team_members tm ON t.id = tm.team_id AND tm.status = 'active'\n        LEFT JOIN user_avatars ua ON tm.user_id = ua.user_id\n        WHERE t.league_id = $1\n        GROUP BY t.id, t.team_name, t.team_color, t.created_at, t.user_id\n        ORDER BY t.team_name ASC\n        ",
+  "query": "\n        SELECT \n            t.id,\n            t.team_name as name,\n            t.team_color as color,\n            t.created_at,\n            t.user_id as owner_id,\n            COUNT(tm.user_id) as member_count,\n            COALESCE(SUM(ua.stamina + ua.strength), 0.0) as total_power\n        FROM teams t\n        LEFT JOIN team_members tm ON t.id = tm.team_id AND tm.status = 'active'\n        LEFT JOIN user_avatars ua ON tm.user_id = ua.user_id\n        WHERE t.league_id = $1\n        GROUP BY t.id, t.team_name, t.team_color, t.created_at, t.user_id\n        ORDER BY t.team_name ASC\n        ",
   "describe": {
     "columns": [
       {
@@ -36,7 +36,7 @@
       {
         "ordinal": 6,
         "name": "total_power",
-        "type_info": "Int8"
+        "type_info": "Float4"
       }
     ],
     "parameters": {
@@ -54,5 +54,5 @@
       null
     ]
   },
-  "hash": "5405caea7fc8bbdf17e5b82ea2199097d6396e1a6513aae678bcb06dc28a9379"
+  "hash": "ee263b35a5347db6090955242b3b6129faa6ce82d78b5f33405bb046c211a28b"
 }

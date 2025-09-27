@@ -16,7 +16,7 @@
       {
         "ordinal": 2,
         "name": "score_points",
-        "type_info": "Int4"
+        "type_info": "Float4"
       },
       {
         "ordinal": 3,
@@ -56,12 +56,12 @@
       {
         "ordinal": 10,
         "name": "stamina_gained",
-        "type_info": "Int4"
+        "type_info": "Float4"
       },
       {
         "ordinal": 11,
         "name": "strength_gained",
-        "type_info": "Int4"
+        "type_info": "Float4"
       },
       {
         "ordinal": 12,
