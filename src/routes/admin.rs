@@ -101,6 +101,14 @@ pub fn init_admin_routes(cfg: &mut web::ServiceConfig) {
                 web::resource("/games/evaluate")
                     .route(web::post().to(game_management_handler::evaluate_games_for_date))
             )
+            .service(
+                web::resource("/games/trigger-evaluation")
+                    .route(web::post().to(game_management_handler::trigger_game_evaluation))
+            )
+            .service(
+                web::resource("/games/finish-ongoing")
+                    .route(web::post().to(game_management_handler::finish_ongoing_games))
+            )
             
             // Workout management routes
             .service(

@@ -443,6 +443,197 @@ pub async fn adjust_live_game_score(
     Ok(HttpResponse::Ok().json(ApiResponse::success(response.message.clone(), response)))
 }
 
+/// POST /admin/games/trigger-evaluation - Manually trigger game evaluation for all finished games and start upcoming games
+pub async fn trigger_game_evaluation(
+    pool: web::Data<PgPool>,
+    redis_client: Option<web::Data<Arc<redis::Client>>>,
+) -> Result<HttpResponse> {
+    info!("Manual game evaluation and cycle triggered");
+
+    // Get all finished games regardless of date
+    let finished_games = sqlx::query!(
+        r#"
+        SELECT
+            id, season_id, home_team_id, away_team_id,
+            week_number, is_first_leg, status as "status: crate::models::league::GameStatus",
+            winner_team_id,
+            created_at, updated_at,
+            home_score, away_score, game_start_time, game_end_time,
+            last_score_time, last_scorer_id, last_scorer_name, last_scorer_team
+        FROM games
+        WHERE status = 'finished'
+        ORDER BY game_start_time ASC
+        "#
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(|e| {
+        error!("Failed to fetch finished games: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to fetch games")
+    })?;
+
+    let games_evaluated = if !finished_games.is_empty() {
+        // Initialize game evaluation service
+        let redis_client_inner = match redis_client.as_ref() {
+            Some(client) => client.get_ref().clone(),
+            None => {
+                error!("Redis client not available for game evaluation");
+                return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                    "Redis client not available"
+                )));
+            }
+        };
+
+        let evaluation_service = GameEvaluationService::new(
+            pool.get_ref().clone(),
+            redis_client_inner
+        );
+
+        // Convert to the expected format for evaluation
+        let games_for_evaluation: Vec<Uuid> = finished_games.into_iter().map(|row| {
+            row.id
+        }).collect();
+
+        // Evaluate the games
+        match evaluation_service.evaluate_finished_live_games(&games_for_evaluation).await {
+            Ok(evaluation_results) => {
+                info!("Successfully evaluated {} games", evaluation_results.len());
+                evaluation_results.len()
+            }
+            Err(e) => {
+                error!("Failed to evaluate games: {}", e);
+                return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                    "Game evaluation failed"
+                )));
+            }
+        }
+    } else {
+        info!("No finished games to evaluate");
+        0
+    };
+
+    // Now run the game cycle to start upcoming games
+    let manage_game_service = crate::services::ManageGameService::new(pool.get_ref().clone());
+    let (games_ready_to_start, live_games, started_games, finished_games) =
+        match manage_game_service.run_game_cycle().await {
+            Ok(result) => result,
+            Err(e) => {
+                error!("Failed to run game cycle: {}", e);
+                return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                    "Failed to run game cycle"
+                )));
+            }
+        };
+
+    let message = format!(
+        "Evaluation complete: {} games evaluated, {} games started, {} games finished. Currently {} games live, {} games ready to start",
+        games_evaluated, started_games.len(), finished_games.len(), live_games.len(), games_ready_to_start.len()
+    );
+
+    info!("{}", message);
+
+    let response = serde_json::json!({
+        "success": true,
+        "games_evaluated": games_evaluated,
+        "games_started": started_games.len(),
+        "games_finished": finished_games.len(),
+        "live_games": live_games.len(),
+        "games_ready_to_start": games_ready_to_start.len(),
+        "message": message
+    });
+
+    Ok(HttpResponse::Ok().json(response))
+}
+
+/// POST /admin/games/finish-ongoing - Manually finish all ongoing games
+pub async fn finish_ongoing_games(
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse> {
+    info!("Manual request to finish all ongoing games");
+
+    // Get all in_progress games
+    let ongoing_games = sqlx::query!(
+        r#"
+        SELECT
+            id, home_team_id, away_team_id, week_number,
+            home_score, away_score
+        FROM games
+        WHERE status = 'in_progress'
+        ORDER BY game_start_time ASC
+        "#
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(|e| {
+        error!("Failed to fetch ongoing games: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to fetch games")
+    })?;
+
+    if ongoing_games.is_empty() {
+        let message = "No ongoing games to finish";
+        info!("{}", message);
+
+        let response = serde_json::json!({
+            "success": true,
+            "games_finished": 0,
+            "message": message
+        });
+        return Ok(HttpResponse::Ok().json(response));
+    }
+
+    let mut games_finished = 0;
+    let mut tx = pool.begin().await.map_err(|e| {
+        error!("Failed to start transaction: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    // Update all ongoing games to finished status
+    for game in &ongoing_games {
+        let result = sqlx::query!(
+            r#"
+            UPDATE games
+            SET
+                status = 'finished',
+                game_end_time = NOW(),
+                updated_at = NOW()
+            WHERE id = $1 AND status = 'in_progress'
+            "#,
+            game.id
+        )
+        .execute(&mut *tx)
+        .await;
+
+        match result {
+            Ok(_) => {
+                games_finished += 1;
+                info!("Finished game {} (Week {}, Score: {} - {})",
+                    game.id, game.week_number, game.home_score, game.away_score);
+            }
+            Err(e) => {
+                error!("Failed to finish game {}: {}", game.id, e);
+            }
+        }
+    }
+
+    // Commit the transaction
+    tx.commit().await.map_err(|e| {
+        error!("Failed to commit transaction: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    let message = format!("Successfully finished {} ongoing games", games_finished);
+    info!("{}", message);
+
+    let response = serde_json::json!({
+        "success": true,
+        "games_finished": games_finished,
+        "total_ongoing": ongoing_games.len(),
+        "message": message
+    });
+
+    Ok(HttpResponse::Ok().json(response))
+}
+
 /// POST /admin/games/evaluate - Manually trigger game evaluation for a specific date
 pub async fn evaluate_games_for_date(
     pool: web::Data<PgPool>,
