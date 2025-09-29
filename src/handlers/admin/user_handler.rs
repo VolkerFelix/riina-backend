@@ -10,7 +10,7 @@ pub struct AdminUserResponse {
     pub username: String,
     pub email: String,
     pub stats: UserStats,
-    pub total_stats: i32,
+    pub total_stats: f32,
     pub is_online: bool,
     pub avatar_style: String,
     pub team_id: Option<Uuid>,
@@ -22,8 +22,8 @@ pub struct AdminUserResponse {
 
 #[derive(Serialize)]
 pub struct UserStats {
-    pub stamina: i32,
-    pub strength: i32,
+    pub stamina: f32,
+    pub strength: f32,
 }
 
 #[derive(Serialize)]
@@ -153,10 +153,10 @@ pub async fn get_users(
             username: row.get("username"),
             email: row.get("email"),
             stats: UserStats {
-                stamina: row.get::<Option<i32>, _>("stamina").unwrap_or(0),
-                strength: row.get::<Option<i32>, _>("strength").unwrap_or(0),
+                stamina: row.get::<Option<f32>, _>("stamina").unwrap_or(0.0),
+                strength: row.get::<Option<f32>, _>("strength").unwrap_or(0.0),
             },
-            total_stats: row.get::<Option<i32>, _>("total_stats").unwrap_or(0),
+            total_stats: row.get::<Option<f32>, _>("total_stats").unwrap_or(0.0),
             is_online: false, // TODO: Implement real online status
             avatar_style: row.get::<Option<String>, _>("avatar_style").unwrap_or_else(|| "warrior".to_string()),
             team_id: row.get("team_id"),
@@ -221,10 +221,10 @@ pub async fn get_user_by_id(
             username: row.get("username"),
             email: row.get("email"),
             stats: UserStats {
-                stamina: row.get::<Option<i32>, _>("stamina").unwrap_or(0),
-                strength: row.get::<Option<i32>, _>("strength").unwrap_or(0),
+                stamina: row.get::<Option<f32>, _>("stamina").unwrap_or(0.0),
+                strength: row.get::<Option<f32>, _>("strength").unwrap_or(0.0),
             },
-            total_stats: row.get::<Option<i32>, _>("total_stats").unwrap_or(0),
+            total_stats: row.get::<Option<f32>, _>("total_stats").unwrap_or(0.0),
             is_online: false,
             avatar_style: row.get::<Option<String>, _>("avatar_style").unwrap_or_else(|| "warrior".to_string()),
             team_id: row.get("team_id"),
@@ -303,10 +303,10 @@ pub async fn get_users_without_team(
             username: row.get("username"),
             email: row.get("email"),
             stats: UserStats {
-                stamina: row.get::<Option<i32>, _>("stamina").unwrap_or(0),
-                strength: row.get::<Option<i32>, _>("strength").unwrap_or(0),
+                stamina: row.get::<Option<f32>, _>("stamina").unwrap_or(0.0),
+                strength: row.get::<Option<f32>, _>("strength").unwrap_or(0.0),
             },
-            total_stats: row.get::<Option<i32>, _>("total_stats").unwrap_or(0),
+            total_stats: row.get::<Option<f32>, _>("total_stats").unwrap_or(0.0),
             is_online: false,
             avatar_style: row.get::<Option<String>, _>("avatar_style").unwrap_or_else(|| "warrior".to_string()),
             team_id: None,

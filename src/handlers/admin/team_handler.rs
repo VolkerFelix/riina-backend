@@ -13,7 +13,7 @@ pub struct AdminTeamResponse {
     pub color: String,
     pub member_count: i64,
     pub max_members: i32,
-    pub total_power: i64,
+    pub total_power: f32,
     pub created_at: DateTime<Utc>,
     pub owner_id: Uuid,
     pub league_id: Option<Uuid>,
@@ -36,15 +36,15 @@ pub struct AdminUserInfo {
     pub username: String,
     pub email: String,
     pub stats: UserStats,
-    pub total_stats: i32,
+    pub total_stats: f32,
     pub is_online: bool,
     pub avatar_style: String,
 }
 
 #[derive(Serialize)]
 pub struct UserStats {
-    pub stamina: i32,
-    pub strength: i32,
+    pub stamina: f32,
+    pub strength: f32,
 }
 
 #[derive(Deserialize)]
@@ -315,7 +315,7 @@ pub async fn create_team(
         color: body.color.clone(),
         member_count: 1, // Owner is now a member
         max_members: 5,
-        total_power: 0,
+        total_power: 0.0,
         created_at: now,
         owner_id,
         league_id: body.league_id,

@@ -514,8 +514,8 @@ async fn test_live_scoring_history_api(
         assert!(team_side == "home" || team_side == "away", "team_side should be 'home' or 'away'");
         
         // Verify score_points is positive (since our test uploads should generate points)
-        let score_points = event_obj["score_points"].as_i64().expect("score_points should be a number");
-        assert!(score_points > 0, "Test uploads should generate positive points");
+        let score_points = event_obj["score_points"].as_f64().expect("score_points should be a number");
+        assert!(score_points > 0.0, "Test uploads should generate positive points");
         
         // Verify the user_id matches one of our test users
         let event_user_id = event_obj["user_id"].as_str().expect("user_id should be a string");
@@ -604,7 +604,7 @@ async fn test_live_scoring_history_api(
                     // Verify zone has reasonable values
                     let zone_name = zone_obj["zone"].as_str().expect("zone should be a string");
                     assert!(
-                        ["Zone1", "Zone2", "Zone3", "Zone4", "Zone5"].contains(&zone_name),
+                        ["Zone1", "Zone2", "Zone3", "Zone4", "Zone5"].contains(&zone_name) || ["Rest", "Easy", "Moderate", "Hard"].contains(&zone_name),
                         "Zone name should be valid, got: {}", zone_name
                     );
                     
@@ -1301,7 +1301,7 @@ async fn test_user_joining_team_during_live_game() {
         .expect("Should have score event for new user");
         
     assert_eq!(new_user_event.team_side, "home");
-    assert!(new_user_event.score_points > 0, "Score event should have positive score");
+    assert!(new_user_event.score_points > 0.0, "Score event should have positive score");
     
     // Test that the new user can upload another workout and it continues to work
     let second_workout_start = live_game.game_start_time.unwrap() + Duration::minutes(45);

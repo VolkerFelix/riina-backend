@@ -199,9 +199,9 @@ async fn test_get_league_users_with_stats_success() {
         assert!(user_data["is_online"].is_boolean(), "is_online should be a boolean");
 
         // Validate data integrity
-        let stamina = user_data["stats"]["stamina"].as_i64().unwrap();
-        let strength = user_data["stats"]["strength"].as_i64().unwrap();
-        let total_stats = user_data["total_stats"].as_i64().unwrap();
+        let stamina = user_data["stats"]["stamina"].as_f64().unwrap();
+        let strength = user_data["stats"]["strength"].as_f64().unwrap();
+        let total_stats = user_data["total_stats"].as_f64().unwrap();
         assert_eq!(stamina + strength, total_stats, "total_stats should equal stamina + strength");
 
         // Check team role is valid
@@ -244,15 +244,15 @@ async fn test_get_league_users_with_stats_success() {
     // Step 9: Validate stats are reasonable after health data upload
     for (i, user) in users.iter().enumerate() {
         if let Some(user_data) = league_users.iter().find(|u| u["username"] == user.username) {
-            let total_stats = user_data["total_stats"].as_i64().unwrap();
-            let stamina = user_data["stats"]["stamina"].as_i64().unwrap();
-            let strength = user_data["stats"]["strength"].as_i64().unwrap();
+            let total_stats = user_data["total_stats"].as_f64().unwrap();
+            let stamina = user_data["stats"]["stamina"].as_f64().unwrap();
+            let strength = user_data["stats"]["strength"].as_f64().unwrap();
 
             // All users uploaded Intense workout data (high heart rate zones)
             // With the HR zone-based scoring, intense workouts give mostly strength points
-            assert!(total_stats > 0, "User {} should have enhanced stats after health data upload, got {}", i, total_stats);
+            assert!(total_stats > 0.0, "User {} should have enhanced stats after health data upload, got {}", i, total_stats);
             // Intense workouts may give low or no stamina as they're in high HR zones
-            assert!(stamina > 0 || strength > 0, "User {} stamina or strength should be positive, got {}", i, stamina);
+            assert!(stamina > 0.0 || strength > 0.0, "User {} stamina or strength should be positive, got {}", i, stamina);
 
             println!("   User {}: {} stamina, {} strength, {} total", i, stamina, strength, total_stats);
             println!("   User {}: {} stamina, {} strength, {} total", i, stamina, strength, total_stats);
