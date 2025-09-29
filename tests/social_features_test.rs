@@ -49,10 +49,15 @@ async fn create_user_with_workout(app_address: &str) -> (UserRegLoginResponse, U
     // Upload a workout
     let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
     let workout_response = upload_workout_data_for_user(&client, app_address, &user.token, &mut workout_data).await;
-    assert!(workout_response.is_ok(), "Workout upload should succeed");
+    assert!(workout_response.is_ok(), "Workout upload should succeed: {:?}", workout_response);
 
     let workout_response_data = workout_response.unwrap();
-    let workout_id = Uuid::parse_str(workout_response_data["data"]["sync_id"].as_str().unwrap()).unwrap();
+    println!("Workout upload response: {:?}", workout_response_data);
+    let sync_id_str = workout_response_data["data"]["sync_id"].as_str()
+        .expect("sync_id should be present in response");
+    let workout_id = Uuid::parse_str(sync_id_str)
+        .expect("sync_id should be a valid UUID");
+    println!("Successfully created workout {} for user {}", workout_id, user.username);
     (user, workout_id)
 }
 
@@ -1649,12 +1654,31 @@ async fn test_newsfeed_basic() {
     let client = Client::new();
 
     // Create two users with workouts
-    let (user1, _workout1_id) = create_user_with_workout(&test_app.address).await;
-    let (user2, _workout2_id) = create_user_with_workout(&test_app.address).await;
+    let (user1, workout1_id) = create_user_with_workout(&test_app.address).await;
+    let (user2, workout2_id) = create_user_with_workout(&test_app.address).await;
 
-    // Get newsfeed for user1
+    println!("Created user1 with ID: {} and workout: {}", user1.user_id, workout1_id);
+    println!("Created user2 with ID: {} and workout: {}", user2.user_id, workout2_id);
+
+    // Add a longer delay to ensure data is committed and stats are updated
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    // First, verify the workouts exist by getting user's own workout history
+    let history_response = client
+        .get(&format!("{}/health/history", test_app.address))
+        .header("Authorization", format!("Bearer {}", user1.token))
+        .send()
+        .await
+        .expect("Failed to get workout history");
+
+    if history_response.status().is_success() {
+        let history_data: serde_json::Value = history_response.json().await.expect("Failed to parse history");
+        println!("User1's workout history: {}", serde_json::to_string_pretty(&history_data).unwrap());
+    }
+
+    // Get newsfeed for user1 with higher limit to ensure we get all workouts
     let response = client
-        .get(&format!("{}/feed/", test_app.address))
+        .get(&format!("{}/feed/?limit=50", test_app.address))
         .header("Authorization", format!("Bearer {}", user1.token))
         .send()
         .await
@@ -1669,6 +1693,25 @@ async fn test_newsfeed_basic() {
 
     assert_eq!(response_body["success"], true);
     let workouts = response_body["data"]["workouts"].as_array().unwrap();
+
+    // Debug output
+    println!("Total workouts in feed: {}", workouts.len());
+    if workouts.is_empty() {
+        println!("No workouts found! Debugging info:");
+        println!("User1 ID: {}", user1.user_id);
+        println!("User2 ID: {}", user2.user_id);
+        println!("Full response: {}", serde_json::to_string_pretty(&response_body).unwrap());
+    } else {
+        for (i, workout) in workouts.iter().enumerate() {
+            println!("Workout {}: user_id={}, calories={}, stamina={}, strength={}",
+                i,
+                workout["user_id"],
+                workout["calories_burned"],
+                workout["stamina_gained"],
+                workout["strength_gained"]
+            );
+        }
+    }
 
     // Should see at least both workouts (user1's and user2's) - other tests may add more
     assert!(workouts.len() >= 2, "Should have at least 2 workouts in feed, got {}", workouts.len());
@@ -1811,9 +1854,9 @@ async fn test_newsfeed_with_reactions_and_comments() {
 
     assert!(comment_response.status().is_success());
 
-    // Get newsfeed for user2
+    // Get newsfeed for user2 with higher limit to ensure we get all workouts
     let response = client
-        .get(&format!("{}/feed/", test_app.address))
+        .get(&format!("{}/feed/?limit=50", test_app.address))
         .header("Authorization", format!("Bearer {}", user2.token))
         .send()
         .await
