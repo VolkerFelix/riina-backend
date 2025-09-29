@@ -667,6 +667,6 @@ impl PlayerContribution {
 pub struct ScoreEvent {
     pub user_id: Uuid,
     pub team_side: String,
-    pub score_points: i32,
+    pub score_points: f32,
     pub occurred_at: chrono::DateTime<Utc>,
 }
