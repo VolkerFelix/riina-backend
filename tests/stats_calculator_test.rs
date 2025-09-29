@@ -345,7 +345,7 @@ async fn test_no_heart_rate_no_gains() {
     };
 
     let user_health_profile = get_user_health_profile_details(&test_app.db_pool, user_id).await.unwrap();
-    let heart_rate_data = workout_data.heart_rate.clone().unwrap_or_default();
+    let heart_rate_data = workout_data.heart_rate.clone().unwrap_or(Vec::new());
 
     let workout_stats = WorkoutStatsCalculator::with_universal_hr_based().calculate_stat_changes(user_health_profile, heart_rate_data).await;
     assert_eq!(workout_stats.as_ref().unwrap().changes.stamina_change, 0.0);

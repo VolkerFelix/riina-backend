@@ -29,6 +29,9 @@ impl ScoringMethod for UniversalHRBasedScoring {
 }
 
 async fn calculate_stats_universal_hr_based(user_health_profile: UserHealthProfile, hr_data: Vec<HeartRateData>) -> Result<WorkoutStats, Error> {
+    if hr_data.is_empty() {
+        return Ok(WorkoutStats::new());
+    }
     // Calculate training zones
     let hr_max = user_health_profile.max_heart_rate.unwrap_or(300);
     let hr_rest = user_health_profile.resting_heart_rate.unwrap_or(60);
@@ -93,12 +96,7 @@ fn calculate_score_from_training_zones(training_zones: TrainingZones, hr_data: V
 
     }
 
-    let mut zone_breakdown = Vec::new();
-    zone_breakdown.push(rest);
-    zone_breakdown.push(easy);
-    zone_breakdown.push(moderate);
-    zone_breakdown.push(hard);
-
+    let zone_breakdown = vec![rest, easy, moderate, hard];
 
     workout_stats.changes.stamina_change = points;
     workout_stats.changes.strength_change = 0.0;
