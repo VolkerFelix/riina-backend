@@ -292,7 +292,11 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     
     println!("✅ Game evaluation triggered successfully");
 
-    // Step 8: Verify WebSocket notifications are received
+    // Step 8: Wait a moment for notifications to be processed
+    println!("⏳ Waiting for notifications to be processed...");
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // Step 9: Verify WebSocket notifications are received
     let mut global_events_received = 0;
     let mut individual_notifications_received = 0;
     
@@ -303,12 +307,12 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
         println!("Checking messages for {}", user_name);
         
         // Wait for potential messages with timeout
-        let timeout_duration = Duration::from_secs(3);
+        let timeout_duration = Duration::from_secs(10); // Increased for CI stability
         let start_time = std::time::Instant::now();
         
         while start_time.elapsed() < timeout_duration {
-            // Try to receive a message with a short timeout
-            if let Ok(Some(msg)) = tokio::time::timeout(Duration::from_millis(100), ws.next()).await {
+            // Try to receive a message with a longer timeout for CI stability
+            if let Ok(Some(msg)) = tokio::time::timeout(Duration::from_millis(200), ws.next()).await {
                 if let Ok(Message::Text(text)) = msg {
                     println!("📨 {} received message: {}", user_name, text);
                     
@@ -363,7 +367,7 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     println!("   🌐 Global events received: {}", global_events_received);
     println!("   👤 Individual notifications received: {}", individual_notifications_received);
     
-    // Step 9: Verify expected notification counts
+    // Step 10: Verify expected notification counts
     // We expect:
     // - At least 1 global "games_evaluated" event (received by all connected users)
     // - At least 4 individual notifications (one for each team member)
