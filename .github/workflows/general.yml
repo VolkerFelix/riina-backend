@@ -40,7 +40,7 @@ jobs:
               --health-retries 5
 
           minio:
-            image: bitnami/minio:latest
+            image: minio/minio:latest
             env:
               MINIO_ROOT_USER: ${{ secrets.MINIO_ACCESS_KEY }}
               MINIO_ROOT_PASSWORD: ${{ secrets.MINIO_SECRET_KEY }}
@@ -48,7 +48,7 @@ jobs:
               - 9000:9000
               - 9001:9001
             options: >-
-              --health-cmd "curl -f http://localhost:9000/minio/health/ready"
+              --health-cmd "curl -f http://localhost:9000/minio/health/live"
               --health-interval 10s
               --health-timeout 5s
               --health-retries 5
