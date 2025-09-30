@@ -5,7 +5,7 @@ use sqlx::PgPool;
 use chrono::{Utc, Duration};
 use jsonwebtoken::{encode, EncodingKey, Header};
 
-use crate::models::auth::{LoginRequest, LoginResponse};
+use crate::models::auth::{LoginRequest, LoginResponse, BiometricRefreshRequest};
 use crate::models::user::{UserRole, UserStatus};
 use crate::utils::password::verify_password;
 use crate::config::jwt::JwtSettings;
@@ -98,4 +98,118 @@ pub async fn login_user(
 
     // Return token
     HttpResponse::Ok().json(LoginResponse { token })
+}
+
+use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
+
+#[tracing::instrument(
+    name = "Refresh biometric token",
+    skip(refresh_request, pool, jwt_settings),
+)]
+pub async fn refresh_biometric_token(
+    refresh_request: web::Json<BiometricRefreshRequest>,
+    pool: web::Data<PgPool>,
+    jwt_settings: web::Data<JwtSettings>,
+) -> HttpResponse {
+    let expired_token = &refresh_request.token;
+    // Decode the expired token with validation disabled for expiry
+    let mut validation = Validation::new(Algorithm::HS256);
+    validation.validate_exp = false; // Don't validate expiry
+    validation.validate_nbf = false;
+
+    let token_data = match decode::<Claims>(
+        &expired_token,
+        &DecodingKey::from_secret(jwt_settings.secret.expose_secret().as_bytes()),
+        &validation,
+    ) {
+        Ok(data) => data,
+        Err(e) => {
+            tracing::warn!("Invalid token provided for refresh: {:?}", e);
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "error": "Invalid token"
+            }));
+        }
+    };
+
+    let claims = token_data.claims;
+
+    // Check if token is not too old (e.g., expired less than 30 days ago)
+    let now = Utc::now().timestamp() as usize;
+    let thirty_days_in_seconds = 30 * 24 * 60 * 60;
+
+    if claims.exp + thirty_days_in_seconds < now {
+        tracing::warn!("Token too old for refresh (expired more than 30 days ago)");
+        return HttpResponse::Unauthorized().json(serde_json::json!({
+            "error": "Token too old for refresh"
+        }));
+    }
+
+    // Verify user still exists and is active
+    let user_result = sqlx::query!(
+        r#"
+        SELECT id, username, role, status
+        FROM users
+        WHERE id = $1 AND status = 'active'
+        "#,
+        uuid::Uuid::parse_str(&claims.sub).unwrap_or_default(),
+    )
+    .fetch_optional(pool.get_ref())
+    .await;
+
+    let user = match user_result {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            tracing::warn!("User not found or inactive for token refresh");
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "error": "User not found or inactive"
+            }));
+        }
+        Err(e) => {
+            tracing::error!("Database error during token refresh: {:?}", e);
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+
+    // Generate new JWT token with fresh expiry
+    let new_expiration = Utc::now()
+        .checked_add_signed(Duration::hours(24))
+        .expect("Valid timestamp")
+        .timestamp() as usize;
+
+    let role = match user.role.as_str() {
+        "superadmin" => UserRole::SuperAdmin,
+        "admin" => UserRole::Admin,
+        "moderator" => UserRole::Moderator,
+        _ => UserRole::User,
+    };
+
+    let status = match user.status.as_str() {
+        "inactive" => UserStatus::Inactive,
+        "suspended" => UserStatus::Suspended,
+        "banned" => UserStatus::Banned,
+        _ => UserStatus::Active,
+    };
+
+    let new_claims = Claims {
+        sub: user.id.to_string(),
+        username: user.username,
+        role,
+        status,
+        exp: new_expiration,
+    };
+
+    let new_token = match encode(
+        &Header::default(),
+        &new_claims,
+        &EncodingKey::from_secret(jwt_settings.secret.expose_secret().as_bytes()),
+    ) {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::error!("Error generating new JWT token: {:?}", e);
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+
+    tracing::info!("Successfully refreshed token for user {}", new_claims.sub);
+    HttpResponse::Ok().json(LoginResponse { token: new_token })
 }

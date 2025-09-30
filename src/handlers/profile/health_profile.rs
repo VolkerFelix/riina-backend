@@ -9,6 +9,7 @@ use crate::models::{
     health::{HeartRateZones, HeartRateZoneName, Gender},
 };
 use crate::utils::health_calculations::calc_max_heart_rate;
+use crate::workout::universal_hr_based_scoring::{P_VT0, P_VT1, P_VT2};
 
 #[tracing::instrument(
     name = "Get health profile",
@@ -32,8 +33,9 @@ pub async fn get_health_profile(
     match sqlx::query_as!(
         HealthProfileResponse,
         r#"
-        SELECT id, user_id, age, gender, resting_heart_rate, weight, height, last_updated
-        FROM user_health_profiles 
+        SELECT id, user_id, age, gender, resting_heart_rate, max_heart_rate,
+               vt0_threshold, vt1_threshold, vt2_threshold, weight, height, last_updated
+        FROM user_health_profiles
         WHERE user_id = $1
         "#,
         user_id
@@ -153,21 +155,30 @@ pub async fn update_health_profile(
                     _ => Gender::Other,
                 };
                 let max_heart_rate = calc_max_heart_rate(age, gender);
-                
+                let hr_reserve = max_heart_rate - resting_heart_rate;
+
+                // Calculate VT thresholds using the same constants as universal HR scoring
+                let vt0_threshold = resting_heart_rate + (hr_reserve as f32 * P_VT0) as i32;
+                let vt1_threshold = resting_heart_rate + (hr_reserve as f32 * P_VT1) as i32;
+                let vt2_threshold = resting_heart_rate + (hr_reserve as f32 * P_VT2) as i32;
+
                 // Calculate zone thresholds using HeartRateZones
                 let zones = HeartRateZones::new(age, gender, resting_heart_rate);
-                
-                // Update the profile with calculated zone thresholds
+
+                // Update the profile with calculated zone thresholds and VT thresholds
                 if let Err(e) = sqlx::query!(
                     r#"
-                    UPDATE user_health_profiles 
+                    UPDATE user_health_profiles
                     SET max_heart_rate = $1,
                         hr_zone_1_max = $2,
                         hr_zone_2_max = $3,
                         hr_zone_3_max = $4,
                         hr_zone_4_max = $5,
-                        hr_zone_5_max = $6
-                    WHERE user_id = $7
+                        hr_zone_5_max = $6,
+                        vt0_threshold = $7,
+                        vt1_threshold = $8,
+                        vt2_threshold = $9
+                    WHERE user_id = $10
                     "#,
                     max_heart_rate,
                     zones.zones.get(&HeartRateZoneName::Zone1).map(|z| z.high),
@@ -175,6 +186,9 @@ pub async fn update_health_profile(
                     zones.zones.get(&HeartRateZoneName::Zone3).map(|z| z.high),
                     zones.zones.get(&HeartRateZoneName::Zone4).map(|z| z.high),
                     zones.zones.get(&HeartRateZoneName::Zone5).map(|z| z.high),
+                    vt0_threshold,
+                    vt1_threshold,
+                    vt2_threshold,
                     user_id
                 )
                 .execute(&**pool)
@@ -190,8 +204,9 @@ pub async fn update_health_profile(
             match sqlx::query_as!(
                 HealthProfileResponse,
                 r#"
-                SELECT id, user_id, age, gender, resting_heart_rate, weight, height, last_updated
-                FROM user_health_profiles 
+                SELECT id, user_id, age, gender, resting_heart_rate, max_heart_rate,
+                       vt0_threshold, vt1_threshold, vt2_threshold, weight, height, last_updated
+                FROM user_health_profiles
                 WHERE user_id = $1
                 "#,
                 user_id

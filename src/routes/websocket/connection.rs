@@ -342,8 +342,8 @@ impl GameConnection {
                         user_id,
                         username,
                         stats: crate::models::common::PlayerStats {
-                            stamina: 50,
-                            strength: 50,
+                            stamina: 50.0,
+                            strength: 50.0,
                         },
                         position: crate::models::game_events::Position { x, y },
                         timestamp: Utc::now(),

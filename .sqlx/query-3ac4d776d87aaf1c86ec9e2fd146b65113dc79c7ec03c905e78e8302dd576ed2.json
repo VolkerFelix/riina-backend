@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    UPDATE user_health_profiles\n                    SET max_heart_rate = $1,\n                        hr_zone_1_max = $2,\n                        hr_zone_2_max = $3,\n                        hr_zone_3_max = $4,\n                        hr_zone_4_max = $5,\n                        hr_zone_5_max = $6,\n                        vt0_threshold = $7,\n                        vt1_threshold = $8,\n                        vt2_threshold = $9\n                    WHERE user_id = $10\n                    ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3ac4d776d87aaf1c86ec9e2fd146b65113dc79c7ec03c905e78e8302dd576ed2"
+}

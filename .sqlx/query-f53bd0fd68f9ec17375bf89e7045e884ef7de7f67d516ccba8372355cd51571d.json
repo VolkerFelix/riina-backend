@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT id, user_id, age, gender, resting_heart_rate, weight, height, last_updated\n        FROM user_health_profiles \n        WHERE user_id = $1\n        ",
+  "query": "\n                SELECT id, user_id, age, gender, resting_heart_rate, max_heart_rate,\n                       vt0_threshold, vt1_threshold, vt2_threshold, weight, height, last_updated\n                FROM user_health_profiles\n                WHERE user_id = $1\n                ",
   "describe": {
     "columns": [
       {
@@ -30,16 +30,36 @@
       },
       {
         "ordinal": 5,
+        "name": "max_heart_rate",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "vt0_threshold",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "vt1_threshold",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "vt2_threshold",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 9,
         "name": "weight",
         "type_info": "Float4"
       },
       {
-        "ordinal": 6,
+        "ordinal": 10,
         "name": "height",
         "type_info": "Float4"
       },
       {
-        "ordinal": 7,
+        "ordinal": 11,
         "name": "last_updated",
         "type_info": "Timestamptz"
       }
@@ -57,8 +77,12 @@
       true,
       true,
       true,
+      true,
+      true,
+      true,
+      true,
       false
     ]
   },
-  "hash": "d48f3710c12ccce43f448f28f8046d175e836b97af3e5b733649f6848aaa4679"
+  "hash": "f53bd0fd68f9ec17375bf89e7045e884ef7de7f67d516ccba8372355cd51571d"
 }

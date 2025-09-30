@@ -11,11 +11,11 @@
 use reqwest::Client;
 use serde_json::json;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request};
-use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user, WorkoutSyncRequest};
+use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user};
 use common::admin_helpers::create_admin_user_and_login;
 
 // Helper function to create user with health profile
@@ -208,6 +208,167 @@ async fn test_workout_history_pagination() {
     // Should return only 3 workouts due to limit
     assert!(history_data["data"]["workouts"].is_array());
     assert_eq!(history_data["data"]["workouts"].as_array().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn test_workout_detail_endpoint() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_with_health_profile(&test_app.address).await;
+
+    // Upload a workout with heart rate data
+    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 45);
+    let workout_response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
+    assert!(workout_response.is_ok(), "Workout upload should succeed");
+    
+    let _response_data = workout_response.unwrap();
+
+    // Fetch workout history to get the workout ID
+    let history_response = client
+        .get(&format!("{}/health/history", &test_app.address))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .send()
+        .await
+        .expect("Failed to execute workout history request");
+
+    assert!(history_response.status().is_success());
+    
+    let history_data: serde_json::Value = history_response
+        .json()
+        .await
+        .expect("Failed to parse workout history response");
+
+    let workouts = history_data["data"]["workouts"].as_array().unwrap();
+    assert!(!workouts.is_empty(), "Should have at least one workout");
+    
+    let workout_id = workouts[0]["id"].as_str().unwrap();
+
+    // Test the new workout detail endpoint
+    let detail_response = client
+        .get(&format!("{}/health/workout/{}", &test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .send()
+        .await
+        .expect("Failed to execute workout detail request");
+
+    assert!(detail_response.status().is_success(), "Workout detail request should succeed");
+    
+    let detail_data: serde_json::Value = detail_response
+        .json()
+        .await
+        .expect("Failed to parse workout detail response");
+
+    // Verify the response structure and data makes sense
+    assert!(detail_data["success"].as_bool().unwrap(), "Response should indicate success");
+    assert!(detail_data["data"].is_object(), "Should have data object");
+    
+    let workout_detail = &detail_data["data"];
+    
+    // Verify basic workout fields
+    assert_eq!(workout_detail["id"].as_str().unwrap(), workout_id, "Workout ID should match");
+    assert!(workout_detail["workout_start"].is_string(), "Should have workout_start timestamp");
+    assert!(workout_detail["workout_end"].is_string(), "Should have workout_end timestamp");
+    
+    // Verify heart rate data if present
+    if workout_detail["heart_rate_data"].is_array() {
+        let heart_rate_data = workout_detail["heart_rate_data"].as_array().unwrap();
+        if !heart_rate_data.is_empty() {
+            // Verify heart rate data structure
+            for hr_point in heart_rate_data {
+                assert!(hr_point["timestamp"].is_string(), "Heart rate point should have timestamp");
+                assert!(hr_point["heart_rate"].is_number(), "Heart rate point should have heart_rate number");
+                
+                let hr_value = hr_point["heart_rate"].as_i64().unwrap();
+                assert!(hr_value > 0 && hr_value < 300, "Heart rate should be reasonable (0-300 BPM)");
+            }
+        }
+    }
+    
+    // Verify game stats are present (even if 0)
+    assert!(workout_detail["stamina_gained"].is_number(), "Should have stamina_gained");
+    assert!(workout_detail["strength_gained"].is_number(), "Should have strength_gained");
+    
+    // Verify calculated fields make sense
+    if workout_detail["duration_minutes"].is_number() {
+        let duration = workout_detail["duration_minutes"].as_i64().unwrap();
+        assert!(duration > 0, "Duration should be positive");
+    }
+    
+    if workout_detail["calories_burned"].is_number() {
+        let calories = workout_detail["calories_burned"].as_i64().unwrap();
+        assert!(calories > 0, "Calories should be positive");
+    }
+    
+    if workout_detail["avg_heart_rate"].is_number() {
+        let avg_hr = workout_detail["avg_heart_rate"].as_i64().unwrap();
+        assert!(avg_hr > 0 && avg_hr < 300, "Average heart rate should be reasonable");
+    }
+    
+    if workout_detail["max_heart_rate"].is_number() {
+        let max_hr = workout_detail["max_heart_rate"].as_i64().unwrap();
+        assert!(max_hr > 0 && max_hr < 300, "Max heart rate should be reasonable");
+    }
+}
+
+#[tokio::test]
+async fn test_workout_detail_endpoint_not_found() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_and_login(&test_app.address).await;
+
+    // Try to fetch a non-existent workout
+    let fake_workout_id = Uuid::new_v4().to_string();
+    let detail_response = client
+        .get(&format!("{}/health/workout/{}", &test_app.address, fake_workout_id))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .send()
+        .await
+        .expect("Failed to execute workout detail request");
+
+    assert_eq!(detail_response.status(), 404, "Should return 404 for non-existent workout");
+}
+
+#[tokio::test]
+async fn test_workout_detail_endpoint_unauthorized_access() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    // Create two users
+    let user1 = create_test_user_with_health_profile(&test_app.address).await;
+    let user2 = create_test_user_and_login(&test_app.address).await;
+
+    // User1 uploads a workout
+    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let workout_response = upload_workout_data_for_user(&client, &test_app.address, &user1.token, &mut workout_data).await;
+    assert!(workout_response.is_ok(), "Workout upload should succeed");
+    
+    // Get the workout ID from user1's history
+    let history_response = client
+        .get(&format!("{}/health/history", &test_app.address))
+        .header("Authorization", format!("Bearer {}", user1.token))
+        .send()
+        .await
+        .expect("Failed to execute workout history request");
+
+    let history_data: serde_json::Value = history_response
+        .json()
+        .await
+        .expect("Failed to parse workout history response");
+
+    let workouts = history_data["data"]["workouts"].as_array().unwrap();
+    let workout_id = workouts[0]["id"].as_str().unwrap();
+
+    // User2 tries to access user1's workout
+    let detail_response = client
+        .get(&format!("{}/health/workout/{}", &test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", user2.token))
+        .send()
+        .await
+        .expect("Failed to execute workout detail request");
+
+    assert_eq!(detail_response.status(), 404, "Should return 404 when user tries to access another user's workout");
 }
 
 // ============================================================================

@@ -21,7 +21,7 @@ pub struct LeagueUserWithStats {
     pub team_status: String,
     pub joined_at: DateTime<Utc>,
     pub stats: PlayerStats,
-    pub total_stats: i32,
+    pub total_stats: f32,
     pub rank: i32,
     pub avatar_style: String,
     pub is_online: bool,
@@ -130,8 +130,8 @@ pub async fn get_league_users_with_stats(
         WITH user_rankings AS (
             SELECT 
                 u.id as user_id,
-                COALESCE(ua.stamina + ua.strength, 0) as total_stats,
-                ROW_NUMBER() OVER (ORDER BY COALESCE(ua.stamina + ua.strength, 0) DESC) as rank
+                COALESCE(ua.stamina + ua.strength, 0.0) as total_stats,
+                ROW_NUMBER() OVER (ORDER BY COALESCE(ua.stamina + ua.strength, 0.0) DESC) as rank
             FROM users u
             INNER JOIN team_members tm ON u.id = tm.user_id AND tm.status = 'active'
             LEFT JOIN user_avatars ua ON u.id = ua.user_id
@@ -145,9 +145,9 @@ pub async fn get_league_users_with_stats(
             tm.role as team_role,
             tm.status as team_status,
             tm.joined_at as joined_at,
-            COALESCE(ua.stamina, 0) as stamina,
-            COALESCE(ua.strength, 0) as strength,
-            COALESCE(ua.stamina + ua.strength, 0) as total_stats,
+            COALESCE(ua.stamina, 0.0) as stamina,
+            COALESCE(ua.strength, 0.0) as strength,
+            COALESCE(ua.stamina + ua.strength, 0.0) as total_stats,
             COALESCE(ur.rank, 999) as rank,
             COALESCE(ua.avatar_style, 'warrior') as avatar_style,
             false as is_online -- TODO: Implement real online status from websocket connections
@@ -190,10 +190,10 @@ pub async fn get_league_users_with_stats(
                     team_status: row.team_status,
                     joined_at: row.joined_at,
                     stats: PlayerStats {
-                        stamina: row.stamina.unwrap_or(50),
-                        strength: row.strength.unwrap_or(50),
+                        stamina: row.stamina.unwrap_or(50.0),
+                        strength: row.strength.unwrap_or(50.0),
                     },
-                    total_stats: row.total_stats.unwrap_or(100),
+                    total_stats: row.total_stats.unwrap_or(100.0),
                     rank: row.rank.unwrap_or(999) as i32,
                     avatar_style: row.avatar_style.unwrap_or_else(|| "warrior".to_string()),
                     is_online: row.is_online.unwrap_or(false),

@@ -106,7 +106,7 @@ pub async fn insert_workout_data(
         zone_breakdown_json,
         workout_stats.changes.stamina_change,
         workout_stats.changes.strength_change,
-        workout_stats.changes.stamina_change + workout_stats.changes.strength_change,
+        (workout_stats.changes.stamina_change + workout_stats.changes.strength_change) as i32,
         data.activity_name.as_deref(),
         data.image_url.as_deref(),
         data.video_url.as_deref(),

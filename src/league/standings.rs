@@ -178,7 +178,7 @@ impl StandingsService {
                     team_name: row.team_name,
                     team_color: row.team_color,
                     recent_form: vec!['W', 'L', 'D'], // TODO: Calculate actual form
-                    team_power: team_powers.get(&row.team_id).copied().unwrap_or(0),
+                    team_power: team_powers.get(&row.team_id).copied().unwrap_or(0.0),
                 }
             })
             .collect();
@@ -296,7 +296,7 @@ impl StandingsService {
                 team_name: row.team_name,
                 team_color: row.team_color,
                 recent_form: vec!['W', 'L', 'D'], // TODO: Calculate actual form
-                team_power: team_powers.get(&row.team_id).copied().unwrap_or(0),
+                team_power: team_powers.get(&row.team_id).copied().unwrap_or(0.0),
             })
             .collect())
     }

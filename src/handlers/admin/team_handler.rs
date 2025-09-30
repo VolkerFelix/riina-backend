@@ -13,7 +13,7 @@ pub struct AdminTeamResponse {
     pub color: String,
     pub member_count: i64,
     pub max_members: i32,
-    pub total_power: i64,
+    pub total_power: f32,
     pub created_at: DateTime<Utc>,
     pub owner_id: Uuid,
     pub league_id: Option<Uuid>,
@@ -36,15 +36,15 @@ pub struct AdminUserInfo {
     pub username: String,
     pub email: String,
     pub stats: UserStats,
-    pub total_stats: i32,
+    pub total_stats: f32,
     pub is_online: bool,
     pub avatar_style: String,
 }
 
 #[derive(Serialize)]
 pub struct UserStats {
-    pub stamina: i32,
-    pub strength: i32,
+    pub stamina: f32,
+    pub strength: f32,
 }
 
 #[derive(Deserialize)]
@@ -91,7 +91,7 @@ pub async fn get_teams(
             t.created_at,
             t.user_id as owner_id,
             COUNT(tm.user_id) as member_count,
-            COALESCE(SUM(ua.stamina + ua.strength), 0) as total_power
+            COALESCE(SUM(ua.stamina + ua.strength), 0.0) as total_power
         FROM teams t
         LEFT JOIN team_members tm ON t.id = tm.team_id
         LEFT JOIN user_avatars ua ON tm.user_id = ua.user_id
@@ -187,7 +187,7 @@ pub async fn get_team_by_id(
             t.created_at,
             t.user_id as owner_id,
             COUNT(tm.user_id) as member_count,
-            COALESCE(SUM(ua.stamina + ua.strength), 0) as total_power
+            COALESCE(SUM(ua.stamina + ua.strength), 0.0) as total_power
         FROM teams t
         LEFT JOIN team_members tm ON t.id = tm.team_id
         LEFT JOIN user_avatars ua ON tm.user_id = ua.user_id
@@ -315,7 +315,7 @@ pub async fn create_team(
         color: body.color.clone(),
         member_count: 1, // Owner is now a member
         max_members: 5,
-        total_power: 0,
+        total_power: 0.0,
         created_at: now,
         owner_id,
         league_id: body.league_id,
@@ -432,9 +432,9 @@ pub async fn get_team_members(
             tm.joined_at,
             u.username,
             u.email,
-            COALESCE(ua.stamina, 0) as stamina,
-            COALESCE(ua.strength, 0) as strength,
-            COALESCE(ua.stamina + ua.strength, 0) as total_stats,
+            COALESCE(ua.stamina, 0.0) as stamina,
+            COALESCE(ua.strength, 0.0) as strength,
+            COALESCE(ua.stamina + ua.strength, 0.0) as total_stats,
             COALESCE(ua.avatar_style, 'warrior') as avatar_style
         FROM team_members tm
         JOIN users u ON tm.user_id = u.id
@@ -529,9 +529,9 @@ pub async fn add_team_member(
                     tm.joined_at,
                     u.username,
                     u.email,
-                    COALESCE(ua.stamina, 0) as stamina,
-                    COALESCE(ua.strength, 0) as strength,
-                    COALESCE(ua.stamina + ua.strength, 0) as total_stats,
+                    COALESCE(ua.stamina, 0.0) as stamina,
+                    COALESCE(ua.strength, 0.0) as strength,
+                    COALESCE(ua.stamina + ua.strength, 0.0) as total_stats,
                     COALESCE(ua.avatar_style, 'warrior') as avatar_style
                 FROM team_members tm
                 JOIN users u ON tm.user_id = u.id

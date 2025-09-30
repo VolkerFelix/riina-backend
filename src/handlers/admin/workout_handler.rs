@@ -235,12 +235,12 @@ pub async fn delete_workout(
 
     let workout_row = workout_info.unwrap();
     let workout_user_id: Uuid = workout_row.get("workout_user_id");
-    let stamina_gained: Option<i32> = workout_row.try_get("workout_stamina_gained").ok();
-    let strength_gained: Option<i32> = workout_row.try_get("workout_strength_gained").ok();
+    let stamina_gained: Option<f32> = workout_row.try_get("workout_stamina_gained").ok();
+    let strength_gained: Option<f32> = workout_row.try_get("workout_strength_gained").ok();
 
     // Reverse stat changes from user's avatar if they exist
     if let (Some(stamina_gained), Some(strength_gained)) = (stamina_gained, strength_gained) {
-        if stamina_gained != 0 || strength_gained != 0 {
+        if stamina_gained != 0.0 || strength_gained != 0.0 {
             tracing::info!("Reversing stat changes for user {}: -{} stamina, -{} strength", 
                          workout_user_id, stamina_gained, strength_gained);
             
@@ -251,8 +251,8 @@ pub async fn delete_workout(
                     strength = GREATEST(0, strength - $2)
                 WHERE user_id = $3
                 "#,
-                stamina_gained,
-                strength_gained,
+                stamina_gained as f32,
+                strength_gained as f32,
                 workout_user_id
             )
             .execute(pool.get_ref())
@@ -323,15 +323,15 @@ pub async fn bulk_delete_workouts(
 
     // Group and reverse stat changes by user
     use std::collections::HashMap;
-    let mut user_stat_changes: HashMap<Uuid, (i32, i32)> = HashMap::new(); // user_id -> (stamina, strength)
+    let mut user_stat_changes: HashMap<Uuid, (f32, f32)> = HashMap::new(); // user_id -> (stamina, strength)
     
     for row in &workout_infos {
         let workout_user_id: Uuid = row.get("workout_user_id");
         if let (Ok(Some(stamina_gained)), Ok(Some(strength_gained))) = (
-            row.try_get::<Option<i32>, _>("workout_stamina_gained"),
-            row.try_get::<Option<i32>, _>("workout_strength_gained"),
+            row.try_get::<Option<f32>, _>("workout_stamina_gained"),
+            row.try_get::<Option<f32>, _>("workout_strength_gained"),
         ) {
-            if stamina_gained != 0 || strength_gained != 0 {
+            if stamina_gained != 0.0 || strength_gained != 0.0 {
                 let user_stats = user_stat_changes.entry(workout_user_id).or_default();
                 user_stats.0 += stamina_gained;
                 user_stats.1 += strength_gained;
@@ -351,8 +351,8 @@ pub async fn bulk_delete_workouts(
                 strength = GREATEST(0, strength - $2)
             WHERE user_id = $3
             "#,
-            stamina_to_subtract,
-            strength_to_subtract,
+            stamina_to_subtract as f32,
+            strength_to_subtract as f32,
             user_id
         )
         .execute(pool.get_ref())
@@ -446,15 +446,15 @@ async fn recalculate_live_game_scores_after_workout_deletion(
             SET home_score = $1, away_score = $2
             WHERE id = $3
             "#,
-            score_totals.home_total.unwrap_or(0) as i32,
-            score_totals.away_total.unwrap_or(0) as i32,
+            score_totals.home_total.unwrap_or(0.0) as i32,
+            score_totals.away_total.unwrap_or(0.0) as i32,
             game_id
         )
         .execute(pool)
         .await?;
 
         tracing::info!("✅ Updated game {} scores: home={}, away={}", 
-            game_id, score_totals.home_total.unwrap_or(0), score_totals.away_total.unwrap_or(0));
+            game_id, score_totals.home_total.unwrap_or(0.0), score_totals.away_total.unwrap_or(0.0));
     }
 
     Ok(())

@@ -12,7 +12,7 @@ pub struct TeamMemberStats {
 
 /// Calculate team power based on member stats
 /// Team power is the sum of all members' (stamina + strength)
-pub fn calculate_team_power_from_members(members: &[TeamMemberStats]) -> i32 {
+pub fn calculate_team_power_from_members(members: &[TeamMemberStats]) -> f32 {
     members
         .iter()
         .map(|member| member.stats.stamina + member.stats.strength)
@@ -58,8 +58,8 @@ pub async fn get_team_members_with_stats(
                 strength: row.strength,
             },
             None => PlayerStats {
-                stamina: 0,
-                strength: 0,
+                stamina: 0.0,
+                strength: 0.0,
             },
         };
 
@@ -75,7 +75,7 @@ pub async fn get_team_members_with_stats(
 pub async fn calculate_team_power(
     team_id: Uuid,
     pool: &PgPool,
-) -> Result<i32, sqlx::Error> {
+) -> Result<f32, sqlx::Error> {
     let members = get_team_members_with_stats(team_id, pool).await?;
     Ok(calculate_team_power_from_members(&members))
 }
@@ -84,7 +84,7 @@ pub async fn calculate_team_power(
 pub async fn calculate_multiple_team_powers(
     team_ids: &[Uuid],
     pool: &PgPool,
-) -> Result<HashMap<Uuid, i32>, sqlx::Error> {
+) -> Result<HashMap<Uuid, f32>, sqlx::Error> {
     // Get all team members for the given teams
     let members = sqlx::query!(
         r#"
@@ -132,8 +132,8 @@ pub async fn calculate_multiple_team_powers(
     // Group members by team_id
     for member in members {
         let stats = stats_map.get(&member.user_id).cloned().unwrap_or(PlayerStats {
-            stamina: 0,
-            strength: 0,
+            stamina: 0.0,
+            strength: 0.0,
         });
 
         let team_member = TeamMemberStats {
@@ -147,7 +147,7 @@ pub async fn calculate_multiple_team_powers(
     }
 
     // Calculate power for each team
-    let mut power_map = HashMap::new();
+    let mut power_map: HashMap<Uuid, f32> = HashMap::new();
     for (team_id, members) in teams_members {
         let power = calculate_team_power_from_members(&members);
         power_map.insert(team_id, power);

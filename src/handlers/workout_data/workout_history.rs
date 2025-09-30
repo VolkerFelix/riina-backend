@@ -19,9 +19,10 @@ pub struct WorkoutHistoryItem {
     pub avg_heart_rate: Option<i32>,
     pub max_heart_rate: Option<i32>,
     pub heart_rate_zones: Option<serde_json::Value>,
+    pub heart_rate_data: Option<Vec<HeartRateData>>,
     // Game stats gained from this workout
-    pub stamina_gained: i32,
-    pub strength_gained: i32,
+    pub stamina_gained: f32,
+    pub strength_gained: f32,
     // Media attachments
     pub image_url: Option<String>,
     pub video_url: Option<String>,
@@ -31,6 +32,7 @@ pub struct WorkoutHistoryItem {
 pub struct WorkoutHistoryQuery {
     pub limit: Option<i32>,
     pub offset: Option<i32>,
+    pub include_heart_rate_data: Option<bool>,
 }
 
 fn calculate_duration_minutes(start: DateTime<Utc>, end: DateTime<Utc>) -> Option<i32> {
@@ -95,8 +97,8 @@ pub async fn get_workout_history(
             wd.max_heart_rate,
             wd.heart_rate_data,
             wd.heart_rate_zones,
-            COALESCE(wd.stamina_gained, 0) as stamina_gained,
-            COALESCE(wd.strength_gained, 0) as strength_gained,
+            COALESCE(wd.stamina_gained, 0.0) as stamina_gained,
+            COALESCE(wd.strength_gained, 0.0) as strength_gained,
             wd.image_url,
             wd.video_url
         FROM workout_data wd
@@ -130,7 +132,18 @@ pub async fn get_workout_history(
                         calculate_max_heart_rate(&heart_rate_data)
                     )
                 };
-                
+
+                // Parse heart rate data from JSON only if requested
+                let heart_rate_data = if query.include_heart_rate_data.unwrap_or(false) {
+                    if !row.heart_rate_data.is_null() {
+                        serde_json::from_value(row.heart_rate_data.clone()).ok()
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
                 WorkoutHistoryItem {
                     id: row.id,
                     workout_date: row.workout_date.unwrap_or(row.created_at),
@@ -142,8 +155,9 @@ pub async fn get_workout_history(
                     avg_heart_rate,
                     max_heart_rate,
                     heart_rate_zones: row.heart_rate_zones,
-                    stamina_gained: row.stamina_gained.unwrap_or(0) as i32,
-                    strength_gained: row.strength_gained.unwrap_or(0) as i32,
+                    heart_rate_data,
+                    stamina_gained: row.stamina_gained.unwrap_or(0.0),
+                    strength_gained: row.strength_gained.unwrap_or(0.0),
                     image_url: row.image_url,
                     video_url: row.video_url,
                 }

@@ -69,24 +69,24 @@ pub async fn get_user_profile(
     .await
     {
         Ok(Some(avatar)) => GameStats {
-            stamina: avatar.stamina,
-            strength: avatar.strength,
+            stamina: avatar.stamina as f32,
+            strength: avatar.strength as f32,
         },
         Ok(None) => {
             // Create default avatar if none exists
             match create_default_avatar(&pool, user_id).await {
                 Ok(stats) => stats,
                 Err(_) => GameStats {
-                    stamina: 50,
-                    strength: 50,
+                    stamina: 50.0,
+                    strength: 50.0,
                 }
             }
         }
         Err(e) => {
             tracing::error!("Database error fetching avatar: {}", e);
             GameStats {
-                stamina: 50,
-                strength: 50,
+                stamina: 50.0,
+                strength: 50.0,
             }
         }
     };
@@ -145,8 +145,8 @@ async fn create_default_avatar(pool: &PgPool, user_id: Uuid) -> Result<GameStats
     .await?;
 
     Ok(GameStats {
-        stamina: 50,
-        strength: 50,
+        stamina: 50.0,
+        strength: 50.0,
     })
 }
 

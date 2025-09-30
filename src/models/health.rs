@@ -142,6 +142,17 @@ pub enum TrainingZoneName {
     HARD
 }
 
+impl std::fmt::Display for TrainingZoneName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TrainingZoneName::REST => write!(f, "Rest"),
+            TrainingZoneName::EASY => write!(f, "Easy"),
+            TrainingZoneName::MODERATE => write!(f, "Moderate"),
+            TrainingZoneName::HARD => write!(f, "Hard"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum IntensityType {
     Linear,
@@ -198,12 +209,12 @@ impl TrainingZones {
             }),
             (TrainingZoneName::EASY, TrainingZone {
                 zone: easy_zone,
-                intensity_multiplier: 2.0,
+                intensity_multiplier: 4.0,
                 intensity_type: IntensityType::Linear,
             }),
             (TrainingZoneName::MODERATE, TrainingZone {
                 zone: moderate_zone,
-                intensity_multiplier: 4.0,
+                intensity_multiplier: 6.0,
                 intensity_type: IntensityType::Linear,
             }),
             (TrainingZoneName::HARD, TrainingZone {

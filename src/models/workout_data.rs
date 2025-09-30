@@ -54,8 +54,8 @@ pub struct WorkoutUploadResponse {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct StatChanges {
-    pub stamina_change: i32,
-    pub strength_change: i32,
+    pub stamina_change: f32,
+    pub strength_change: f32,
 }
 
 impl StatChanges {
@@ -68,10 +68,23 @@ impl StatChanges {
 pub struct ZoneBreakdown {
     pub zone: String,
     pub minutes: f32,
-    pub stamina_gained: i32,
-    pub strength_gained: i32,
+    pub stamina_gained: f32,
+    pub strength_gained: f32,
     pub hr_min: Option<i32>, // Lower heart rate limit for this zone
     pub hr_max: Option<i32>, // Upper heart rate limit for this zone
+}
+
+impl ZoneBreakdown {
+    pub fn new(zone: String) -> Self {
+        Self {
+            zone,
+            minutes: 0.0,
+            stamina_gained: 0.0,
+            strength_gained: 0.0,
+            hr_min: None,
+            hr_max: None,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

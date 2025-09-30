@@ -1652,9 +1652,9 @@ async fn test_newsfeed_basic() {
     let (user1, _workout1_id) = create_user_with_workout(&test_app.address).await;
     let (user2, _workout2_id) = create_user_with_workout(&test_app.address).await;
 
-    // Get newsfeed for user1
+    // Get newsfeed for user1 with higher limit to ensure we get all workouts
     let response = client
-        .get(&format!("{}/feed/", test_app.address))
+        .get(&format!("{}/feed/?limit=50", test_app.address))
         .header("Authorization", format!("Bearer {}", user1.token))
         .send()
         .await
@@ -1811,9 +1811,9 @@ async fn test_newsfeed_with_reactions_and_comments() {
 
     assert!(comment_response.status().is_success());
 
-    // Get newsfeed for user2
+    // Get newsfeed for user2 with higher limit to ensure we get all workouts
     let response = client
-        .get(&format!("{}/feed/", test_app.address))
+        .get(&format!("{}/feed/?limit=50", test_app.address))
         .header("Authorization", format!("Bearer {}", user2.token))
         .send()
         .await

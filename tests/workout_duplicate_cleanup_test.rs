@@ -204,13 +204,13 @@ async fn test_cleanup_keeps_higher_calorie_workout() {
     assert!(remaining_workout["strength_gained"].is_number(), "Remaining workout should have strength gains");
     
     // Verify the stats are reasonable for a 60-minute moderate workout
-    let stamina_gained = remaining_workout["stamina_gained"].as_i64().unwrap();
-    let strength_gained = remaining_workout["strength_gained"].as_i64().unwrap();
+    let stamina_gained = remaining_workout["stamina_gained"].as_f64().unwrap();
+    let strength_gained = remaining_workout["strength_gained"].as_f64().unwrap();
     let total_points = stamina_gained + strength_gained; // Calculate total points
     
-    assert!(stamina_gained >= 0, "Stamina gains should be non-negative");
-    assert!(strength_gained >= 0, "Strength gains should be non-negative");
-    assert!(total_points > 0, "Total points should be positive for a 60-minute workout");
+    assert!(stamina_gained >= 0.0, "Stamina gains should be non-negative");
+    assert!(strength_gained >= 0.0, "Strength gains should be non-negative");
+    assert!(total_points > 0.0, "Total points should be positive for a 60-minute workout");
 }
 
 #[tokio::test]
@@ -480,8 +480,8 @@ async fn test_duplicate_cleanup_preserves_stats_for_remaining_workout() {
     assert_eq!(workouts.len(), 1, "Should have 1 workout after baseline upload");
     
     let baseline_workout_data = &workouts[0];
-    let baseline_stamina = baseline_workout_data["stamina_gained"].as_i64().unwrap();
-    let baseline_strength = baseline_workout_data["strength_gained"].as_i64().unwrap();
+    let baseline_stamina = baseline_workout_data["stamina_gained"].as_f64().unwrap();
+    let baseline_strength = baseline_workout_data["strength_gained"].as_f64().unwrap();
     let baseline_total = baseline_stamina + baseline_strength;
     
     println!("Baseline stats: stamina={}, strength={}, total={}", baseline_stamina, baseline_strength, baseline_total);
@@ -530,8 +530,8 @@ async fn test_duplicate_cleanup_preserves_stats_for_remaining_workout() {
     assert!(remaining_workout["strength_gained"].is_number(), "Remaining workout should have strength gains");
     
     // Get the actual stats from the remaining workout
-    let final_stamina = remaining_workout["stamina_gained"].as_i64().unwrap();
-    let final_strength = remaining_workout["strength_gained"].as_i64().unwrap();
+    let final_stamina = remaining_workout["stamina_gained"].as_f64().unwrap();
+    let final_strength = remaining_workout["strength_gained"].as_f64().unwrap();
     let final_total = final_stamina + final_strength;
     
     println!("Final stats: stamina={}, strength={}, total={}", final_stamina, final_strength, final_total);
@@ -545,7 +545,7 @@ async fn test_duplicate_cleanup_preserves_stats_for_remaining_workout() {
         "Total points should match baseline. Expected: {}, Got: {}", baseline_total, final_total);
     
     // Verify the gains are reasonable
-    assert!(final_stamina >= 0, "Stamina gains should be non-negative");
-    assert!(final_strength >= 0, "Strength gains should be non-negative");
-    assert!(final_total > 0, "Total points should be positive for a 60-minute workout");
+    assert!(final_stamina >= 0.0, "Stamina gains should be non-negative");
+    assert!(final_strength >= 0.0, "Strength gains should be non-negative");
+    assert!(final_total > 0.0, "Total points should be positive for a 60-minute workout");
 }

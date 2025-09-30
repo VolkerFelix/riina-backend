@@ -10,7 +10,7 @@ mod routes;
 mod handlers;
 pub mod models;
 pub mod utils;
-mod middleware;
+pub mod middleware;
 pub mod db;
 pub mod game;
 pub mod league;

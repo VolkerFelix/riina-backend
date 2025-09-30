@@ -554,7 +554,7 @@ pub async fn get_league_teams(
             t.created_at,
             t.user_id as owner_id,
             COUNT(tm.user_id) as member_count,
-            COALESCE(SUM(ua.stamina + ua.strength), 0) as total_power
+            COALESCE(SUM(ua.stamina + ua.strength), 0.0) as total_power
         FROM teams t
         LEFT JOIN team_members tm ON t.id = tm.team_id AND tm.status = 'active'
         LEFT JOIN user_avatars ua ON tm.user_id = ua.user_id

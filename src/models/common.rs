@@ -59,17 +59,17 @@ impl<T> ApiResponse<T> {
 /// Common player statistics used across different contexts
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PlayerStats {
-    pub stamina: i32,
-    pub strength: i32,
+    pub stamina: f32,
+    pub strength: f32,
 }
 
 impl PlayerStats {
-    pub fn new(stamina: i32, strength: i32) -> Self {
+    pub fn new(stamina: f32, strength: f32) -> Self {
         Self { stamina, strength }
     }
 
     /// Calculate total power (used in game evaluations)
-    pub fn total_power(&self) -> i32 {
+    pub fn total_power(&self) -> f32 {
         self.stamina + self.strength
     }
 }

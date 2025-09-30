@@ -245,7 +245,7 @@ pub struct TeamInfoWithPower {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub owner_username: String,
-    pub total_power: i32,
+    pub total_power: f32,
 }
 
 impl TeamRegistrationRequest {
