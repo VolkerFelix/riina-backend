@@ -27,11 +27,18 @@ jobs:
               - 5432:5432
           
           redis:
-            image: bitnami/redis:latest
+            image: redis:7-alpine
             env:
               REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
             ports:
               - 6379:6379
+            options: >-
+              --health-cmd "redis-cli -a ${{ secrets.REDIS_PASSWORD }} ping"
+              --health-interval 10s
+              --health-timeout 5s
+              --health-retries 5
+              --entrypoint ""
+              --command redis-server --requirepass ${{ secrets.REDIS_PASSWORD }}
 
           minio:
             image: bitnami/minio:latest
