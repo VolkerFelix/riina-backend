@@ -52,6 +52,9 @@ jobs:
               --health-interval 10s
               --health-timeout 5s
               --health-retries 5
+              --volume /tmp/minio-data:/data
+              --entrypoint ""
+              --command "minio server /data --console-address :9001"
         
         env:
           POSTGRES__DATABASE__USER: ${{ secrets.POSTGRES_USER }}
