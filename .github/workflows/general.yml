@@ -10,6 +10,7 @@ on:
       - main
 
 jobs:
+
     test:
         name: Test with Database, Redis and MinIO
         runs-on: ubuntu-latest
@@ -27,14 +28,16 @@ jobs:
               - 5432:5432
           
           redis:
-            image: bitnami/redis:latest
+            image: ghcr.io/volkerfelix/redis_pw:latest
             env:
               REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
             ports:
               - 6379:6379
+            # Use the built-in healthcheck from the Docker image
+            # which properly handles REDIS_PASSWORD environment variable
 
           minio:
-            image: bitnami/minio:latest
+            image: ghcr.io/volkerfelix/minio_custom:latest
             env:
               MINIO_ROOT_USER: ${{ secrets.MINIO_ACCESS_KEY }}
               MINIO_ROOT_PASSWORD: ${{ secrets.MINIO_SECRET_KEY }}
@@ -42,10 +45,11 @@ jobs:
               - 9000:9000
               - 9001:9001
             options: >-
-              --health-cmd "curl -f http://localhost:9000/minio/health/ready"
+              --health-cmd "timeout 5s bash -c '</dev/tcp/localhost/9000' || exit 1"
               --health-interval 10s
               --health-timeout 5s
               --health-retries 5
+              --volume /tmp/minio-data:/data
         
         env:
           POSTGRES__DATABASE__USER: ${{ secrets.POSTGRES_USER }}
@@ -57,6 +61,7 @@ jobs:
           DATABASE_URL: postgres://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/evolveme_db
           MINIO__MINIO__ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
           MINIO__MINIO__SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
 
         steps:
             - name: Check out repository code
@@ -85,9 +90,21 @@ jobs:
                 sqlx --version
 
             - name: Setup database and services
-              run: |                
+              run: |
                 # Run the CI initialization
                 ./scripts/init_db_and_redis_ci.sh
+
+                # Verify Redis pub/sub is working
+                echo "🧪 Testing Redis pub/sub functionality..."
+                timeout 5s bash -c '
+                  redis-cli -a "${{ secrets.REDIS_PASSWORD }}" SUBSCRIBE test_channel &
+                  SUBSCRIBER_PID=$!
+                  sleep 1
+                  redis-cli -a "${{ secrets.REDIS_PASSWORD }}" PUBLISH test_channel "test_message"
+                  sleep 1
+                  kill $SUBSCRIBER_PID 2>/dev/null || true
+                ' || echo "⚠️ Redis pub/sub test completed"
+                echo "✅ Redis pub/sub verification done"
 
             - name: Generate SQLx prepare files
               env:

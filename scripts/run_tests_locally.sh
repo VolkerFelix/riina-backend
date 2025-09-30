@@ -86,10 +86,11 @@ spin_up_postgres() {
 spin_up_redis() {
     echo -e "${YELLOW}Spinning up Redis container for tests...${NC}"
     docker run --name riina-redis-test \
+        --platform linux/amd64 \
         -e REDIS_PASSWORD=${REDIS__REDIS__PASSWORD} \
         -v riina-redis-test-data:/data \
         -p 6379:6379 \
-        -d redis \
+        -d ghcr.io/volkerfelix/redis_pw:latest \
         redis-server --requirepass ${REDIS__REDIS__PASSWORD}
 }
 
@@ -102,7 +103,7 @@ spin_up_minio() {
         -e MINIO_SECRET_KEY=${MINIO__MINIO__SECRET_KEY} \
         -v riina-minio-test-data:/data \
         -p 9000:9000 \
-        -d minio/minio server /data
+        -d ghcr.io/volkerfelix/minio_custom:latest server /data
 }
 
 # Clean up postgres, redis and minio containers

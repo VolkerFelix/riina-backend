@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        WITH user_rankings AS (\n            SELECT \n                u.id as user_id,\n                COALESCE(ua.stamina + ua.strength, 0.0) as total_stats,\n                ROW_NUMBER() OVER (ORDER BY COALESCE(ua.stamina + ua.strength, 0.0) DESC) as rank\n            FROM users u\n            INNER JOIN team_members tm ON u.id = tm.user_id AND tm.status = 'active'\n            LEFT JOIN user_avatars ua ON u.id = ua.user_id\n        )\n        SELECT rank::int as rank\n        FROM user_rankings\n        WHERE user_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "rank",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "03a824c43f8ac43ca82292ef4c2c98dbaa97ddafc1f05d41ae31f881c3bc1f40"
+}

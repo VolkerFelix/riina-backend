@@ -252,21 +252,54 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     println!("✅ All WebSocket connections established");
 
     // Step 6: Wait for Redis subscriptions to be ready
-    // Check for Redis subscription confirmation messages
-    tokio::time::sleep(Duration::from_millis(1000)).await;
-    
-    // Drain any Redis subscription confirmation messages
+    // This is critical - we MUST wait for all subscriptions to be confirmed
+    // before triggering evaluation, otherwise messages will be lost
+    println!("⏳ Waiting for Redis subscriptions to be ready...");
+
+    let mut subscriptions_ready = 0;
+    let total_connections = websocket_connections.len();
+
     for (name, ws) in websocket_connections.iter_mut() {
-        // Try to receive Redis subscription confirmation (non-blocking)
-        if let Ok(Some(msg)) = tokio::time::timeout(Duration::from_millis(500), ws.next()).await {
-            if let Ok(Message::Text(text)) = msg {
-                let json: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
-                if json["event_type"] == "redis_subscriptions_ready" {
-                    println!("✅ Redis subscriptions ready for {}", name);
+        // Wait up to 10 seconds for subscription confirmation (increased for CI stability)
+        let timeout_duration = Duration::from_secs(10);
+        let start = std::time::Instant::now();
+        let mut received_any_message = false;
+
+        while start.elapsed() < timeout_duration {
+            if let Ok(Some(msg)) = tokio::time::timeout(Duration::from_millis(200), ws.next()).await {
+                received_any_message = true;
+                if let Ok(Message::Text(text)) = msg {
+                    println!("📨 {} received: {}", name, text);
+                    let json: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+                    if json["event_type"] == "redis_subscriptions_ready" {
+                        subscriptions_ready += 1;
+                        println!("✅ Redis subscriptions ready for {} ({}/{})",
+                            name, subscriptions_ready, total_connections);
+                        break;
+                    } else if json["event_type"] == "redis_connection_failed" {
+                        println!("❌ Redis connection failed for {}: {:?}", name, json);
+                        break;
+                    } else if json["event_type"] == "redis_not_available" {
+                        println!("❌ Redis not available for {}", name);
+                        break;
+                    }
                 }
             }
+            // Small delay before retrying
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        if !received_any_message {
+            println!("⚠️  {} did not receive any messages after welcome", name);
         }
     }
+
+    // Ensure all subscriptions are ready before proceeding
+    assert_eq!(subscriptions_ready, total_connections,
+        "Not all Redis subscriptions were confirmed in time ({}/{})",
+        subscriptions_ready, total_connections);
+
+    println!("✅ All {} Redis subscriptions confirmed and ready", total_connections);
 
     // Step 7: Trigger game evaluation via admin API and capture WebSocket notifications
     println!("🎮 Triggering game evaluation for date: {}", start_date.date_naive());
@@ -292,7 +325,12 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     
     println!("✅ Game evaluation triggered successfully");
 
-    // Step 8: Verify WebSocket notifications are received
+    // Step 8: Wait for notifications to be processed and delivered
+    // CI environments are slower, so we need to be more patient
+    println!("⏳ Waiting for notifications to be processed and delivered...");
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    // Step 9: Verify WebSocket notifications are received
     let mut global_events_received = 0;
     let mut individual_notifications_received = 0;
     
@@ -303,12 +341,12 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
         println!("Checking messages for {}", user_name);
         
         // Wait for potential messages with timeout
-        let timeout_duration = Duration::from_secs(3);
+        let timeout_duration = Duration::from_secs(10); // Increased for CI stability
         let start_time = std::time::Instant::now();
         
         while start_time.elapsed() < timeout_duration {
-            // Try to receive a message with a short timeout
-            if let Ok(Some(msg)) = tokio::time::timeout(Duration::from_millis(100), ws.next()).await {
+            // Try to receive a message with a longer timeout for CI stability
+            if let Ok(Some(msg)) = tokio::time::timeout(Duration::from_millis(200), ws.next()).await {
                 if let Ok(Message::Text(text)) = msg {
                     println!("📨 {} received message: {}", user_name, text);
                     
@@ -363,7 +401,7 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     println!("   🌐 Global events received: {}", global_events_received);
     println!("   👤 Individual notifications received: {}", individual_notifications_received);
     
-    // Step 9: Verify expected notification counts
+    // Step 10: Verify expected notification counts
     // We expect:
     // - At least 1 global "games_evaluated" event (received by all connected users)
     // - At least 4 individual notifications (one for each team member)
@@ -379,26 +417,28 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
 
 async fn update_games_to_current_time(app: &common::utils::TestApp, league_id: &str) {
     let now = chrono::Utc::now();
+    // Set start time 1 second in the past to ensure games are ready to start
+    let game_start = now - chrono::Duration::seconds(1);
     let game_end = now + chrono::Duration::seconds(5);
     let league_uuid = uuid::Uuid::parse_str(league_id).expect("Invalid league ID");
-    
+
     // Update all games in the league to current time
-    // Set game_start_time to now and game_end_time to 5 seconds later
+    // Set game_start_time to 1 second ago and game_end_time to 5 seconds from now
     sqlx::query!(
         r#"
-        UPDATE games 
+        UPDATE games
         SET game_start_time = $1, game_end_time = $2
         WHERE season_id IN (
             SELECT id FROM league_seasons WHERE league_id = $3
         )
         "#,
-        now,
+        game_start,
         game_end,
         league_uuid
     )
     .execute(&app.db_pool)
     .await
     .expect("Failed to update game times to current time");
-    
-    println!("✅ Updated all games in league {} to current time with 5-second game duration", league_id);
+
+    println!("✅ Updated all games in league {} with start time 1s ago and 6-second duration", league_id);
 }
