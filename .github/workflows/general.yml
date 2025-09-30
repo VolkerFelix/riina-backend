@@ -26,6 +26,14 @@ jobs:
               REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
               echo "Repository owner: $REPO_OWNER"
               
+              # Check current directory and list contents
+              echo "Current directory: $(pwd)"
+              echo "Directory contents:"
+              ls -la
+              echo "Looking for infra/redis directory:"
+              ls -la infra/ || echo "infra/ not found"
+              ls -la ../infra/ || echo "../infra/ not found"
+              
               # Login to GitHub Container Registry
               echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
               
