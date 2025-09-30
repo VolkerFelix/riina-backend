@@ -70,6 +70,7 @@ jobs:
             - name: Build custom Redis image
               run: |
                 docker build -f infra/redis/Dockerfile -t custom-redis:latest infra/redis/
+                docker images | grep custom-redis
     
             - name: Install the Rust toolchain
               uses: actions-rust-lang/setup-rust-toolchain@v1
