@@ -10,8 +10,36 @@ on:
       - main
 
 jobs:
+    build-redis:
+        name: Build and push Redis image
+        runs-on: ubuntu-latest
+        outputs:
+          image: ${{ steps.build.outputs.image }}
+        steps:
+          - name: Check out repository code
+            uses: actions/checkout@v4
+          
+          - name: Build and push custom Redis image
+            id: build
+            run: |
+              # Login to GitHub Container Registry
+              echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+              
+              # Build the custom Redis image
+              docker build -f infra/redis/Dockerfile -t ghcr.io/${{ github.repository_owner }}/redis:latest infra/redis/
+              
+              # Push the image
+              docker push ghcr.io/${{ github.repository_owner }}/redis:latest
+              
+              # Set output
+              echo "image=ghcr.io/${{ github.repository_owner }}/redis:latest" >> $GITHUB_OUTPUT
+              
+              # Verify the image was pushed
+              docker images | grep redis
+
     test:
         name: Test with Database, Redis and MinIO
+        needs: build-redis
         runs-on: ubuntu-latest
         timeout-minutes: 30
         
@@ -66,17 +94,6 @@ jobs:
         steps:
             - name: Check out repository code
               uses: actions/checkout@v4
-            
-            - name: Build and push custom Redis image
-              run: |
-                # Build the custom Redis image (convert to lowercase)
-                docker build -f infra/redis/Dockerfile -t ghcr.io/${{ github.repository_owner }}/redis:latest infra/redis/
-                
-                # Login to GitHub Container Registry
-                echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-                
-                # Push the image
-                docker push ghcr.io/${{ github.repository_owner }}/redis:latest
     
             - name: Install the Rust toolchain
               uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -128,7 +145,7 @@ jobs:
 
     build_and_push:
       name: Build and Push Multi-Architecture Docker image
-      needs: [test]
+      needs: [build-redis, test]
       runs-on: ubuntu-latest
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
       
