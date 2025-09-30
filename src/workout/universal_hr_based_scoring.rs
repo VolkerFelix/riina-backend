@@ -8,18 +8,6 @@ pub const P_VT0: f32 = 0.35;
 pub const P_VT1: f32 = 0.65;
 pub const P_VT2: f32 = 0.8;
 
-#[derive(Debug)]
-struct ZoneScore {
-    duration_mins: f32,
-    points: f32,
-}
-
-impl ZoneScore {
-    pub fn new() -> Self {
-        Self { duration_mins: 0.0, points: 0.0 }
-    }
-}
-
 pub struct UniversalHRBasedScoring;
 
 impl ScoringMethod for UniversalHRBasedScoring {

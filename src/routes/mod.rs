@@ -17,7 +17,8 @@ use crate::middleware::auth::AuthMiddleware;
 pub fn init_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(registration::register)
         .service(backend_health::backend_health)
-        .service(auth::login);
+        .service(auth::login)
+        .service(auth::biometric_refresh);
     // Health routes (require authentication)
     cfg.service(
         web::scope("/health")
