@@ -37,8 +37,8 @@ jobs:
               --health-interval 10s
               --health-timeout 5s
               --health-retries 5
-              --entrypoint ""
-              --command sh -c "redis-server --requirepass $REDIS_PASSWORD"
+              --entrypoint sh
+              -- -c "redis-server --requirepass $REDIS_PASSWORD"
 
           minio:
             image: bitnami/minio:latest
