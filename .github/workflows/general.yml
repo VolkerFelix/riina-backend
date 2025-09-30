@@ -33,12 +33,12 @@ jobs:
             ports:
               - 6379:6379
             options: >-
-              --health-cmd "redis-cli -a ${{ secrets.REDIS_PASSWORD }} ping"
+              --health-cmd "redis-cli ping"
               --health-interval 10s
               --health-timeout 5s
               --health-retries 5
               --entrypoint ""
-              --command redis-server --requirepass ${{ secrets.REDIS_PASSWORD }}
+              --command sh -c "redis-server --requirepass $REDIS_PASSWORD"
 
           minio:
             image: bitnami/minio:latest
