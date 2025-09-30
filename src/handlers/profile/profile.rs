@@ -153,14 +153,17 @@ async fn create_default_avatar(pool: &PgPool, user_id: Uuid) -> Result<GameStats
 async fn get_user_rank(pool: &PgPool, user_id: Uuid) -> Result<i32, sqlx::Error> {
     let result = sqlx::query!(
         r#"
-        WITH ranked_users AS (
+        WITH user_rankings AS (
             SELECT 
-                user_id,
-                ROW_NUMBER() OVER (ORDER BY (stamina + strength) DESC) as rank
-            FROM user_avatars
+                u.id as user_id,
+                COALESCE(ua.stamina + ua.strength, 0.0) as total_stats,
+                ROW_NUMBER() OVER (ORDER BY COALESCE(ua.stamina + ua.strength, 0.0) DESC) as rank
+            FROM users u
+            INNER JOIN team_members tm ON u.id = tm.user_id AND tm.status = 'active'
+            LEFT JOIN user_avatars ua ON u.id = ua.user_id
         )
         SELECT rank::int as rank
-        FROM ranked_users
+        FROM user_rankings
         WHERE user_id = $1
         "#,
         user_id
@@ -170,6 +173,6 @@ async fn get_user_rank(pool: &PgPool, user_id: Uuid) -> Result<i32, sqlx::Error>
 
     match result {
         Some(row) => Ok(row.rank.unwrap_or(999)),
-        None => Ok(999), // User not found in rankings
+        None => Ok(999), // User not found in league rankings
     }
 }
