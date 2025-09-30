@@ -40,7 +40,7 @@ jobs:
               --health-retries 5
 
           minio:
-            image: minio/minio:latest
+            image: ghcr.io/volkerfelix/minio_custom:latest
             env:
               MINIO_ROOT_USER: ${{ secrets.MINIO_ACCESS_KEY }}
               MINIO_ROOT_PASSWORD: ${{ secrets.MINIO_SECRET_KEY }}
@@ -48,13 +48,11 @@ jobs:
               - 9000:9000
               - 9001:9001
             options: >-
-              --health-cmd "curl -f http://localhost:9000/minio/health/live"
+              --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:9000/minio/health/live || exit 1"
               --health-interval 10s
               --health-timeout 5s
               --health-retries 5
               --volume /tmp/minio-data:/data
-              --entrypoint ""
-              --command "minio server /data --console-address :9001"
         
         env:
           POSTGRES__DATABASE__USER: ${{ secrets.POSTGRES_USER }}
