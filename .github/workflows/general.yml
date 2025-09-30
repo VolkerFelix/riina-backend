@@ -64,6 +64,7 @@ jobs:
           DATABASE_URL: postgres://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/evolveme_db
           MINIO__MINIO__ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
           MINIO__MINIO__SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
 
         steps:
             - name: Check out repository code
