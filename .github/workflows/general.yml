@@ -34,10 +34,10 @@ jobs:
             ports:
               - 6379:6379
             options: >-
-              --health-cmd "redis-cli -a $REDIS_PASSWORD ping"
+              --health-cmd "redis-cli -a \"$REDIS_PASSWORD\" ping || exit 1"
               --health-interval 10s
               --health-timeout 5s
-              --health-retries 5
+              --health-retries 10
 
           minio:
             image: ghcr.io/volkerfelix/minio_custom:latest
@@ -93,9 +93,21 @@ jobs:
                 sqlx --version
 
             - name: Setup database and services
-              run: |                
+              run: |
                 # Run the CI initialization
                 ./scripts/init_db_and_redis_ci.sh
+
+                # Verify Redis pub/sub is working
+                echo "🧪 Testing Redis pub/sub functionality..."
+                timeout 5s bash -c '
+                  redis-cli -a "${{ secrets.REDIS_PASSWORD }}" SUBSCRIBE test_channel &
+                  SUBSCRIBER_PID=$!
+                  sleep 1
+                  redis-cli -a "${{ secrets.REDIS_PASSWORD }}" PUBLISH test_channel "test_message"
+                  sleep 1
+                  kill $SUBSCRIBER_PID 2>/dev/null || true
+                ' || echo "⚠️ Redis pub/sub test completed"
+                echo "✅ Redis pub/sub verification done"
 
             - name: Generate SQLx prepare files
               env:

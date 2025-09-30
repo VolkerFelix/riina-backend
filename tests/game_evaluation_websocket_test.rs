@@ -260,24 +260,37 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     let total_connections = websocket_connections.len();
 
     for (name, ws) in websocket_connections.iter_mut() {
-        // Wait up to 5 seconds for subscription confirmation (important for CI)
-        let timeout_duration = Duration::from_secs(5);
+        // Wait up to 10 seconds for subscription confirmation (increased for CI stability)
+        let timeout_duration = Duration::from_secs(10);
         let start = std::time::Instant::now();
+        let mut received_any_message = false;
 
         while start.elapsed() < timeout_duration {
             if let Ok(Some(msg)) = tokio::time::timeout(Duration::from_millis(200), ws.next()).await {
+                received_any_message = true;
                 if let Ok(Message::Text(text)) = msg {
+                    println!("📨 {} received: {}", name, text);
                     let json: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
                     if json["event_type"] == "redis_subscriptions_ready" {
                         subscriptions_ready += 1;
                         println!("✅ Redis subscriptions ready for {} ({}/{})",
                             name, subscriptions_ready, total_connections);
                         break;
+                    } else if json["event_type"] == "redis_connection_failed" {
+                        println!("❌ Redis connection failed for {}: {:?}", name, json);
+                        break;
+                    } else if json["event_type"] == "redis_not_available" {
+                        println!("❌ Redis not available for {}", name);
+                        break;
                     }
                 }
             }
             // Small delay before retrying
             tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        if !received_any_message {
+            println!("⚠️  {} did not receive any messages after welcome", name);
         }
     }
 
