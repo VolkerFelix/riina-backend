@@ -10,40 +10,9 @@ on:
       - main
 
 jobs:
-    build-redis:
-        name: Build and push Redis image
-        runs-on: ubuntu-latest
-        outputs:
-          image: ${{ steps.build.outputs.image }}
-        steps:
-          - name: Check out repository code
-            uses: actions/checkout@v4
-          
-          - name: Build and push custom Redis image
-            id: build
-            run: |
-              # Convert repository owner to lowercase
-              REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-              echo "Repository owner: $REPO_OWNER"
-              
-              # Login to GitHub Container Registry
-              echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-              
-              # Build the custom Redis image (infra/ is at repository root, one level up)
-              docker build -f ../infra/redis/Dockerfile -t ghcr.io/$REPO_OWNER/redis:latest ../infra/redis/
-              
-              # Push the image
-              docker push ghcr.io/$REPO_OWNER/redis:latest
-              
-              # Set output
-              echo "image=ghcr.io/$REPO_OWNER/redis:latest" >> $GITHUB_OUTPUT
-              
-              # Verify the image was pushed
-              docker images | grep redis
 
     test:
         name: Test with Database, Redis and MinIO
-        needs: build-redis
         runs-on: ubuntu-latest
         timeout-minutes: 30
         
@@ -59,7 +28,7 @@ jobs:
               - 5432:5432
           
           redis:
-            image: ghcr.io/volkerfelix/redis:latest
+            image: ghcr.io/volkerfelix/redis_pw:latest
             env:
               REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
             ports:
@@ -149,7 +118,7 @@ jobs:
 
     build_and_push:
       name: Build and Push Multi-Architecture Docker image
-      needs: [build-redis, test]
+      needs: [test]
       runs-on: ubuntu-latest
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
       
