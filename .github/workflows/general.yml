@@ -27,18 +27,16 @@ jobs:
               - 5432:5432
           
           redis:
-            image: redis:7-alpine
+            image: custom-redis:latest
             env:
               REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
             ports:
               - 6379:6379
             options: >-
-              --health-cmd "redis-cli ping"
+              --health-cmd "redis-cli -a $REDIS_PASSWORD ping"
               --health-interval 10s
               --health-timeout 5s
               --health-retries 5
-              --entrypoint sh
-              -- -c "redis-server --requirepass $REDIS_PASSWORD"
 
           minio:
             image: bitnami/minio:latest
@@ -68,6 +66,10 @@ jobs:
         steps:
             - name: Check out repository code
               uses: actions/checkout@v4
+            
+            - name: Build custom Redis image
+              run: |
+                docker build -f infra/redis/Dockerfile -t custom-redis:latest infra/redis/
     
             - name: Install the Rust toolchain
               uses: actions-rust-lang/setup-rust-toolchain@v1
