@@ -22,17 +22,21 @@ jobs:
           - name: Build and push custom Redis image
             id: build
             run: |
+              # Convert repository owner to lowercase
+              REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+              echo "Repository owner: $REPO_OWNER"
+              
               # Login to GitHub Container Registry
               echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
               
               # Build the custom Redis image
-              docker build -f infra/redis/Dockerfile -t ghcr.io/${{ github.repository_owner }}/redis:latest infra/redis/
+              docker build -f infra/redis/Dockerfile -t ghcr.io/$REPO_OWNER/redis:latest infra/redis/
               
               # Push the image
-              docker push ghcr.io/${{ github.repository_owner }}/redis:latest
+              docker push ghcr.io/$REPO_OWNER/redis:latest
               
               # Set output
-              echo "image=ghcr.io/${{ github.repository_owner }}/redis:latest" >> $GITHUB_OUTPUT
+              echo "image=ghcr.io/$REPO_OWNER/redis:latest" >> $GITHUB_OUTPUT
               
               # Verify the image was pushed
               docker images | grep redis
@@ -55,7 +59,7 @@ jobs:
               - 5432:5432
           
           redis:
-            image: ghcr.io/${{ github.repository_owner }}/redis:latest
+            image: ghcr.io/volkerfelix/redis:latest
             env:
               REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
             ports:
