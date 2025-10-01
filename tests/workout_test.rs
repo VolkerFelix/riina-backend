@@ -113,6 +113,16 @@ async fn upload_workout_data_with_invalid_data_fails() {
     assert!(!response.status().is_success(), "Invalid workout data should be rejected");
 }
 
+#[tokio::test]
+async fn upload_workout_data_with_hard_workout() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+    let test_user = create_test_user_with_health_profile(&test_app.address).await;
+    let mut workout_data = WorkoutData::new_with_hr_freq(WorkoutType::Hard, Utc::now(), 110, Some(120));
+    let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
+    assert!(response.is_ok(), "Hard workout should upload successfully");
+}
+
 // ============================================================================
 // WORKOUT HISTORY TESTS
 // ============================================================================

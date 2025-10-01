@@ -4,9 +4,10 @@ use chrono::{Utc, Duration, DateTime};
 use uuid::Uuid;
 
 pub enum WorkoutType {
+    Hard,
     Intense,
     Moderate,
-    Light
+    Light,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -15,7 +16,7 @@ pub struct WorkoutData {
     pub workout_start: DateTime<Utc>,
     pub workout_end: DateTime<Utc>,
     pub calories_burned: i32,
-    heart_rate: Vec<serde_json::Value>,
+    pub heart_rate: Vec<serde_json::Value>,
     pub device_id: String,
     timestamp: DateTime<Utc>,
     pub image_url: Option<String>,
@@ -25,11 +26,36 @@ pub struct WorkoutData {
 impl WorkoutData {
     pub fn new(workout_type: WorkoutType, workout_start: DateTime<Utc>, duration_minutes: i64) -> Self {
         let (heart_rate_data, calories_burned) = match workout_type {
+            WorkoutType::Hard => generate_hard_workout_data(workout_start, duration_minutes, None),
             WorkoutType::Intense => generate_intense_workout_data(workout_start, duration_minutes),
             WorkoutType::Moderate => generate_moderate_workout_data(workout_start, duration_minutes),
             WorkoutType::Light => generate_light_workout_data(workout_start, duration_minutes),
         };
         
+        let workout_uuid = Uuid::new_v4().to_string();
+        let workout_end = workout_start + Duration::minutes(duration_minutes);
+        Self {
+            workout_uuid,
+            workout_start,
+            workout_end,
+            calories_burned,
+            heart_rate: heart_rate_data,
+            device_id: format!("test-device-{}", &Uuid::new_v4().to_string()[..8]),
+            timestamp: Utc::now(),
+            image_url: None,
+            video_url: None,
+            approval_token: None,
+        }
+    }
+
+    pub fn new_with_hr_freq(workout_type: WorkoutType, workout_start: DateTime<Utc>, duration_minutes: i64, hr_freq_per_sec: Option<i32>) -> Self {
+        let (heart_rate_data, calories_burned) = match workout_type {
+            WorkoutType::Hard => generate_hard_workout_data(workout_start, duration_minutes, hr_freq_per_sec),
+            WorkoutType::Intense => generate_intense_workout_data(workout_start, duration_minutes),
+            WorkoutType::Moderate => generate_moderate_workout_data(workout_start, duration_minutes),
+            WorkoutType::Light => generate_light_workout_data(workout_start, duration_minutes),
+        };
+
         let workout_uuid = Uuid::new_v4().to_string();
         let workout_end = workout_start + Duration::minutes(duration_minutes);
         Self {
@@ -52,6 +78,34 @@ impl WorkoutData {
     }
 }
 
+fn generate_hard_workout_data(start_time: DateTime<Utc>, duration_min: i64, hr_freq_per_sec: Option<i32>) -> (Vec<serde_json::Value>, i32) {
+    let mut heart_rate_data = Vec::new();
+    let duration_sec = duration_min * 60;
+    match hr_freq_per_sec {
+        Some(hr_freq) => {
+            // Reproduce Baeschor's data
+            let start_time_off = start_time + Duration::milliseconds(796);
+            // Example: hr_req_per_min = 120, then hr_req_per_sec = 120 / 60 = 2
+            // So we need to generate 2 heart rate data points per second
+            for i in 0..duration_sec {
+                for j in 0..hr_freq {
+                    heart_rate_data.push(json!({
+                        "timestamp": start_time_off + Duration::seconds(i) + Duration::milliseconds((j * 500) as i64),
+                        "heart_rate": 150 + (i % 40) // Very high intensity heart rate
+                    }));
+                }
+            }
+        }
+        None => {
+            heart_rate_data = (0..=(duration_min)).map(|i| json!({
+                "timestamp": start_time + Duration::minutes(i),
+                "heart_rate": 150 + (i % 40) as i32 // High intensity heart rate
+            })).collect();
+        }
+    }
+    println!("Heart rate samples: {:?}", heart_rate_data.len());
+    (heart_rate_data, 1400)
+}
 
 // Helper functions for generating workout data
 fn generate_intense_workout_data(start_time: DateTime<Utc>, duration_minutes: i64) -> (Vec<serde_json::Value>, i32) {
