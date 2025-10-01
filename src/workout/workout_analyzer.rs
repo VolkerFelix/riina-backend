@@ -60,14 +60,15 @@ impl WorkoutAnalyzer {
 
             let zone = zones.get_zone(hr as f32);
             // Calc duration for this sample - use interval between first and second point for the first point
+            // Use num_milliseconds() instead of num_seconds() to preserve subsecond precision
             let duration_sec = if index == 0 {
                 if sorted_data.len() > 1 {
-                    (sorted_data[1].timestamp - sorted_data[0].timestamp).num_seconds() as f32
+                    (sorted_data[1].timestamp - sorted_data[0].timestamp).num_milliseconds() as f32 / 1000.0
                 } else {
                     0.0 // Single data point workout
                 }
             } else {
-                (hr_data.timestamp - sorted_data[index - 1].timestamp).num_seconds() as f32
+                (hr_data.timestamp - sorted_data[index - 1].timestamp).num_milliseconds() as f32 / 1000.0
             };
 
             let duration_min = duration_sec / 60.0;
