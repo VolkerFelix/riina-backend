@@ -65,6 +65,7 @@ impl WorkoutData {
             workout_start,
             workout_end,
             calories_burned,
+            activity_name: Some("Running".to_string()),
             heart_rate: heart_rate_data,
             device_id: format!("test-device-{}", &Uuid::new_v4().to_string()[..8]),
             timestamp: Utc::now(),

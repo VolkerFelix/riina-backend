@@ -1,7 +1,9 @@
 use chrono::Utc;
 
 use riina_backend::workout::workout_analyzer::WorkoutAnalyzer;
-use riina_backend::models::workout_data::{HeartRateData, HeartRateZones, ZoneName};
+use riina_backend::models::health::{HeartRateZones, HeartRateZoneName, Gender};
+use riina_backend::models::workout_data::HeartRateData;
+
 mod common;
 use common::workout_data_helpers::{WorkoutData, WorkoutType};
 
@@ -9,13 +11,12 @@ use common::workout_data_helpers::{WorkoutData, WorkoutType};
 fn test_millisecond_timestamps_produces_zone_time() {
 
     let workout_data = WorkoutData::new_with_hr_freq(WorkoutType::Hard, Utc::now(), 110, Some(2));
-    let heart_rate_data = workout_data.heart_rate.iter().map(|v| serde_json::from_value(v.clone()).expect("Failed to parse heart rate data")).collect();
+    let heart_rate_data: Vec<HeartRateData> = workout_data.heart_rate.iter().map(|v| serde_json::from_value(v.clone()).expect("Failed to parse heart rate data")).collect();
 
     // Create heart rate zones for testing
     let resting_hr = 60;
-    let max_hr = 200;
-    let hrr = max_hr - resting_hr;
-    let zones = HeartRateZones::new(hrr, resting_hr, max_hr);
+    let age = 30; // Use a realistic age
+    let zones = HeartRateZones::new(age, Gender::Male, resting_hr);
 
     // Analyze the workout
     let analyzer = WorkoutAnalyzer::new(
@@ -23,8 +24,7 @@ fn test_millisecond_timestamps_produces_zone_time() {
         &zones
     );
 
-    assert!(analyzer.is_some(), "WorkoutAnalyzer should be created");
-    let analyzer = analyzer.unwrap();
+    assert!(!analyzer.zone_durations.is_empty(), "WorkoutAnalyzer should have zone durations");
 
     println!("Total duration: {} minutes", analyzer.total_duration_min);
     println!("Zone durations:");
@@ -44,22 +44,22 @@ fn test_millisecond_timestamps_produces_zone_time() {
     // Calculate expected score
     let stamina: i32 = analyzer.zone_durations.iter().map(|(zone, minutes)| {
         let points_per_min = match zone {
-            ZoneName::Zone1 => 2,
-            ZoneName::Zone2 => 5,
-            ZoneName::Zone3 => 4,
-            ZoneName::Zone4 => 2,
-            ZoneName::Zone5 => 1,
+            HeartRateZoneName::Zone1 => 2,
+            HeartRateZoneName::Zone2 => 5,
+            HeartRateZoneName::Zone3 => 4,
+            HeartRateZoneName::Zone4 => 2,
+            HeartRateZoneName::Zone5 => 1,
         };
         (minutes * points_per_min as f32) as i32
     }).sum();
 
     let strength: i32 = analyzer.zone_durations.iter().map(|(zone, minutes)| {
         let points_per_min = match zone {
-            ZoneName::Zone1 => 0,
-            ZoneName::Zone2 => 1,
-            ZoneName::Zone3 => 3,
-            ZoneName::Zone4 => 5,
-            ZoneName::Zone5 => 8,
+            HeartRateZoneName::Zone1 => 0,
+            HeartRateZoneName::Zone2 => 1,
+            HeartRateZoneName::Zone3 => 3,
+            HeartRateZoneName::Zone4 => 5,
+            HeartRateZoneName::Zone5 => 8,
         };
         (minutes * points_per_min as f32) as i32
     }).sum();
