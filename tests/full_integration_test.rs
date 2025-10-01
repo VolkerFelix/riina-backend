@@ -55,7 +55,7 @@ async fn test_complete_live_game_workflow() {
     assert!(api_game["away_team_name"].is_string(), "Should have away team name");
 
     // Home team user uploads workout data
-    let mut workout_data = WorkoutData::new_with_hr_freq(WorkoutType::Hard, Utc::now(), 110, Some(120));
+    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
     let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut workout_data).await;
     assert!(response.is_ok(), "Workout upload should succeed");
     let response_data = response.unwrap();
