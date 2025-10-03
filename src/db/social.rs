@@ -5,6 +5,7 @@ use crate::models::social::{
     CommentListResponse, WorkoutComment, WorkoutCommentWithUser, WorkoutReaction,
     WorkoutReactionWithUser, WorkoutReactionSummary,
     CommentReaction, CommentReactionWithUser, CommentReactionSummary,
+    NotificationWithUser, NotificationListResponse,
 };
 
 pub async fn create_reaction(
@@ -491,4 +492,234 @@ pub async fn get_comment_reaction_users(
         })
         .collect();
     Ok(reactions)
+}
+
+// ============================================================================
+// NOTIFICATION FUNCTIONS
+// ============================================================================
+
+pub async fn create_notification(
+    pool: &PgPool,
+    recipient_id: Uuid,
+    actor_id: Uuid,
+    notification_type: &str,
+    entity_type: &str,
+    entity_id: Uuid,
+    message: &str,
+) -> Result<Option<Uuid>, sqlx::Error> {
+    // Don't create notification if actor is the recipient
+    if actor_id == recipient_id {
+        return Ok(None);
+    }
+
+    let notification_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO notifications (recipient_id, actor_id, notification_type, entity_type, entity_id, message)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id
+        "#,
+    )
+    .bind(recipient_id)
+    .bind(actor_id)
+    .bind(notification_type)
+    .bind(entity_type)
+    .bind(entity_id)
+    .bind(message)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(Some(notification_id))
+}
+
+pub async fn get_notifications(
+    pool: &PgPool,
+    user_id: Uuid,
+    page: i32,
+    per_page: i32,
+    unread_only: bool,
+) -> Result<NotificationListResponse, sqlx::Error> {
+    let offset = (page - 1) * per_page;
+
+    // Get total count
+    let total_count: i64 = if unread_only {
+        sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)
+            FROM notifications
+            WHERE recipient_id = $1 AND read = false
+            "#,
+        )
+        .bind(user_id)
+        .fetch_one(pool)
+        .await?
+    } else {
+        sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)
+            FROM notifications
+            WHERE recipient_id = $1
+            "#,
+        )
+        .bind(user_id)
+        .fetch_one(pool)
+        .await?
+    };
+
+    // Get unread count
+    let unread_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM notifications
+        WHERE recipient_id = $1 AND read = false
+        "#,
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+
+    // Get notifications
+    let query_str = if unread_only {
+        r#"
+        SELECT
+            n.id,
+            n.recipient_id,
+            n.actor_id,
+            u.username as actor_username,
+            n.notification_type,
+            n.entity_type,
+            n.entity_id,
+            n.message,
+            n.read,
+            n.created_at
+        FROM notifications n
+        INNER JOIN users u ON u.id = n.actor_id
+        WHERE n.recipient_id = $1 AND n.read = false
+        ORDER BY n.created_at DESC
+        LIMIT $2 OFFSET $3
+        "#
+    } else {
+        r#"
+        SELECT
+            n.id,
+            n.recipient_id,
+            n.actor_id,
+            u.username as actor_username,
+            n.notification_type,
+            n.entity_type,
+            n.entity_id,
+            n.message,
+            n.read,
+            n.created_at
+        FROM notifications n
+        INNER JOIN users u ON u.id = n.actor_id
+        WHERE n.recipient_id = $1
+        ORDER BY n.created_at DESC
+        LIMIT $2 OFFSET $3
+        "#
+    };
+
+    let rows = sqlx::query(query_str)
+        .bind(user_id)
+        .bind(per_page)
+        .bind(offset)
+        .fetch_all(pool)
+        .await?;
+
+    let notifications = rows
+        .into_iter()
+        .map(|row| NotificationWithUser {
+            id: row.get("id"),
+            recipient_id: row.get("recipient_id"),
+            actor_id: row.get("actor_id"),
+            actor_username: row.get("actor_username"),
+            notification_type: row.get("notification_type"),
+            entity_type: row.get("entity_type"),
+            entity_id: row.get("entity_id"),
+            message: row.get("message"),
+            read: row.get("read"),
+            created_at: row.get("created_at"),
+        })
+        .collect();
+
+    Ok(NotificationListResponse {
+        notifications,
+        total_count,
+        unread_count,
+        page,
+        per_page,
+    })
+}
+
+pub async fn mark_notification_read(
+    pool: &PgPool,
+    notification_id: Uuid,
+    user_id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query(
+        r#"
+        UPDATE notifications
+        SET read = true
+        WHERE id = $1 AND recipient_id = $2
+        "#,
+    )
+    .bind(notification_id)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() > 0)
+}
+
+pub async fn mark_all_notifications_read(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query(
+        r#"
+        UPDATE notifications
+        SET read = true
+        WHERE recipient_id = $1 AND read = false
+        "#,
+    )
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected())
+}
+
+pub async fn get_unread_count(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<i64, sqlx::Error> {
+    let count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM notifications
+        WHERE recipient_id = $1 AND read = false
+        "#,
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(count)
+}
+
+pub async fn get_workout_owner(
+    pool: &PgPool,
+    workout_id: Uuid,
+) -> Result<Option<Uuid>, sqlx::Error> {
+    let owner_id: Option<Uuid> = sqlx::query_scalar(
+        r#"
+        SELECT user_id
+        FROM workout_data
+        WHERE id = $1
+        "#,
+    )
+    .bind(workout_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(owner_id)
 }

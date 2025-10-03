@@ -5,6 +5,7 @@
 //! - Workout comments (add, edit, delete, get comments)
 //! - Comment reactions (add, remove, get reactions on comments and replies)
 //! - Comment threading and replies
+//! - Notifications (workout reactions, comments, replies)
 //! - Permission checks for edit/delete operations
 //! - Pagination for comments
 //! - Error handling for invalid operations
@@ -1874,4 +1875,402 @@ async fn test_newsfeed_unauthorized() {
         .expect("Failed to send request");
 
     assert_eq!(response.status(), 401, "Should fail without authorization");
+}
+
+// ============================================================================
+// NOTIFICATION TESTS
+// ============================================================================
+
+#[tokio::test]
+async fn test_notification_on_workout_reaction() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    // Create user1 with a workout
+    let (user1, workout_id) = create_user_with_workout(&test_app.address).await;
+
+    // Create user2 who will react to user1's workout
+    let user2 = create_test_user_and_login(&test_app.address).await;
+
+    // User2 reacts to user1's workout
+    let reaction_data = json!({"reaction_type": "fire"});
+    let response = client
+        .post(&format!("{}/social/workouts/{}/reactions", test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", user2.token))
+        .json(&reaction_data)
+        .send()
+        .await
+        .expect("Failed to add reaction");
+
+    assert!(response.status().is_success(), "Adding reaction should succeed");
+
+    // User1 checks their notifications
+    let response = client
+        .get(&format!("{}/social/notifications", test_app.address))
+        .header("Authorization", format!("Bearer {}", user1.token))
+        .send()
+        .await
+        .expect("Failed to get notifications");
+
+    assert!(response.status().is_success(), "Getting notifications should succeed");
+
+    let notifications: serde_json::Value = response.json().await.expect("Failed to parse notifications");
+    assert_eq!(notifications["unread_count"], 1, "Should have 1 unread notification");
+    assert_eq!(notifications["notifications"].as_array().unwrap().len(), 1, "Should have 1 notification");
+
+    let notification = &notifications["notifications"][0];
+    assert_eq!(notification["notification_type"], "reaction");
+    assert_eq!(notification["actor_username"], user2.username);
+    assert_eq!(notification["read"], false);
+    assert!(notification["message"].as_str().unwrap().contains("reacted to your workout"));
+}
+
+#[tokio::test]
+async fn test_notification_on_workout_comment() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let (user1, workout_id) = create_user_with_workout(&test_app.address).await;
+    let user2 = create_test_user_and_login(&test_app.address).await;
+
+    // User2 comments on user1's workout
+    let comment_data = json!({
+        "content": "Great workout!",
+        "parent_id": null
+    });
+
+    let response = client
+        .post(&format!("{}/social/workouts/{}/comments", test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", user2.token))
+        .json(&comment_data)
+        .send()
+        .await
+        .expect("Failed to add comment");
+
+    assert!(response.status().is_success(), "Adding comment should succeed");
+
+    // User1 checks their notifications
+    let response = client
+        .get(&format!("{}/social/notifications", test_app.address))
+        .header("Authorization", format!("Bearer {}", user1.token))
+        .send()
+        .await
+        .expect("Failed to get notifications");
+
+    assert!(response.status().is_success());
+
+    let notifications: serde_json::Value = response.json().await.expect("Failed to parse notifications");
+    assert_eq!(notifications["unread_count"], 1);
+
+    let notification = &notifications["notifications"][0];
+    assert_eq!(notification["notification_type"], "comment");
+    assert_eq!(notification["actor_username"], user2.username);
+    assert!(notification["message"].as_str().unwrap().contains("commented on your workout"));
+}
+
+#[tokio::test]
+async fn test_notification_on_comment_reply() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let (user1, workout_id) = create_user_with_workout(&test_app.address).await;
+    let user2 = create_test_user_and_login(&test_app.address).await;
+
+    // User1 comments on their own workout
+    let comment_data = json!({
+        "content": "This was tough!",
+        "parent_id": null
+    });
+
+    let response = client
+        .post(&format!("{}/social/workouts/{}/comments", test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", user1.token))
+        .json(&comment_data)
+        .send()
+        .await
+        .expect("Failed to add comment");
+
+    assert!(response.status().is_success());
+    let comment: serde_json::Value = response.json().await.expect("Failed to parse comment");
+    let comment_id = comment["id"].as_str().unwrap();
+
+    // User2 replies to user1's comment
+    let reply_data = json!({
+        "content": "You got this!",
+        "parent_id": comment_id
+    });
+
+    let response = client
+        .post(&format!("{}/social/workouts/{}/comments", test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", user2.token))
+        .json(&reply_data)
+        .send()
+        .await
+        .expect("Failed to add reply");
+
+    assert!(response.status().is_success());
+
+    // User1 checks their notifications
+    let response = client
+        .get(&format!("{}/social/notifications", test_app.address))
+        .header("Authorization", format!("Bearer {}", user1.token))
+        .send()
+        .await
+        .expect("Failed to get notifications");
+
+    assert!(response.status().is_success());
+
+    let notifications: serde_json::Value = response.json().await.expect("Failed to parse notifications");
+    assert_eq!(notifications["unread_count"], 1);
+
+    let notification = &notifications["notifications"][0];
+    assert_eq!(notification["notification_type"], "reply");
+    assert_eq!(notification["actor_username"], user2.username);
+    assert!(notification["message"].as_str().unwrap().contains("replied to your comment"));
+}
+
+#[tokio::test]
+async fn test_no_notification_for_own_reaction() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let (user, workout_id) = create_user_with_workout(&test_app.address).await;
+
+    // User reacts to their own workout
+    let reaction_data = json!({"reaction_type": "fire"});
+    let response = client
+        .post(&format!("{}/social/workouts/{}/reactions", test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&reaction_data)
+        .send()
+        .await
+        .expect("Failed to add reaction");
+
+    assert!(response.status().is_success());
+
+    // User checks their notifications - should have none
+    let response = client
+        .get(&format!("{}/social/notifications", test_app.address))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Failed to get notifications");
+
+    assert!(response.status().is_success());
+
+    let notifications: serde_json::Value = response.json().await.expect("Failed to parse notifications");
+    assert_eq!(notifications["unread_count"], 0, "Should have no notifications for own reaction");
+}
+
+#[tokio::test]
+async fn test_mark_notification_as_read() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let (user1, workout_id) = create_user_with_workout(&test_app.address).await;
+    let user2 = create_test_user_and_login(&test_app.address).await;
+
+    // User2 reacts to user1's workout
+    let reaction_data = json!({"reaction_type": "fire"});
+    client
+        .post(&format!("{}/social/workouts/{}/reactions", test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", user2.token))
+        .json(&reaction_data)
+        .send()
+        .await
+        .expect("Failed to add reaction");
+
+    // Get notifications to find the notification ID
+    let response = client
+        .get(&format!("{}/social/notifications", test_app.address))
+        .header("Authorization", format!("Bearer {}", user1.token))
+        .send()
+        .await
+        .expect("Failed to get notifications");
+
+    let notifications: serde_json::Value = response.json().await.expect("Failed to parse notifications");
+    let notification_id = notifications["notifications"][0]["id"].as_str().unwrap();
+
+    // Mark as read
+    let response = client
+        .put(&format!("{}/social/notifications/{}/read", test_app.address, notification_id))
+        .header("Authorization", format!("Bearer {}", user1.token))
+        .send()
+        .await
+        .expect("Failed to mark as read");
+
+    assert!(response.status().is_success());
+
+    // Check unread count
+    let response = client
+        .get(&format!("{}/social/notifications", test_app.address))
+        .header("Authorization", format!("Bearer {}", user1.token))
+        .send()
+        .await
+        .expect("Failed to get notifications");
+
+    let notifications: serde_json::Value = response.json().await.expect("Failed to parse notifications");
+    assert_eq!(notifications["unread_count"], 0, "Should have 0 unread after marking as read");
+    assert_eq!(notifications["notifications"][0]["read"], true);
+}
+
+#[tokio::test]
+async fn test_mark_all_notifications_as_read() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let (user1, workout_id) = create_user_with_workout(&test_app.address).await;
+    let user2 = create_test_user_and_login(&test_app.address).await;
+
+    // Create multiple notifications
+    // 1. User2 reacts
+    let reaction_data = json!({"reaction_type": "fire"});
+    client
+        .post(&format!("{}/social/workouts/{}/reactions", test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", user2.token))
+        .json(&reaction_data)
+        .send()
+        .await
+        .expect("Failed to add reaction");
+
+    // 2. User2 comments
+    let comment_data = json!({
+        "content": "Nice workout!",
+        "parent_id": null
+    });
+    client
+        .post(&format!("{}/social/workouts/{}/comments", test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", user2.token))
+        .json(&comment_data)
+        .send()
+        .await
+        .expect("Failed to add comment");
+
+    // Check we have 2 unread notifications
+    let response = client
+        .get(&format!("{}/social/notifications", test_app.address))
+        .header("Authorization", format!("Bearer {}", user1.token))
+        .send()
+        .await
+        .expect("Failed to get notifications");
+
+    let notifications: serde_json::Value = response.json().await.expect("Failed to parse notifications");
+    assert_eq!(notifications["unread_count"], 2);
+
+    // Mark all as read
+    let response = client
+        .put(&format!("{}/social/notifications/mark-all-read", test_app.address))
+        .header("Authorization", format!("Bearer {}", user1.token))
+        .send()
+        .await
+        .expect("Failed to mark all as read");
+
+    assert!(response.status().is_success());
+
+    // Check all are now read
+    let response = client
+        .get(&format!("{}/social/notifications", test_app.address))
+        .header("Authorization", format!("Bearer {}", user1.token))
+        .send()
+        .await
+        .expect("Failed to get notifications");
+
+    let notifications: serde_json::Value = response.json().await.expect("Failed to parse notifications");
+    assert_eq!(notifications["unread_count"], 0, "All notifications should be read");
+}
+
+#[tokio::test]
+async fn test_get_unread_notification_count() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let (user1, workout_id) = create_user_with_workout(&test_app.address).await;
+    let user2 = create_test_user_and_login(&test_app.address).await;
+
+    // Initial count should be 0
+    let response = client
+        .get(&format!("{}/social/notifications/unread-count", test_app.address))
+        .header("Authorization", format!("Bearer {}", user1.token))
+        .send()
+        .await
+        .expect("Failed to get unread count");
+
+    assert!(response.status().is_success());
+    let count: serde_json::Value = response.json().await.expect("Failed to parse count");
+    assert_eq!(count["unread_count"], 0);
+
+    // User2 reacts to create a notification
+    let reaction_data = json!({"reaction_type": "fire"});
+    client
+        .post(&format!("{}/social/workouts/{}/reactions", test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", user2.token))
+        .json(&reaction_data)
+        .send()
+        .await
+        .expect("Failed to add reaction");
+
+    // Count should now be 1
+    let response = client
+        .get(&format!("{}/social/notifications/unread-count", test_app.address))
+        .header("Authorization", format!("Bearer {}", user1.token))
+        .send()
+        .await
+        .expect("Failed to get unread count");
+
+    assert!(response.status().is_success());
+    let count: serde_json::Value = response.json().await.expect("Failed to parse count");
+    assert_eq!(count["unread_count"], 1);
+}
+
+#[tokio::test]
+async fn test_notification_websocket_broadcast() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    let (user1, workout_id) = create_user_with_workout(&test_app.address).await;
+    let user2 = create_test_user_and_login(&test_app.address).await;
+
+    // Connect user1 to WebSocket to receive notifications
+    let ws_url = format!("{}/game-ws?token={}", test_app.address.replace("http", "ws"), user1.token);
+    let request = ws_url.into_client_request().expect("Failed to create request");
+
+    let (mut ws_stream, _) = connect_async(request)
+        .await
+        .expect("Failed to connect to WebSocket server");
+
+    // Consume welcome message
+    let _welcome_msg = ws_stream.next().await.expect("No welcome message received").unwrap();
+
+    // User2 reacts to user1's workout
+    let reaction_data = json!({"reaction_type": "fire"});
+    let response = client
+        .post(&format!("{}/social/workouts/{}/reactions", test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", user2.token))
+        .json(&reaction_data)
+        .send()
+        .await
+        .expect("Failed to add reaction");
+
+    assert!(response.status().is_success());
+
+    // Listen for notification event
+    let mut notification_event_received = false;
+    for _ in 0..10 {
+        if let Ok(Some(Ok(Message::Text(text)))) = tokio::time::timeout(Duration::from_millis(500), ws_stream.next()).await {
+            println!("Received WebSocket message: {}", text);
+            if let Ok(event) = serde_json::from_str::<serde_json::Value>(&text) {
+                if event["event_type"] == "notification_received" &&
+                   event["recipient_id"] == user1.user_id.to_string() &&
+                   event["actor_username"] == user2.username &&
+                   event["notification_type"] == "reaction" {
+                    notification_event_received = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    assert!(notification_event_received, "WebSocket notification event should be received");
 }

@@ -157,6 +157,29 @@ pub async fn broadcast_comment_reaction_removed(
     Ok(())
 }
 
+/// Broadcast new notification event via Redis
+pub async fn broadcast_notification(
+    redis_client: &web::Data<Arc<redis::Client>>,
+    recipient_id: Uuid,
+    notification_id: Uuid,
+    actor_username: String,
+    notification_type: String,
+    message: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let event = GameEvent::NotificationReceived {
+        recipient_id,
+        notification_id,
+        actor_username: actor_username.clone(),
+        notification_type: notification_type.clone(),
+        message: message.clone(),
+        timestamp: Utc::now(),
+    };
+
+    broadcast_event(redis_client, &event).await?;
+    tracing::info!("📢 Broadcasted notification to user {}: {}", recipient_id, message);
+    Ok(())
+}
+
 /// Helper function to broadcast any GameEvent to the global channel
 async fn broadcast_event(
     redis_client: &web::Data<Arc<redis::Client>>,
