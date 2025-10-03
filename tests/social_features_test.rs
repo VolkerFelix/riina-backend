@@ -2274,3 +2274,66 @@ async fn test_notification_websocket_broadcast() {
 
     assert!(notification_event_received, "WebSocket notification event should be received");
 }
+
+#[tokio::test]
+async fn test_notification_not_sent_to_actor() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    let (user1, workout_id) = create_user_with_workout(&test_app.address).await;
+    let user2 = create_test_user_and_login(&test_app.address).await;
+
+    // Connect user2 (the actor) to WebSocket - they should NOT receive the notification
+    let ws_url = format!("{}/game-ws?token={}", test_app.address.replace("http", "ws"), user2.token);
+    let request = ws_url.into_client_request().expect("Failed to create request");
+
+    let (mut ws_stream, _) = connect_async(request)
+        .await
+        .expect("Failed to connect to WebSocket server");
+
+    // Consume welcome message and redis subscription confirmation
+    let _welcome_msg = ws_stream.next().await.expect("No welcome message received").unwrap();
+    // Consume redis_subscriptions_ready message
+    if let Ok(Some(Ok(Message::Text(text)))) = tokio::time::timeout(Duration::from_millis(500), ws_stream.next()).await {
+        println!("Redis subscription message: {}", text);
+    }
+
+    // User2 reacts to user1's workout
+    let reaction_data = json!({"reaction_type": "fire"});
+    let response = client
+        .post(&format!("{}/social/workouts/{}/reactions", test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", user2.token))
+        .json(&reaction_data)
+        .send()
+        .await
+        .expect("Failed to add reaction");
+
+    assert!(response.status().is_success());
+
+    // Listen for events - user2 should receive workout_reaction_added but NOT notification_received
+    let mut notification_event_received = false;
+    let mut reaction_event_received = false;
+
+    for _ in 0..10 {
+        if let Ok(Some(Ok(Message::Text(text)))) = tokio::time::timeout(Duration::from_millis(500), ws_stream.next()).await {
+            println!("User2 received WebSocket message: {}", text);
+            if let Ok(event) = serde_json::from_str::<serde_json::Value>(&text) {
+                if event["event_type"] == "notification_received" {
+                    notification_event_received = true;
+                }
+                if event["event_type"] == "workout_reaction_added" {
+                    reaction_event_received = true;
+                }
+            }
+        } else {
+            // Timeout reached, no more messages
+            break;
+        }
+    }
+
+    // User2 should receive the reaction event (broadcast globally) but NOT the notification event (user-specific)
+    assert!(reaction_event_received, "User2 should receive the workout_reaction_added event");
+    assert!(!notification_event_received, "User2 (actor) should NOT receive the notification_received event - it should only go to user1");
+}
