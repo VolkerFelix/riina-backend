@@ -6,9 +6,10 @@ use std::sync::Arc;
 use crate::{
     db::social::{
         create_comment, delete_comment, get_comment_by_id, get_workout_comments, update_comment,
+        create_notification, get_workout_owner,
     },
     middleware::auth::Claims,
-    models::social::{CommentQueryParams, CreateCommentRequest, UpdateCommentRequest},
+    models::social::{CommentQueryParams, CreateCommentRequest, UpdateCommentRequest, NotificationType},
     models::common::ApiResponse,
     services::social_events,
 };
@@ -45,6 +46,73 @@ pub async fn add_comment(
 
     match create_comment(&pool, user_id, workout_id, &body.content, body.parent_id).await {
         Ok(comment) => {
+            // Create notification
+            if let Some(parent_id) = body.parent_id {
+                // This is a reply - notify the parent comment author
+                if let Ok(Some(parent_comment)) = get_comment_by_id(&pool, parent_id).await {
+                    let message = format!("{} replied to your comment", claims.username);
+                    match create_notification(
+                        &pool,
+                        parent_comment.user_id,
+                        user_id,
+                        NotificationType::Reply.as_str(),
+                        "comment",
+                        comment.id,
+                        &message,
+                    ).await {
+                        Ok(Some(notification_id)) => {
+                            // Broadcast notification via WebSocket
+                            if let Err(e) = social_events::broadcast_notification(
+                                &redis_client,
+                                parent_comment.user_id,
+                                notification_id,
+                                claims.username.clone(),
+                                NotificationType::Reply.as_str().to_string(),
+                                message,
+                            ).await {
+                                tracing::warn!("Failed to broadcast notification: {}", e);
+                            }
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            tracing::warn!("Failed to create notification: {}", e);
+                        }
+                    }
+                }
+            } else {
+                // This is a top-level comment - notify the workout owner
+                if let Ok(Some(workout_owner_id)) = get_workout_owner(&pool, workout_id).await {
+                    let message = format!("{} commented on your workout", claims.username);
+                    match create_notification(
+                        &pool,
+                        workout_owner_id,
+                        user_id,
+                        NotificationType::Comment.as_str(),
+                        "workout",
+                        workout_id,
+                        &message,
+                    ).await {
+                        Ok(Some(notification_id)) => {
+                            // Broadcast notification via WebSocket
+                            if let Err(e) = social_events::broadcast_notification(
+                                &redis_client,
+                                workout_owner_id,
+                                notification_id,
+                                claims.username.clone(),
+                                NotificationType::Comment.as_str().to_string(),
+                                message,
+                            ).await {
+                                tracing::warn!("Failed to broadcast notification: {}", e);
+                            }
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            tracing::warn!("Failed to create notification: {}", e);
+                        }
+                    }
+                }
+            }
+
             // Broadcast WebSocket event (fire and forget)
             if let Err(e) = social_events::broadcast_comment_added(
                 &redis_client,

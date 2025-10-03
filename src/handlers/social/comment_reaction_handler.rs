@@ -6,9 +6,10 @@ use std::sync::Arc;
 use crate::{
     db::social::{
         create_comment_reaction, delete_comment_reaction, get_comment_reactions, get_comment_reaction_users,
+        get_comment_by_id, create_notification,
     },
     middleware::auth::Claims,
-    models::social::{CreateCommentReactionRequest, ReactionType},
+    models::social::{CreateCommentReactionRequest, ReactionType, NotificationType},
     models::common::ApiResponse,
     services::social_events,
 };
@@ -39,7 +40,41 @@ pub async fn add_comment_reaction(
 
     match create_comment_reaction(&pool, user_id, comment_id, &body.reaction_type).await {
         Ok(reaction) => {
-            // Broadcast WebSocket event (fire and forget)
+            // Get comment author to send notification
+            if let Ok(Some(comment)) = get_comment_by_id(&pool, comment_id).await {
+                let message = format!("{} reacted to your comment", claims.username);
+                match create_notification(
+                    &pool,
+                    comment.user_id,
+                    user_id,
+                    NotificationType::Reaction.as_str(),
+                    "comment",
+                    comment_id,
+                    &message,
+                ).await {
+                    Ok(Some(notification_id)) => {
+                        // Broadcast notification via WebSocket
+                        if let Err(e) = social_events::broadcast_notification(
+                            &redis_client,
+                            comment.user_id,
+                            notification_id,
+                            claims.username.clone(),
+                            NotificationType::Reaction.as_str().to_string(),
+                            message,
+                        ).await {
+                            tracing::warn!("Failed to broadcast notification: {}", e);
+                        }
+                    }
+                    Ok(None) => {
+                        // Notification not created (user reacted to their own comment)
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to create notification: {}", e);
+                    }
+                }
+            }
+
+            // Broadcast WebSocket event for UI updates (fire and forget)
             if let Err(e) = social_events::broadcast_comment_reaction_added(
                 &redis_client,
                 comment_id,

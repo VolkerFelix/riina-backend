@@ -188,6 +188,16 @@ pub enum GameEvent {
         username: String,
         timestamp: DateTime<Utc>,
     },
+
+    #[serde(rename = "notification_received")]
+    NotificationReceived {
+        recipient_id: Uuid,
+        notification_id: Uuid,
+        actor_username: String,
+        notification_type: String,
+        message: String,
+        timestamp: DateTime<Utc>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
