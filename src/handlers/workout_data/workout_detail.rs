@@ -77,7 +77,7 @@ pub async fn get_workout_detail(
     // Fetch specific workout with all stats from workout_data
     let workout = match sqlx::query!(
         r#"
-        SELECT 
+        SELECT
             wd.id,
             COALESCE(wd.workout_start, wd.created_at) as workout_date,
             wd.workout_start,
@@ -95,10 +95,9 @@ pub async fn get_workout_detail(
             wd.image_url,
             wd.video_url
         FROM workout_data wd
-        WHERE wd.id = $1 AND wd.user_id = $2
+        WHERE wd.id = $1
         "#,
-        workout_id,
-        user_id
+        workout_id
     )
     .fetch_optional(&**pool)
     .await

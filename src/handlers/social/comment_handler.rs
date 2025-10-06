@@ -88,8 +88,8 @@ pub async fn add_comment(
                         workout_owner_id,
                         user_id,
                         NotificationType::Comment.as_str(),
-                        "workout",
-                        workout_id,
+                        "comment",
+                        comment.id,
                         &message,
                     ).await {
                         Ok(Some(notification_id)) => {
