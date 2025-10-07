@@ -12,7 +12,7 @@ use crate::utils::workout_approval::WorkoutApprovalToken;
 use crate::config::jwt::JwtSettings;
 
 /// Time tolerance in seconds for workout duplicate detection
-const WORKOUT_TIME_TOLERANCE: Duration = Duration::seconds(2);
+const WORKOUT_TIME_TOLERANCE: Duration = Duration::seconds(1);
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct WorkoutSyncRequest {
