@@ -2,6 +2,10 @@ use serde::{Serialize, Deserialize};
 use serde_json::json;
 use chrono::{Utc, Duration, DateTime};
 use uuid::Uuid;
+use reqwest::{Client, Error};
+
+use crate::common::utils::{create_test_user_and_login, UserRegLoginResponse};
+use riina_backend::models::workout_data::HeartRateData;
 
 pub enum WorkoutType {
     Hard,
@@ -78,6 +82,13 @@ impl WorkoutData {
     pub fn new_with_offset_hours(workout_type: WorkoutType, hours_ago: i64, duration_minutes: i64) -> Self {
         let workout_start = Utc::now() - Duration::hours(hours_ago);
         Self::new(workout_type, workout_start, duration_minutes)
+    }
+
+    pub fn get_heart_rate_data(&self) -> Vec<HeartRateData> {
+        self.heart_rate.iter().map(|hr| HeartRateData {
+            timestamp: hr["timestamp"].as_str().unwrap().parse().unwrap(),
+            heart_rate: hr["heart_rate"].as_i64().unwrap() as i32,
+        }).collect()
     }
 }
 
@@ -207,4 +218,48 @@ pub async fn upload_workout_data_for_user(
 
     let response_data: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
     Ok(response_data)
+}
+
+pub async fn create_test_user_with_health_profile(app_address: &str) -> UserRegLoginResponse {
+    let client = reqwest::Client::new();
+    let user = create_test_user_and_login(app_address).await;
+    
+    // Create health profile for stats calculation
+    let health_profile_data = json!({
+        "age": 25,
+        "gender": "male", 
+        "resting_heart_rate": 60
+    });
+    
+    let profile_response = client
+        .put(&format!("{}/profile/health_profile", app_address))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&health_profile_data)
+        .send()
+        .await
+        .expect("Failed to create health profile");
+    
+    assert!(profile_response.status().is_success(), "Health profile creation should succeed");
+    
+    user
+}
+
+pub async fn create_health_profile_for_user(client: &Client, app_address: &str, user: &UserRegLoginResponse) -> Result<(), Error> {
+    // Create health profile for stats calculation
+    let health_profile_data = json!({
+        "age": 25,
+        "gender": "male", 
+        "resting_heart_rate": 60
+    });
+    
+    let profile_response = client
+        .put(&format!("{}/profile/health_profile", app_address))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&health_profile_data)
+        .send()
+        .await?;
+    
+    assert!(profile_response.status().is_success(), "Health profile creation should succeed");
+
+    Ok(())
 }
