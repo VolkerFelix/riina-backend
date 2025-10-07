@@ -145,3 +145,52 @@ pub struct CommentReactionSummary {
 pub struct CreateCommentReactionRequest {
     pub reaction_type: String,
 }
+
+// Notification Models
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum NotificationType {
+    Reaction,
+    Comment,
+    Reply,
+}
+
+impl NotificationType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            NotificationType::Reaction => "reaction",
+            NotificationType::Comment => "comment",
+            NotificationType::Reply => "reply",
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct NotificationWithUser {
+    pub id: Uuid,
+    pub recipient_id: Uuid,
+    pub actor_id: Uuid,
+    pub actor_username: String,
+    pub notification_type: String,
+    pub entity_type: String,
+    pub entity_id: Uuid,
+    pub message: String,
+    pub read: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct NotificationListResponse {
+    pub notifications: Vec<NotificationWithUser>,
+    pub total_count: i64,
+    pub unread_count: i64,
+    pub page: i32,
+    pub per_page: i32,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NotificationQueryParams {
+    pub page: Option<i32>,
+    pub per_page: Option<i32>,
+    pub unread_only: Option<bool>,
+}

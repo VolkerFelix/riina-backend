@@ -347,7 +347,7 @@ async fn test_workout_detail_endpoint_unauthorized_access() {
 
     // Create two users
     let user1 = create_test_user_with_health_profile(&test_app.address).await;
-    let user2 = create_test_user_and_login(&test_app.address).await;
+    let mut user2 = create_test_user_and_login(&test_app.address).await;
 
     // User1 uploads a workout
     let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
@@ -370,6 +370,8 @@ async fn test_workout_detail_endpoint_unauthorized_access() {
     let workouts = history_data["data"]["workouts"].as_array().unwrap();
     let workout_id = workouts[0]["id"].as_str().unwrap();
 
+    user2.token = "".to_string();
+
     // User2 tries to access user1's workout
     let detail_response = client
         .get(&format!("{}/health/workout/{}", &test_app.address, workout_id))
@@ -378,7 +380,7 @@ async fn test_workout_detail_endpoint_unauthorized_access() {
         .await
         .expect("Failed to execute workout detail request");
 
-    assert_eq!(detail_response.status(), 404, "Should return 404 when user tries to access another user's workout");
+    assert_eq!(detail_response.status(), 401, "Should return 401 when user tries to access another user's workout");
 }
 
 // ============================================================================

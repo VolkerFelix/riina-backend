@@ -4,9 +4,9 @@ use uuid::Uuid;
 use std::sync::Arc;
 
 use crate::{
-    db::social::{create_reaction, delete_reaction, get_workout_reactions, get_reaction_users},
+    db::social::{create_reaction, delete_reaction, get_workout_reactions, get_reaction_users, create_notification, get_workout_owner},
     middleware::auth::Claims,
-    models::social::{CreateReactionRequest, ReactionType},
+    models::social::{CreateReactionRequest, ReactionType, NotificationType},
     models::common::ApiResponse,
     services::social_events,
 };
@@ -38,6 +38,40 @@ pub async fn add_reaction(
 
     match create_reaction(&pool, user_id, workout_id, &body.reaction_type).await {
         Ok(reaction) => {
+            // Get workout owner to send notification
+            if let Ok(Some(workout_owner_id)) = get_workout_owner(&pool, workout_id).await {
+                let message = format!("{} reacted to your workout", claims.username);
+                match create_notification(
+                    &pool,
+                    workout_owner_id,
+                    user_id,
+                    NotificationType::Reaction.as_str(),
+                    "workout",
+                    workout_id,
+                    &message,
+                ).await {
+                    Ok(Some(notification_id)) => {
+                        // Broadcast notification via WebSocket
+                        if let Err(e) = social_events::broadcast_notification(
+                            &redis_client,
+                            workout_owner_id,
+                            notification_id,
+                            claims.username.clone(),
+                            NotificationType::Reaction.as_str().to_string(),
+                            message,
+                        ).await {
+                            tracing::warn!("Failed to broadcast notification: {}", e);
+                        }
+                    }
+                    Ok(None) => {
+                        // Notification not created (user reacted to their own workout)
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to create notification: {}", e);
+                    }
+                }
+            }
+
             // Broadcast WebSocket event (fire and forget)
             if let Err(e) = social_events::broadcast_reaction_added(
                 &redis_client,
