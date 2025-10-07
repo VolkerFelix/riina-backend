@@ -8,6 +8,7 @@ use chrono::{DateTime, Utc};
 use crate::middleware::auth::Claims;
 use crate::models::team::TeamRole;
 use crate::models::common::PlayerStats;
+use crate::utils::trailing_average;
 
 /// Enhanced team member with user stats
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -22,6 +23,7 @@ pub struct LeagueUserWithStats {
     pub joined_at: DateTime<Utc>,
     pub stats: PlayerStats,
     pub total_stats: f32,
+    pub trailing_7_average: f32,
     pub rank: i32,
     pub avatar_style: String,
     pub is_online: bool,
@@ -174,6 +176,21 @@ pub async fn get_league_users_with_stats(
     .await
     {
         Ok(users) => {
+            // Extract user IDs for batch trailing average calculation
+            let user_ids: Vec<Uuid> = users.iter().map(|row| row.user_id).collect();
+            
+            // Calculate trailing 7-day averages for all users in batch
+            let trailing_averages = match trailing_average::calculate_trailing_7_day_averages_batch(
+                pool.get_ref(),
+                &user_ids
+            ).await {
+                Ok(averages) => averages,
+                Err(e) => {
+                    tracing::error!("Failed to calculate trailing averages: {}", e);
+                    std::collections::HashMap::new()
+                }
+            };
+            
             users.into_iter().map(|row| {
                 LeagueUserWithStats {
                     user_id: row.user_id,
@@ -194,6 +211,7 @@ pub async fn get_league_users_with_stats(
                         strength: row.strength.unwrap_or(50.0),
                     },
                     total_stats: row.total_stats.unwrap_or(100.0),
+                    trailing_7_average: trailing_averages.get(&row.user_id).copied().unwrap_or(0.0),
                     rank: row.rank.unwrap_or(999) as i32,
                     avatar_style: row.avatar_style.unwrap_or_else(|| "warrior".to_string()),
                     is_online: row.is_online.unwrap_or(false),
