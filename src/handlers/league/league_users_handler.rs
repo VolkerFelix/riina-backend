@@ -179,8 +179,8 @@ pub async fn get_league_users_with_stats(
             // Extract user IDs for batch trailing average calculation
             let user_ids: Vec<Uuid> = users.iter().map(|row| row.user_id).collect();
             
-            // Calculate trailing 7-day averages for all users in batch
-            let trailing_averages = match trailing_average::calculate_trailing_7_day_averages_batch(
+            // Calculate trailing averages for all users in batch
+            let trailing_averages = match trailing_average::calculate_trailing_averages_batch(
                 pool.get_ref(),
                 &user_ids
             ).await {

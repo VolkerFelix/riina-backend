@@ -1,19 +1,24 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 use chrono::{Utc, Duration};
+use std::collections::HashMap;
 
-/// Calculate the trailing 7-day average of workout points for a user
-/// Returns the average of (stamina_gained + strength_gained) over the last 7 days
+/// Number of days for trailing average calculation
+/// This can be easily changed to make the trailing period configurable
+pub const TRAILING_AVERAGE_DAYS: i64 = 7;
+
+/// Calculate the trailing average of workout points for a user
+/// Returns the average of (stamina_gained + strength_gained) over the configured trailing period
 #[tracing::instrument(
-    name = "Calculate trailing 7-day average",
+    name = "Calculate trailing average",
     skip(pool),
     fields(user_id = %user_id)
 )]
-pub async fn calculate_trailing_7_day_average(
+pub async fn calculate_trailing_average(
     pool: &PgPool,
     user_id: Uuid,
 ) -> Result<f32, sqlx::Error> {
-    let seven_days_ago = Utc::now() - Duration::days(7);
+    let cutoff_date = Utc::now() - Duration::days(TRAILING_AVERAGE_DAYS);
     
     let result = sqlx::query!(
         r#"
@@ -23,7 +28,7 @@ pub async fn calculate_trailing_7_day_average(
         AND workout_start >= $2
         "#,
         user_id,
-        seven_days_ago
+        cutoff_date
     )
     .fetch_one(pool)
     .await?;
@@ -31,22 +36,22 @@ pub async fn calculate_trailing_7_day_average(
     Ok(result.avg_points.unwrap_or(0.0) as f32)
 }
 
-/// Calculate trailing 7-day averages for multiple users in batch
-/// Returns a HashMap mapping user_id to their trailing 7-day average
+/// Calculate trailing averages for multiple users in batch
+/// Returns a HashMap mapping user_id to their trailing average
 #[tracing::instrument(
-    name = "Calculate trailing 7-day averages for multiple users",
+    name = "Calculate trailing averages for multiple users",
     skip(pool),
     fields(user_count = user_ids.len())
 )]
-pub async fn calculate_trailing_7_day_averages_batch(
+pub async fn calculate_trailing_averages_batch(
     pool: &PgPool,
     user_ids: &[Uuid],
-) -> Result<std::collections::HashMap<Uuid, f32>, sqlx::Error> {
+) -> Result<HashMap<Uuid, f32>, sqlx::Error> {
     if user_ids.is_empty() {
-        return Ok(std::collections::HashMap::new());
+        return Ok(HashMap::new());
     }
     
-    let seven_days_ago = Utc::now() - Duration::days(7);
+    let cutoff_date = Utc::now() - Duration::days(TRAILING_AVERAGE_DAYS);
     
     let results = sqlx::query!(
         r#"
@@ -59,19 +64,19 @@ pub async fn calculate_trailing_7_day_averages_batch(
         GROUP BY user_id
         "#,
         user_ids,
-        seven_days_ago
+        cutoff_date
     )
     .fetch_all(pool)
     .await?;
     
-    let mut averages = std::collections::HashMap::new();
+    let mut averages = HashMap::new();
     for row in results {
         let user_id = row.user_id;
         let avg_points = row.avg_points.unwrap_or(0.0) as f32;
         averages.insert(user_id, avg_points);
     }
     
-    // Fill in 0.0 for users with no workouts in the last 7 days
+    // Fill in 0.0 for users with no workouts in the trailing period
     for user_id in user_ids {
         averages.entry(*user_id).or_insert(0.0);
     }
