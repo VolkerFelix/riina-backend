@@ -27,6 +27,8 @@ async fn test_trailing_7_day_average_calculation() {
     let user = create_test_user_and_login(&test_app.address).await;
     create_health_profile_for_user(&client, &test_app.address, &user).await.unwrap();
     
+    println!("Created test user with ID: {}", user.user_id);
+    
     // Add user to team using admin API
     let add_user_response = make_authenticated_request(
         &client,
@@ -56,14 +58,18 @@ async fn test_trailing_7_day_average_calculation() {
         let _ = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout_data).await;
     }
 
-    // Get the score for the latest workout
+    // Get the score for one workout (all workouts are the same, so trailing average should equal single workout score)
     let workout_stats_calculator = WorkoutStatsCalculator::with_universal_hr_based();
     let workout_stats = workout_stats_calculator.calculate_stat_changes(user_health_profile, workout_data_vec[0].get_heart_rate_data()).await.unwrap();
     let score = &workout_stats.changes.stamina_change + &workout_stats.changes.strength_change;
     
+    println!("Expected trailing average (single workout score): {}", score);
+    println!("Stamina change: {}, Strength change: {}", workout_stats.changes.stamina_change, workout_stats.changes.strength_change);
+    
     // Test the leaderboard endpoint to see if trailing average is calculated
+    // Use a large page size to get all users
     let response = client
-        .get(&format!("{}/league/users/stats", test_app.address))
+        .get(&format!("{}/league/users/stats?sort_by=trailing_average&page_size=100", test_app.address))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -79,27 +85,37 @@ async fn test_trailing_7_day_average_calculation() {
     // Verify the response structure includes trailing_average
     let data = response_data["data"].as_array().expect("Data should be an array");
     
-    if !data.is_empty() {
-        let first_user = &data[0];
-        
-        // Check that trailing_average field exists
-        assert!(
-            first_user.get("trailing_average").is_some(),
-            "Response should include trailing_average field"
-        );
-        
-        // Check that it's a number
-        let trailing_avg = first_user.get("trailing_average").unwrap();
-        assert!(
-            trailing_avg.is_number(),
-            "trailing_average should be a number"
-        );
+    // Find our test user in the response
+    println!("Looking for test user ID: {}", user.user_id);
+    let test_user = data.iter().find(|user_data| {
+        let user_id_str = user_data["user_id"].as_str().unwrap_or("");
+        println!("Checking user ID: {}", user_id_str);
+        user_id_str == user.user_id.to_string()
+    }).expect("Test user should be found in leaderboard");
+    
+    // Check that trailing_average field exists
+    assert!(
+        test_user.get("trailing_average").is_some(),
+        "Response should include trailing_average field"
+    );
+    
+    // Check that it's a number
+    let trailing_avg = test_user.get("trailing_average").unwrap();
+    assert!(
+        trailing_avg.is_number(),
+        "trailing_average should be a number"
+    );
 
-        // Check it's the same as the workout stats        
-        assert_eq!(trailing_avg, score);
-        
-        println!("✅ Trailing 7-day average calculation test passed: {}", trailing_avg);
-    }
+    // Debug: Print the actual trailing average from API
+    println!("API returned trailing average: {}", trailing_avg);
+    println!("Expected score: {}", score);
+    
+    // Check it's exactly the same as the workout stats since all workouts are identical
+    assert_eq!(trailing_avg, score, 
+        "Trailing average {} should equal single workout score {} since all workouts are identical", 
+        trailing_avg, score);
+    
+    println!("✅ Trailing 7-day average calculation test passed: {}", trailing_avg);
     
     println!("✅ Trailing average calculation test completed");
 }
@@ -174,8 +190,9 @@ async fn test_leaderboard_sort_by_trailing_average() {
     let user2_expected_avg = user2_stats.changes.stamina_change + user2_stats.changes.strength_change;
     
     // Test leaderboard with sort_by=trailing_average
+    // Use a large page size to get all users
     let response = client
-        .get(&format!("{}/league/users/stats?sort_by=trailing_average", test_app.address))
+        .get(&format!("{}/league/users/stats?sort_by=trailing_average&page_size=100", test_app.address))
         .header("Authorization", format!("Bearer {}", user1.token))
         .send()
         .await
@@ -190,6 +207,14 @@ async fn test_leaderboard_sort_by_trailing_average() {
     
     let data = response_data["data"].as_array().expect("Data should be an array");
     assert!(!data.is_empty(), "Should have at least one user in the leaderboard");
+    
+    // Debug: Print all user IDs in the response
+    println!("Users in leaderboard response:");
+    for (i, user_data) in data.iter().enumerate() {
+        let user_id = user_data["user_id"].as_str().unwrap();
+        println!("  {}: {}", i, user_id);
+    }
+    println!("Looking for user1: {} and user2: {}", user1.user_id, user2.user_id);
     
     // Find our test users in the response
     let mut user1_found = None;

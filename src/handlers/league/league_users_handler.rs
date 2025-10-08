@@ -104,6 +104,7 @@ pub async fn get_league_users_with_stats(
     let page_size = query.page_size.unwrap_or(20).min(100).max(1); // Default 20, max 100
     let offset = (page - 1) * page_size;
     let sort_by = query.sort_by.as_deref().unwrap_or("total_stats");
+    println!("DEBUG: sort_by parameter: {}", sort_by);
 
     // First, get the total count of league users
     let total_count = match sqlx::query!(
@@ -130,6 +131,7 @@ pub async fn get_league_users_with_stats(
     // For now, we'll return all users who are in teams (league participants)
     // In the future, this could be filtered by specific leagues or seasons
     let league_users: Vec<LeagueUserWithStats> = if sort_by == "trailing_average" {
+        println!("DEBUG: Using trailing average query");
         // Query for trailing average sorting
         match sqlx::query!(
             r#"
@@ -184,6 +186,10 @@ pub async fn get_league_users_with_stats(
         {
             Ok(users) => {
                 users.into_iter().map(|row| {
+                    let username = row.username.clone();
+                    let trailing_avg = row.trailing_average.unwrap_or(0.0) as f32;
+                    println!("DEBUG: User {} trailing_average from DB: {}", username, trailing_avg);
+                    
                     LeagueUserWithStats {
                         user_id: row.user_id,
                         username: row.username,
@@ -203,7 +209,7 @@ pub async fn get_league_users_with_stats(
                             strength: row.strength.unwrap_or(50.0),
                         },
                         total_stats: row.total_stats.unwrap_or(100.0),
-                        trailing_average: row.trailing_average.unwrap_or(0.0) as f32,
+                        trailing_average: trailing_avg,
                         rank: row.rank.unwrap_or(999) as i32,
                         avatar_style: row.avatar_style.unwrap_or_else(|| "warrior".to_string()),
                         is_online: row.is_online.unwrap_or(false),
@@ -219,6 +225,7 @@ pub async fn get_league_users_with_stats(
             }
         }
     } else {
+        println!("DEBUG: Using default query (total_stats)");
         // Original query for total_stats sorting
         match sqlx::query!(
             r#"
