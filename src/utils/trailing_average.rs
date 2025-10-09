@@ -41,7 +41,7 @@ pub async fn calculate_trailing_average(
         .map(|row| row.stamina_gained + row.strength_gained)
         .sum();
     
-    let average = total_points / results.len() as f32;
+    let average = total_points / TRAILING_AVERAGE_DAYS as f32;
     Ok(average)
 }
 
@@ -96,7 +96,7 @@ pub async fn calculate_trailing_averages_batch(
             let total_points: f32 = workouts.iter()
                 .map(|(stamina, strength)| stamina + strength)
                 .sum();
-            let average = total_points / workouts.len() as f32;
+            let average = total_points / TRAILING_AVERAGE_DAYS as f32;
             averages.insert(*user_id, average);
         } else {
             averages.insert(*user_id, 0.0);

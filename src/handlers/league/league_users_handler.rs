@@ -104,7 +104,6 @@ pub async fn get_league_users_with_stats(
     let page_size = query.page_size.unwrap_or(20).min(100).max(1); // Default 20, max 100
     let offset = (page - 1) * page_size;
     let sort_by = query.sort_by.as_deref().unwrap_or("total_stats");
-    println!("DEBUG: sort_by parameter: {}", sort_by);
 
     // First, get the total count of league users
     let total_count = match sqlx::query!(
@@ -131,21 +130,9 @@ pub async fn get_league_users_with_stats(
     // For now, we'll return all users who are in teams (league participants)
     // In the future, this could be filtered by specific leagues or seasons
     let league_users: Vec<LeagueUserWithStats> = if sort_by == "trailing_average" {
-        println!("DEBUG: Using trailing average query");
-        // Query for trailing average sorting
+        // First, get all users with their basic stats
         match sqlx::query!(
             r#"
-            WITH user_trailing_averages AS (
-                SELECT 
-                    u.id as user_id,
-                    COALESCE(AVG(wd.stamina_gained + wd.strength_gained), 0.0) as trailing_avg,
-                    ROW_NUMBER() OVER (ORDER BY COALESCE(AVG(wd.stamina_gained + wd.strength_gained), 0.0) DESC) as rank
-                FROM users u
-                INNER JOIN team_members tm ON u.id = tm.user_id AND tm.status = 'active'
-                LEFT JOIN workout_data wd ON u.id = wd.user_id 
-                    AND wd.workout_start >= (NOW() - INTERVAL '7 days')
-                GROUP BY u.id
-            )
             SELECT 
                 u.id as user_id,
                 u.username,
@@ -158,17 +145,13 @@ pub async fn get_league_users_with_stats(
                 COALESCE(ua.stamina, 0.0) as stamina,
                 COALESCE(ua.strength, 0.0) as strength,
                 COALESCE(ua.stamina + ua.strength, 0.0) as total_stats,
-                COALESCE(uta.trailing_avg, 0.0) as trailing_average,
-                COALESCE(uta.rank, 999) as rank,
                 COALESCE(ua.avatar_style, 'warrior') as avatar_style,
                 false as is_online
             FROM users u
             INNER JOIN team_members tm ON u.id = tm.user_id AND tm.status = 'active'
             INNER JOIN teams t ON tm.team_id = t.id
             LEFT JOIN user_avatars ua ON u.id = ua.user_id
-            LEFT JOIN user_trailing_averages uta ON u.id = uta.user_id
             ORDER BY 
-                COALESCE(uta.rank, 999) ASC,
                 t.team_name ASC,
                 CASE tm.role 
                     WHEN 'owner' THEN 1
@@ -185,12 +168,26 @@ pub async fn get_league_users_with_stats(
         .await
         {
             Ok(users) => {
-                users.into_iter().map(|row| {
-                    let username = row.username.clone();
-                    let trailing_avg = row.trailing_average.unwrap_or(0.0) as f32;
-                    println!("DEBUG: User {} trailing_average from DB: {}", username, trailing_avg);
+                // Extract user IDs for batch trailing average calculation
+                let user_ids: Vec<Uuid> = users.iter().map(|row| row.user_id).collect();
+                
+                // Calculate trailing averages for all users in batch
+                let trailing_averages = match trailing_average::calculate_trailing_averages_batch(
+                    pool.get_ref(),
+                    &user_ids
+                ).await {
+                    Ok(averages) => averages,
+                    Err(e) => {
+                        tracing::error!("Failed to calculate trailing averages: {}", e);
+                        std::collections::HashMap::new()
+                    }
+                };
+                
+                // Create a list of users with their trailing averages for sorting
+                let mut users_with_trailing: Vec<(LeagueUserWithStats, f32)> = users.into_iter().map(|row| {
+                    let trailing_avg = trailing_averages.get(&row.user_id).copied().unwrap_or(0.0);
                     
-                    LeagueUserWithStats {
+                    let user_stats = LeagueUserWithStats {
                         user_id: row.user_id,
                         username: row.username,
                         email: row.email,
@@ -210,14 +207,25 @@ pub async fn get_league_users_with_stats(
                         },
                         total_stats: row.total_stats.unwrap_or(100.0),
                         trailing_average: trailing_avg,
-                        rank: row.rank.unwrap_or(999) as i32,
+                        rank: 0, // Will be set after sorting
                         avatar_style: row.avatar_style.unwrap_or_else(|| "warrior".to_string()),
                         is_online: row.is_online.unwrap_or(false),
-                    }
+                    };
+                    
+                    (user_stats, trailing_avg)
+                }).collect();
+                
+                // Sort by trailing average (descending)
+                users_with_trailing.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                
+                // Assign ranks and extract final results
+                users_with_trailing.into_iter().enumerate().map(|(index, (mut user_stats, _))| {
+                    user_stats.rank = (index + 1) as i32;
+                    user_stats
                 }).collect()
             }
             Err(e) => {
-                tracing::error!("Failed to fetch league users with trailing average stats: {}", e);
+                tracing::error!("Failed to fetch league users with stats: {}", e);
                 return Ok(HttpResponse::InternalServerError().json(json!({
                     "success": false,
                     "message": "Failed to fetch league users"
@@ -225,7 +233,6 @@ pub async fn get_league_users_with_stats(
             }
         }
     } else {
-        println!("DEBUG: Using default query (total_stats)");
         // Original query for total_stats sorting
         match sqlx::query!(
             r#"
