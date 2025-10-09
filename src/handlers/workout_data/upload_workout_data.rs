@@ -18,10 +18,10 @@ use crate::models::{
     game_events::GameEvent,
 };
 use crate::game::stats_calculator::WorkoutStatsCalculator;
-use crate::workout::workout_analyzer::WorkoutAnalyzer;
 use crate::utils::{
     workout_approval::WorkoutApprovalToken,
     parse_user::parse_user_id_from_jwt_token,
+    heart_rate_filters::filter_heart_rate_data,
 };
 use crate::config::jwt::JwtSettings;
 
@@ -117,8 +117,14 @@ pub async fn upload_workout_data(
     }
     
     // Convert to owned value to release the mutable borrow
-    let heart_rate_data = heart_rate_data.clone();
+    let mut heart_rate_data = heart_rate_data.clone();
 
+    // Filter heart rate data
+    let removed_heart_rate_samples = filter_heart_rate_data(&mut heart_rate_data);
+    if removed_heart_rate_samples > 0 {
+        tracing::info!("✅ Heart rate data filtered successfully - removed {} samples", removed_heart_rate_samples);
+    }
+    
     // Insert workout data into database FIRST (with temporary/placeholder stats)
     tracing::info!("💾 Inserting workout data into database for user: {} with workout_uuid: {:?}",
     claims.username, data.workout_uuid);
