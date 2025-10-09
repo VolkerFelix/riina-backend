@@ -20,9 +20,9 @@ pub async fn calculate_trailing_average(
 ) -> Result<f32, sqlx::Error> {
     let cutoff_date = Utc::now() - Duration::days(TRAILING_AVERAGE_DAYS);
     
-    let result = sqlx::query!(
+    let results = sqlx::query!(
         r#"
-        SELECT AVG(stamina_gained + strength_gained) as avg_points
+        SELECT stamina_gained, strength_gained
         FROM workout_data
         WHERE user_id = $1 
         AND workout_start >= $2
@@ -30,10 +30,19 @@ pub async fn calculate_trailing_average(
         user_id,
         cutoff_date
     )
-    .fetch_one(pool)
+    .fetch_all(pool)
     .await?;
     
-    Ok(result.avg_points.unwrap_or(0.0) as f32)
+    if results.is_empty() {
+        return Ok(0.0);
+    }
+    
+    let total_points: f32 = results.iter()
+        .map(|row| row.stamina_gained + row.strength_gained)
+        .sum();
+    
+    let average = total_points / results.len() as f32;
+    Ok(average)
 }
 
 /// Calculate trailing averages for multiple users in batch
@@ -57,11 +66,11 @@ pub async fn calculate_trailing_averages_batch(
         r#"
         SELECT 
             user_id,
-            AVG(stamina_gained + strength_gained) as avg_points
+            stamina_gained,
+            strength_gained
         FROM workout_data
         WHERE user_id = ANY($1) 
         AND workout_start >= $2
-        GROUP BY user_id
         "#,
         user_ids,
         cutoff_date
@@ -69,16 +78,29 @@ pub async fn calculate_trailing_averages_batch(
     .fetch_all(pool)
     .await?;
     
-    let mut averages = HashMap::new();
+    let mut user_workouts: HashMap<Uuid, Vec<(f32, f32)>> = HashMap::new();
+    
+    // Group workouts by user
     for row in results {
         let user_id = row.user_id;
-        let avg_points = row.avg_points.unwrap_or(0.0) as f32;
-        averages.insert(user_id, avg_points);
+        let stamina = row.stamina_gained;
+        let strength = row.strength_gained;
+        user_workouts.entry(user_id).or_insert_with(Vec::new).push((stamina, strength));
     }
     
-    // Fill in 0.0 for users with no workouts in the trailing period
+    let mut averages = HashMap::new();
+    
+    // Calculate average for each user
     for user_id in user_ids {
-        averages.entry(*user_id).or_insert(0.0);
+        if let Some(workouts) = user_workouts.get(user_id) {
+            let total_points: f32 = workouts.iter()
+                .map(|(stamina, strength)| stamina + strength)
+                .sum();
+            let average = total_points / workouts.len() as f32;
+            averages.insert(*user_id, average);
+        } else {
+            averages.insert(*user_id, 0.0);
+        }
     }
     
     Ok(averages)
