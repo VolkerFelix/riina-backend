@@ -15,33 +15,8 @@ use chrono::Utc;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request};
-use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user};
+use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user, create_health_profile_for_user};
 use common::admin_helpers::create_admin_user_and_login;
-
-// Helper function to create user with health profile
-async fn create_test_user_with_health_profile(app_address: &str) -> common::utils::UserRegLoginResponse {
-    let client = reqwest::Client::new();
-    let user = create_test_user_and_login(app_address).await;
-    
-    // Create health profile for stats calculation
-    let health_profile_data = json!({
-        "age": 25,
-        "gender": "male", 
-        "resting_heart_rate": 60
-    });
-    
-    let profile_response = client
-        .put(&format!("{}/profile/health_profile", app_address))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&health_profile_data)
-        .send()
-        .await
-        .expect("Failed to create health profile");
-    
-    assert!(profile_response.status().is_success(), "Health profile creation should succeed");
-    
-    user
-}
 
 // ============================================================================
 // WORKOUT DATA UPLOAD TESTS
@@ -52,7 +27,8 @@ async fn upload_workout_data_working() {
     let test_app = spawn_app().await;
     let client = Client::new();
 
-    let test_user = create_test_user_with_health_profile(&test_app.address).await;
+    let test_user = create_test_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
     let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
@@ -70,7 +46,8 @@ async fn upload_multiple_workout_data_sessions() {
     let test_app = spawn_app().await;
     let client = Client::new();
 
-    let test_user = create_test_user_with_health_profile(&test_app.address).await;
+    let test_user = create_test_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload multiple workouts
     for i in 0..3 {
@@ -90,7 +67,8 @@ async fn upload_workout_data_with_invalid_data_fails() {
     let test_app = spawn_app().await;
     let client = Client::new();
 
-    let test_user = create_test_user_with_health_profile(&test_app.address).await;
+    let test_user = create_test_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Try to upload workout with invalid duration (negative)
     let invalid_workout = json!({
@@ -117,7 +95,8 @@ async fn upload_workout_data_with_invalid_data_fails() {
 async fn upload_workout_data_with_hard_workout() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let test_user = create_test_user_with_health_profile(&test_app.address).await;
+    let test_user = create_test_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
     let mut workout_data = WorkoutData::new_with_hr_freq(WorkoutType::Hard, Utc::now(), 30, Some(2));
     let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
     assert!(response.is_ok(), "Hard workout should upload successfully");
@@ -159,7 +138,8 @@ async fn test_workout_history_with_data() {
     let test_app = spawn_app().await;
     let client = Client::new();
 
-    let test_user = create_test_user_with_health_profile(&test_app.address).await;
+    let test_user = create_test_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload a workout first
     let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 45);
@@ -191,7 +171,8 @@ async fn test_workout_history_pagination() {
     let test_app = spawn_app().await;
     let client = Client::new();
 
-    let test_user = create_test_user_with_health_profile(&test_app.address).await;
+    let test_user = create_test_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload multiple workouts
     for i in 0..5 {
@@ -225,7 +206,8 @@ async fn test_workout_detail_endpoint() {
     let test_app = spawn_app().await;
     let client = Client::new();
 
-    let test_user = create_test_user_with_health_profile(&test_app.address).await;
+    let test_user = create_test_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload a workout with heart rate data
     let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 45);
@@ -346,7 +328,8 @@ async fn test_workout_detail_endpoint_unauthorized_access() {
     let client = Client::new();
 
     // Create two users
-    let user1 = create_test_user_with_health_profile(&test_app.address).await;
+    let user1 = create_test_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &user1).await.unwrap();
     let mut user2 = create_test_user_and_login(&test_app.address).await;
 
     // User1 uploads a workout
@@ -394,7 +377,8 @@ async fn test_admin_can_delete_workout() {
     let admin = create_admin_user_and_login(&test_app.address).await;
 
     // Create a regular user
-    let user = create_test_user_with_health_profile(&test_app.address).await;
+    let user = create_test_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &user).await.unwrap();
 
     // Create a workout for the user
     let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
@@ -431,7 +415,8 @@ async fn test_admin_can_view_all_workouts() {
     let admin = create_admin_user_and_login(&test_app.address).await;
 
     // Create a user and workout
-    let user = create_test_user_with_health_profile(&test_app.address).await;
+    let user = create_test_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &user).await.unwrap();
     let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 60);
     upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout_data).await
         .expect("Workout upload should succeed");
@@ -458,7 +443,8 @@ async fn test_admin_can_get_workout_by_id() {
     let admin = create_admin_user_and_login(&test_app.address).await;
 
     // Create a user and workout
-    let user = create_test_user_with_health_profile(&test_app.address).await;
+    let user = create_test_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &user).await.unwrap();
     let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 45);
     let workout_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout_data).await;
 
@@ -519,7 +505,8 @@ async fn test_workout_with_media_urls() {
     let test_app = spawn_app().await;
     let client = Client::new();
 
-    let test_user = create_test_user_with_health_profile(&test_app.address).await;
+    let test_user = create_test_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload workout with media URLs
     let mut workout_with_media = WorkoutData::new(WorkoutType::Light, Utc::now(), 30);
@@ -541,7 +528,8 @@ async fn test_workout_upload_notification_integration() {
     let test_app = spawn_app().await;
     let client = Client::new();
 
-    let test_user = create_test_user_with_health_profile(&test_app.address).await;
+    let test_user = create_test_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload a workout (this should trigger notifications)
     let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 45);

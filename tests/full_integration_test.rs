@@ -9,10 +9,10 @@ use chrono::{Utc, Duration, Weekday, NaiveTime, DateTime};
 use uuid::Uuid;
 
 mod common;
-use common::utils::{spawn_app, create_test_user_and_login, TestApp, get_next_date, make_authenticated_request, UserRegLoginResponse, create_test_user_with_health_profile};
+use common::utils::{spawn_app, create_test_user_and_login, TestApp, get_next_date, make_authenticated_request, UserRegLoginResponse};
 use common::admin_helpers::{create_admin_user_and_login, create_league_season, create_teams_for_test, create_league, add_team_to_league, add_user_to_team};
 use common::live_game_helpers::*;
-use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user};
+use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user, create_health_profile_for_user};
 
 #[tokio::test]
 async fn test_complete_live_game_workflow() {
@@ -1226,7 +1226,8 @@ async fn test_user_joining_team_during_live_game() {
     println!("Initial contribution records - Home: {}, Away: {}", initial_home_count, initial_away_count);
     
     // Create a new user who will join the home team during the live game
-    let new_user = create_test_user_with_health_profile(&test_app, &client).await;
+    let new_user = create_test_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &new_user).await.unwrap();
     println!("Created new user: {} ({})", new_user.username, new_user.user_id);
     
     // Verify the new user is NOT in the contributions before joining team

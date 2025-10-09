@@ -252,4 +252,4 @@ pub async fn create_test_user_with_health_profile(test_app: &TestApp, client: &C
     assert!(response.status().is_success(), "Failed to create health profile");
     
     user
-}
+} 
