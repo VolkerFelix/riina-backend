@@ -70,6 +70,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .service(league::get_game_live_score)
             .service(league::get_active_games)
             .service(league::manage_games)
+            .service(league::get_game_summary)
     );
     // WebSocket routes (authentication handled in route)
     cfg.service(

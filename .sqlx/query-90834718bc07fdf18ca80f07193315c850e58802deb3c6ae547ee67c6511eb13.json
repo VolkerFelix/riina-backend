@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                user_id,\n                username,\n                team_id,\n                team_side,\n                SUM(score_points) as total_score\n            FROM live_score_events\n            WHERE game_id = $1\n            GROUP BY user_id, username, team_id, team_side\n            ORDER BY total_score DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "username",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "team_side",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "total_score",
+        "type_info": "Float4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "90834718bc07fdf18ca80f07193315c850e58802deb3c6ae547ee67c6511eb13"
+}

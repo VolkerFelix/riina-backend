@@ -6,6 +6,7 @@ use serde_json::json;
 use crate::league::league::LeagueService;
 use crate::middleware::auth::Claims;
 use crate::models::league::*;
+use crate::services::game_summary_service::GameSummaryService;
 
 /// Update game result
 #[tracing::instrument(
@@ -148,6 +149,87 @@ pub async fn get_game_countdown(
             Ok(HttpResponse::InternalServerError().json(json!({
                 "success": false,
                 "message": "Failed to get countdown information"
+            })))
+        }
+    }
+}
+
+/// Get game summary
+#[tracing::instrument(
+    name = "Get game summary",
+    skip(pool),
+    fields(
+        game_id = %game_id
+    )
+)]
+pub async fn get_game_summary(
+    game_id: web::Path<Uuid>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse> {
+    tracing::info!("Getting game summary for game: {}", game_id);
+
+    let summary_service = GameSummaryService::new(pool.get_ref().clone());
+
+    match summary_service.get_game_summary(*game_id).await {
+        Ok(Some(summary)) => {
+            // Get team names from the database
+            let game = sqlx::query!(
+                r#"
+                SELECT
+                    g.id,
+                    ht.team_name as home_team_name,
+                    at.team_name as away_team_name
+                FROM games g
+                JOIN teams ht ON g.home_team_id = ht.id
+                JOIN teams at ON g.away_team_id = at.id
+                WHERE g.id = $1
+                "#,
+                *game_id
+            )
+            .fetch_optional(pool.get_ref())
+            .await;
+
+            match game {
+                Ok(Some(game_data)) => {
+                    let response = GameSummaryResponse {
+                        summary,
+                        home_team_name: game_data.home_team_name,
+                        away_team_name: game_data.away_team_name,
+                    };
+
+                    Ok(HttpResponse::Ok().json(json!({
+                        "success": true,
+                        "data": response
+                    })))
+                }
+                Ok(None) => {
+                    tracing::warn!("Game {} not found", game_id);
+                    Ok(HttpResponse::NotFound().json(json!({
+                        "success": false,
+                        "message": "Game not found"
+                    })))
+                }
+                Err(e) => {
+                    tracing::error!("Failed to get game details: {}", e);
+                    Ok(HttpResponse::InternalServerError().json(json!({
+                        "success": false,
+                        "message": "Failed to retrieve game details"
+                    })))
+                }
+            }
+        }
+        Ok(None) => {
+            tracing::warn!("Game summary not found for game: {}", game_id);
+            Ok(HttpResponse::NotFound().json(json!({
+                "success": false,
+                "message": "Game summary not found. The game may not have been evaluated yet."
+            })))
+        }
+        Err(e) => {
+            tracing::error!("Failed to get game summary: {}", e);
+            Ok(HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "message": "Failed to retrieve game summary"
             })))
         }
     }
