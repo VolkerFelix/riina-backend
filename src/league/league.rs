@@ -184,6 +184,24 @@ impl LeagueService {
         }
     }
 
+    /// Get recent results (evaluated games) for a season
+    pub async fn get_recent_results(&self, season_id: Option<Uuid>, limit: Option<i64>) -> Result<Vec<GameWithTeams>, sqlx::Error> {
+        let active_season = match season_id {
+            Some(id) => self.seasons.get_season(id).await?,
+            None => self.seasons.get_active_season().await?,
+        };
+
+        match active_season {
+            Some(season) => {
+                self.schedule.get_recent_results(season.id, limit).await
+            }
+            None => {
+                // No active season, return empty list
+                Ok(vec![])
+            }
+        }
+    }
+
     /// Update game result
     pub async fn update_game_result(
         &self,

@@ -1721,7 +1721,43 @@ async fn test_game_summary_creation_and_retrieval() {
     let away_lowest = summary["away_team_lowest_performer_username"].as_str().unwrap();
     println!("✈️  Away team - Avg: {:.2}, Top scorer: {}, Lowest: {}", away_avg, away_top_scorer, away_lowest);
 
-    // Step 8: Test error case - summary for non-existent game
+    // Step 8: Verify evaluated game appears in recent results
+    println!("🔍 Step 8: Verifying evaluated game appears in recent results...");
+    let recent_results_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/games/results?season_id={}&limit=10", test_app.address, live_game_environment.season_id),
+        &live_game_environment.home_user.token,
+        None::<serde_json::Value>,
+    ).await;
+
+    assert_eq!(recent_results_response.status(), 200, "Recent results request should succeed");
+
+    let recent_results_data: serde_json::Value = recent_results_response.json().await.unwrap();
+    assert!(recent_results_data["success"].as_bool().unwrap(), "Recent results should be successful");
+
+    let recent_games = recent_results_data["data"].as_array().unwrap();
+    assert!(!recent_games.is_empty(), "Should have at least one recent result");
+
+    // Debug: Print the first game to see its structure
+    if !recent_games.is_empty() {
+        println!("📋 First game structure: {}", serde_json::to_string_pretty(&recent_games[0]).unwrap());
+    }
+
+    // Verify our evaluated game is in the results
+    let target_game_id = live_game_environment.first_game_id.to_string();
+    let found_game = recent_games.iter().find(|g| {
+        // Game data is nested under "game" key
+        g["game"]["id"].as_str() == Some(target_game_id.as_str())
+    });
+    assert!(found_game.is_some(), "Evaluated game should appear in recent results");
+
+    let found_game = found_game.unwrap();
+    // Status is in PascalCase format (e.g., "Evaluated")
+    assert_eq!(found_game["game"]["status"].as_str().unwrap(), "Evaluated", "Game status should be 'Evaluated'");
+    println!("✅ Evaluated game found in recent results with status 'Evaluated'");
+
+    // Step 9: Test error case - summary for non-existent game
     let non_existent_game_id = Uuid::new_v4();
     let error_response = make_authenticated_request(
         &client,
