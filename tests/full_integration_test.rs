@@ -1701,6 +1701,10 @@ async fn test_game_summary_creation_and_retrieval() {
     let lvp_score = summary["lvp_score_contribution"].as_i64().unwrap();
     println!("📉 LVP: {} with {} points", lvp_username, lvp_score);
 
+    // CRITICAL: Verify MVP and LVP are different players
+    assert_ne!(mvp_username, lvp_username, "MVP and LVP should be different players! MVP: {}, LVP: {}", mvp_username, lvp_username);
+    println!("✅ MVP and LVP are correctly different players");
+
     // Verify home team statistics
     assert!(summary["home_team_avg_score_per_player"].as_f64().is_some(), "Should have home team avg score");
     assert_eq!(summary["home_team_total_workouts"].as_i64().unwrap(), 1, "Home team should have 1 workout");

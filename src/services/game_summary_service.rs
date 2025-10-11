@@ -214,15 +214,27 @@ impl GameSummaryService {
             return (None, None);
         }
 
+        // If only one player participated, they can only be MVP, not LVP
+        if contributions.len() == 1 {
+            let mvp = contributions[0].clone();
+            return (Some(mvp), None);
+        }
+
         let mvp = contributions
             .iter()
             .max_by_key(|p| p.total_score)
             .map(|p| p.clone());
 
-        let lvp = contributions
-            .iter()
-            .min_by_key(|p| p.total_score)
-            .map(|p| p.clone());
+        // Find LVP among players who are NOT the MVP
+        let lvp = if let Some(mvp_player) = &mvp {
+            contributions
+                .iter()
+                .filter(|p| p.user_id != mvp_player.user_id)
+                .min_by_key(|p| p.total_score)
+                .map(|p| p.clone())
+        } else {
+            None
+        };
 
         (mvp, lvp)
     }
