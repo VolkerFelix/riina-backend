@@ -68,6 +68,7 @@ pub struct User {
     pub password_hash: SecretString,
     pub role: UserRole,
     pub status: UserStatus,
+    pub profile_picture_url: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

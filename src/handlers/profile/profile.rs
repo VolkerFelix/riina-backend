@@ -31,7 +31,7 @@ pub async fn get_user_profile(
     // Get user basic info
     let user_info = match sqlx::query!(
         r#"
-        SELECT id, username, created_at
+        SELECT id, username, created_at, profile_picture_url
         FROM users 
         WHERE id = $1
         "#,
@@ -121,6 +121,7 @@ pub async fn get_user_profile(
         rank,
         avatar_style,
         total_stats,
+        profile_picture_url: user_info.profile_picture_url,
         created_at: user_info.created_at,
         last_login: None,
     };
