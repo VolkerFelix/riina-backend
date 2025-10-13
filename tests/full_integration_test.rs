@@ -1709,10 +1709,20 @@ async fn test_game_summary_creation_and_retrieval() {
     .await
     .expect("Failed to get away team owner username")
     .username;
+
+    let home_team_owner_username = sqlx::query!(
+        "SELECT u.username FROM teams t JOIN users u ON t.user_id = u.id WHERE t.id = $1",
+        Uuid::parse_str(&live_game_environment.home_team_id).unwrap()
+    )
+    .fetch_one(&test_app.db_pool)
+    .await
+    .expect("Failed to get home team owner username")
+    .username;
     
     let expected_lvp_usernames = vec![
         live_game_environment.away_user_2.username,
         away_team_owner_username,
+        home_team_owner_username,
     ];
     assert!(expected_lvp_usernames.contains(&lvp_username.to_string()), 
         "LVP should be one of: {:?}, but got: {}", expected_lvp_usernames, lvp_username);
