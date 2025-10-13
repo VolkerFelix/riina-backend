@@ -159,15 +159,14 @@ pub async fn confirm_profile_picture_upload(
             {
                 Ok(_) => {
                     tracing::info!("✅ Updated user {} with profile picture URL: {}", user_id, file_url);
-                    HttpResponse::Ok().json(ApiResponse {
-                        data: ConfirmProfilePictureUploadResponse {
+                    HttpResponse::Ok().json(ApiResponse::success(
+                        "Profile picture uploaded successfully",
+                        ConfirmProfilePictureUploadResponse {
                             success: true,
                             file_url,
                             verified_hash: actual_hash,
-                        },
-                        success: true,
-                        message: Some("Profile picture uploaded successfully".to_string()),
-                    })
+                        }
+                    ))
                 }
                 Err(e) => {
                     tracing::error!("❌ Failed to update user profile picture: {}", e);
@@ -200,17 +199,16 @@ pub async fn get_profile_picture_download_url(
     // Generate download URL for the profile picture
     let object_key = format!("profile-pictures/{}/", user_id);
     
-    match minio_service.generate_download_signed_url(&object_key, 3600).await {
-        Ok((download_url, expires_in)) => {
+    match minio_service.generate_presigned_download_url(&object_key, 3600).await {
+        Ok(download_url) => {
             tracing::info!("✅ Generated profile picture download URL for user {}", user_id);
-            HttpResponse::Ok().json(ApiResponse {
-                data: serde_json::json!({
+            HttpResponse::Ok().json(ApiResponse::success(
+                "Download URL generated successfully",
+                serde_json::json!({
                     "download_url": download_url,
-                    "expires_in": expires_in
-                }),
-                success: true,
-                message: Some("Download URL generated successfully".to_string()),
-            })
+                    "expires_in": 3600
+                })
+            ))
         }
         Err(e) => {
             tracing::error!("❌ Failed to generate profile picture download URL: {}", e);
