@@ -1551,7 +1551,8 @@ async fn test_game_summary_creation_and_retrieval() {
     let mut away_workout1 = WorkoutData::new(WorkoutType::Intense, Utc::now(), 60);
     let mut away_workout2 = WorkoutData::new(WorkoutType::Light, Utc::now(), 20);
     upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_1.token, &mut away_workout1).await.unwrap();
-    upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_2.token, &mut away_workout2).await.unwrap();
+    // No workout for user 2 on away team
+    //upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_2.token, &mut away_workout2).await.unwrap();
 
     println!("✅ Uploaded workouts for all players");
 
@@ -1686,6 +1687,7 @@ async fn test_game_summary_creation_and_retrieval() {
     // Verify MVP exists (most valuable player)
     assert!(summary["mvp_user_id"].as_str().is_some(), "Should have MVP");
     assert!(summary["mvp_username"].as_str().is_some(), "Should have MVP username");
+    assert_eq!(summary["mvp_username"].as_str().unwrap(), live_game_environment.away_user_1.username);
     assert!(summary["mvp_score_contribution"].as_i64().is_some(), "Should have MVP score contribution");
 
     let mvp_username = summary["mvp_username"].as_str().unwrap();
@@ -1695,6 +1697,25 @@ async fn test_game_summary_creation_and_retrieval() {
     // Verify LVP exists (least valuable player)
     assert!(summary["lvp_user_id"].as_str().is_some(), "Should have LVP");
     assert!(summary["lvp_username"].as_str().is_some(), "Should have LVP username");
+    // LVP should be either away_user_2 or the away team owner
+    let lvp_username = summary["lvp_username"].as_str().unwrap();
+    
+    // Get the away team owner's username from the database
+    let away_team_owner_username = sqlx::query!(
+        "SELECT u.username FROM teams t JOIN users u ON t.user_id = u.id WHERE t.id = $1",
+        Uuid::parse_str(&live_game_environment.away_team_id).unwrap()
+    )
+    .fetch_one(&test_app.db_pool)
+    .await
+    .expect("Failed to get away team owner username")
+    .username;
+    
+    let expected_lvp_usernames = vec![
+        live_game_environment.away_user_2.username,
+        away_team_owner_username,
+    ];
+    assert!(expected_lvp_usernames.contains(&lvp_username.to_string()), 
+        "LVP should be one of: {:?}, but got: {}", expected_lvp_usernames, lvp_username);
     assert!(summary["lvp_score_contribution"].as_i64().is_some(), "Should have LVP score contribution");
 
     let lvp_username = summary["lvp_username"].as_str().unwrap();
@@ -1716,7 +1737,7 @@ async fn test_game_summary_creation_and_retrieval() {
 
     // Verify away team statistics
     assert!(summary["away_team_avg_score_per_player"].as_f64().is_some(), "Should have away team avg score");
-    assert_eq!(summary["away_team_total_workouts"].as_i64().unwrap(), 2, "Away team should have 2 workouts");
+    assert_eq!(summary["away_team_total_workouts"].as_i64().unwrap(), 1, "Away team should have 1 workout");
     assert!(summary["away_team_top_scorer_username"].as_str().is_some(), "Should have away team top scorer");
     assert!(summary["away_team_lowest_performer_username"].as_str().is_some(), "Should have away team lowest performer");
 

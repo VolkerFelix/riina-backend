@@ -16,6 +16,7 @@ struct PlayerContribution {
     team_id: Uuid,
     team_side: String, // 'home' or 'away'
     total_score: i32,
+    workout_count: i32,
 }
 
 impl GameSummaryService {
@@ -116,35 +117,82 @@ impl GameSummaryService {
     }
 
     /// Get player contributions from live_score_events table
+    /// This includes ALL team members, even those without score events (they get 0 points)
     async fn get_player_contributions(&self, game_id: Uuid) -> Result<Vec<PlayerContribution>, sqlx::Error> {
-        let contributions = sqlx::query!(
+        // First, get the game's team information
+        let game_info = sqlx::query!(
+            r#"
+            SELECT home_team_id, away_team_id
+            FROM games
+            WHERE id = $1
+            "#,
+            game_id
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        // Get all team members for both teams
+        let all_team_members = sqlx::query!(
+            r#"
+            SELECT 
+                tm.user_id,
+                u.username,
+                tm.team_id,
+                CASE 
+                    WHEN tm.team_id = $1 THEN 'home'
+                    WHEN tm.team_id = $2 THEN 'away'
+                END as team_side
+            FROM team_members tm
+            JOIN users u ON tm.user_id = u.id
+            WHERE tm.team_id IN ($1, $2) AND tm.status = 'active'
+            "#,
+            game_info.home_team_id,
+            game_info.away_team_id
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        // Get score contributions and workout counts for players who have them
+        let score_contributions = sqlx::query!(
             r#"
             SELECT
                 user_id,
-                username,
-                team_id,
-                team_side,
-                SUM(score_points) as total_score
+                SUM(score_points) as total_score,
+                COUNT(*) as workout_count
             FROM live_score_events
             WHERE game_id = $1
-            GROUP BY user_id, username, team_id, team_side
-            ORDER BY total_score DESC
+            GROUP BY user_id
             "#,
             game_id
         )
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(contributions
+        // Create maps for quick lookup
+        let score_map: std::collections::HashMap<Uuid, i32> = score_contributions
+            .iter()
+            .map(|row| (row.user_id, row.total_score.unwrap_or(0.0) as i32))
+            .collect();
+        
+        let workout_count_map: std::collections::HashMap<Uuid, i32> = score_contributions
+            .iter()
+            .map(|row| (row.user_id, row.workout_count.unwrap_or(0) as i32))
+            .collect();
+
+        // Build the final contributions list with all team members
+        let contributions = all_team_members
             .into_iter()
-            .map(|row| PlayerContribution {
-                user_id: row.user_id,
-                username: row.username,
-                team_id: row.team_id,
-                team_side: row.team_side,
-                total_score: row.total_score.unwrap_or(0.0) as i32,
+            .map(|member| PlayerContribution {
+                user_id: member.user_id,
+                username: member.username,
+                team_id: member.team_id,
+                team_side: member.team_side.unwrap_or_else(|| "unknown".to_string()),
+                total_score: score_map.get(&member.user_id).copied().unwrap_or(0),
+                workout_count: workout_count_map.get(&member.user_id).copied().unwrap_or(0),
             })
-            .collect())
+            .collect();
+
+        Ok(contributions)
     }
 
     /// Calculate team statistics (avg score, top scorer, lowest performer, etc.)
@@ -182,8 +230,8 @@ impl GameSummaryService {
         let total_score: i32 = players.iter().map(|p| p.total_score).sum();
         let avg_score = total_score as f32 / players.len() as f32;
 
-        // Get total workouts (count of unique workout events)
-        let total_workouts = players.len() as i32;
+        // Get total workouts (sum of all workout events from all players)
+        let total_workouts = players.iter().map(|p| p.workout_count).sum::<i32>();
 
         // Find top scorer
         let top_scorer = players
