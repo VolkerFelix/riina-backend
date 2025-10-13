@@ -1514,3 +1514,298 @@ async fn test_admin_live_game_score_adjustment() {
 
     println!("✅ Admin live game score adjustment test completed successfully!");
 }
+
+#[tokio::test]
+async fn test_game_summary_creation_and_retrieval() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+    let configuration = get_config().expect("Failed to read configuration.");
+    let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
+
+    println!("📊 Testing Game Summary Creation and Retrieval");
+
+    // Set up Redis subscription for WebSocket events
+    let mut pubsub_conn = redis_client.get_async_connection().await.expect("Failed to create pubsub connection");
+    let mut pubsub = pubsub_conn.into_pubsub();
+    pubsub.subscribe("game:events:global").await.expect("Failed to subscribe to global channel");
+    println!("✅ Subscribed to Redis global game events channel");
+
+    // Step 1: Setup test environment - create league, season, teams, and users
+    let live_game_environment = setup_live_game_environment(&test_app).await;
+
+    // Update game times to current (games are auto-generated with future dates)
+    update_game_times_to_now(&test_app, live_game_environment.first_game_id).await;
+
+    // Start the game
+    start_test_game(&test_app, live_game_environment.first_game_id).await;
+    let live_game = initialize_live_game(&test_app, live_game_environment.first_game_id, redis_client.clone()).await;
+
+    println!("✅ Game started: {}", live_game_environment.first_game_id);
+
+    // Step 2: Upload workout data for players to generate scores
+    // Home team: 1 player uploads intense workout
+    let mut home_workout = WorkoutData::new(WorkoutType::Intense, Utc::now(), 45);
+    upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut home_workout).await.unwrap();
+
+    // Away team: 2 players upload workouts with different intensities
+    let mut away_workout1 = WorkoutData::new(WorkoutType::Intense, Utc::now(), 60);
+    let mut away_workout2 = WorkoutData::new(WorkoutType::Light, Utc::now(), 20);
+    upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_1.token, &mut away_workout1).await.unwrap();
+    // No workout for user 2 on away team
+    //upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_2.token, &mut away_workout2).await.unwrap();
+
+    println!("✅ Uploaded workouts for all players");
+
+    // Step 3: Verify game has scores
+    let updated_game = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
+    assert!(updated_game.home_score > 0, "Home team should have score");
+    assert!(updated_game.away_score > 0, "Away team should have score");
+    println!("📊 Game scores - Home: {}, Away: {}", updated_game.home_score, updated_game.away_score);
+
+    // Step 4: Finish the game by setting status to 'finished'
+    sqlx::query!(
+        "UPDATE games SET game_end_time = NOW(), status = 'finished' WHERE id = $1",
+        live_game_environment.first_game_id
+    )
+    .execute(&test_app.db_pool)
+    .await
+    .expect("Failed to finish game");
+    println!("✅ Game finished");
+
+    // Step 5: Get admin credentials and call the evaluation endpoint
+    // This triggers game summary creation and broadcasts WebSocket events
+    let admin_session = create_admin_user_and_login(&test_app.address).await;
+
+    let today = Utc::now().format("%Y-%m-%d").to_string();
+    let evaluation_request = json!({
+        "date": today
+    });
+
+    let eval_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/games/evaluate", test_app.address),
+        &admin_session.token,
+        Some(evaluation_request),
+    ).await;
+
+    assert!(eval_response.status().is_success(), "Game evaluation should succeed");
+    let eval_result = eval_response.json::<serde_json::Value>().await.unwrap();
+    assert!(eval_result["success"].as_bool().unwrap_or(false), "Evaluation response should be successful");
+
+    let games_evaluated = eval_result["games_evaluated"].as_u64().unwrap_or(0);
+    assert!(games_evaluated > 0, "At least one game should have been evaluated");
+    println!("✅ Game evaluated and summary created ({} games)", games_evaluated);
+
+    // Step 5b: Listen for WebSocket events (game_summary_created)
+    println!("🔍 Listening for WebSocket events...");
+    use futures_util::StreamExt;
+    use std::time::Duration;
+
+    let mut game_summary_event_received = false;
+    let mut global_stream = pubsub.on_message();
+    let timeout = Duration::from_secs(10);
+    let start_time = std::time::Instant::now();
+    let target_game_id = live_game_environment.first_game_id.to_string();
+
+    while start_time.elapsed() < timeout && !game_summary_event_received {
+        tokio::select! {
+            global_msg = global_stream.next() => {
+                if let Some(msg) = global_msg {
+                    if let Ok(payload) = msg.get_payload::<String>() {
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&payload) {
+                            let event_type = json["event_type"].as_str().unwrap_or("");
+
+                            if event_type == "game_summary_created" {
+                                let game_id = json["game_id"].as_str().unwrap_or("");
+                                println!("📨 GameSummaryCreated event received for game: {}", game_id);
+
+                                // Check if this is our target game
+                                if game_id == target_game_id {
+                                    game_summary_event_received = true;
+
+                                    // Verify event structure
+                                    assert!(json["summary_id"].as_str().is_some(), "Should have summary_id");
+                                    assert!(json["mvp_username"].as_str().is_some(), "Should have MVP username");
+                                    assert!(json["lvp_username"].as_str().is_some(), "Should have LVP username");
+                                    assert!(json["final_home_score"].as_i64().is_some(), "Should have final_home_score");
+                                    assert!(json["final_away_score"].as_i64().is_some(), "Should have final_away_score");
+
+                                    let mvp = json["mvp_username"].as_str().unwrap();
+                                    let lvp = json["lvp_username"].as_str().unwrap();
+                                    let home_score = json["final_home_score"].as_i64().unwrap();
+                                    let away_score = json["final_away_score"].as_i64().unwrap();
+                                    println!("✅ GameSummaryCreated WebSocket event received for our game!");
+                                    println!("   Score: {} - {}, MVP: {}, LVP: {}", home_score, away_score, mvp, lvp);
+                                    break;
+                                } else {
+                                    println!("   (Skipping event for different game: {})", game_id);
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            _ = tokio::time::sleep(Duration::from_millis(100)) => {
+                // Continue loop
+            }
+        }
+    }
+
+    assert!(game_summary_event_received, "Should have received game_summary_created WebSocket event for game {}", target_game_id);
+
+    // Step 6: Retrieve the game summary via API
+    let summary_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/games/{}/summary", test_app.address, live_game_environment.first_game_id),
+        &live_game_environment.home_user.token,
+        None::<serde_json::Value>,
+    ).await;
+
+    assert!(summary_response.status().is_success(), "Game summary endpoint should succeed");
+
+    let summary_data: serde_json::Value = summary_response.json().await.unwrap();
+    println!("📊 Game summary response: {}", serde_json::to_string_pretty(&summary_data).unwrap());
+
+    // Step 7: Validate game summary data
+    assert!(summary_data["success"].as_bool().unwrap(), "Response should be successful");
+
+    let summary = &summary_data["data"]["summary"];
+    let home_team_name = summary_data["data"]["home_team_name"].as_str().unwrap();
+    let away_team_name = summary_data["data"]["away_team_name"].as_str().unwrap();
+
+    println!("🏟️  Teams: {} vs {}", home_team_name, away_team_name);
+
+    // Verify game overview
+    assert_eq!(summary["game_id"].as_str().unwrap(), live_game_environment.first_game_id.to_string());
+    assert!(summary["final_home_score"].as_i64().is_some(), "Should have final home score");
+    assert!(summary["final_away_score"].as_i64().is_some(), "Should have final away score");
+    assert!(summary["game_start_date"].as_str().is_some(), "Should have game start date");
+    assert!(summary["game_end_date"].as_str().is_some(), "Should have game end date");
+
+    // Verify MVP exists (most valuable player)
+    assert!(summary["mvp_user_id"].as_str().is_some(), "Should have MVP");
+    assert!(summary["mvp_username"].as_str().is_some(), "Should have MVP username");
+    assert_eq!(summary["mvp_username"].as_str().unwrap(), live_game_environment.away_user_1.username);
+    assert!(summary["mvp_score_contribution"].as_i64().is_some(), "Should have MVP score contribution");
+
+    let mvp_username = summary["mvp_username"].as_str().unwrap();
+    let mvp_score = summary["mvp_score_contribution"].as_i64().unwrap();
+    println!("🏆 MVP: {} with {} points", mvp_username, mvp_score);
+
+    // Verify LVP exists (least valuable player)
+    assert!(summary["lvp_user_id"].as_str().is_some(), "Should have LVP");
+    assert!(summary["lvp_username"].as_str().is_some(), "Should have LVP username");
+    // LVP should be either away_user_2 or the away team owner
+    let lvp_username = summary["lvp_username"].as_str().unwrap();
+    
+    // Get the away team owner's username from the database
+    let away_team_owner_username = sqlx::query!(
+        "SELECT u.username FROM teams t JOIN users u ON t.user_id = u.id WHERE t.id = $1",
+        Uuid::parse_str(&live_game_environment.away_team_id).unwrap()
+    )
+    .fetch_one(&test_app.db_pool)
+    .await
+    .expect("Failed to get away team owner username")
+    .username;
+
+    let home_team_owner_username = sqlx::query!(
+        "SELECT u.username FROM teams t JOIN users u ON t.user_id = u.id WHERE t.id = $1",
+        Uuid::parse_str(&live_game_environment.home_team_id).unwrap()
+    )
+    .fetch_one(&test_app.db_pool)
+    .await
+    .expect("Failed to get home team owner username")
+    .username;
+    
+    let expected_lvp_usernames = vec![
+        live_game_environment.away_user_2.username,
+        away_team_owner_username,
+        home_team_owner_username,
+    ];
+    assert!(expected_lvp_usernames.contains(&lvp_username.to_string()), 
+        "LVP should be one of: {:?}, but got: {}", expected_lvp_usernames, lvp_username);
+    assert!(summary["lvp_score_contribution"].as_i64().is_some(), "Should have LVP score contribution");
+
+    let lvp_username = summary["lvp_username"].as_str().unwrap();
+    let lvp_score = summary["lvp_score_contribution"].as_i64().unwrap();
+    println!("📉 LVP: {} with {} points", lvp_username, lvp_score);
+
+    // CRITICAL: Verify MVP and LVP are different players
+    assert_ne!(mvp_username, lvp_username, "MVP and LVP should be different players! MVP: {}, LVP: {}", mvp_username, lvp_username);
+    println!("✅ MVP and LVP are correctly different players");
+
+    // Verify home team statistics
+    assert!(summary["home_team_avg_score_per_player"].as_f64().is_some(), "Should have home team avg score");
+    assert_eq!(summary["home_team_total_workouts"].as_i64().unwrap(), 1, "Home team should have 1 workout");
+    assert!(summary["home_team_top_scorer_username"].as_str().is_some(), "Should have home team top scorer");
+
+    let home_avg = summary["home_team_avg_score_per_player"].as_f64().unwrap();
+    let home_top_scorer = summary["home_team_top_scorer_username"].as_str().unwrap();
+    println!("🏠 Home team - Avg: {:.2}, Top scorer: {}", home_avg, home_top_scorer);
+
+    // Verify away team statistics
+    assert!(summary["away_team_avg_score_per_player"].as_f64().is_some(), "Should have away team avg score");
+    assert_eq!(summary["away_team_total_workouts"].as_i64().unwrap(), 1, "Away team should have 1 workout");
+    assert!(summary["away_team_top_scorer_username"].as_str().is_some(), "Should have away team top scorer");
+    assert!(summary["away_team_lowest_performer_username"].as_str().is_some(), "Should have away team lowest performer");
+
+    let away_avg = summary["away_team_avg_score_per_player"].as_f64().unwrap();
+    let away_top_scorer = summary["away_team_top_scorer_username"].as_str().unwrap();
+    let away_lowest = summary["away_team_lowest_performer_username"].as_str().unwrap();
+    println!("✈️  Away team - Avg: {:.2}, Top scorer: {}, Lowest: {}", away_avg, away_top_scorer, away_lowest);
+
+    // Step 8: Verify evaluated game appears in recent results
+    println!("🔍 Step 8: Verifying evaluated game appears in recent results...");
+    let recent_results_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/games/results?season_id={}&limit=10", test_app.address, live_game_environment.season_id),
+        &live_game_environment.home_user.token,
+        None::<serde_json::Value>,
+    ).await;
+
+    assert_eq!(recent_results_response.status(), 200, "Recent results request should succeed");
+
+    let recent_results_data: serde_json::Value = recent_results_response.json().await.unwrap();
+    assert!(recent_results_data["success"].as_bool().unwrap(), "Recent results should be successful");
+
+    let recent_games = recent_results_data["data"].as_array().unwrap();
+    assert!(!recent_games.is_empty(), "Should have at least one recent result");
+
+    // Debug: Print the first game to see its structure
+    if !recent_games.is_empty() {
+        println!("📋 First game structure: {}", serde_json::to_string_pretty(&recent_games[0]).unwrap());
+    }
+
+    // Verify our evaluated game is in the results
+    let target_game_id = live_game_environment.first_game_id.to_string();
+    let found_game = recent_games.iter().find(|g| {
+        // Game data is nested under "game" key
+        g["game"]["id"].as_str() == Some(target_game_id.as_str())
+    });
+    assert!(found_game.is_some(), "Evaluated game should appear in recent results");
+
+    let found_game = found_game.unwrap();
+    // Status is in PascalCase format (e.g., "Evaluated")
+    assert_eq!(found_game["game"]["status"].as_str().unwrap(), "Evaluated", "Game status should be 'Evaluated'");
+    println!("✅ Evaluated game found in recent results with status 'Evaluated'");
+
+    // Step 9: Test error case - summary for non-existent game
+    let non_existent_game_id = Uuid::new_v4();
+    let error_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/games/{}/summary", test_app.address, non_existent_game_id),
+        &live_game_environment.home_user.token,
+        None::<serde_json::Value>,
+    ).await;
+
+    assert_eq!(error_response.status(), 404, "Non-existent game should return 404");
+
+    let error_data: serde_json::Value = error_response.json().await.unwrap();
+    assert!(!error_data["success"].as_bool().unwrap(), "Error response should have success=false");
+
+    println!("✅ Game summary creation and retrieval test completed successfully!");
+}

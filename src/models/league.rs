@@ -325,3 +325,55 @@ impl LeagueStanding {
         }
     }
 }
+
+// Game Summary models
+#[derive(Debug, FromRow, Serialize, Deserialize, Clone)]
+pub struct GameSummary {
+    pub id: Uuid,
+    pub game_id: Uuid,
+
+    // Game Overview
+    pub final_home_score: i32,
+    pub final_away_score: i32,
+    pub game_start_date: DateTime<Utc>,
+    pub game_end_date: DateTime<Utc>,
+    pub mvp_user_id: Option<Uuid>,
+    pub mvp_username: Option<String>,
+    pub mvp_team_id: Option<Uuid>,
+    pub mvp_score_contribution: Option<i32>,
+    pub lvp_user_id: Option<Uuid>,
+    pub lvp_username: Option<String>,
+    pub lvp_team_id: Option<Uuid>,
+    pub lvp_score_contribution: Option<i32>,
+
+    // Home Team Statistics
+    pub home_team_avg_score_per_player: Option<f32>,
+    pub home_team_total_workouts: i32,
+    pub home_team_top_scorer_id: Option<Uuid>,
+    pub home_team_top_scorer_username: Option<String>,
+    pub home_team_top_scorer_points: Option<i32>,
+    pub home_team_lowest_performer_id: Option<Uuid>,
+    pub home_team_lowest_performer_username: Option<String>,
+    pub home_team_lowest_performer_points: Option<i32>,
+
+    // Away Team Statistics
+    pub away_team_avg_score_per_player: Option<f32>,
+    pub away_team_total_workouts: i32,
+    pub away_team_top_scorer_id: Option<Uuid>,
+    pub away_team_top_scorer_username: Option<String>,
+    pub away_team_top_scorer_points: Option<i32>,
+    pub away_team_lowest_performer_id: Option<Uuid>,
+    pub away_team_lowest_performer_username: Option<String>,
+    pub away_team_lowest_performer_points: Option<i32>,
+
+    // Metadata
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GameSummaryResponse {
+    pub summary: GameSummary,
+    pub home_team_name: String,
+    pub away_team_name: String,
+}

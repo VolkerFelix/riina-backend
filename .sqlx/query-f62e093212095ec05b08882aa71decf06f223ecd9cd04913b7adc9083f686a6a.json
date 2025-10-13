@@ -1,0 +1,41 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT \n                tm.user_id,\n                u.username,\n                tm.team_id,\n                CASE \n                    WHEN tm.team_id = $1 THEN 'home'\n                    WHEN tm.team_id = $2 THEN 'away'\n                END as team_side\n            FROM team_members tm\n            JOIN users u ON tm.user_id = u.id\n            WHERE tm.team_id IN ($1, $2) AND tm.status = 'active'\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "username",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "team_side",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "f62e093212095ec05b08882aa71decf06f223ecd9cd04913b7adc9083f686a6a"
+}

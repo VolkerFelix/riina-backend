@@ -284,8 +284,10 @@ impl ScheduleService {
         // Convert query results to GameWithTeams with team powers
         let games_with_teams = games_query.into_iter().map(|row| {
             let status = match row.status.as_str() {
+                "in_progress" => GameStatus::InProgress,
                 "live" => GameStatus::InProgress,
                 "finished" => GameStatus::Finished,
+                "evaluated" => GameStatus::Evaluated,
                 "postponed" => GameStatus::Postponed,
                 _ => GameStatus::Scheduled,
             };
@@ -368,8 +370,10 @@ impl ScheduleService {
 
         Ok(games_query.into_iter().map(|row| {
             let status = match row.status.as_str() {
+                "in_progress" => GameStatus::InProgress,
                 "live" => GameStatus::InProgress,
                 "finished" => GameStatus::Finished,
+                "evaluated" => GameStatus::Evaluated,
                 "postponed" => GameStatus::Postponed,
                 _ => GameStatus::Scheduled,
             };
@@ -416,8 +420,8 @@ impl ScheduleService {
             FROM games lg
             JOIN teams ht ON lg.home_team_id = ht.id
             JOIN teams at ON lg.away_team_id = at.id
-            WHERE lg.season_id = $1 
-            AND lg.status = 'finished'
+            WHERE lg.season_id = $1
+            AND lg.status = 'evaluated'
             ORDER BY lg.game_start_time DESC
             LIMIT $2
             "#,
@@ -441,8 +445,10 @@ impl ScheduleService {
 
         Ok(games_query.into_iter().map(|row| {
             let status = match row.status.as_str() {
+                "in_progress" => GameStatus::InProgress,
                 "live" => GameStatus::InProgress,
                 "finished" => GameStatus::Finished,
+                "evaluated" => GameStatus::Evaluated,
                 "postponed" => GameStatus::Postponed,
                 _ => GameStatus::Scheduled,
             };
@@ -573,8 +579,10 @@ impl ScheduleService {
 
         Ok(games_query.into_iter().map(|row| {
             let status = match row.status.as_str() {
+                "in_progress" => GameStatus::InProgress,
                 "live" => GameStatus::InProgress,
                 "finished" => GameStatus::Finished,
+                "evaluated" => GameStatus::Evaluated,
                 "postponed" => GameStatus::Postponed,
                 _ => GameStatus::Scheduled,
             };
@@ -699,8 +707,10 @@ impl ScheduleService {
 
         Ok(games_query.into_iter().map(|row| {
             let status = match row.status.as_str() {
+                "in_progress" => GameStatus::InProgress,
                 "live" => GameStatus::InProgress,
                 "finished" => GameStatus::Finished,
+                "evaluated" => GameStatus::Evaluated,
                 "postponed" => GameStatus::Postponed,
                 _ => GameStatus::Scheduled,
             };

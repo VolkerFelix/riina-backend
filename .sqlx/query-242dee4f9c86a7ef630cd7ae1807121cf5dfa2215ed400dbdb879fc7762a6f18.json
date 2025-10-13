@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT \n                lg.*,\n                ht.team_name as home_team_name,\n                at.team_name as away_team_name,\n                ht.team_color as home_team_color,\n                at.team_color as away_team_color\n            FROM games lg\n            JOIN teams ht ON lg.home_team_id = ht.id\n            JOIN teams at ON lg.away_team_id = at.id\n            WHERE lg.season_id = $1 \n            AND lg.status = 'finished'\n            ORDER BY lg.game_start_time DESC\n            LIMIT $2\n            ",
+  "query": "\n            SELECT \n                lg.*,\n                ht.team_name as home_team_name,\n                at.team_name as away_team_name,\n                ht.team_color as home_team_color,\n                at.team_color as away_team_color\n            FROM games lg\n            JOIN teams ht ON lg.home_team_id = ht.id\n            JOIN teams at ON lg.away_team_id = at.id\n            WHERE lg.season_id = $1\n            AND lg.status = 'evaluated'\n            ORDER BY lg.game_start_time DESC\n            LIMIT $2\n            ",
   "describe": {
     "columns": [
       {
@@ -145,5 +145,5 @@
       false
     ]
   },
-  "hash": "9fdb3db212526414b379f083b5be55c3a07e7daca9eb94514808c4cfbfe7c608"
+  "hash": "242dee4f9c86a7ef630cd7ae1807121cf5dfa2215ed400dbdb879fc7762a6f18"
 }

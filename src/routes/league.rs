@@ -272,3 +272,12 @@ async fn manage_games(
     live_game_handler::manage_games(pool, redis_client).await
 }
 
+/// Get game summary
+#[get("/games/{game_id}/summary")]
+async fn get_game_summary(
+    path: web::Path<Uuid>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse> {
+    game_handler::get_game_summary(path, pool).await
+}
+

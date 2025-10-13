@@ -50,15 +50,31 @@ pub async fn create_league_season(
 
 /// Get recent results
 pub async fn get_league_recent_results(
-    _query: web::Query<RecentResultsQuery>,
-    _pool: web::Data<PgPool>,
+    query: web::Query<RecentResultsQuery>,
+    pool: web::Data<PgPool>,
 ) -> Result<HttpResponse> {
-    // Implementation for recent results
-    Ok(HttpResponse::Ok().json(json!({
-        "success": true,
-        "data": [],
-        "message": "Recent results endpoint - implementation needed"
-    })))
+    tracing::info!("Getting recent results for season: {:?}, limit: {:?}",
+        query.season_id, query.limit);
+
+    let league_service = LeagueService::new(pool.get_ref().clone());
+
+    match league_service.get_recent_results(query.season_id, query.limit).await {
+        Ok(games) => {
+            tracing::info!("Successfully retrieved {} recent results", games.len());
+            Ok(HttpResponse::Ok().json(json!({
+                "success": true,
+                "data": games,
+                "total_count": games.len()
+            })))
+        }
+        Err(e) => {
+            tracing::error!("Failed to get recent results: {}", e);
+            Ok(HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "message": "Failed to retrieve recent results"
+            })))
+        }
+    }
 }
 
 /// Get game week

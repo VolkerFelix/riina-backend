@@ -10,12 +10,14 @@ use crate::models::common::MatchResult;
 use crate::league::standings::StandingsService;
 use crate::models::league::{LeagueGame, GameStatus};
 use crate::game::game_evaluator::GameStats;
+use crate::services::game_summary_service::GameSummaryService;
 
 #[derive(Debug)]
 pub struct GameEvaluationService {
     pool: PgPool,
     redis_client: Arc<redis::Client>,
     standings: StandingsService,
+    summary_service: GameSummaryService,
 }
 
 #[derive(Debug)]
@@ -28,8 +30,9 @@ pub struct EvaluationResult {
 
 impl GameEvaluationService {
     pub fn new(pool: PgPool, redis_client: Arc<redis::Client>) -> Self {
-        Self { 
+        Self {
             standings: StandingsService::new(pool.clone()),
+            summary_service: GameSummaryService::new(pool.clone()),
             pool,
             redis_client,
         }
@@ -97,12 +100,45 @@ winner_team_id,
             game_stats.away_team_score as i32
         ).await {
             Ok(_) => {
-                tracing::info!("✅ Successfully updated game {} and standings: {} - {}", 
+                tracing::info!("✅ Successfully updated game {} and standings: {} - {}",
                     game_id, game_stats.home_team_score, game_stats.away_team_score);
             }
             Err(e) => {
                 tracing::error!("❌ Failed to update standings for game {}: {}", game_id, e);
                 return Err(e);
+            }
+        }
+
+        // Create game summary
+        match self.summary_service.create_game_summary(&updated_game).await {
+            Ok(summary) => {
+                tracing::info!("✅ Successfully created game summary for game {}", game_id);
+                tracing::debug!("Game summary details: MVP={:?}, LVP={:?}",
+                    summary.mvp_username, summary.lvp_username);
+
+                // Broadcast game summary created event
+                let summary_event = GameEvent::GameSummaryCreated {
+                    game_id,
+                    summary_id: summary.id,
+                    home_team_id: updated_game.home_team_id,
+                    away_team_id: updated_game.away_team_id,
+                    mvp_user_id: summary.mvp_user_id,
+                    mvp_username: summary.mvp_username.clone(),
+                    lvp_user_id: summary.lvp_user_id,
+                    lvp_username: summary.lvp_username.clone(),
+                    final_home_score: summary.final_home_score,
+                    final_away_score: summary.final_away_score,
+                    created_at: Utc::now(),
+                };
+
+                if let Err(e) = self.broadcast_to_global_channel(&summary_event).await {
+                    tracing::error!("Failed to broadcast game summary event: {}", e);
+                }
+            }
+            Err(e) => {
+                tracing::error!("❌ Failed to create game summary for game {}: {}", game_id, e);
+                // Don't fail the entire evaluation if summary creation fails
+                // The game is still evaluated and standings are updated
             }
         }
 

@@ -198,6 +198,21 @@ pub enum GameEvent {
         message: String,
         timestamp: DateTime<Utc>,
     },
+
+    #[serde(rename = "game_summary_created")]
+    GameSummaryCreated {
+        game_id: Uuid,
+        summary_id: Uuid,
+        home_team_id: Uuid,
+        away_team_id: Uuid,
+        mvp_user_id: Option<Uuid>,
+        mvp_username: Option<String>,
+        lvp_user_id: Option<Uuid>,
+        lvp_username: Option<String>,
+        final_home_score: i32,
+        final_away_score: i32,
+        created_at: DateTime<Utc>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
