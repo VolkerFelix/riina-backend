@@ -60,7 +60,37 @@ async fn confirm_profile_picture_upload_handler(
 async fn get_profile_picture_download_url_handler(
     path: web::Path<uuid::Uuid>,
     claims: web::ReqData<Claims>,
+    minio_service: web::Data<MinIOService>,
+    pool: web::Data<PgPool>
+) -> HttpResponse {
+    get_profile_picture_download_url(path, claims, minio_service, pool).await
+}
+
+// Serve profile picture files (requires authentication)
+#[get("/picture/{user_id}/{filename}")]
+async fn serve_profile_picture(
+    path: web::Path<(String, String)>,
+    claims: web::ReqData<Claims>,
     minio_service: web::Data<MinIOService>
 ) -> HttpResponse {
-    get_profile_picture_download_url(path, claims, minio_service).await
+    let (user_id, filename) = path.into_inner();
+    
+    // Authorization: authenticated users can view any profile picture
+    // This allows users to see each other's profile pictures in the app
+    tracing::info!("📸 User {} requesting profile picture for user {}", claims.sub, user_id);
+    
+    let object_key = format!("profile-pictures/{}/{}", user_id, filename);
+    
+    match minio_service.get_file(&object_key).await {
+        Ok((contents, content_type)) => {
+            tracing::info!("✅ Serving profile picture for user {}: {}", user_id, filename);
+            HttpResponse::Ok()
+                .content_type(content_type)
+                .body(contents)
+        }
+        Err(e) => {
+            tracing::warn!("❌ Profile picture not found for user {}: {} - {}", user_id, filename, e);
+            HttpResponse::NotFound().finish()
+        }
+    }
 }

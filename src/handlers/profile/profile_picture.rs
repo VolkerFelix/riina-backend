@@ -190,15 +190,70 @@ pub async fn get_profile_picture_download_url(
     path: web::Path<Uuid>,
     claims: web::ReqData<Claims>,
     minio_service: web::Data<MinIOService>,
+    pool: web::Data<sqlx::PgPool>,
 ) -> HttpResponse {
     let user_id = path.into_inner();
-    
-    tracing::info!("📸 User {} requesting profile picture download URL for user: {}", 
+
+    tracing::info!("📸 User {} requesting profile picture download URL for user: {}",
                    claims.username, user_id);
 
-    // Generate download URL for the profile picture
-    let object_key = format!("profile-pictures/{}/", user_id);
-    
+    // Get the user's profile picture URL from the database
+    let user_record = match sqlx::query!(
+        "SELECT profile_picture_url FROM users WHERE id = $1",
+        user_id
+    )
+    .fetch_optional(pool.get_ref())
+    .await
+    {
+        Ok(Some(record)) => record,
+        Ok(None) => {
+            tracing::warn!("❌ User not found: {}", user_id);
+            return HttpResponse::NotFound().json(
+                ApiResponse::<()>::error("User not found")
+            );
+        }
+        Err(e) => {
+            tracing::error!("❌ Database error fetching user: {}", e);
+            return HttpResponse::InternalServerError().json(
+                ApiResponse::<()>::error("Database error")
+            );
+        }
+    };
+
+    // Check if user has a profile picture
+    let profile_picture_url = match user_record.profile_picture_url {
+        Some(url) => url,
+        None => {
+            tracing::warn!("❌ User {} has no profile picture", user_id);
+            return HttpResponse::NotFound().json(
+                ApiResponse::<()>::error("User has no profile picture")
+            );
+        }
+    };
+
+    // Extract object key from the profile picture URL
+    // URL format: /profile/picture/{user_id}/{filename}
+    // We need: profile-pictures/{user_id}/{filename}
+    let object_key = if profile_picture_url.starts_with("/profile/picture/") {
+        // Convert /profile/picture/{user_id}/{filename} to profile-pictures/{user_id}/{filename}
+        let path_parts: Vec<&str> = profile_picture_url.trim_start_matches("/profile/picture/").split('/').collect();
+        if path_parts.len() >= 2 {
+            format!("profile-pictures/{}/{}", path_parts[0], path_parts[1])
+        } else {
+            tracing::error!("❌ Invalid profile picture URL format: {}", profile_picture_url);
+            return HttpResponse::InternalServerError().json(
+                ApiResponse::<()>::error("Invalid profile picture URL format")
+            );
+        }
+    } else {
+        tracing::error!("❌ Unexpected profile picture URL format: {}", profile_picture_url);
+        return HttpResponse::InternalServerError().json(
+            ApiResponse::<()>::error("Unexpected profile picture URL format")
+        );
+    };
+
+    tracing::info!("📸 Generating presigned URL for object key: {}", object_key);
+
     match minio_service.generate_presigned_download_url(&object_key, 3600).await {
         Ok(download_url) => {
             tracing::info!("✅ Generated profile picture download URL for user {}", user_id);
