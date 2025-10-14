@@ -1,9 +1,35 @@
 use chrono::{DateTime, Utc, Duration};
-use sqlx::PgPool;
+use sqlx::{PgPool, FromRow};
 use uuid::Uuid;
 use crate::models::league::*;
 use crate::utils::team_power;
 use super::timing::TimingService;
+
+#[derive(Debug, FromRow)]
+struct GameQueryRow {
+    id: Uuid,
+    season_id: Uuid,
+    home_team_id: Uuid,
+    away_team_id: Uuid,
+    week_number: i32,
+    is_first_leg: bool,
+    status: String,
+    winner_team_id: Option<Uuid>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+    home_score: i32,
+    away_score: i32,
+    game_start_time: Option<DateTime<Utc>>,
+    game_end_time: Option<DateTime<Utc>>,
+    last_score_time: Option<DateTime<Utc>>,
+    last_scorer_id: Option<Uuid>,
+    last_scorer_name: Option<String>,
+    last_scorer_team: Option<String>,
+    home_team_name: String,
+    away_team_name: String,
+    home_team_color: String,
+    away_team_color: String,
+}
 
 /// Service responsible for league schedule management
 pub struct ScheduleService {
@@ -404,32 +430,62 @@ impl ScheduleService {
     /// Get recent results (last N completed games)
     pub async fn get_recent_results(
         &self,
-        season_id: Uuid,
+        season_id: Option<Uuid>,
         limit: Option<i64>,
     ) -> Result<Vec<GameWithTeams>, sqlx::Error> {
         let limit = limit.unwrap_or(5);
 
-        let games_query = sqlx::query!(
-            r#"
-            SELECT 
-                lg.*,
-                ht.team_name as home_team_name,
-                at.team_name as away_team_name,
-                ht.team_color as home_team_color,
-                at.team_color as away_team_color
-            FROM games lg
-            JOIN teams ht ON lg.home_team_id = ht.id
-            JOIN teams at ON lg.away_team_id = at.id
-            WHERE lg.season_id = $1
-            AND lg.status = 'evaluated'
-            ORDER BY lg.game_start_time DESC
-            LIMIT $2
-            "#,
-            season_id,
-            limit
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let games_query: Vec<GameQueryRow> = if let Some(season_id) = season_id {
+            // Filter by specific season
+            sqlx::query_as::<_, GameQueryRow>(
+                r#"
+                SELECT
+                    lg.id, lg.season_id, lg.home_team_id, lg.away_team_id, lg.week_number,
+                    lg.is_first_leg, lg.status, lg.winner_team_id, lg.created_at, lg.updated_at,
+                    lg.home_score, lg.away_score, lg.game_start_time, lg.game_end_time,
+                    lg.last_score_time, lg.last_scorer_id, lg.last_scorer_name, lg.last_scorer_team,
+                    ht.team_name as home_team_name,
+                    at.team_name as away_team_name,
+                    ht.team_color as home_team_color,
+                    at.team_color as away_team_color
+                FROM games lg
+                JOIN teams ht ON lg.home_team_id = ht.id
+                JOIN teams at ON lg.away_team_id = at.id
+                WHERE lg.season_id = $1
+                AND lg.status = 'evaluated'
+                ORDER BY lg.game_start_time DESC
+                LIMIT $2
+                "#
+            )
+            .bind(season_id)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            // Get from all seasons
+            sqlx::query_as::<_, GameQueryRow>(
+                r#"
+                SELECT
+                    lg.id, lg.season_id, lg.home_team_id, lg.away_team_id, lg.week_number,
+                    lg.is_first_leg, lg.status, lg.winner_team_id, lg.created_at, lg.updated_at,
+                    lg.home_score, lg.away_score, lg.game_start_time, lg.game_end_time,
+                    lg.last_score_time, lg.last_scorer_id, lg.last_scorer_name, lg.last_scorer_team,
+                    ht.team_name as home_team_name,
+                    at.team_name as away_team_name,
+                    ht.team_color as home_team_color,
+                    at.team_color as away_team_color
+                FROM games lg
+                JOIN teams ht ON lg.home_team_id = ht.id
+                JOIN teams at ON lg.away_team_id = at.id
+                WHERE lg.status = 'evaluated'
+                ORDER BY lg.game_start_time DESC
+                LIMIT $1
+                "#
+            )
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await?
+        };
 
         // Collect all unique team IDs for power calculation
         let mut team_ids = Vec::new();
