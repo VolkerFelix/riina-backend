@@ -634,13 +634,13 @@ pub async fn finish_ongoing_games(
     Ok(HttpResponse::Ok().json(response))
 }
 
-/// POST /admin/games/create-summaries - Create game summaries for finished games without summaries
+/// POST /admin/games/create-summaries - Create game summaries for evaluated games without summaries
 pub async fn create_missing_game_summaries(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse> {
-    tracing::info!("Manual request to create game summaries for finished games");
+    tracing::info!("Manual request to create game summaries for evaluated games");
 
-    // Get all finished games without summaries (evaluated games already have summaries)
+    // Get all evaluated games without summaries
     let games_without_summaries = sqlx::query!(
         r#"
         SELECT
@@ -652,7 +652,7 @@ pub async fn create_missing_game_summaries(
             g.last_score_time, g.last_scorer_id, g.last_scorer_name, g.last_scorer_team
         FROM games g
         LEFT JOIN game_summaries gs ON g.id = gs.game_id
-        WHERE g.status = 'finished'
+        WHERE g.status = 'evaluated'
         AND gs.id IS NULL
         ORDER BY g.game_start_time ASC
         "#
