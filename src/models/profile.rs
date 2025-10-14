@@ -9,6 +9,7 @@ pub struct UserProfileResponse {
     pub rank: i32,
     pub avatar_style: String,
     pub total_stats: f32,
+    pub trailing_average: f32,
     pub profile_picture_url: Option<String>,
     pub created_at: DateTime<Utc>,
     pub last_login: Option<DateTime<Utc>>,

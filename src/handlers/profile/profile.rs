@@ -6,6 +6,7 @@ use sqlx::PgPool;
 use crate::middleware::auth::Claims;
 use crate::models::profile::{UserProfileResponse, GameStats};
 use crate::models::common::ApiResponse;
+use crate::utils::trailing_average;
 
 #[tracing::instrument(
     name = "Get user profile",
@@ -114,6 +115,15 @@ pub async fn get_user_profile(
 
     let total_stats = game_stats.stamina + game_stats.strength;
 
+    // Calculate trailing average
+    let trailing_avg = match trailing_average::calculate_trailing_average(&pool, user_id).await {
+        Ok(avg) => avg,
+        Err(e) => {
+            tracing::warn!("Failed to calculate trailing average for user {}: {}", user_id, e);
+            0.0
+        }
+    };
+
     let profile = UserProfileResponse {
         id: user_info.id,
         username: user_info.username,
@@ -121,6 +131,7 @@ pub async fn get_user_profile(
         rank,
         avatar_style,
         total_stats,
+        trailing_average: trailing_avg,
         profile_picture_url: user_info.profile_picture_url,
         created_at: user_info.created_at,
         last_login: None,
