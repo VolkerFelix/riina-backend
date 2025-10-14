@@ -39,6 +39,10 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .service(profile::get_user)
             .service(profile::get_health_prof)
             .service(profile::update_health_prof)
+            .service(profile::request_profile_picture_upload_url_handler)
+            .service(profile::confirm_profile_picture_upload_handler)
+            .service(profile::get_profile_picture_download_url_handler)
+            .service(profile::serve_profile_picture)
     );
     // League routes (require authentication)
     cfg.service(

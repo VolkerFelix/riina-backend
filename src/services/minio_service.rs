@@ -205,10 +205,13 @@ impl MinIOService {
     }
 
     pub fn generate_file_url(&self, object_key: &str) -> String {
-        // Extract user_id and filename from object key: users/{user_id}/{filename}
-        // Convert to URL format: /health/workout-media/{user_id}/{filename}
+        // Handle different object key patterns
         if let Some(path_without_users) = object_key.strip_prefix("users/") {
+            // Workout media files: users/{user_id}/{filename} -> /health/workout-media/{user_id}/{filename}
             format!("/health/workout-media/{}", path_without_users)
+        } else if let Some(path_without_profile) = object_key.strip_prefix("profile-pictures/") {
+            // Profile pictures: profile-pictures/{user_id}/{filename} -> /profile/picture/{user_id}/{filename}
+            format!("/profile/picture/{}", path_without_profile)
         } else {
             // Fallback for any non-standard object keys
             format!("/health/workout-media/{}", object_key)

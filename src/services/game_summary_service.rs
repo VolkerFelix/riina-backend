@@ -37,6 +37,19 @@ impl GameSummaryService {
         // Determine MVP and LVP across both teams
         let (mvp, lvp) = self.calculate_mvp_lvp(&player_contributions);
 
+        // Get profile picture URLs for MVP and LVP
+        let mvp_profile_picture_url = if let Some(ref mvp_player) = mvp {
+            self.get_user_profile_picture_url(mvp_player.user_id).await.unwrap_or(None)
+        } else {
+            None
+        };
+
+        let lvp_profile_picture_url = if let Some(ref lvp_player) = lvp {
+            self.get_user_profile_picture_url(lvp_player.user_id).await.unwrap_or(None)
+        } else {
+            None
+        };
+
         // Get game start and end times
         let game_start_date = game.game_start_time.unwrap_or(game.created_at);
         let game_end_date = game.game_end_time.unwrap_or(Utc::now());
@@ -55,10 +68,12 @@ impl GameSummaryService {
                 mvp_username,
                 mvp_team_id,
                 mvp_score_contribution,
+                mvp_profile_picture_url,
                 lvp_user_id,
                 lvp_username,
                 lvp_team_id,
                 lvp_score_contribution,
+                lvp_profile_picture_url,
                 home_team_avg_score_per_player,
                 home_team_total_workouts,
                 home_team_top_scorer_id,
@@ -76,7 +91,7 @@ impl GameSummaryService {
                 away_team_lowest_performer_username,
                 away_team_lowest_performer_points
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
             RETURNING *
             "#,
             game.id,
@@ -88,10 +103,12 @@ impl GameSummaryService {
             mvp.as_ref().map(|p| p.username.clone()),
             mvp.as_ref().map(|p| p.team_id),
             mvp.as_ref().map(|p| p.total_score),
+            mvp_profile_picture_url.as_deref(),
             lvp.as_ref().map(|p| p.user_id),
             lvp.as_ref().map(|p| p.username.clone()),
             lvp.as_ref().map(|p| p.team_id),
             lvp.as_ref().map(|p| p.total_score),
+            lvp_profile_picture_url.as_deref(),
             home_stats.avg_score_per_player,
             home_stats.total_workouts,
             home_stats.top_scorer.as_ref().map(|p| p.user_id),
@@ -292,7 +309,18 @@ impl GameSummaryService {
         let summary = sqlx::query_as!(
             GameSummary,
             r#"
-            SELECT * FROM game_summaries
+            SELECT 
+                id, game_id, final_home_score, final_away_score, game_start_date, game_end_date,
+                mvp_user_id, mvp_username, mvp_team_id, mvp_score_contribution, mvp_profile_picture_url,
+                lvp_user_id, lvp_username, lvp_team_id, lvp_score_contribution, lvp_profile_picture_url,
+                home_team_avg_score_per_player, home_team_total_workouts, home_team_top_scorer_id, 
+                home_team_top_scorer_username, home_team_top_scorer_points, home_team_lowest_performer_id, 
+                home_team_lowest_performer_username, home_team_lowest_performer_points,
+                away_team_avg_score_per_player, away_team_total_workouts, away_team_top_scorer_id, 
+                away_team_top_scorer_username, away_team_top_scorer_points, away_team_lowest_performer_id, 
+                away_team_lowest_performer_username, away_team_lowest_performer_points,
+                created_at, updated_at
+            FROM game_summaries
             WHERE game_id = $1
             "#,
             game_id
@@ -301,6 +329,18 @@ impl GameSummaryService {
         .await?;
 
         Ok(summary)
+    }
+
+    /// Get user profile picture URL by user ID
+    async fn get_user_profile_picture_url(&self, user_id: Uuid) -> Result<Option<String>, sqlx::Error> {
+        let result = sqlx::query!(
+            "SELECT profile_picture_url FROM users WHERE id = $1",
+            user_id
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(result.and_then(|row| row.profile_picture_url))
     }
 }
 

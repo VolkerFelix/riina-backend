@@ -131,11 +131,12 @@ pub async fn get_game_live_score(
             // Fetch scoring events from live_score_events table with workout details
             let scoring_events = sqlx::query!(
                 r#"
-                SELECT 
+                SELECT
                     lse.id, lse.user_id, lse.score_points,
                     lse.occurred_at, lse.event_type::text as "event_type!", lse.description,
                     lse.username, lse.team_id, lse.team_side, lse.workout_data_id,
                     lse.stamina_gained, lse.strength_gained,
+                    u.profile_picture_url as "profile_picture_url?",
                     wd.id as "workout_id?", wd.created_at as "workout_date?",
                     wd.workout_start as "workout_start?", wd.workout_end as "workout_end?",
                     wd.activity_name as "activity_name?",
@@ -144,6 +145,7 @@ pub async fn get_game_live_score(
                     wd.heart_rate_zones as "heart_rate_zones?",
                     wd.image_url as "image_url?", wd.video_url as "video_url?"
                 FROM live_score_events lse
+                LEFT JOIN users u ON u.id = lse.user_id
                 LEFT JOIN workout_data wd ON wd.id = lse.workout_data_id
                 WHERE lse.game_id = $1
                 ORDER BY lse.occurred_at DESC
@@ -164,6 +166,7 @@ pub async fn get_game_live_score(
                         "id": event.id,
                         "user_id": event.user_id,
                         "username": event.username,
+                        "profile_picture_url": event.profile_picture_url,
                         "team_id": event.team_id,
                         "team_side": event.team_side,
                         "score_points": event.score_points,
