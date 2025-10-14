@@ -634,6 +634,110 @@ pub async fn finish_ongoing_games(
     Ok(HttpResponse::Ok().json(response))
 }
 
+/// POST /admin/games/create-summaries - Create game summaries for evaluated games without summaries
+pub async fn create_missing_game_summaries(
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse> {
+    tracing::info!("Manual request to create game summaries for evaluated games");
+
+    // Get all evaluated games without summaries
+    let games_without_summaries = sqlx::query!(
+        r#"
+        SELECT
+            g.id, g.season_id, g.home_team_id, g.away_team_id,
+            g.week_number, g.is_first_leg, g.status as "status: crate::models::league::GameStatus",
+            g.winner_team_id,
+            g.created_at, g.updated_at,
+            g.home_score, g.away_score, g.game_start_time, g.game_end_time,
+            g.last_score_time, g.last_scorer_id, g.last_scorer_name, g.last_scorer_team
+        FROM games g
+        LEFT JOIN game_summaries gs ON g.id = gs.game_id
+        WHERE g.status = 'evaluated'
+        AND gs.id IS NULL
+        ORDER BY g.game_start_time ASC
+        "#
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to fetch games without summaries: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to fetch games")
+    })?;
+
+    if games_without_summaries.is_empty() {
+        let message = "No games found that need summaries";
+        tracing::info!("{}", message);
+
+        let response = serde_json::json!({
+            "success": true,
+            "summaries_created": 0,
+            "message": message
+        });
+        return Ok(HttpResponse::Ok().json(response));
+    }
+
+    let summary_service = crate::services::GameSummaryService::new(pool.get_ref().clone());
+    let mut summaries_created = 0;
+    let mut errors = Vec::new();
+
+    // Create summaries for each game
+    for game_record in &games_without_summaries {
+        let game = crate::models::league::LeagueGame {
+            id: game_record.id,
+            season_id: game_record.season_id,
+            home_team_id: game_record.home_team_id,
+            away_team_id: game_record.away_team_id,
+            week_number: game_record.week_number,
+            is_first_leg: game_record.is_first_leg,
+            status: game_record.status.clone(),
+            winner_team_id: game_record.winner_team_id,
+            created_at: game_record.created_at,
+            updated_at: game_record.updated_at,
+            home_score: game_record.home_score,
+            away_score: game_record.away_score,
+            game_start_time: game_record.game_start_time,
+            game_end_time: game_record.game_end_time,
+            last_score_time: game_record.last_score_time,
+            last_scorer_id: game_record.last_scorer_id,
+            last_scorer_name: game_record.last_scorer_name.clone(),
+            last_scorer_team: game_record.last_scorer_team.clone(),
+        };
+
+        match summary_service.create_game_summary(&game).await {
+            Ok(summary) => {
+                summaries_created += 1;
+                tracing::info!("✅ Created game summary for game {} (Week {})",
+                    game.id, game.week_number);
+                tracing::debug!("Summary details: MVP={:?}, LVP={:?}",
+                    summary.mvp_username, summary.lvp_username);
+            }
+            Err(e) => {
+                let error_msg = format!("Failed to create summary for game {}: {}", game.id, e);
+                tracing::error!("{}", error_msg);
+                errors.push(error_msg);
+            }
+        }
+    }
+
+    let message = if errors.is_empty() {
+        format!("Successfully created {} game summaries", summaries_created)
+    } else {
+        format!("Created {} game summaries with {} errors", summaries_created, errors.len())
+    };
+
+    tracing::info!("{}", message);
+
+    let response = serde_json::json!({
+        "success": errors.is_empty(),
+        "summaries_created": summaries_created,
+        "total_games_processed": games_without_summaries.len(),
+        "errors": errors,
+        "message": message
+    });
+
+    Ok(HttpResponse::Ok().json(response))
+}
+
 /// POST /admin/games/evaluate - Manually trigger game evaluation for a specific date
 pub async fn evaluate_games_for_date(
     pool: web::Data<PgPool>,

@@ -109,7 +109,11 @@ pub fn init_admin_routes(cfg: &mut web::ServiceConfig) {
                 web::resource("/games/finish-ongoing")
                     .route(web::post().to(game_management_handler::finish_ongoing_games))
             )
-            
+            .service(
+                web::resource("/games/create-summaries")
+                    .route(web::post().to(game_management_handler::create_missing_game_summaries))
+            )
+
             // Workout management routes
             .service(
                 web::resource("/workouts")
