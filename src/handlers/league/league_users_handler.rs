@@ -27,6 +27,7 @@ pub struct LeagueUserWithStats {
     pub rank: i32,
     pub avatar_style: String,
     pub is_online: bool,
+    pub profile_picture_url: Option<String>,
 }
 
 // Using PlayerStats from common module instead of duplicate PlayerStats
@@ -133,10 +134,11 @@ pub async fn get_league_users_with_stats(
         // First, get all users with their basic stats
         match sqlx::query!(
             r#"
-            SELECT 
+            SELECT
                 u.id as user_id,
                 u.username,
                 u.email,
+                u.profile_picture_url,
                 tm.team_id as team_id,
                 t.team_name as team_name,
                 tm.role as team_role,
@@ -151,9 +153,9 @@ pub async fn get_league_users_with_stats(
             INNER JOIN team_members tm ON u.id = tm.user_id AND tm.status = 'active'
             INNER JOIN teams t ON tm.team_id = t.id
             LEFT JOIN user_avatars ua ON u.id = ua.user_id
-            ORDER BY 
+            ORDER BY
                 t.team_name ASC,
-                CASE tm.role 
+                CASE tm.role
                     WHEN 'owner' THEN 1
                     WHEN 'admin' THEN 2
                     WHEN 'member' THEN 3
@@ -186,7 +188,7 @@ pub async fn get_league_users_with_stats(
                 // Create a list of users with their trailing averages for sorting
                 let mut users_with_trailing: Vec<(LeagueUserWithStats, f32)> = users.into_iter().map(|row| {
                     let trailing_avg = trailing_averages.get(&row.user_id).copied().unwrap_or(0.0);
-                    
+
                     let user_stats = LeagueUserWithStats {
                         user_id: row.user_id,
                         username: row.username,
@@ -210,8 +212,9 @@ pub async fn get_league_users_with_stats(
                         rank: 0, // Will be set after sorting
                         avatar_style: row.avatar_style.unwrap_or_else(|| "warrior".to_string()),
                         is_online: row.is_online.unwrap_or(false),
+                        profile_picture_url: row.profile_picture_url,
                     };
-                    
+
                     (user_stats, trailing_avg)
                 }).collect();
                 
@@ -237,7 +240,7 @@ pub async fn get_league_users_with_stats(
         match sqlx::query!(
             r#"
             WITH user_rankings AS (
-                SELECT 
+                SELECT
                     u.id as user_id,
                     COALESCE(ua.stamina + ua.strength, 0.0) as total_stats,
                     ROW_NUMBER() OVER (ORDER BY COALESCE(ua.stamina + ua.strength, 0.0) DESC) as rank
@@ -245,10 +248,11 @@ pub async fn get_league_users_with_stats(
                 INNER JOIN team_members tm ON u.id = tm.user_id AND tm.status = 'active'
                 LEFT JOIN user_avatars ua ON u.id = ua.user_id
             )
-            SELECT 
+            SELECT
                 u.id as user_id,
                 u.username,
                 u.email,
+                u.profile_picture_url,
                 tm.team_id as team_id,
                 t.team_name as team_name,
                 tm.role as team_role,
@@ -265,10 +269,10 @@ pub async fn get_league_users_with_stats(
             INNER JOIN teams t ON tm.team_id = t.id
             LEFT JOIN user_avatars ua ON u.id = ua.user_id
             LEFT JOIN user_rankings ur ON u.id = ur.user_id
-            ORDER BY 
+            ORDER BY
                 COALESCE(ur.rank, 999) ASC,
                 t.team_name ASC,
-                CASE tm.role 
+                CASE tm.role
                     WHEN 'owner' THEN 1
                     WHEN 'admin' THEN 2
                     WHEN 'member' THEN 3
@@ -322,6 +326,7 @@ pub async fn get_league_users_with_stats(
                         rank: row.rank.unwrap_or(999) as i32,
                         avatar_style: row.avatar_style.unwrap_or_else(|| "warrior".to_string()),
                         is_online: row.is_online.unwrap_or(false),
+                        profile_picture_url: row.profile_picture_url,
                     }
                 }).collect()
             }
