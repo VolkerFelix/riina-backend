@@ -341,10 +341,12 @@ pub struct GameSummary {
     pub mvp_username: Option<String>,
     pub mvp_team_id: Option<Uuid>,
     pub mvp_score_contribution: Option<i32>,
+    pub mvp_profile_picture_url: Option<String>,
     pub lvp_user_id: Option<Uuid>,
     pub lvp_username: Option<String>,
     pub lvp_team_id: Option<Uuid>,
     pub lvp_score_contribution: Option<i32>,
+    pub lvp_profile_picture_url: Option<String>,
 
     // Home Team Statistics
     pub home_team_avg_score_per_player: Option<f32>,
