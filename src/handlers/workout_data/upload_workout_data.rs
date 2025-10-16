@@ -144,6 +144,27 @@ pub async fn upload_workout_data(
         }
     };
 
+    // Create a post for this workout
+    match sqlx::query!(
+        r#"
+        INSERT INTO posts (id, user_id, post_type, workout_id, visibility, is_editable, created_at, updated_at)
+        VALUES (gen_random_uuid(), $1, 'workout'::post_type, $2, 'public'::post_visibility, true, $3, $3)
+        "#,
+        user_id,
+        sync_id,
+        data.workout_start
+    )
+    .execute(pool.get_ref())
+    .await {
+        Ok(_) => {
+            tracing::debug!("✅ Successfully created post for workout {}", sync_id);
+        }
+        Err(e) => {
+            tracing::error!("❌ Failed to create post for workout {}: {}", sync_id, e);
+            // Don't fail the entire workout upload if post creation fails
+        }
+    }
+
     // Get user health profile
     let user_health_profile = get_user_health_profile_details(&pool, user_id).await.unwrap();
     let heart_rate_zones = user_health_profile.stored_heart_rate_zones.clone().unwrap_or(
