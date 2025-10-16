@@ -11,6 +11,7 @@ pub mod workout_sync;
 pub mod admin;
 pub mod social;
 pub mod feed;
+pub mod posts;
 
 use crate::middleware::auth::AuthMiddleware;
 
@@ -97,5 +98,12 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
         web::scope("/feed")
             .wrap(AuthMiddleware)
             .configure(feed::init_feed_routes)
+    );
+
+    // Posts routes (require authentication)
+    cfg.service(
+        web::scope("/posts")
+            .wrap(AuthMiddleware)
+            .configure(posts::init_posts_routes)
     );
 }
