@@ -340,17 +340,22 @@ pub async fn get_post(
 
     let post_id = post_id.into_inner();
 
-    // Simplified: Just return the basic post data without social counts
-    // Social counts can be fetched separately if needed
+    // Fetch post with workout data if applicable
     let result = sqlx::query(
         r#"
         SELECT
             p.id, p.user_id, p.post_type::text, p.content, p.workout_id,
             p.image_urls, p.video_urls, p.ad_metadata, p.visibility::text,
             p.is_editable, p.created_at, p.updated_at, p.edited_at,
-            u.username, u.profile_picture_url
+            u.username, u.profile_picture_url,
+            wd.workout_start, wd.workout_end, wd.duration_minutes,
+            wd.calories_burned, wd.activity_name, wd.avg_heart_rate,
+            wd.max_heart_rate, wd.heart_rate_zones, wd.stamina_gained,
+            wd.strength_gained, wd.total_points_gained,
+            wd.image_url as workout_image_url, wd.video_url as workout_video_url
         FROM posts p
         JOIN users u ON u.id = p.user_id
+        LEFT JOIN workout_data wd ON wd.id = p.workout_id
         WHERE p.id = $1
         "#
     )
@@ -360,6 +365,27 @@ pub async fn get_post(
 
     match result {
         Ok(Some(row)) => {
+            // Build workout_data if this is a workout post
+            let workout_data = if row.try_get::<Option<Uuid>, _>("workout_id").ok().flatten().is_some() {
+                Some(json!({
+                    "workout_start": row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("workout_start").ok().flatten(),
+                    "workout_end": row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("workout_end").ok().flatten(),
+                    "duration_minutes": row.try_get::<Option<i32>, _>("duration_minutes").ok().flatten(),
+                    "calories_burned": row.try_get::<Option<i32>, _>("calories_burned").ok().flatten(),
+                    "activity_name": row.try_get::<Option<String>, _>("activity_name").ok().flatten(),
+                    "avg_heart_rate": row.try_get::<Option<f32>, _>("avg_heart_rate").ok().flatten(),
+                    "max_heart_rate": row.try_get::<Option<f32>, _>("max_heart_rate").ok().flatten(),
+                    "heart_rate_zones": row.try_get::<Option<serde_json::Value>, _>("heart_rate_zones").ok().flatten(),
+                    "stamina_gained": row.try_get::<f32, _>("stamina_gained").ok(),
+                    "strength_gained": row.try_get::<f32, _>("strength_gained").ok(),
+                    "total_points_gained": row.try_get::<i32, _>("total_points_gained").ok(),
+                    "image_url": row.try_get::<Option<String>, _>("workout_image_url").ok().flatten(),
+                    "video_url": row.try_get::<Option<String>, _>("workout_video_url").ok().flatten(),
+                }))
+            } else {
+                None
+            };
+
             // Build JSON response manually from row
             HttpResponse::Ok().json(json!({
                 "success": true,
@@ -371,6 +397,7 @@ pub async fn get_post(
                     "post_type": row.try_get::<String, _>("post_type").ok(),
                     "content": row.try_get::<Option<String>, _>("content").ok().flatten(),
                     "workout_id": row.try_get::<Option<Uuid>, _>("workout_id").ok().flatten(),
+                    "workout_data": workout_data,
                     "image_urls": row.try_get::<Option<Vec<String>>, _>("image_urls").ok().flatten(),
                     "video_urls": row.try_get::<Option<Vec<String>>, _>("video_urls").ok().flatten(),
                     "ad_metadata": row.try_get::<Option<serde_json::Value>, _>("ad_metadata").ok().flatten(),
@@ -379,6 +406,9 @@ pub async fn get_post(
                     "created_at": row.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at").ok(),
                     "updated_at": row.try_get::<chrono::DateTime<chrono::Utc>, _>("updated_at").ok(),
                     "edited_at": row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("edited_at").ok().flatten(),
+                    "reaction_count": 0,
+                    "comment_count": 0,
+                    "user_has_reacted": false
                 }
             }))
         }
