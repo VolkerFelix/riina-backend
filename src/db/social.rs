@@ -235,7 +235,7 @@ pub async fn get_workout_comments(
             COALESCE(BOOL_OR(cr.user_id = $4), false) as user_reacted
         FROM post_comments c
         INNER JOIN users u ON u.id = c.user_id
-        LEFT JOIN comment_reactions cr ON cr.comment_id = c.id AND cr.reaction_type = 'fire'
+        LEFT JOIN post_comment_reactions cr ON cr.comment_id = c.id AND cr.reaction_type = 'fire'
         WHERE c.workout_id = $1 AND c.parent_id IS NULL
         GROUP BY c.id, c.user_id, u.username, c.workout_id, c.parent_id, c.content, c.is_edited, c.created_at, c.updated_at
         ORDER BY c.created_at DESC
@@ -284,7 +284,7 @@ pub async fn get_workout_comments(
                 COALESCE(BOOL_OR(cr.user_id = $2), false) as user_reacted
             FROM post_comments c
             INNER JOIN users u ON u.id = c.user_id
-            LEFT JOIN comment_reactions cr ON cr.comment_id = c.id AND cr.reaction_type = 'fire'
+            LEFT JOIN post_comment_reactions cr ON cr.comment_id = c.id AND cr.reaction_type = 'fire'
             WHERE c.parent_id = $1
             GROUP BY c.id, c.user_id, u.username, c.workout_id, c.parent_id, c.content, c.is_edited, c.created_at, c.updated_at
             ORDER BY c.created_at ASC
@@ -378,7 +378,7 @@ pub async fn create_comment_reaction(
 ) -> Result<CommentReaction, sqlx::Error> {
     let reaction = sqlx::query_as::<_, CommentReaction>(
         r#"
-        INSERT INTO comment_reactions (user_id, comment_id, reaction_type)
+        INSERT INTO post_comment_reactions (user_id, comment_id, reaction_type)
         VALUES ($1, $2, $3)
         ON CONFLICT (user_id, comment_id)
         DO UPDATE SET reaction_type = $3, created_at = NOW()
@@ -424,7 +424,7 @@ pub async fn get_comment_reactions(
         SELECT
             COALESCE(COUNT(cr.id), 0) as fire_count,
             COALESCE(BOOL_OR(cr.user_id = $2), false) as user_reacted
-        FROM comment_reactions cr
+        FROM post_comment_reactions cr
         WHERE cr.comment_id = $1 AND cr.reaction_type = 'fire'
         "#,
     )
@@ -454,7 +454,7 @@ pub async fn get_comment_reaction_users(
                 u.username,
                 cr.reaction_type,
                 cr.created_at
-            FROM comment_reactions cr
+            FROM post_comment_reactions cr
             INNER JOIN users u ON u.id = cr.user_id
             WHERE cr.comment_id = $1 AND cr.reaction_type = $2
             ORDER BY cr.created_at DESC
@@ -471,7 +471,7 @@ pub async fn get_comment_reaction_users(
                 u.username,
                 cr.reaction_type,
                 cr.created_at
-            FROM comment_reactions cr
+            FROM post_comment_reactions cr
             INNER JOIN users u ON u.id = cr.user_id
             WHERE cr.comment_id = $1
             ORDER BY cr.created_at DESC
