@@ -425,3 +425,112 @@ pub async fn get_post(
         }
     }
 }
+
+/// Get a post by workout ID
+#[tracing::instrument(
+    name = "Get post by workout ID",
+    skip(pool, claims),
+    fields(username = %claims.username, workout_id = %workout_id)
+)]
+pub async fn get_post_by_workout_id(
+    pool: web::Data<PgPool>,
+    claims: web::ReqData<Claims>,
+    workout_id: web::Path<Uuid>,
+) -> HttpResponse {
+    let current_user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(e) => {
+            tracing::error!("Failed to parse user ID: {}", e);
+            return HttpResponse::BadRequest().json(
+                ApiResponse::<()>::error("Invalid user ID")
+            );
+        }
+    };
+
+    let workout_id = workout_id.into_inner();
+
+    // Fetch post with workout data
+    let result = sqlx::query(
+        r#"
+        SELECT
+            p.id, p.user_id, p.post_type::text, p.content, p.workout_id,
+            p.image_urls, p.video_urls, p.ad_metadata, p.visibility::text,
+            p.is_editable, p.created_at, p.updated_at, p.edited_at,
+            u.username, u.profile_picture_url,
+            wd.workout_start, wd.workout_end, wd.duration_minutes,
+            wd.calories_burned, wd.activity_name, wd.avg_heart_rate,
+            wd.max_heart_rate, wd.heart_rate_zones, wd.stamina_gained,
+            wd.strength_gained, wd.total_points_gained,
+            wd.image_url as workout_image_url, wd.video_url as workout_video_url
+        FROM posts p
+        JOIN users u ON u.id = p.user_id
+        LEFT JOIN workout_data wd ON wd.id = p.workout_id
+        WHERE p.workout_id = $1 AND p.user_id = $2
+        "#
+    )
+    .bind(workout_id)
+    .bind(current_user_id)
+    .fetch_optional(&**pool)
+    .await;
+
+    match result {
+        Ok(Some(row)) => {
+            // Build workout data if available
+            let workout_data = if row.try_get::<Option<Uuid>, _>("workout_id").ok().flatten().is_some() {
+                Some(json!({
+                    "workout_start": row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("workout_start").ok().flatten(),
+                    "workout_end": row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("workout_end").ok().flatten(),
+                    "duration_minutes": row.try_get::<Option<i32>, _>("duration_minutes").ok().flatten(),
+                    "calories_burned": row.try_get::<Option<f64>, _>("calories_burned").ok().flatten(),
+                    "activity_name": row.try_get::<Option<String>, _>("activity_name").ok().flatten(),
+                    "avg_heart_rate": row.try_get::<Option<f64>, _>("avg_heart_rate").ok().flatten(),
+                    "max_heart_rate": row.try_get::<Option<f64>, _>("max_heart_rate").ok().flatten(),
+                    "heart_rate_zones": row.try_get::<Option<serde_json::Value>, _>("heart_rate_zones").ok().flatten(),
+                    "stamina_gained": row.try_get::<Option<f64>, _>("stamina_gained").ok().flatten(),
+                    "strength_gained": row.try_get::<Option<f64>, _>("strength_gained").ok().flatten(),
+                    "image_url": row.try_get::<Option<String>, _>("workout_image_url").ok().flatten(),
+                    "video_url": row.try_get::<Option<String>, _>("workout_video_url").ok().flatten()
+                }))
+            } else {
+                None
+            };
+
+            // Build JSON response manually from row
+            HttpResponse::Ok().json(json!({
+                "success": true,
+                "data": {
+                    "id": row.try_get::<Uuid, _>("id").ok(),
+                    "user_id": row.try_get::<Uuid, _>("user_id").ok(),
+                    "username": row.try_get::<String, _>("username").ok(),
+                    "profile_picture_url": row.try_get::<Option<String>, _>("profile_picture_url").ok().flatten(),
+                    "post_type": row.try_get::<String, _>("post_type").ok(),
+                    "content": row.try_get::<Option<String>, _>("content").ok().flatten(),
+                    "workout_id": row.try_get::<Option<Uuid>, _>("workout_id").ok().flatten(),
+                    "workout_data": workout_data,
+                    "image_urls": row.try_get::<Option<Vec<String>>, _>("image_urls").ok().flatten(),
+                    "video_urls": row.try_get::<Option<Vec<String>>, _>("video_urls").ok().flatten(),
+                    "ad_metadata": row.try_get::<Option<serde_json::Value>, _>("ad_metadata").ok().flatten(),
+                    "visibility": row.try_get::<String, _>("visibility").ok(),
+                    "is_editable": row.try_get::<bool, _>("is_editable").ok(),
+                    "created_at": row.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at").ok(),
+                    "updated_at": row.try_get::<chrono::DateTime<chrono::Utc>, _>("updated_at").ok(),
+                    "edited_at": row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("edited_at").ok().flatten(),
+                    "reaction_count": 0,
+                    "comment_count": 0,
+                    "user_has_reacted": false
+                }
+            }))
+        }
+        Ok(None) => {
+            HttpResponse::NotFound().json(
+                ApiResponse::<()>::error("Post not found for this workout")
+            )
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch post by workout ID: {}", e);
+            HttpResponse::InternalServerError().json(
+                ApiResponse::<()>::error("Failed to fetch post")
+            )
+        }
+    }
+}
