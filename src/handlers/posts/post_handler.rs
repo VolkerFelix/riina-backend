@@ -140,14 +140,14 @@ pub async fn update_post(
     let post_id = post_id.into_inner();
 
     // Check if post exists and belongs to user
-    let post = match sqlx::query_as::<_, (Uuid, bool, String)>(
-        "SELECT user_id, is_editable, post_type::text FROM posts WHERE id = $1"
+    let post = match sqlx::query_as::<_, (Uuid, bool, String, Option<Uuid>)>(
+        "SELECT user_id, is_editable, post_type::text, workout_id FROM posts WHERE id = $1"
     )
     .bind(post_id)
     .fetch_optional(&**pool)
     .await
     {
-        Ok(Some((user_id_db, is_editable, post_type))) => (user_id_db, is_editable, post_type),
+        Ok(Some((user_id_db, is_editable, post_type, workout_id))) => (user_id_db, is_editable, post_type, workout_id),
         Ok(None) => {
             return HttpResponse::NotFound().json(
                 ApiResponse::<()>::error("Post not found")
@@ -186,6 +186,7 @@ pub async fn update_post(
     let now = Utc::now();
     let visibility_str = body.visibility.as_ref().map(|v| v.as_str());
 
+    // Update the post
     let result = sqlx::query(
         r#"
         UPDATE posts
@@ -207,6 +208,23 @@ pub async fn update_post(
     .bind(post_id)
     .execute(&**pool)
     .await;
+
+    // If it's a workout post and activity_name is provided, update the workout
+    if post.2 == "workout" && body.activity_name.is_some() {
+        if let Some(workout_id) = post.3 {
+            let _ = sqlx::query(
+                r#"
+                UPDATE workout_data
+                SET activity_name = $1
+                WHERE id = $2
+                "#
+            )
+            .bind(body.activity_name.as_ref())
+            .bind(workout_id)
+            .execute(&**pool)
+            .await;
+        }
+    }
 
     match result {
         Ok(_) => {

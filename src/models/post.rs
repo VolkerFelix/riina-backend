@@ -95,6 +95,7 @@ pub struct UpdatePostRequest {
     pub image_urls: Option<Vec<String>>,
     pub video_urls: Option<Vec<String>>,
     pub visibility: Option<PostVisibility>,
+    pub activity_name: Option<String>, // For workout posts
 }
 
 // Feed query params
