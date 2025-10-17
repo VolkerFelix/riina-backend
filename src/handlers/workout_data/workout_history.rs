@@ -27,13 +27,13 @@ pub struct WorkoutHistoryItem {
     pub image_url: Option<String>,
     pub video_url: Option<String>,
     // Post information for editing
-    pub post_id: Option<Uuid>,
+    pub post_id: Uuid,
     pub post_content: Option<String>,
-    pub post_visibility: Option<String>,
-    pub post_is_editable: Option<bool>,
-    pub post_created_at: Option<DateTime<Utc>>,
-    pub post_updated_at: Option<DateTime<Utc>>,
-    pub post_edited_at: Option<DateTime<Utc>>,
+    pub post_visibility: String,
+    pub post_is_editable: bool,
+    pub post_created_at: DateTime<Utc>,
+    pub post_updated_at: DateTime<Utc>,
+    pub post_edited_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -111,13 +111,13 @@ pub async fn get_workout_history(
             wd.video_url,
             p.id as post_id,
             p.content,
-            p.visibility,
+            p.visibility::text as post_visibility,
             p.is_editable,
             p.created_at as post_created_at,
-            p.updated_at as post_updated_at,
-            p.edited_at as post_edited_at
+            COALESCE(p.updated_at, p.created_at) as post_updated_at,
+            COALESCE(p.edited_at, p.created_at) as post_edited_at
         FROM workout_data wd
-        LEFT JOIN posts p ON p.workout_id = wd.id AND p.user_id = wd.user_id
+        INNER JOIN posts p ON p.workout_id = wd.id AND p.user_id = wd.user_id
         WHERE wd.user_id = $1
         AND (wd.calories_burned > 100 OR wd.heart_rate_data IS NOT NULL)
         ORDER BY COALESCE(wd.workout_start, wd.created_at) DESC
@@ -179,11 +179,11 @@ pub async fn get_workout_history(
                     // Post information
                     post_id: row.post_id,
                     post_content: row.content,
-                    post_visibility: row.visibility,
+                    post_visibility: row.post_visibility.unwrap(),
                     post_is_editable: row.is_editable,
                     post_created_at: row.post_created_at,
-                    post_updated_at: row.post_updated_at,
-                    post_edited_at: row.post_edited_at,
+                    post_updated_at: row.post_updated_at.unwrap(),
+                    post_edited_at: row.post_edited_at.unwrap(),
                 }
             }).collect()
         },

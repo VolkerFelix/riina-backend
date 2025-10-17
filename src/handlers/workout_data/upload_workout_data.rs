@@ -144,7 +144,7 @@ pub async fn upload_workout_data(
         }
     };
 
-    // Create a post for this workout
+    // Create a post for this workout (mandatory)
     match sqlx::query!(
         r#"
         INSERT INTO posts (id, user_id, post_type, workout_id, visibility, is_editable, created_at, updated_at)
@@ -157,11 +157,13 @@ pub async fn upload_workout_data(
     .execute(pool.get_ref())
     .await {
         Ok(_) => {
-            tracing::debug!("✅ Successfully created post for workout {}", sync_id);
+            tracing::info!("✅ Successfully created post for workout {}", sync_id);
         }
         Err(e) => {
             tracing::error!("❌ Failed to create post for workout {}: {}", sync_id, e);
-            // Don't fail the entire workout upload if post creation fails
+            return HttpResponse::InternalServerError().json(
+                ApiResponse::<()>::error("Failed to create post for workout")
+            );
         }
     }
 
