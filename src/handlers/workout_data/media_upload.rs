@@ -153,11 +153,11 @@ pub async fn confirm_upload(
                     let extension = get_file_extension(&request.object_key).to_lowercase();
                     let is_image = matches!(extension.as_str(), "jpg" | "jpeg" | "png" | "gif");
                     
-                    // Update the workout_data table
+                    // Update the post table with media URL
                     let update_query = if is_image {
-                        "UPDATE workout_data SET image_url = $1 WHERE id = $2 AND user_id = $3"
+                        "UPDATE posts SET image_urls = array_append(COALESCE(image_urls, '{}'), $1) WHERE workout_id = $2 AND user_id = $3"
                     } else {
-                        "UPDATE workout_data SET video_url = $1 WHERE id = $2 AND user_id = $3"
+                        "UPDATE posts SET video_urls = array_append(COALESCE(video_urls, '{}'), $1) WHERE workout_id = $2 AND user_id = $3"
                     };
                     
                     match sqlx::query(update_query)
@@ -169,14 +169,14 @@ pub async fn confirm_upload(
                     {
                         Ok(result) => {
                             if result.rows_affected() > 0 {
-                                tracing::info!("✅ Updated workout {} with {} URL: {}", 
+                                tracing::info!("✅ Updated post for workout {} with {} URL: {}", 
                                              workout_uuid, if is_image { "image" } else { "video" }, file_url);
                             } else {
-                                tracing::warn!("⚠️ No workout found with ID {} for user {}", workout_uuid, user_id);
+                                tracing::warn!("⚠️ No post found for workout {} and user {}", workout_uuid, user_id);
                             }
                         }
                         Err(e) => {
-                            tracing::error!("❌ Failed to update workout with media URL: {}", e);
+                            tracing::error!("❌ Failed to update post with media URL: {}", e);
                             // Continue anyway, don't fail the upload
                         }
                     }

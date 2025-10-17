@@ -85,11 +85,9 @@ pub async fn insert_workout_data(
             strength_gained,
             total_points_gained,
             activity_name,
-            image_url,
-            video_url,
             visibility
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
         RETURNING id
         "#,
         user_id,
@@ -108,8 +106,6 @@ pub async fn insert_workout_data(
         workout_stats.changes.strength_change,
         (workout_stats.changes.stamina_change + workout_stats.changes.strength_change) as i32,
         data.activity_name.as_deref(),
-        data.image_url.as_deref(),
-        data.video_url.as_deref(),
         "public"  // Default visibility for all workouts
     )
     .fetch_one(pool)

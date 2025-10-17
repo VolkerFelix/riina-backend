@@ -23,9 +23,6 @@ pub struct WorkoutHistoryItem {
     // Game stats gained from this workout
     pub stamina_gained: f32,
     pub strength_gained: f32,
-    // Media attachments
-    pub image_url: Option<String>,
-    pub video_url: Option<String>,
     // Post information for editing
     pub post_id: Uuid,
     pub post_content: Option<String>,
@@ -107,8 +104,6 @@ pub async fn get_workout_history(
             wd.heart_rate_zones,
             COALESCE(wd.stamina_gained, 0.0) as stamina_gained,
             COALESCE(wd.strength_gained, 0.0) as strength_gained,
-            wd.image_url,
-            wd.video_url,
             p.id as post_id,
             p.content,
             p.visibility::text as post_visibility,
@@ -174,8 +169,6 @@ pub async fn get_workout_history(
                     heart_rate_data,
                     stamina_gained: row.stamina_gained.unwrap_or(0.0),
                     strength_gained: row.strength_gained.unwrap_or(0.0),
-                    image_url: row.image_url,
-                    video_url: row.video_url,
                     // Post information
                     post_id: row.post_id,
                     post_content: row.content,

@@ -144,20 +144,22 @@ pub async fn upload_workout_data(
         }
     };
 
-    // Create a post for this workout (mandatory)
+    // Create a post for this workout with media files (mandatory)
     match sqlx::query!(
         r#"
-        INSERT INTO posts (id, user_id, post_type, workout_id, visibility, is_editable, created_at, updated_at)
-        VALUES (gen_random_uuid(), $1, 'workout'::post_type, $2, 'public'::post_visibility, true, $3, $3)
+        INSERT INTO posts (id, user_id, post_type, workout_id, image_urls, video_urls, visibility, is_editable, created_at, updated_at)
+        VALUES (gen_random_uuid(), $1, 'workout'::post_type, $2, $3, $4, 'public'::post_visibility, true, $5, $5)
         "#,
         user_id,
         sync_id,
+        data.image_urls.as_deref(),
+        data.video_urls.as_deref(),
         data.workout_start
     )
     .execute(pool.get_ref())
     .await {
         Ok(_) => {
-            tracing::info!("✅ Successfully created post for workout {}", sync_id);
+            tracing::info!("✅ Successfully created post for workout {} with media", sync_id);
         }
         Err(e) => {
             tracing::error!("❌ Failed to create post for workout {}: {}", sync_id, e);
