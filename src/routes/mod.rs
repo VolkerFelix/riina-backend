@@ -12,6 +12,7 @@ pub mod admin;
 pub mod social;
 pub mod feed;
 pub mod posts;
+pub mod media;
 
 use crate::middleware::auth::AuthMiddleware;
 
@@ -105,5 +106,12 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
         web::scope("/posts")
             .wrap(AuthMiddleware)
             .configure(posts::init_posts_routes)
+    );
+
+    // Media routes (require authentication)
+    cfg.service(
+        web::scope("/media")
+            .wrap(AuthMiddleware)
+            .configure(media::init_media_routes)
     );
 }

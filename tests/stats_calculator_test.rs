@@ -63,8 +63,8 @@ async fn test_zone_1_active_recovery() {
         heart_rate: Some(heart_rate_data),
         calories_burned: Some(150),
         activity_name: None,
-        image_url: None,
-        video_url: None,
+        image_urls: None,
+        video_urls: None,
         approval_token: None,
     };
 
@@ -134,8 +134,8 @@ async fn test_zone_2_aerobic_base() {
         heart_rate: Some(heart_rate_data),
         calories_burned: Some(225),
         activity_name: None,
-        image_url: None,
-        video_url: None,
+        image_urls: None,
+        video_urls: None,
         approval_token: None,
     };
 
@@ -206,8 +206,8 @@ async fn test_zone_4_lactate_threshold() {
         heart_rate: Some(heart_rate_data),
         calories_burned: Some(300),
         activity_name: None,
-        image_url: None,
-        video_url: None,
+        image_urls: None,
+        video_urls: None,
         approval_token: None,
     };
 
@@ -278,8 +278,8 @@ async fn test_zone_5_neuromuscular_power() {
         heart_rate: Some(heart_rate_data),
         calories_burned: Some(400),
         activity_name: None,
-        image_url: None,
-        video_url: None,
+        image_urls: None,
+        video_urls: None,
         approval_token: None,
     };
 
@@ -339,8 +339,8 @@ async fn test_no_heart_rate_no_gains() {
         heart_rate: None,
         calories_burned: Some(200),
         activity_name: None,
-        image_url: None,
-        video_url: None,
+        image_urls: None,
+        video_urls: None,
         approval_token: None,
     };
 

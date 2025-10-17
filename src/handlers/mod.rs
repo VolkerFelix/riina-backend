@@ -8,3 +8,4 @@ pub mod admin;
 pub mod social;
 pub mod feed;
 pub mod posts;
+pub mod media;

@@ -1,6 +1,6 @@
 use actix_web::{post, get, web, HttpResponse};
 use crate::handlers::workout_data::upload_workout_data::upload_workout_data;
-use crate::handlers::workout_data::media_upload::{request_upload_signed_url, confirm_upload, get_download_signed_url, UploadUrlRequest, ConfirmUploadRequest};
+use crate::handlers::media::media_upload::{request_upload_signed_url, confirm_upload, get_download_signed_url, UploadUrlRequest, ConfirmUploadRequest};
 use crate::middleware::auth::Claims;
 use crate::models::workout_data::WorkoutDataUploadRequest;
 use crate::services::MinIOService;
@@ -32,9 +32,8 @@ async fn confirm_upload_handler(
     request: web::Json<ConfirmUploadRequest>,
     claims: web::ReqData<Claims>,
     minio_service: web::Data<MinIOService>,
-    pool: web::Data<sqlx::PgPool>
 ) -> HttpResponse {
-    confirm_upload(request, claims, minio_service, pool).await
+    confirm_upload(request, claims, minio_service).await
 }
 
 #[get("/workout-media-url/{user_id}/{filename}")]

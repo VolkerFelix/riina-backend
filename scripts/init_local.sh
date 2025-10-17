@@ -80,32 +80,19 @@ clean_up() {
     echo -e "${YELLOW}Cleaning up PostgreSQL, Redis and MinIO containers...${NC}"
     
     # Stop and remove containers if they exist
-    if [ "$(docker ps -aq -f name=riina-postgres-test)" ]; then
-        docker stop riina-postgres-test 2>/dev/null || true
-        docker rm riina-postgres-test 2>/dev/null || true
+    if [ "$(docker ps -aq -f name=riina-postgres)" ]; then
+        docker stop riina-postgres 2>/dev/null || true
+        docker rm riina-postgres 2>/dev/null || true
     fi
     
-    if [ "$(docker ps -aq -f name=riina-redis-test)" ]; then
-        docker stop riina-redis-test 2>/dev/null || true
-        docker rm riina-redis-test 2>/dev/null || true
+    if [ "$(docker ps -aq -f name=riina-redis)" ]; then
+        docker stop riina-redis 2>/dev/null || true
+        docker rm riina-redis 2>/dev/null || true
     fi
 
-    if [ "$(docker ps -aq -f name=riina-minio-test)" ]; then
-        docker stop riina-minio-test 2>/dev/null || true
-        docker rm riina-minio-test 2>/dev/null || true
-    fi
-
-    # Remove volumes if they exist
-    if [ "$(docker volume ls -q -f name=riina-postgres-test-data)" ]; then
-        docker volume rm riina-postgres-test-data 2>/dev/null || true
-    fi
-    
-    if [ "$(docker volume ls -q -f name=riina-redis-test-data)" ]; then
-        docker volume rm riina-redis-test-data 2>/dev/null || true
-    fi
-
-    if [ "$(docker volume ls -q -f name=riina-minio-test-data)" ]; then
-        docker volume rm riina-minio-test-data 2>/dev/null || true
+    if [ "$(docker ps -aq -f name=riina-minio)" ]; then
+        docker stop riina-minio 2>/dev/null || true
+        docker rm riina-minio 2>/dev/null || true
     fi
 }
 
