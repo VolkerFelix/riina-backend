@@ -183,10 +183,21 @@ pub async fn get_download_signed_url(
     }
 
     // All authenticated users can access all files (as requested)
-    let object_key = format!("media/{}/{}", user_id_str, filename);
-    
+    // Try new format first (media/), then fall back to legacy format (users/)
+    let new_object_key = format!("media/{}/{}", user_id_str, filename);
+    let legacy_object_key = format!("users/{}/{}", user_id_str, filename);
+
+    // Try to get file from new location first, then legacy location
+    let (object_key, get_result) = match minio_service.get_file(&new_object_key).await {
+        Ok(result) => (new_object_key, Ok(result)),
+        Err(_) => {
+            tracing::debug!("🔍 File not found at new location, trying legacy location: {}", legacy_object_key);
+            (legacy_object_key.clone(), minio_service.get_file(&legacy_object_key).await)
+        }
+    };
+
     // Check if file exists and get its hash
-    match minio_service.get_file(&object_key).await {
+    match get_result {
         Ok((contents, _content_type)) => {
             // Calculate file hash for integrity verification
             let mut hasher = Sha256::new();
