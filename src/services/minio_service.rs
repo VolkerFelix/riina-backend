@@ -212,6 +212,9 @@ impl MinIOService {
         } else if let Some(path_without_profile) = object_key.strip_prefix("profile-pictures/") {
             // Profile pictures: profile-pictures/{user_id}/{filename} -> /profile/picture/{user_id}/{filename}
             format!("/profile/picture/{}", path_without_profile)
+        } else if let Some(path_without_media) = object_key.strip_prefix("media/") {
+            // Media files: media/{user_id}/{filename} -> {user_id}/{filename}
+            path_without_media.to_string()
         } else {
             // Fallback for any non-standard object keys
             format!("/health/workout-media/{}", object_key)
