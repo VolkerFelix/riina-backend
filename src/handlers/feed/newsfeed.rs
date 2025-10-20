@@ -71,7 +71,7 @@ pub async fn get_unified_feed(
         )
         SELECT
             p.id, p.user_id, p.post_type as "post_type: String",
-            p.content, p.workout_id, p.image_urls, p.video_urls,
+            p.content, p.workout_id, p.media_urls,
             p.ad_metadata, p.visibility as "visibility: String",
             p.is_editable, p.created_at, p.updated_at, p.edited_at,
             u.username, u.profile_picture_url,
@@ -117,8 +117,7 @@ pub async fn get_unified_feed(
                     "post_type": row.post_type,
                     "content": row.content,
                     "workout_id": row.workout_id,
-                    "image_urls": row.image_urls,
-                    "video_urls": row.video_urls,
+                    "media_urls": row.media_urls,
                     "ad_metadata": row.ad_metadata,
                     "visibility": row.visibility,
                     "is_editable": row.is_editable,
