@@ -222,12 +222,8 @@ async fn test_automated_scheduler_game_lifecycle() {
             Some(assign_request),
         ).await;
         assert_eq!(assign_response.status(), 201);
-
-        // Cleanup
-        delete_test_user(&app.address, &admin_user.token, user1.user_id).await;
-        delete_test_user(&app.address, &admin_user.token, admin_user.user_id).await;
     }
-    
+
     // Add users to teams
     add_user_to_team(&app.address, &admin_user.token, &team_ids[0], user1.user_id).await;
     add_user_to_team(&app.address, &admin_user.token, &team_ids[1], user2.user_id).await;
@@ -555,8 +551,13 @@ async fn test_automated_scheduler_game_lifecycle() {
             println!("⚠️ Second game didn't start within 20 seconds (may start later)");
         }
     }
-    
+
     println!("🎉 Complete automated scheduler game lifecycle test completed successfully!");
+
+    // Cleanup
+    delete_test_user(&app.address, &admin_user.token, user1.user_id).await;
+    delete_test_user(&app.address, &admin_user.token, user2.user_id).await;
+    delete_test_user(&app.address, &admin_user.token, admin_user.user_id).await;
 }
 
 #[tokio::test]
