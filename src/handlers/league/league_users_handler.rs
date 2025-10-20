@@ -102,7 +102,7 @@ pub async fn get_league_users_with_stats(
 
     // Set pagination defaults
     let page = query.page.unwrap_or(1).max(1);
-    let page_size = query.page_size.unwrap_or(20).min(100).max(1); // Default 20, max 100
+    let page_size = query.page_size.unwrap_or(20).min(200).max(1); // Default 20, max 200
     let offset = (page - 1) * page_size;
     let sort_by = query.sort_by.as_deref().unwrap_or("total_stats");
 

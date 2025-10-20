@@ -69,7 +69,7 @@ async fn test_trailing_7_day_average_calculation() {
     // Test the leaderboard endpoint to see if trailing average is calculated
     // Use a large page size to get all users
     let response = client
-        .get(&format!("{}/league/users/stats?sort_by=trailing_average&page_size=100", test_app.address))
+        .get(&format!("{}/league/users/stats?sort_by=trailing_average&page_size=200", test_app.address))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -192,7 +192,7 @@ async fn test_leaderboard_sort_by_trailing_average() {
     // Test leaderboard with sort_by=trailing_average
     // Use a large page size to get all users
     let response = client
-        .get(&format!("{}/league/users/stats?sort_by=trailing_average&page_size=100", test_app.address))
+        .get(&format!("{}/league/users/stats?sort_by=trailing_average&page_size=200", test_app.address))
         .header("Authorization", format!("Bearer {}", user1.token))
         .send()
         .await

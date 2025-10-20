@@ -84,8 +84,8 @@ pub async fn get_unified_feed(
             wd.image_url as workout_image, wd.video_url as workout_video,
 
             -- Social counts (from CTEs - much faster than subqueries)
-            COALESCE(rc.count, 0)::bigint as reaction_count,
-            COALESCE(cc.count, 0)::bigint as comment_count,
+            COALESCE(rc.count, 0) as reaction_count,
+            COALESCE(cc.count, 0) as comment_count,
             (ur.workout_id IS NOT NULL) as user_has_reacted
 
         FROM posts p
