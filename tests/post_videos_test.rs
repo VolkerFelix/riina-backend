@@ -12,7 +12,8 @@ use serde_json::json;
 use sha2::{Sha256, Digest};
 
 mod common;
-use common::utils::{spawn_app, create_test_user_and_login};
+use common::utils::{spawn_app, create_test_user_and_login, delete_test_user};
+use common::admin_helpers::create_admin_user_and_login;
 
 #[tokio::test]
 async fn test_create_post_with_video_urls() {
@@ -22,6 +23,7 @@ async fn test_create_post_with_video_urls() {
     println!("🎥 Testing post creation with video URLs");
 
     let test_user = create_test_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address).await;
     let token = &test_user.token;
 
     // Create a universal post with video URLs
@@ -70,6 +72,10 @@ async fn test_create_post_with_video_urls() {
     assert_eq!(retrieved_video_urls[1].as_str().unwrap(), video_urls[1]);
 
     println!("✅ Post with video URLs created and retrieved successfully");
+
+    // Cleanup
+    delete_test_user(&app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&app.address, &admin_user.token, admin_user.user_id).await;
 }
 
 #[tokio::test]
@@ -80,6 +86,7 @@ async fn test_full_video_upload_and_post_workflow() {
     println!("🎥 Testing full video upload and post creation workflow");
 
     let test_user = create_test_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address).await;
     let token = &test_user.token;
 
     // Step 1: Upload a video file
@@ -183,6 +190,10 @@ async fn test_full_video_upload_and_post_workflow() {
     assert_eq!(retrieved_video_urls[0].as_str().unwrap(), video_url);
 
     println!("✅ Full video upload and post workflow test passed!");
+
+    // Cleanup
+    delete_test_user(&app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&app.address, &admin_user.token, admin_user.user_id).await;
 }
 
 #[tokio::test]
@@ -193,6 +204,7 @@ async fn test_update_post_video_urls() {
     println!("🎥 Testing post video URL updates");
 
     let test_user = create_test_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address).await;
     let token = &test_user.token;
 
     // Create a post with one video
@@ -253,6 +265,10 @@ async fn test_update_post_video_urls() {
     assert_eq!(updated_video_urls[1].as_str().unwrap(), new_videos[1]);
 
     println!("✅ Post video URL update test passed!");
+
+    // Cleanup
+    delete_test_user(&app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&app.address, &admin_user.token, admin_user.user_id).await;
 }
 
 #[tokio::test]
@@ -263,6 +279,7 @@ async fn test_post_with_mixed_media() {
     println!("🎥📸 Testing post with both images and videos");
 
     let test_user = create_test_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address).await;
     let token = &test_user.token;
 
     // Create a post with both images and videos
@@ -315,4 +332,8 @@ async fn test_post_with_mixed_media() {
     assert_eq!(retrieved_videos.len(), 1, "Should have 1 video URL");
 
     println!("✅ Mixed media post test passed!");
+
+    // Cleanup
+    delete_test_user(&app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&app.address, &admin_user.token, admin_user.user_id).await;
 }

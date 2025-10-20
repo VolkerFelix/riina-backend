@@ -2,7 +2,7 @@
 // These tests ensure that API responses match what the frontend expects
 
 mod common;
-use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request};
+use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, delete_test_user};
 use common::admin_helpers::{create_admin_user_and_login, create_league_season, create_league};
 use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user};
 use serde_json::json;
@@ -370,6 +370,10 @@ async fn test_live_game_api_contract() {
     }
     
     println!("✅ Live games API contract is valid!");
+
+    // Cleanup
+    delete_test_user(&app.address, &admin.token, user1.user_id).await;
+    delete_test_user(&app.address, &admin.token, admin.user_id).await;
 }
 
 #[tokio::test]

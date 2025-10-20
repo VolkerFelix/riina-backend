@@ -42,6 +42,7 @@ async fn test_add_comment_success() {
     let comment: serde_json::Value = response.json().await.expect("Failed to parse response");
     assert_eq!(comment["content"], "Great workout!");
     assert_eq!(comment["user_id"], user.user_id.to_string());
+
 }
 
 #[tokio::test]
@@ -64,6 +65,7 @@ async fn test_add_empty_comment_fails() {
         .expect("Failed to send request");
 
     assert_eq!(response.status(), 400);
+
 }
 
 #[tokio::test]
@@ -87,6 +89,7 @@ async fn test_add_too_long_comment_fails() {
         .expect("Failed to send request");
 
     assert_eq!(response.status(), 400);
+
 }
 
 #[tokio::test]
@@ -163,6 +166,7 @@ async fn test_edit_other_users_comment_fails() {
         .expect("Failed to send request");
 
     assert_eq!(response.status(), 403);
+
 }
 
 #[tokio::test]
@@ -197,6 +201,7 @@ async fn test_delete_comment_success() {
         .expect("Failed to delete comment");
 
     assert!(response.status().is_success());
+
 }
 
 #[tokio::test]
@@ -230,6 +235,7 @@ async fn test_get_workout_comments() {
     let result: serde_json::Value = response.json().await.expect("Failed to parse response");
     assert_eq!(result["total_count"], 1);
     assert_eq!(result["comments"].as_array().unwrap().len(), 1);
+
 }
 
 #[tokio::test]

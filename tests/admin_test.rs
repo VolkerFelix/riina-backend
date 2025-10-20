@@ -12,7 +12,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 mod common;
-use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request};
+use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, delete_test_user};
 use common::admin_helpers::{create_admin_user_and_login, create_teams_for_test};
 
 // ============================================================================

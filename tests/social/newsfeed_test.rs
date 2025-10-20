@@ -69,7 +69,9 @@ async fn test_newsfeed_basic() {
         assert!(workout["comment_count"].is_number());
         assert!(workout["user_has_reacted"].is_boolean());
         assert_eq!(workout["visibility"], "public");
+
     }
+
 }
 
 #[tokio::test]
@@ -88,6 +90,7 @@ async fn test_newsfeed_pagination() {
             30
         );
         let _ = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout_data).await;
+
     }
 
     // Get first page with limit
@@ -200,6 +203,7 @@ async fn test_newsfeed_with_reactions_and_comments() {
     assert_eq!(user1_workout["reaction_count"], 1, "Should have 1 reaction");
     assert_eq!(user1_workout["comment_count"], 1, "Should have 1 comment");
     assert_eq!(user1_workout["user_has_reacted"], false, "User1 has not reacted");
+
 }
 
 #[tokio::test]
@@ -225,7 +229,9 @@ async fn test_newsfeed_visibility_filter() {
     // All workouts in feed should be public
     for workout in workouts {
         assert_eq!(workout["visibility"], "public", "All feed workouts should be public");
+
     }
+
 }
 
 #[tokio::test]
@@ -240,4 +246,5 @@ async fn test_newsfeed_requires_authentication() {
         .expect("Failed to send request");
 
     assert_eq!(response.status(), 401, "Should require authentication");
+
 }

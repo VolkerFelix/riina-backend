@@ -13,7 +13,7 @@ use common::utils::{
     create_test_user_and_login,
     get_next_date,
     make_authenticated_request
-};
+, delete_test_user};
 use common::admin_helpers::{create_admin_user_and_login, create_league_season};
 use common::workout_data_helpers::{
     WorkoutData,

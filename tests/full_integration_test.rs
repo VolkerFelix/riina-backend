@@ -9,7 +9,7 @@ use chrono::{Utc, Duration, Weekday, NaiveTime, DateTime};
 use uuid::Uuid;
 
 mod common;
-use common::utils::{spawn_app, create_test_user_and_login, TestApp, get_next_date, make_authenticated_request, UserRegLoginResponse};
+use common::utils::{spawn_app, create_test_user_and_login, TestApp, get_next_date, make_authenticated_request, UserRegLoginResponse, delete_test_user};
 use common::admin_helpers::{create_admin_user_and_login, create_league_season, create_teams_for_test, create_league, add_team_to_league, add_user_to_team};
 use common::live_game_helpers::*;
 use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user, create_health_profile_for_user};
@@ -161,6 +161,7 @@ async fn test_live_game_edge_cases() {
 
     // Test 1: Upload health data when no game is active
     let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
     
     // This should not crash or cause errors
     let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
@@ -181,6 +182,10 @@ async fn test_live_game_edge_cases() {
     assert_eq!(live_game_1.id, live_game_2.id);
 
     println!("✅ Live game edge cases test completed successfully!");
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
 }
 
 #[tokio::test]
@@ -1322,6 +1327,7 @@ async fn test_user_joining_team_during_live_game() {
     
     println!("✅ User joining team during live game test completed successfully!");
     println!("New user {} successfully contributed to live game after joining team mid-game", new_user.username);
+
 }
 
 #[tokio::test]

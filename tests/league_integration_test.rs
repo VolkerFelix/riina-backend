@@ -4,7 +4,8 @@ use serde_json::json;
 use uuid::Uuid;
 
 mod common;
-use common::utils::{spawn_app, create_test_user_and_login};
+use common::utils::{spawn_app, create_test_user_and_login, delete_test_user};
+use common::admin_helpers::create_admin_user_and_login;
 
 use crate::common::utils::make_authenticated_request;
 
@@ -258,6 +259,7 @@ async fn test_team_registration_validation() {
     assert!(response.status().is_success(), "Valid team registration should succeed");
 
     println!("✅ Team registration validation tests passed");
+
 }
 
 #[tokio::test]
@@ -323,6 +325,7 @@ async fn test_team_name_uniqueness() {
     assert!(response3.status().is_success(), "Different team name should succeed");
 
     println!("✅ Team name uniqueness tests passed");
+
 }
 
 #[tokio::test]

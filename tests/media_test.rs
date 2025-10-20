@@ -18,7 +18,8 @@ use serde_json::json;
 use sha2::{Sha256, Digest};
 
 mod common;
-use common::utils::{spawn_app, create_test_user_and_login};
+use common::utils::{spawn_app, create_test_user_and_login, delete_test_user};
+use common::admin_helpers::create_admin_user_and_login;
 use common::media_helpers::{
     upload_test_media_file, create_test_media_content, MediaType
 };
@@ -32,6 +33,7 @@ async fn test_image_upload_workflow() {
     let app = spawn_app().await;
     let client = Client::new();
     let test_user = create_test_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address).await;
 
     println!("📸 Testing image upload workflow");
 
@@ -56,6 +58,10 @@ async fn test_image_upload_workflow() {
     assert!(!upload_result.object_key.is_empty(), "Should have object key");
 
     println!("✅ Image upload workflow completed");
+
+    // Cleanup: Delete test users
+    delete_test_user(&app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&app.address, &admin_user.token, admin_user.user_id).await;
 }
 
 #[tokio::test]
@@ -63,6 +69,7 @@ async fn test_image_format_validation() {
     let app = spawn_app().await;
     let client = Client::new();
     let test_user = create_test_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address).await;
 
     println!("📸 Testing image format validation");
 
@@ -108,6 +115,10 @@ async fn test_image_format_validation() {
     assert_eq!(response.status(), 400, "Should reject .bmp format");
 
     println!("✅ Image format validation passed");
+
+    // Cleanup: Delete test users
+    delete_test_user(&app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&app.address, &admin_user.token, admin_user.user_id).await;
 }
 
 #[tokio::test]
@@ -115,6 +126,7 @@ async fn test_image_size_validation() {
     let app = spawn_app().await;
     let client = Client::new();
     let test_user = create_test_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address).await;
 
     println!("📸 Testing image size validation");
 
@@ -144,6 +156,10 @@ async fn test_image_size_validation() {
     assert!(error_data["error"].as_str().unwrap().contains("too large"));
 
     println!("✅ Image size validation passed");
+
+    // Cleanup: Delete test users
+    delete_test_user(&app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&app.address, &admin_user.token, admin_user.user_id).await;
 }
 
 // ============================================================================
@@ -155,6 +171,7 @@ async fn test_video_upload_workflow() {
     let app = spawn_app().await;
     let client = Client::new();
     let test_user = create_test_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address).await;
 
     println!("🎥 Testing video upload workflow");
 
@@ -176,6 +193,10 @@ async fn test_video_upload_workflow() {
     assert!(!upload_result.file_url.is_empty(), "Should have file URL");
 
     println!("✅ Video upload workflow completed");
+
+    // Cleanup: Delete test users
+    delete_test_user(&app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&app.address, &admin_user.token, admin_user.user_id).await;
 }
 
 #[tokio::test]
@@ -183,6 +204,7 @@ async fn test_video_format_validation() {
     let app = spawn_app().await;
     let client = Client::new();
     let test_user = create_test_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address).await;
 
     println!("🎥 Testing video format validation");
 
@@ -228,6 +250,10 @@ async fn test_video_format_validation() {
     assert_eq!(response.status(), 400, "Should reject .wmv format");
 
     println!("✅ Video format validation passed");
+
+    // Cleanup: Delete test users
+    delete_test_user(&app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&app.address, &admin_user.token, admin_user.user_id).await;
 }
 
 #[tokio::test]
@@ -235,6 +261,7 @@ async fn test_video_size_validation() {
     let app = spawn_app().await;
     let client = Client::new();
     let test_user = create_test_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address).await;
 
     println!("🎥 Testing video size validation");
 
@@ -264,6 +291,10 @@ async fn test_video_size_validation() {
     assert!(error_data["error"].as_str().unwrap().contains("too large"));
 
     println!("✅ Video size validation passed");
+
+    // Cleanup: Delete test users
+    delete_test_user(&app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&app.address, &admin_user.token, admin_user.user_id).await;
 }
 
 // ============================================================================
@@ -275,6 +306,7 @@ async fn test_signed_url_generation() {
     let app = spawn_app().await;
     let client = Client::new();
     let test_user = create_test_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address).await;
 
     println!("🔐 Testing signed URL generation");
 
@@ -303,4 +335,8 @@ async fn test_signed_url_generation() {
     assert!(data["data"]["object_key"].is_string());
 
     println!("✅ Signed URL generation works");
+
+    // Cleanup: Delete test users
+    delete_test_user(&app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&app.address, &admin_user.token, admin_user.user_id).await;
 }

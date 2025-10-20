@@ -26,7 +26,7 @@ use common::utils::{
     spawn_app,
     create_test_user_and_login,
     make_authenticated_request
-};
+, delete_test_user};
 use common::admin_helpers::{create_admin_user_and_login, create_teams_for_test, add_user_to_team};
 
 // ============================================================================
@@ -222,6 +222,10 @@ async fn test_automated_scheduler_game_lifecycle() {
             Some(assign_request),
         ).await;
         assert_eq!(assign_response.status(), 201);
+
+        // Cleanup
+        delete_test_user(&app.address, &admin_user.token, user1.user_id).await;
+        delete_test_user(&app.address, &admin_user.token, admin_user.user_id).await;
     }
     
     // Add users to teams
@@ -288,6 +292,7 @@ async fn test_automated_scheduler_game_lifecycle() {
             game.status,
             game.game_start_time
         );
+
     }
 
     // Wait for scheduler to start the first game

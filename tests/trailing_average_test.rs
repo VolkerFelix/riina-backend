@@ -4,7 +4,7 @@ use reqwest::Client;
 use serde_json::json;
 
 mod common;
-use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request};
+use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, delete_test_user};
 use common::workout_data_helpers::{upload_workout_data_for_user, WorkoutData, WorkoutType, create_health_profile_for_user};
 use common::admin_helpers::{create_admin_user_and_login, create_teams_for_test};
 use riina_backend::db::health_data::get_user_health_profile_details;
@@ -118,6 +118,7 @@ async fn test_trailing_7_day_average_calculation() {
     println!("✅ Trailing 7-day average calculation test passed: {}", trailing_avg);
     
     println!("✅ Trailing average calculation test completed");
+
 }
 
 #[tokio::test]
@@ -164,12 +165,20 @@ async fn test_leaderboard_sort_by_trailing_average() {
     let mut user1_workouts = Vec::new();
     for i in 0..7 {
         user1_workouts.push(WorkoutData::new(WorkoutType::Intense, chrono::Utc::now() - chrono::Duration::days(i), 45));
+
+        // Cleanup
+        delete_test_user(&test_app.address, &admin_user.token, user1.user_id).await;
+        delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
     }
 
     // User 2: Low intensity workouts in the last 7 days (should have low trailing average)
     let mut user2_workouts = Vec::new();
     for i in 0..7 {
         user2_workouts.push(WorkoutData::new(WorkoutType::Light, chrono::Utc::now() - chrono::Duration::days(i), 20));
+
+        // Cleanup
+        delete_test_user(&test_app.address, &admin_user.token, user1.user_id).await;
+        delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
     }
 
     // Upload workout data for both users
@@ -179,6 +188,10 @@ async fn test_leaderboard_sort_by_trailing_average() {
     
     for workout_data in user2_workouts.iter_mut() {
         let _ = upload_workout_data_for_user(&client, &test_app.address, &user2.token, workout_data).await;
+
+        // Cleanup
+        delete_test_user(&test_app.address, &admin_user.token, user1.user_id).await;
+        delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
     }
 
     // Calculate expected trailing averages
