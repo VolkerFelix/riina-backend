@@ -23,9 +23,16 @@ pub struct WorkoutHistoryItem {
     // Game stats gained from this workout
     pub stamina_gained: f32,
     pub strength_gained: f32,
-    // Media attachments
-    pub image_url: Option<String>,
-    pub video_url: Option<String>,
+    // Post information for editing
+    pub post_id: Uuid,
+    pub post_content: Option<String>,
+    pub post_visibility: String,
+    pub post_is_editable: bool,
+    pub post_created_at: DateTime<Utc>,
+    pub post_updated_at: DateTime<Utc>,
+    pub post_edited_at: DateTime<Utc>,
+    pub post_image_urls: Option<Vec<String>>,
+    pub post_video_urls: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -81,7 +88,7 @@ pub async fn get_workout_history(
     let limit = query.limit.unwrap_or(20).min(100); // Max 100 items
     let offset = query.offset.unwrap_or(0);
 
-    // Fetch workout history with all stats from workout_data (excluding duplicates)
+    // Fetch workout history as posts that wrap workouts
     let workouts: Vec<WorkoutHistoryItem> = match sqlx::query!(
         r#"
         SELECT 
@@ -99,9 +106,17 @@ pub async fn get_workout_history(
             wd.heart_rate_zones,
             COALESCE(wd.stamina_gained, 0.0) as stamina_gained,
             COALESCE(wd.strength_gained, 0.0) as strength_gained,
-            wd.image_url,
-            wd.video_url
+            p.id as post_id,
+            p.content,
+            p.visibility::text as post_visibility,
+            p.is_editable,
+            p.created_at as post_created_at,
+            COALESCE(p.updated_at, p.created_at) as post_updated_at,
+            COALESCE(p.edited_at, p.created_at) as post_edited_at,
+            p.image_urls as post_image_urls,
+            p.video_urls as post_video_urls
         FROM workout_data wd
+        INNER JOIN posts p ON p.workout_id = wd.id AND p.user_id = wd.user_id
         WHERE wd.user_id = $1
         AND (wd.calories_burned > 100 OR wd.heart_rate_data IS NOT NULL)
         ORDER BY COALESCE(wd.workout_start, wd.created_at) DESC
@@ -158,8 +173,16 @@ pub async fn get_workout_history(
                     heart_rate_data,
                     stamina_gained: row.stamina_gained.unwrap_or(0.0),
                     strength_gained: row.strength_gained.unwrap_or(0.0),
-                    image_url: row.image_url,
-                    video_url: row.video_url,
+                    // Post information
+                    post_id: row.post_id,
+                    post_content: row.content,
+                    post_visibility: row.post_visibility.unwrap(),
+                    post_is_editable: row.is_editable,
+                    post_created_at: row.post_created_at,
+                    post_updated_at: row.post_updated_at.unwrap(),
+                    post_edited_at: row.post_edited_at.unwrap(),
+                    post_image_urls: row.post_image_urls,
+                    post_video_urls: row.post_video_urls,
                 }
             }).collect()
         },

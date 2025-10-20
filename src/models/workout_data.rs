@@ -13,8 +13,6 @@ pub struct WorkoutData {
     pub calories_burned: Option<i32>,
     pub created_at: DateTime<Utc>,
     pub activity_name: Option<String>,
-    pub image_url: Option<String>,
-    pub video_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow, sqlx::Decode)]
@@ -33,8 +31,8 @@ pub struct WorkoutDataUploadRequest {
     pub workout_start: DateTime<Utc>,
     pub workout_end: DateTime<Utc>,
     pub activity_name: Option<String>,
-    pub image_url: Option<String>,
-    pub video_url: Option<String>,
+    pub image_urls: Option<Vec<String>>,
+    pub video_urls: Option<Vec<String>>,
     pub approval_token: Option<String>,
 }
 

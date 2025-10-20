@@ -545,3 +545,192 @@ async fn test_workout_upload_notification_integration() {
     let response_data = response.unwrap();
     assert!(response_data["data"]["sync_id"].is_string());
 }
+
+// ============================================================================
+// POST EDIT AND DELETE TESTS
+// ============================================================================
+
+#[tokio::test]
+async fn test_edit_workout_post() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    // Create user and upload workout
+    let test_user = create_test_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
+
+    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let upload_response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
+    assert!(upload_response.is_ok());
+
+    // Get the post ID from the feed
+    let feed_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/feed/?limit=100", &test_app.address),
+        &test_user.token,
+        None,
+    ).await;
+
+    let feed_data: serde_json::Value = feed_response.json().await.unwrap();
+    assert!(feed_data["data"]["posts"].is_array());
+    let posts = feed_data["data"]["posts"].as_array().unwrap();
+    assert!(!posts.is_empty(), "No posts found after workout upload");
+
+    // Find the post that belongs to the current test user
+    let user_post = posts.iter()
+        .find(|p| p["username"].as_str() == Some(&test_user.username))
+        .expect("Could not find a post belonging to the test user");
+
+    let post_id = user_post["id"].as_str().unwrap();
+
+    // Update the post with new description and activity type
+    let update_body = json!({
+        "content": "Updated workout description!",
+        "activity_name": "Trail Running"
+    });
+
+    let update_response = make_authenticated_request(
+        &client,
+        reqwest::Method::PATCH,
+        &format!("{}/posts/{}", &test_app.address, post_id),
+        &test_user.token,
+        Some(update_body),
+    ).await;
+
+    let status = update_response.status();
+    if !status.is_success() {
+        let error_text = update_response.text().await.unwrap_or_else(|_| "Could not read error".to_string());
+        panic!("Failed to update post. Status: {}, Response: {}", status, error_text);
+    }
+    let update_data: serde_json::Value = update_response.json().await.unwrap();
+    assert_eq!(update_data["success"], true);
+
+    // Verify the changes by fetching the post
+    let get_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/posts/{}", &test_app.address, post_id),
+        &test_user.token,
+        None,
+    ).await;
+
+    assert!(get_response.status().is_success(), "Failed to fetch updated post");
+    let post_data: serde_json::Value = get_response.json().await.unwrap();
+    assert_eq!(post_data["data"]["content"], "Updated workout description!");
+    assert_eq!(post_data["data"]["workout_data"]["activity_name"], "Trail Running");
+}
+
+#[tokio::test]
+async fn test_delete_workout_post() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    // Create user and upload workout
+    let test_user = create_test_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
+
+    let mut workout_data = WorkoutData::new(WorkoutType::Light, Utc::now(), 20);
+    let upload_response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
+    assert!(upload_response.is_ok());
+
+    // Get the post ID from the feed (fetch more posts to ensure we get ours)
+    let feed_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/feed/?limit=100", &test_app.address),
+        &test_user.token,
+        None,
+    ).await;
+
+    let feed_data: serde_json::Value = feed_response.json().await.unwrap();
+    let posts = feed_data["data"]["posts"].as_array().unwrap();
+    assert!(!posts.is_empty(), "No posts found after workout upload");
+
+    println!("DEBUG delete test: Looking for user '{}' in {} posts", test_user.username, posts.len());
+
+    // Find the post that belongs to the current test user
+    let user_post = posts.iter()
+        .find(|p| p["username"].as_str() == Some(&test_user.username))
+        .expect(&format!("Could not find a post belonging to user '{}'. Found usernames: {:?}",
+            test_user.username,
+            posts.iter().map(|p| p["username"].as_str().unwrap_or("unknown")).collect::<Vec<_>>()
+        ));
+
+    let post_id = user_post["id"].as_str().unwrap();
+
+    // Delete the post
+    let delete_response = make_authenticated_request(
+        &client,
+        reqwest::Method::DELETE,
+        &format!("{}/posts/{}", &test_app.address, post_id),
+        &test_user.token,
+        None,
+    ).await;
+
+    let status = delete_response.status();
+    if !status.is_success() {
+        let error_text = delete_response.text().await.unwrap_or_else(|_| "Could not read error".to_string());
+        panic!("Failed to delete post. Status: {}, Response: {}", status, error_text);
+    }
+    let delete_data: serde_json::Value = delete_response.json().await.unwrap();
+    assert_eq!(delete_data["success"], true);
+
+    // Verify the post is gone
+    let get_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/posts/{}", &test_app.address, post_id),
+        &test_user.token,
+        None,
+    ).await;
+
+    assert!(!get_response.status().is_success(), "Post should not exist after deletion");
+}
+
+#[tokio::test]
+async fn test_cannot_edit_another_users_post() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    // Create first user and upload workout
+    let user1 = create_test_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &user1).await.unwrap();
+
+    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let upload_response = upload_workout_data_for_user(&client, &test_app.address, &user1.token, &mut workout_data).await;
+    assert!(upload_response.is_ok());
+
+    // Get the post ID
+    let feed_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/feed/?limit=1", &test_app.address),
+        &user1.token,
+        None,
+    ).await;
+
+    let feed_data: serde_json::Value = feed_response.json().await.unwrap();
+    let posts = feed_data["data"]["posts"].as_array().unwrap();
+    let post_id = posts[0]["id"].as_str().unwrap();
+
+    // Create second user
+    let user2 = create_test_user_and_login(&test_app.address).await;
+
+    // Try to edit user1's post as user2
+    let update_body = json!({
+        "content": "Hacked description"
+    });
+
+    let update_response = make_authenticated_request(
+        &client,
+        reqwest::Method::PATCH,
+        &format!("{}/posts/{}", &test_app.address, post_id),
+        &user2.token,
+        Some(update_body),
+    ).await;
+
+    // Should fail with forbidden error (403)
+    assert_eq!(update_response.status(), reqwest::StatusCode::FORBIDDEN,
+        "User should not be able to edit another user's post");
+}

@@ -75,6 +75,27 @@ wait_for_service() {
     return 1
 }
 
+# Clean up postgres, redis and minio containers
+clean_up() {
+    echo -e "${YELLOW}Cleaning up PostgreSQL, Redis and MinIO containers...${NC}"
+    
+    # Stop and remove containers if they exist
+    if [ "$(docker ps -aq -f name=riina-postgres)" ]; then
+        docker stop riina-postgres 2>/dev/null || true
+        docker rm riina-postgres 2>/dev/null || true
+    fi
+    
+    if [ "$(docker ps -aq -f name=riina-redis)" ]; then
+        docker stop riina-redis 2>/dev/null || true
+        docker rm riina-redis 2>/dev/null || true
+    fi
+
+    if [ "$(docker ps -aq -f name=riina-minio)" ]; then
+        docker stop riina-minio 2>/dev/null || true
+        docker rm riina-minio 2>/dev/null || true
+    fi
+}
+
 # Allow to skip Docker if dockerized services are already running
 if [[ -z "${SKIP_DOCKER}" ]]
 then
@@ -145,12 +166,10 @@ sqlx database create
 sqlx migrate run
 cargo sqlx prepare --database-url $DATABASE_URL
 
-echo "✅ Database has been migrated and is ready!"
+echo "✅ Database has been migrated and is ready! Cleaning up now and exiting..."
+clean_up
 
 # Print service status
 echo ""
-echo "🎉 All services are up and running!"
+echo "All services have been cleaned up."
 echo "========================================"
-echo "PostgreSQL: localhost:5432"
-echo "Redis: localhost:6379"
-echo ""

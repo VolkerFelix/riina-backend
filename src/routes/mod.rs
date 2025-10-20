@@ -11,6 +11,8 @@ pub mod workout_sync;
 pub mod admin;
 pub mod social;
 pub mod feed;
+pub mod posts;
+pub mod media;
 
 use crate::middleware::auth::AuthMiddleware;
 
@@ -24,10 +26,6 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
         web::scope("/health")
             .wrap(AuthMiddleware)
             .service(health_data::upload_health)
-            // Removed old upload_media and serve_media - now using signed URLs
-            .service(health_data::request_upload_url)
-            .service(health_data::confirm_upload_handler)
-            .service(health_data::get_download_url)
             .service(workout_sync::get_workout_hist)
             .service(workout_sync::get_workout_detail_handler)
             .service(workout_sync::check_workout_sync_handler)
@@ -97,5 +95,19 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
         web::scope("/feed")
             .wrap(AuthMiddleware)
             .configure(feed::init_feed_routes)
+    );
+
+    // Posts routes (require authentication)
+    cfg.service(
+        web::scope("/posts")
+            .wrap(AuthMiddleware)
+            .configure(posts::init_posts_routes)
+    );
+
+    // Media routes (require authentication)
+    cfg.service(
+        web::scope("/media")
+            .wrap(AuthMiddleware)
+            .configure(media::init_media_routes)
     );
 }
