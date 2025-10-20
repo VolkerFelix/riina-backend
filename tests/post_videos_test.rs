@@ -26,10 +26,15 @@ async fn test_create_post_with_video_urls() {
     let admin_user = create_admin_user_and_login(&app.address).await;
     let token = &test_user.token;
 
-    // Create a universal post with video URLs
+    // Create a universal post with video URLs using media_urls
     let video_urls = vec![
         format!("{}/test-video1.mp4", test_user.user_id),
         format!("{}/test-video2.mp4", test_user.user_id),
+    ];
+
+    let media_urls = vec![
+        json!({"type": "video", "url": video_urls[0]}),
+        json!({"type": "video", "url": video_urls[1]}),
     ];
 
     let post_response = client
@@ -38,7 +43,7 @@ async fn test_create_post_with_video_urls() {
         .json(&json!({
             "post_type": "universal",
             "content": "Check out my workout videos!",
-            "video_urls": video_urls,
+            "media_urls": media_urls,
             "visibility": "public"
         }))
         .send()
@@ -52,7 +57,7 @@ async fn test_create_post_with_video_urls() {
 
     let post_id = post_data["data"]["id"].as_str().expect("Missing post ID");
 
-    // Retrieve the post and verify video URLs
+    // Retrieve the post and verify media URLs
     let get_response = client
         .get(&format!("{}/posts/{}", &app.address, post_id))
         .header("Authorization", format!("Bearer {}", token))
@@ -63,13 +68,15 @@ async fn test_create_post_with_video_urls() {
     assert_eq!(get_response.status(), 200, "Get post should succeed");
 
     let get_data: serde_json::Value = get_response.json().await.expect("Failed to parse response");
-    let retrieved_video_urls = get_data["data"]["video_urls"]
+    let retrieved_media_urls = get_data["data"]["media_urls"]
         .as_array()
-        .expect("Should have video_urls array");
+        .expect("Should have media_urls array");
 
-    assert_eq!(retrieved_video_urls.len(), 2, "Should have 2 video URLs");
-    assert_eq!(retrieved_video_urls[0].as_str().unwrap(), video_urls[0]);
-    assert_eq!(retrieved_video_urls[1].as_str().unwrap(), video_urls[1]);
+    assert_eq!(retrieved_media_urls.len(), 2, "Should have 2 media items");
+    assert_eq!(retrieved_media_urls[0]["type"].as_str().unwrap(), "video");
+    assert_eq!(retrieved_media_urls[0]["url"].as_str().unwrap(), video_urls[0]);
+    assert_eq!(retrieved_media_urls[1]["type"].as_str().unwrap(), "video");
+    assert_eq!(retrieved_media_urls[1]["url"].as_str().unwrap(), video_urls[1]);
 
     println!("✅ Post with video URLs created and retrieved successfully");
 
@@ -150,14 +157,14 @@ async fn test_full_video_upload_and_post_workflow() {
 
     println!("🔗 Video uploaded: {}", video_url);
 
-    // Step 2: Create a post with the uploaded video
+    // Step 2: Create a post with the uploaded video using media_urls
     let post_response = client
         .post(&format!("{}/posts/", &app.address))
         .header("Authorization", format!("Bearer {}", token))
         .json(&json!({
             "post_type": "universal",
             "content": "My awesome workout video!",
-            "video_urls": vec![video_url],
+            "media_urls": vec![json!({"type": "video", "url": video_url})],
             "visibility": "public"
         }))
         .send()
@@ -182,12 +189,13 @@ async fn test_full_video_upload_and_post_workflow() {
     assert_eq!(get_response.status(), 200, "Get post should succeed");
 
     let get_data: serde_json::Value = get_response.json().await.expect("Failed to parse response");
-    let retrieved_video_urls = get_data["data"]["video_urls"]
+    let retrieved_media_urls = get_data["data"]["media_urls"]
         .as_array()
-        .expect("Should have video_urls array");
+        .expect("Should have media_urls array");
 
-    assert_eq!(retrieved_video_urls.len(), 1, "Should have 1 video URL");
-    assert_eq!(retrieved_video_urls[0].as_str().unwrap(), video_url);
+    assert_eq!(retrieved_media_urls.len(), 1, "Should have 1 media item");
+    assert_eq!(retrieved_media_urls[0]["type"].as_str().unwrap(), "video");
+    assert_eq!(retrieved_media_urls[0]["url"].as_str().unwrap(), video_url);
 
     println!("✅ Full video upload and post workflow test passed!");
 
@@ -207,7 +215,7 @@ async fn test_update_post_video_urls() {
     let admin_user = create_admin_user_and_login(&app.address).await;
     let token = &test_user.token;
 
-    // Create a post with one video
+    // Create a post with one video using media_urls
     let initial_video = format!("{}/video1.mp4", test_user.user_id);
 
     let post_response = client
@@ -216,7 +224,7 @@ async fn test_update_post_video_urls() {
         .json(&json!({
             "post_type": "universal",
             "content": "Initial video",
-            "video_urls": vec![initial_video],
+            "media_urls": vec![json!({"type": "video", "url": initial_video})],
             "visibility": "public"
         }))
         .send()
@@ -234,11 +242,16 @@ async fn test_update_post_video_urls() {
         format!("{}/video3.mp4", test_user.user_id),
     ];
 
+    let new_media_urls = vec![
+        json!({"type": "video", "url": new_videos[0]}),
+        json!({"type": "video", "url": new_videos[1]}),
+    ];
+
     let update_response = client
         .patch(&format!("{}/posts/{}", &app.address, post_id))
         .header("Authorization", format!("Bearer {}", token))
         .json(&json!({
-            "video_urls": new_videos,
+            "media_urls": new_media_urls,
             "content": "Updated with new videos!"
         }))
         .send()
@@ -256,13 +269,15 @@ async fn test_update_post_video_urls() {
         .expect("Failed to get post");
 
     let get_data: serde_json::Value = get_response.json().await.expect("Failed to parse response");
-    let updated_video_urls = get_data["data"]["video_urls"]
+    let updated_media_urls = get_data["data"]["media_urls"]
         .as_array()
-        .expect("Should have video_urls array");
+        .expect("Should have media_urls array");
 
-    assert_eq!(updated_video_urls.len(), 2, "Should have 2 updated video URLs");
-    assert_eq!(updated_video_urls[0].as_str().unwrap(), new_videos[0]);
-    assert_eq!(updated_video_urls[1].as_str().unwrap(), new_videos[1]);
+    assert_eq!(updated_media_urls.len(), 2, "Should have 2 updated media items");
+    assert_eq!(updated_media_urls[0]["type"].as_str().unwrap(), "video");
+    assert_eq!(updated_media_urls[0]["url"].as_str().unwrap(), new_videos[0]);
+    assert_eq!(updated_media_urls[1]["type"].as_str().unwrap(), "video");
+    assert_eq!(updated_media_urls[1]["url"].as_str().unwrap(), new_videos[1]);
 
     println!("✅ Post video URL update test passed!");
 
@@ -282,7 +297,7 @@ async fn test_post_with_mixed_media() {
     let admin_user = create_admin_user_and_login(&app.address).await;
     let token = &test_user.token;
 
-    // Create a post with both images and videos
+    // Create a post with both images and videos using media_urls
     let image_urls = vec![
         format!("{}/image1.jpg", test_user.user_id),
         format!("{}/image2.jpg", test_user.user_id),
@@ -292,14 +307,20 @@ async fn test_post_with_mixed_media() {
         format!("{}/video1.mp4", test_user.user_id),
     ];
 
+    // Build media_urls with mixed order (image, video, image)
+    let media_urls = vec![
+        json!({"type": "image", "url": image_urls[0]}),
+        json!({"type": "video", "url": video_urls[0]}),
+        json!({"type": "image", "url": image_urls[1]}),
+    ];
+
     let post_response = client
         .post(&format!("{}/posts/", &app.address))
         .header("Authorization", format!("Bearer {}", token))
         .json(&json!({
             "post_type": "universal",
             "content": "Mixed media post!",
-            "image_urls": image_urls,
-            "video_urls": video_urls,
+            "media_urls": media_urls,
             "visibility": "public"
         }))
         .send()
@@ -321,15 +342,19 @@ async fn test_post_with_mixed_media() {
 
     let get_data: serde_json::Value = get_response.json().await.expect("Failed to parse response");
 
-    let retrieved_images = get_data["data"]["image_urls"]
+    let retrieved_media = get_data["data"]["media_urls"]
         .as_array()
-        .expect("Should have image_urls array");
-    let retrieved_videos = get_data["data"]["video_urls"]
-        .as_array()
-        .expect("Should have video_urls array");
+        .expect("Should have media_urls array");
 
-    assert_eq!(retrieved_images.len(), 2, "Should have 2 image URLs");
-    assert_eq!(retrieved_videos.len(), 1, "Should have 1 video URL");
+    assert_eq!(retrieved_media.len(), 3, "Should have 3 media items");
+
+    // Verify mixed order is preserved (image, video, image)
+    assert_eq!(retrieved_media[0]["type"].as_str().unwrap(), "image");
+    assert_eq!(retrieved_media[0]["url"].as_str().unwrap(), image_urls[0]);
+    assert_eq!(retrieved_media[1]["type"].as_str().unwrap(), "video");
+    assert_eq!(retrieved_media[1]["url"].as_str().unwrap(), video_urls[0]);
+    assert_eq!(retrieved_media[2]["type"].as_str().unwrap(), "image");
+    assert_eq!(retrieved_media[2]["url"].as_str().unwrap(), image_urls[1]);
 
     println!("✅ Mixed media post test passed!");
 
