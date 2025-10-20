@@ -49,8 +49,26 @@ pub async fn get_unified_feed(
     };
 
     // Fetch posts with user info, social counts, and optional workout data
+    // Using CTEs to avoid N+1 query problem
     let posts: Vec<serde_json::Value> = match sqlx::query!(
         r#"
+        WITH reaction_counts AS (
+            SELECT workout_id, COUNT(*) as count
+            FROM post_reactions
+            WHERE workout_id IS NOT NULL
+            GROUP BY workout_id
+        ),
+        comment_counts AS (
+            SELECT workout_id, COUNT(*) as count
+            FROM post_comments
+            WHERE workout_id IS NOT NULL
+            GROUP BY workout_id
+        ),
+        user_reactions AS (
+            SELECT workout_id
+            FROM post_reactions
+            WHERE user_id = $1 AND workout_id IS NOT NULL
+        )
         SELECT
             p.id, p.user_id, p.post_type as "post_type: String",
             p.content, p.workout_id, p.image_urls, p.video_urls,
@@ -65,23 +83,17 @@ pub async fn get_unified_feed(
             wd.stamina_gained, wd.strength_gained,
             wd.image_url as workout_image, wd.video_url as workout_video,
 
-            -- Social counts (from post_reactions/comments for workout posts)
-            COALESCE(
-                (SELECT COUNT(*) FROM post_reactions wr WHERE wr.workout_id = p.workout_id),
-                0
-            ) as reaction_count,
-            COALESCE(
-                (SELECT COUNT(*) FROM post_comments wc WHERE wc.workout_id = p.workout_id),
-                0
-            ) as comment_count,
-            EXISTS(
-                SELECT 1 FROM post_reactions wr
-                WHERE wr.workout_id = p.workout_id AND wr.user_id = $1
-            ) as user_has_reacted
+            -- Social counts (from CTEs - much faster than subqueries)
+            COALESCE(rc.count, 0)::bigint as reaction_count,
+            COALESCE(cc.count, 0)::bigint as comment_count,
+            (ur.workout_id IS NOT NULL) as user_has_reacted
 
         FROM posts p
         JOIN users u ON u.id = p.user_id
         LEFT JOIN workout_data wd ON wd.id = p.workout_id
+        LEFT JOIN reaction_counts rc ON rc.workout_id = p.workout_id
+        LEFT JOIN comment_counts cc ON cc.workout_id = p.workout_id
+        LEFT JOIN user_reactions ur ON ur.workout_id = p.workout_id
         WHERE
             p.visibility = 'public'
             AND ($2::timestamptz IS NULL OR p.created_at < $2)
@@ -145,7 +157,8 @@ pub async fn get_unified_feed(
         Err(e) => {
             tracing::error!("Failed to fetch unified feed: {}", e);
             return HttpResponse::InternalServerError().json(json!({
-                "error": "Failed to fetch feed"
+                "error": "Failed to fetch feed",
+                "details": format!("{}", e)
             }));
         }
     };

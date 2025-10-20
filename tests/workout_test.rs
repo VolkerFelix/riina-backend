@@ -567,13 +567,19 @@ async fn test_edit_workout_post() {
     let feed_response = make_authenticated_request(
         &client,
         reqwest::Method::GET,
-        &format!("{}/feed/?limit=100", &test_app.address),
+        &format!("{}/feed/?limit=200", &test_app.address),
         &test_user.token,
         None,
     ).await;
 
     let feed_data: serde_json::Value = feed_response.json().await.unwrap();
-    assert!(feed_data["data"]["posts"].is_array());
+
+    // Debug: Print the feed response to understand the structure
+    if feed_data["data"]["posts"].is_null() || !feed_data["data"]["posts"].is_array() {
+        eprintln!("Feed response: {}", serde_json::to_string_pretty(&feed_data).unwrap());
+        panic!("Feed did not return posts array. Check response above.");
+    }
+
     let posts = feed_data["data"]["posts"].as_array().unwrap();
     assert!(!posts.is_empty(), "No posts found after workout upload");
 
@@ -638,12 +644,19 @@ async fn test_delete_workout_post() {
     let feed_response = make_authenticated_request(
         &client,
         reqwest::Method::GET,
-        &format!("{}/feed/?limit=100", &test_app.address),
+        &format!("{}/feed/?limit=200", &test_app.address),
         &test_user.token,
         None,
     ).await;
 
     let feed_data: serde_json::Value = feed_response.json().await.unwrap();
+
+    // Debug: Print the feed response to understand the structure
+    if feed_data["data"]["posts"].is_null() || !feed_data["data"]["posts"].is_array() {
+        eprintln!("Feed response: {}", serde_json::to_string_pretty(&feed_data).unwrap());
+        panic!("Feed did not return posts array. Check response above.");
+    }
+
     let posts = feed_data["data"]["posts"].as_array().unwrap();
     assert!(!posts.is_empty(), "No posts found after workout upload");
 
