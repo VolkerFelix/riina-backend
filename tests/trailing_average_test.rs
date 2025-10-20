@@ -165,33 +165,21 @@ async fn test_leaderboard_sort_by_trailing_average() {
     let mut user1_workouts = Vec::new();
     for i in 0..7 {
         user1_workouts.push(WorkoutData::new(WorkoutType::Intense, chrono::Utc::now() - chrono::Duration::days(i), 45));
-
-        // Cleanup
-        delete_test_user(&test_app.address, &admin_user.token, user1.user_id).await;
-        delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
     }
 
     // User 2: Low intensity workouts in the last 7 days (should have low trailing average)
     let mut user2_workouts = Vec::new();
     for i in 0..7 {
         user2_workouts.push(WorkoutData::new(WorkoutType::Light, chrono::Utc::now() - chrono::Duration::days(i), 20));
-
-        // Cleanup
-        delete_test_user(&test_app.address, &admin_user.token, user1.user_id).await;
-        delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
     }
 
     // Upload workout data for both users
     for workout_data in user1_workouts.iter_mut() {
         let _ = upload_workout_data_for_user(&client, &test_app.address, &user1.token, workout_data).await;
     }
-    
+
     for workout_data in user2_workouts.iter_mut() {
         let _ = upload_workout_data_for_user(&client, &test_app.address, &user2.token, workout_data).await;
-
-        // Cleanup
-        delete_test_user(&test_app.address, &admin_user.token, user1.user_id).await;
-        delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
     }
 
     // Calculate expected trailing averages
@@ -268,4 +256,9 @@ async fn test_leaderboard_sort_by_trailing_average() {
     println!("✅ User 1 trailing average: {} (rank: {})", user1_trailing_avg, user1_rank);
     println!("✅ User 2 trailing average: {} (rank: {})", user2_trailing_avg, user2_rank);
     println!("✅ Leaderboard sorting by trailing average test passed");
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, user1.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, user2.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
 }
