@@ -20,6 +20,7 @@ pub struct UploadUrlRequest {
     pub filename: String,
     pub content_type: String,
     pub expected_hash: String,
+    pub file_size: usize, // File size in bytes for validation
 }
 
 #[derive(serde::Serialize)]
@@ -43,7 +44,28 @@ pub struct ConfirmUploadResponse {
 }
 
 // Constants
-const ALLOWED_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "mp4", "mov", "avi"];
+const ALLOWED_IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "heic", "heif"];
+const ALLOWED_VIDEO_EXTENSIONS: &[&str] = &[
+    "mp4",  // iOS/Android - most common
+    "mov",  // iOS - QuickTime format
+    "m4v",  // iOS - iTunes video
+    "3gp",  // Android - older devices
+    "webm", // Modern web/Android
+];
+
+// File size limits (in bytes)
+const MAX_IMAGE_SIZE: usize = 10 * 1024 * 1024; // 10 MB
+const MAX_VIDEO_SIZE: usize = 100 * 1024 * 1024; // 100 MB
+
+// Helper to determine if extension is a video
+fn is_video_extension(extension: &str) -> bool {
+    ALLOWED_VIDEO_EXTENSIONS.contains(&extension)
+}
+
+// Helper to determine if extension is an image
+fn is_image_extension(extension: &str) -> bool {
+    ALLOWED_IMAGE_EXTENSIONS.contains(&extension)
+}
 
 // Request upload signed URL
 pub async fn request_upload_signed_url(
@@ -65,11 +87,46 @@ pub async fn request_upload_signed_url(
 
     // Validate file extension
     let extension = get_file_extension(&request.filename);
-    if extension.is_empty() || !ALLOWED_EXTENSIONS.contains(&extension.as_str()) {
+    if extension.is_empty() {
         return HttpResponse::BadRequest().json(
-            ApiResponse::<()>::error("Invalid file type")
+            ApiResponse::<()>::error("File must have an extension")
         );
     }
+
+    let is_video = is_video_extension(&extension);
+    let is_image = is_image_extension(&extension);
+
+    if !is_video && !is_image {
+        return HttpResponse::BadRequest().json(
+            ApiResponse::<()>::error(&format!(
+                "Invalid file type. Allowed images: {:?}, videos: {:?}",
+                ALLOWED_IMAGE_EXTENSIONS,
+                ALLOWED_VIDEO_EXTENSIONS
+            ))
+        );
+    }
+
+    // Validate file size based on type
+    if is_image && request.file_size > MAX_IMAGE_SIZE {
+        return HttpResponse::BadRequest().json(
+            ApiResponse::<()>::error(&format!(
+                "Image file too large. Maximum size: {} MB",
+                MAX_IMAGE_SIZE / (1024 * 1024)
+            ))
+        );
+    }
+
+    if is_video && request.file_size > MAX_VIDEO_SIZE {
+        return HttpResponse::BadRequest().json(
+            ApiResponse::<()>::error(&format!(
+                "Video file too large. Maximum size: {} MB",
+                MAX_VIDEO_SIZE / (1024 * 1024)
+            ))
+        );
+    }
+
+    tracing::info!("📊 File validation passed: {} ({} bytes, is_video: {})",
+                   request.filename, request.file_size, is_video);
 
     // Validate hash format (should be hex)
     if request.expected_hash.len() != 64 || !request.expected_hash.chars().all(|c| c.is_ascii_hexdigit()) {
