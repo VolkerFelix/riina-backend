@@ -31,8 +31,7 @@ pub struct WorkoutHistoryItem {
     pub post_created_at: DateTime<Utc>,
     pub post_updated_at: DateTime<Utc>,
     pub post_edited_at: DateTime<Utc>,
-    pub post_image_urls: Option<Vec<String>>,
-    pub post_video_urls: Option<Vec<String>>,
+    pub post_media_urls: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -113,8 +112,7 @@ pub async fn get_workout_history(
             p.created_at as post_created_at,
             COALESCE(p.updated_at, p.created_at) as post_updated_at,
             COALESCE(p.edited_at, p.created_at) as post_edited_at,
-            p.image_urls as post_image_urls,
-            p.video_urls as post_video_urls
+            p.media_urls as post_media_urls
         FROM workout_data wd
         INNER JOIN posts p ON p.workout_id = wd.id AND p.user_id = wd.user_id
         WHERE wd.user_id = $1
@@ -181,8 +179,7 @@ pub async fn get_workout_history(
                     post_created_at: row.post_created_at,
                     post_updated_at: row.post_updated_at.unwrap(),
                     post_edited_at: row.post_edited_at.unwrap(),
-                    post_image_urls: row.post_image_urls,
-                    post_video_urls: row.post_video_urls,
+                    post_media_urls: row.post_media_urls,
                 }
             }).collect()
         },
