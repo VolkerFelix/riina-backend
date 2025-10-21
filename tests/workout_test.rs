@@ -14,7 +14,7 @@ use uuid::Uuid;
 use chrono::Utc;
 
 mod common;
-use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request};
+use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, delete_test_user};
 use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user, create_health_profile_for_user};
 use common::admin_helpers::create_admin_user_and_login;
 
@@ -28,6 +28,7 @@ async fn upload_workout_data_working() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
@@ -39,6 +40,10 @@ async fn upload_workout_data_working() {
         panic!("Health data upload failed with status {}: {}", status, error_body);
     }
     assert!(status);
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
 }
 
 #[tokio::test]
@@ -47,6 +52,7 @@ async fn upload_multiple_workout_data_sessions() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload multiple workouts
@@ -68,6 +74,7 @@ async fn upload_workout_data_with_invalid_data_fails() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Try to upload workout with invalid duration (negative)
@@ -96,6 +103,7 @@ async fn upload_workout_data_with_hard_workout() {
     let test_app = spawn_app().await;
     let client = Client::new();
     let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
     let mut workout_data = WorkoutData::new_with_hr_freq(WorkoutType::Hard, Utc::now(), 30, Some(2));
     let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
@@ -112,6 +120,7 @@ async fn test_workout_history_empty() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
 
     // Test workout history with no data
     let history_response = client
@@ -131,6 +140,10 @@ async fn test_workout_history_empty() {
     // Should return empty array for user with no workout history
     assert!(history_data["data"]["workouts"].is_array());
     assert_eq!(history_data["data"]["workouts"].as_array().unwrap().len(), 0);
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
 }
 
 #[tokio::test]
@@ -139,6 +152,7 @@ async fn test_workout_history_with_data() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload a workout first
@@ -164,6 +178,10 @@ async fn test_workout_history_with_data() {
     // Should return the uploaded workout
     assert!(history_data["data"]["workouts"].is_array());
     assert!(history_data["data"]["workouts"].as_array().unwrap().len() > 0);
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
 }
 
 #[tokio::test]
@@ -172,6 +190,7 @@ async fn test_workout_history_pagination() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload multiple workouts
@@ -199,6 +218,10 @@ async fn test_workout_history_pagination() {
     // Should return only 3 workouts due to limit
     assert!(history_data["data"]["workouts"].is_array());
     assert_eq!(history_data["data"]["workouts"].as_array().unwrap().len(), 3);
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
 }
 
 #[tokio::test]
@@ -207,6 +230,7 @@ async fn test_workout_detail_endpoint() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload a workout with heart rate data
@@ -300,7 +324,12 @@ async fn test_workout_detail_endpoint() {
     if workout_detail["max_heart_rate"].is_number() {
         let max_hr = workout_detail["max_heart_rate"].as_i64().unwrap();
         assert!(max_hr > 0 && max_hr < 300, "Max heart rate should be reasonable");
+
+        // Cleanup
+        delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
+        delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
     }
+
 }
 
 #[tokio::test]
@@ -309,6 +338,7 @@ async fn test_workout_detail_endpoint_not_found() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
 
     // Try to fetch a non-existent workout
     let fake_workout_id = Uuid::new_v4().to_string();
@@ -320,6 +350,10 @@ async fn test_workout_detail_endpoint_not_found() {
         .expect("Failed to execute workout detail request");
 
     assert_eq!(detail_response.status(), 404, "Should return 404 for non-existent workout");
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
 }
 
 #[tokio::test]
@@ -434,6 +468,10 @@ async fn test_admin_can_view_all_workouts() {
     
     let body: serde_json::Value = response.json().await.expect("Failed to parse response");
     assert!(body["data"]["workouts"].is_array());
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin.token, user.user_id).await;
+    delete_test_user(&test_app.address, &admin.token, admin.user_id).await;
 }
 
 #[tokio::test]
@@ -464,6 +502,10 @@ async fn test_admin_can_get_workout_by_id() {
     
     let body: serde_json::Value = response.json().await.expect("Failed to parse response");
     assert_eq!(body["data"]["id"].as_str().unwrap(), sync_id);
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin.token, user.user_id).await;
+    delete_test_user(&test_app.address, &admin.token, admin.user_id).await;
 }
 
 // ============================================================================
@@ -476,6 +518,7 @@ async fn test_signed_url_endpoints_exist() {
     let client = Client::new();
     
     let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
 
     // Test image signed URL endpoint
     let image_response = client
@@ -498,14 +541,19 @@ async fn test_signed_url_endpoints_exist() {
 
     // Should return some response (not necessarily successful without S3 setup)
     assert!(video_response.status().as_u16() < 500, "Video signed URL endpoint should exist");
+
+        // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
 }
 
-#[tokio::test]  
+#[tokio::test]
 async fn test_workout_with_media_urls() {
     let test_app = spawn_app().await;
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload workout with media URLs
@@ -517,6 +565,10 @@ async fn test_workout_with_media_urls() {
     
     let response_data = response.unwrap();
     assert!(response_data["data"]["sync_id"].is_string());
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
 }
 
 // ============================================================================
@@ -529,6 +581,7 @@ async fn test_workout_upload_notification_integration() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload a workout (this should trigger notifications)
@@ -544,6 +597,10 @@ async fn test_workout_upload_notification_integration() {
     // For now, we just verify the upload succeeded
     let response_data = response.unwrap();
     assert!(response_data["data"]["sync_id"].is_string());
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
 }
 
 // ============================================================================
@@ -557,6 +614,7 @@ async fn test_edit_workout_post() {
 
     // Create user and upload workout
     let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
@@ -567,13 +625,19 @@ async fn test_edit_workout_post() {
     let feed_response = make_authenticated_request(
         &client,
         reqwest::Method::GET,
-        &format!("{}/feed/?limit=100", &test_app.address),
+        &format!("{}/feed/?limit=200", &test_app.address),
         &test_user.token,
         None,
     ).await;
 
     let feed_data: serde_json::Value = feed_response.json().await.unwrap();
-    assert!(feed_data["data"]["posts"].is_array());
+
+    // Debug: Print the feed response to understand the structure
+    if feed_data["data"]["posts"].is_null() || !feed_data["data"]["posts"].is_array() {
+        eprintln!("Feed response: {}", serde_json::to_string_pretty(&feed_data).unwrap());
+        panic!("Feed did not return posts array. Check response above.");
+    }
+
     let posts = feed_data["data"]["posts"].as_array().unwrap();
     assert!(!posts.is_empty(), "No posts found after workout upload");
 
@@ -619,6 +683,10 @@ async fn test_edit_workout_post() {
     let post_data: serde_json::Value = get_response.json().await.unwrap();
     assert_eq!(post_data["data"]["content"], "Updated workout description!");
     assert_eq!(post_data["data"]["workout_data"]["activity_name"], "Trail Running");
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
 }
 
 #[tokio::test]
@@ -628,6 +696,7 @@ async fn test_delete_workout_post() {
 
     // Create user and upload workout
     let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     let mut workout_data = WorkoutData::new(WorkoutType::Light, Utc::now(), 20);
@@ -638,12 +707,19 @@ async fn test_delete_workout_post() {
     let feed_response = make_authenticated_request(
         &client,
         reqwest::Method::GET,
-        &format!("{}/feed/?limit=100", &test_app.address),
+        &format!("{}/feed/?limit=200", &test_app.address),
         &test_user.token,
         None,
     ).await;
 
     let feed_data: serde_json::Value = feed_response.json().await.unwrap();
+
+    // Debug: Print the feed response to understand the structure
+    if feed_data["data"]["posts"].is_null() || !feed_data["data"]["posts"].is_array() {
+        eprintln!("Feed response: {}", serde_json::to_string_pretty(&feed_data).unwrap());
+        panic!("Feed did not return posts array. Check response above.");
+    }
+
     let posts = feed_data["data"]["posts"].as_array().unwrap();
     assert!(!posts.is_empty(), "No posts found after workout upload");
 
@@ -686,6 +762,10 @@ async fn test_delete_workout_post() {
     ).await;
 
     assert!(!get_response.status().is_success(), "Post should not exist after deletion");
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
 }
 
 #[tokio::test]

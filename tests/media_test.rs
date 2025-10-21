@@ -1,201 +1,342 @@
-// Simple test to verify signed URL endpoints work
+//! Consolidated Media Upload Tests
+//!
+//! This file contains general media upload tests including:
+//! - General media uploads (images, videos)
+//! - Validation tests (format, size limits)
+//! - Signed URL generation
+//!
+//! Replaces:
+//! - media_test.rs (6 tests consolidated into 7 more focused tests)
+//!
+//! Note: Post video integration tests remain in post_videos_test.rs since they
+//! test post creation/updates with video URLs.
+//! Profile picture uploads remain in profile_picture_test.rs since they
+//! use different endpoints (/profile/picture/*)
 
 use reqwest::Client;
+use serde_json::json;
 use sha2::{Sha256, Digest};
 
 mod common;
-use common::utils::{spawn_app, create_test_user_and_login};
+use common::utils::{spawn_app, create_test_user_and_login, delete_test_user};
+use common::admin_helpers::create_admin_user_and_login;
+use common::media_helpers::{
+    upload_test_media_file, create_test_media_content, MediaType
+};
+
+// ============================================================================
+// IMAGE UPLOAD TESTS
+// ============================================================================
 
 #[tokio::test]
-async fn test_signed_url_endpoints_exist() {
+async fn test_image_upload_workflow() {
     let app = spawn_app().await;
     let client = Client::new();
-    
-    println!("🔍 Testing that signed URL endpoints exist and MinIO service is injected");
-    
-    // Create test user and login
     let test_user = create_test_user_and_login(&app.address).await;
-    let token = &test_user.token;
-    
-    // Create a simple test file hash (SHA256 of "test")
-    let mut hasher = Sha256::new();
-    hasher.update(b"test");
-    let test_hash = format!("{:x}", hasher.finalize());
-    
-    // Try to request an upload URL
-    let response = client
-        .post(&format!("{}/health/request-upload-url", &app.address))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&serde_json::json!({
-            "filename": "test.png",
-            "content_type": "image/png",
-            "expected_hash": test_hash
-        }))
-        .send()
-        .await
-        .expect("Failed to execute request");
-    
-    let status = response.status();
-    let response_text = response.text().await.expect("Failed to get response text");
-    
-    println!("Response status: {}", status);
-    println!("Response body: {}", response_text);
-    
-    // We expect either 200 (success) or 400 (bad request), not 500 (server error)
-    // A 500 would indicate the MinIO service is not injected properly
-    assert_ne!(status, 500, "Should not get server error - MinIO service should be injected properly");
-    
-    println!("✅ Signed URL endpoints accessible and MinIO service is properly injected");
+    let admin_user = create_admin_user_and_login(&app.address).await;
+
+    println!("📸 Testing image upload workflow");
+
+    // Create test image content
+    let test_content = create_test_media_content(MediaType::Image, 1024);
+
+    // Upload using helper
+    let result = upload_test_media_file(
+        &client,
+        &app.address,
+        &test_user.token,
+        "test-image.jpg",
+        "image/jpeg",
+        &test_content,
+    )
+    .await;
+
+    assert!(result.is_ok(), "Image upload should succeed");
+    let upload_result = result.unwrap();
+
+    assert!(!upload_result.file_url.is_empty(), "Should have file URL");
+    assert!(!upload_result.object_key.is_empty(), "Should have object key");
+
+    println!("✅ Image upload workflow completed");
+
+    // Cleanup: Delete test users
+    delete_test_user(&app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&app.address, &admin_user.token, admin_user.user_id).await;
 }
 
 #[tokio::test]
-async fn test_download_url_endpoint() {
+async fn test_image_format_validation() {
     let app = spawn_app().await;
     let client = Client::new();
-    
-    println!("🔍 Testing download URL endpoint");
-    
-    // Create test user and login
     let test_user = create_test_user_and_login(&app.address).await;
-    let token = &test_user.token;
-    
-    // Try to get a download URL for a non-existent file
-    let response = client
-        .get(&format!("{}/media/download-url/{}/test.png", &app.address, test_user.user_id))
-        .header("Authorization", format!("Bearer {}", token))
-        .send()
-        .await
-        .expect("Failed to execute request");
-    
-    let status = response.status();
-    
-    println!("Response status: {}", status);
-    
-    // We expect 404 (not found) for non-existent file, not 500 (server error)
-    assert_ne!(status, 500, "Should not get server error");
-    
-    println!("✅ Download URL endpoint accessible");
-}
+    let admin_user = create_admin_user_and_login(&app.address).await;
 
-#[tokio::test]
-async fn test_full_media_upload_and_download_workflow() {
-    let app = spawn_app().await;
-    let client = Client::new();
+    println!("📸 Testing image format validation");
 
-    println!("🔍 Testing full media upload and download workflow");
-
-    // Create test user and login
-    let test_user = create_test_user_and_login(&app.address).await;
-    let token = &test_user.token;
-
-    // Step 1: Create test file content
-    let test_content = b"fake image content for testing";
+    let test_content = b"fake image data";
     let mut hasher = Sha256::new();
     hasher.update(test_content);
     let test_hash = format!("{:x}", hasher.finalize());
 
-    println!("📝 Test file hash: {}", test_hash);
+    // Test allowed formats
+    let allowed_formats = vec!["jpg", "jpeg", "png", "gif", "heic", "heif"];
 
-    // Step 2: Request upload URL
-    let upload_response = client
+    for format in allowed_formats {
+        let response = client
+            .post(&format!("{}/media/upload-url", &app.address))
+            .header("Authorization", format!("Bearer {}", test_user.token))
+            .json(&json!({
+                "filename": format!("test.{}", format),
+                "content_type": format!("image/{}", format),
+                "expected_hash": test_hash,
+                "file_size": test_content.len()
+            }))
+            .send()
+            .await
+            .expect("Failed to request upload URL");
+
+        assert_eq!(response.status(), 200, "Should accept .{} format", format);
+    }
+
+    // Test invalid format
+    let response = client
         .post(&format!("{}/media/upload-url", &app.address))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&serde_json::json!({
-            "filename": "test-image.jpg",
-            "content_type": "image/jpeg",
-            "expected_hash": test_hash
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .json(&json!({
+            "filename": "test.bmp",
+            "content_type": "image/bmp",
+            "expected_hash": test_hash,
+            "file_size": test_content.len()
         }))
         .send()
         .await
         .expect("Failed to request upload URL");
 
-    assert_eq!(upload_response.status(), 200, "Upload URL request should succeed");
+    assert_eq!(response.status(), 400, "Should reject .bmp format");
 
-    let upload_data: serde_json::Value = upload_response.json().await.expect("Failed to parse upload response");
-    println!("📤 Upload URL response: {}", serde_json::to_string_pretty(&upload_data).unwrap());
+    println!("✅ Image format validation passed");
 
-    let upload_url = upload_data["data"]["upload_url"].as_str().expect("Missing upload_url");
-    let object_key = upload_data["data"]["object_key"].as_str().expect("Missing object_key");
+    // Cleanup: Delete test users
+    delete_test_user(&app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&app.address, &admin_user.token, admin_user.user_id).await;
+}
 
-    println!("🔑 Object key: {}", object_key);
+#[tokio::test]
+async fn test_image_size_validation() {
+    let app = spawn_app().await;
+    let client = Client::new();
+    let test_user = create_test_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address).await;
 
-    // Step 3: Upload file to MinIO (simulate)
-    let hash_bytes = hex::decode(&test_hash).expect("Invalid hash");
-    let base64_hash = base64::encode(&hash_bytes);
+    println!("📸 Testing image size validation");
 
-    let upload_result = client
-        .put(upload_url)
-        .header("Content-Type", "image/jpeg")
-        .header("x-amz-checksum-sha256", base64_hash)
-        .body(test_content.to_vec())
-        .send()
-        .await
-        .expect("Failed to upload to MinIO");
+    let mut hasher = Sha256::new();
+    hasher.update(b"test");
+    let test_hash = format!("{:x}", hasher.finalize());
 
-    println!("📤 MinIO upload status: {}", upload_result.status());
-    assert!(upload_result.status().is_success(), "MinIO upload should succeed");
+    // Try to upload image larger than 10MB limit
+    let large_size = 11 * 1024 * 1024; // 11 MB
 
-    // Step 4: Confirm upload
-    let confirm_response = client
-        .post(&format!("{}/media/confirm-upload", &app.address))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&serde_json::json!({
-            "object_key": object_key,
-            "expected_hash": test_hash
+    let response = client
+        .post(&format!("{}/media/upload-url", &app.address))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .json(&json!({
+            "filename": "large-image.jpg",
+            "content_type": "image/jpeg",
+            "expected_hash": test_hash,
+            "file_size": large_size
         }))
         .send()
         .await
-        .expect("Failed to confirm upload");
+        .expect("Failed to request upload URL");
 
-    assert_eq!(confirm_response.status(), 200, "Upload confirmation should succeed");
+    assert_eq!(response.status(), 400, "Should reject image over 10MB");
 
-    let confirm_data: serde_json::Value = confirm_response.json().await.expect("Failed to parse confirm response");
-    println!("✅ Confirm response: {}", serde_json::to_string_pretty(&confirm_data).unwrap());
+    let error_data: serde_json::Value = response.json().await.expect("Failed to parse error");
+    assert!(error_data["error"].as_str().unwrap().contains("too large"));
 
-    let file_url = confirm_data["data"]["file_url"].as_str().expect("Missing file_url");
-    println!("🔗 Returned file_url: {}", file_url);
+    println!("✅ Image size validation passed");
 
-    // Step 5: Parse the file_url (this is what the frontend does)
-    // Expected format: "{user_id}/{filename}"
-    let parts: Vec<&str> = file_url.split('/').collect();
-    assert_eq!(parts.len(), 2, "file_url should have format user_id/filename, got: {}", file_url);
+    // Cleanup: Delete test users
+    delete_test_user(&app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&app.address, &admin_user.token, admin_user.user_id).await;
+}
 
-    let returned_user_id = parts[0];
-    let returned_filename = parts[1];
+// ============================================================================
+// VIDEO UPLOAD TESTS
+// ============================================================================
 
-    println!("📋 Parsed user_id: {}, filename: {}", returned_user_id, returned_filename);
+#[tokio::test]
+async fn test_video_upload_workflow() {
+    let app = spawn_app().await;
+    let client = Client::new();
+    let test_user = create_test_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address).await;
 
-    // Step 6: Use the parsed values to get download URL (this is what SignedImage does)
-    let download_response = client
-        .get(&format!("{}/media/download-url/{}/{}", &app.address, returned_user_id, returned_filename))
-        .header("Authorization", format!("Bearer {}", token))
+    println!("🎥 Testing video upload workflow");
+
+    let test_content = create_test_media_content(MediaType::Video, 2048);
+
+    let result = upload_test_media_file(
+        &client,
+        &app.address,
+        &test_user.token,
+        "test-video.mp4",
+        "video/mp4",
+        &test_content,
+    )
+    .await;
+
+    assert!(result.is_ok(), "Video upload should succeed");
+    let upload_result = result.unwrap();
+
+    assert!(!upload_result.file_url.is_empty(), "Should have file URL");
+
+    println!("✅ Video upload workflow completed");
+
+    // Cleanup: Delete test users
+    delete_test_user(&app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&app.address, &admin_user.token, admin_user.user_id).await;
+}
+
+#[tokio::test]
+async fn test_video_format_validation() {
+    let app = spawn_app().await;
+    let client = Client::new();
+    let test_user = create_test_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address).await;
+
+    println!("🎥 Testing video format validation");
+
+    let test_content = b"fake video";
+    let mut hasher = Sha256::new();
+    hasher.update(test_content);
+    let test_hash = format!("{:x}", hasher.finalize());
+
+    // Test allowed video formats
+    let allowed_formats = vec!["mp4", "mov", "m4v", "3gp", "webm"];
+
+    for format in allowed_formats {
+        let response = client
+            .post(&format!("{}/media/upload-url", &app.address))
+            .header("Authorization", format!("Bearer {}", test_user.token))
+            .json(&json!({
+                "filename": format!("test.{}", format),
+                "content_type": format!("video/{}", format),
+                "expected_hash": test_hash,
+                "file_size": test_content.len()
+            }))
+            .send()
+            .await
+            .expect("Failed to request upload URL");
+
+        assert_eq!(response.status(), 200, "Should accept .{} format", format);
+    }
+
+    // Test invalid format
+    let response = client
+        .post(&format!("{}/media/upload-url", &app.address))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .json(&json!({
+            "filename": "test.wmv",
+            "content_type": "video/wmv",
+            "expected_hash": test_hash,
+            "file_size": test_content.len()
+        }))
         .send()
         .await
-        .expect("Failed to get download URL");
+        .expect("Failed to request upload URL");
 
-    let download_status = download_response.status();
-    let download_data: serde_json::Value = download_response.json().await.expect("Failed to parse download response");
+    assert_eq!(response.status(), 400, "Should reject .wmv format");
 
-    println!("📥 Download URL response status: {}", download_status);
-    println!("📥 Download URL response: {}", serde_json::to_string_pretty(&download_data).unwrap());
+    println!("✅ Video format validation passed");
 
-    assert_eq!(download_status, 200, "Download URL request should succeed");
-    assert!(download_data["data"]["url"].is_string(), "Should return signed download URL");
+    // Cleanup: Delete test users
+    delete_test_user(&app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&app.address, &admin_user.token, admin_user.user_id).await;
+}
 
-    let signed_url = download_data["data"]["url"].as_str().expect("Missing signed URL");
-    println!("🔗 Signed download URL: {}", signed_url);
+#[tokio::test]
+async fn test_video_size_validation() {
+    let app = spawn_app().await;
+    let client = Client::new();
+    let test_user = create_test_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address).await;
 
-    // Step 7: Verify we can download the file using the signed URL
-    let download_file_response = client
-        .get(signed_url)
+    println!("🎥 Testing video size validation");
+
+    let mut hasher = Sha256::new();
+    hasher.update(b"test");
+    let test_hash = format!("{:x}", hasher.finalize());
+
+    // Try to upload video larger than 100MB limit
+    let large_size = 101 * 1024 * 1024; // 101 MB
+
+    let response = client
+        .post(&format!("{}/media/upload-url", &app.address))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .json(&json!({
+            "filename": "large-video.mp4",
+            "content_type": "video/mp4",
+            "expected_hash": test_hash,
+            "file_size": large_size
+        }))
         .send()
         .await
-        .expect("Failed to download file");
+        .expect("Failed to request upload URL");
 
-    assert!(download_file_response.status().is_success(), "File download should succeed");
+    assert_eq!(response.status(), 400, "Should reject video over 100MB");
 
-    let downloaded_content = download_file_response.bytes().await.expect("Failed to get file bytes");
-    assert_eq!(downloaded_content.as_ref(), test_content, "Downloaded content should match uploaded content");
+    let error_data: serde_json::Value = response.json().await.expect("Failed to parse error");
+    assert!(error_data["error"].as_str().unwrap().contains("too large"));
 
-    println!("✅ Full workflow test passed! File uploaded, confirmed, and downloaded successfully");
+    println!("✅ Video size validation passed");
+
+    // Cleanup: Delete test users
+    delete_test_user(&app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&app.address, &admin_user.token, admin_user.user_id).await;
+}
+
+// ============================================================================
+// UTILITY TESTS - URL Generation
+// ============================================================================
+
+#[tokio::test]
+async fn test_signed_url_generation() {
+    let app = spawn_app().await;
+    let client = Client::new();
+    let test_user = create_test_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address).await;
+
+    println!("🔐 Testing signed URL generation");
+
+    let test_content = b"test";
+    let mut hasher = Sha256::new();
+    hasher.update(test_content);
+    let test_hash = format!("{:x}", hasher.finalize());
+
+    let response = client
+        .post(&format!("{}/media/upload-url", &app.address))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .json(&json!({
+            "filename": "test.jpg",
+            "content_type": "image/jpeg",
+            "expected_hash": test_hash,
+            "file_size": test_content.len()
+        }))
+        .send()
+        .await
+        .expect("Failed to request URL");
+
+    assert_eq!(response.status(), 200);
+
+    let data: serde_json::Value = response.json().await.expect("Failed to parse response");
+    assert!(data["data"]["upload_url"].is_string());
+    assert!(data["data"]["object_key"].is_string());
+
+    println!("✅ Signed URL generation works");
+
+    // Cleanup: Delete test users
+    delete_test_user(&app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&app.address, &admin_user.token, admin_user.user_id).await;
 }

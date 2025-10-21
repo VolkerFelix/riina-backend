@@ -182,6 +182,35 @@ pub async fn create_test_user_and_login(app_address: &str) -> UserRegLoginRespon
         }
 }
 
+/// Delete a test user and all associated data
+///
+/// This function should be called at the end of tests to clean up created users.
+/// It requires an admin token to delete users.
+///
+/// # Example
+/// ```
+/// let test_user = create_test_user_and_login(&app.address).await;
+/// let admin_user = create_admin_user_and_login(&app.address).await;
+///
+/// // ... run tests ...
+///
+/// delete_test_user(&app.address, &admin_user.token, test_user.user_id).await;
+/// ```
+pub async fn delete_test_user(app_address: &str, admin_token: &str, user_id: Uuid) {
+    let client = Client::new();
+
+    let response = client
+        .delete(&format!("{}/admin/users/{}", app_address, user_id))
+        .header("Authorization", format!("Bearer {}", admin_token))
+        .send()
+        .await
+        .expect("Failed to send delete request");
+
+    if !response.status().is_success() {
+        eprintln!("Warning: Failed to delete test user {}: status {}", user_id, response.status());
+    }
+}
+
 /// Get the next occurrence of a specific weekday and time from now
 pub fn get_next_date(day_of_week: Weekday, time: NaiveTime) -> DateTime<Utc> {
     let now = Utc::now();

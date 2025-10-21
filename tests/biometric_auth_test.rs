@@ -5,7 +5,8 @@ use chrono::{Utc, Duration};
 use uuid::Uuid;
 
 mod common;
-use common::utils::{spawn_app, create_test_user_and_login};
+use common::utils::{spawn_app, create_test_user_and_login, delete_test_user};
+use common::admin_helpers::create_admin_user_and_login;
 use riina_backend::models::user::{UserRole, UserStatus};
 use riina_backend::middleware::auth::Claims;
 
@@ -117,6 +118,7 @@ async fn biometric_refresh_returns_401_for_invalid_token() {
     let response_body = response.json::<serde_json::Value>().await
         .expect("Failed to parse error response as JSON");
     assert!(response_body.get("error").is_some(), "Response should contain error message");
+
 }
 
 #[tokio::test]
@@ -153,6 +155,7 @@ async fn biometric_refresh_returns_401_for_very_old_token() {
         .expect("Failed to parse error response as JSON");
     assert!(response_body.get("error").is_some(), "Response should contain error message");
     assert_eq!("Token too old for refresh", response_body["error"], "Should indicate token is too old");
+
 }
 
 #[tokio::test]
@@ -184,6 +187,7 @@ async fn biometric_refresh_returns_401_for_nonexistent_user() {
     let response_body = response.json::<serde_json::Value>().await
         .expect("Failed to parse error response as JSON");
     assert!(response_body.get("error").is_some(), "Response should contain error message");
+
 }
 
 #[tokio::test]
@@ -216,7 +220,9 @@ async fn biometric_refresh_returns_401_for_malformed_token() {
         // Assert
         assert_eq!(401, response.status().as_u16(), 
             "Should return 401 for malformed token: {}", malformed_token);
+
     }
+
 }
 
 #[tokio::test]
@@ -252,6 +258,7 @@ async fn biometric_refresh_returns_401_for_token_with_wrong_signature() {
     let response_body = response.json::<serde_json::Value>().await
         .expect("Failed to parse error response as JSON");
     assert!(response_body.get("error").is_some(), "Response should contain error message");
+
 }
 
 #[tokio::test]
@@ -272,6 +279,7 @@ async fn biometric_refresh_returns_400_for_missing_token() {
 
     // Assert
     assert_eq!(400, response.status().as_u16(), "Should return 400 for missing token field");
+
 }
 
 #[tokio::test]
@@ -291,4 +299,5 @@ async fn biometric_refresh_returns_400_for_invalid_json() {
 
     // Assert
     assert_eq!(400, response.status().as_u16(), "Should return 400 for invalid JSON");
+
 }

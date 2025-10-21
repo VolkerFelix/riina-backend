@@ -2,7 +2,8 @@ use chrono::{Duration, Utc};
 use uuid::Uuid;
 
 mod common;
-use common::utils::{spawn_app, create_test_user_and_login, TestApp};
+use common::utils::{spawn_app, create_test_user_and_login, TestApp, delete_test_user};
+use common::admin_helpers::create_admin_user_and_login;
 use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user};
 
 /// Helper function to create multiple overlapping workouts in a single batch
@@ -158,6 +159,7 @@ async fn test_exact_duplicate_workouts_are_detected() {
     // Should have only 1 workout remaining (the higher calorie one)
     assert_eq!(workouts.len(), 1, "Should have 1 workout remaining after automatic cleanup");
     assert_eq!(workouts[0]["calories_burned"], 300, "Should keep the higher calorie workout");
+
 }
 
 #[tokio::test]
@@ -211,6 +213,7 @@ async fn test_cleanup_keeps_higher_calorie_workout() {
     assert!(stamina_gained >= 0.0, "Stamina gains should be non-negative");
     assert!(strength_gained >= 0.0, "Strength gains should be non-negative");
     assert!(total_points > 0.0, "Total points should be positive for a 60-minute workout");
+
 }
 
 #[tokio::test]
@@ -250,6 +253,7 @@ async fn test_cleanup_handles_null_calories() {
     let workouts = history_data["data"]["workouts"].as_array().unwrap();
     assert_eq!(workouts.len(), 1, "Should have 1 workout remaining");
     assert_eq!(workouts[0]["calories_burned"], 300, "Should keep the workout with calories");
+
 }
 
 #[tokio::test]
@@ -291,6 +295,7 @@ async fn test_cleanup_with_multiple_duplicates() {
     let workouts = history_data["data"]["workouts"].as_array().unwrap();
     assert_eq!(workouts.len(), 1, "Should have 1 workout remaining");
     assert_eq!(workouts[0]["calories_burned"], 400, "Should keep the highest calorie workout");
+
 }
 
 #[tokio::test]
@@ -332,6 +337,7 @@ async fn test_cleanup_keeps_older_when_calories_tied() {
     assert_eq!(workouts.len(), 1, "Should have 1 workout remaining");
     // Note: We can't easily verify which specific workout was kept via API, 
     // but we can verify that exactly one workout remains
+
 }
 
 #[tokio::test]
@@ -371,6 +377,7 @@ async fn test_overlapping_but_not_identical_times_grouped() {
     
     // Should have 2 workouts remaining since they have different start/end times
     assert_eq!(workouts.len(), 2, "Should have 2 workouts remaining since they have different times");
+
 }
 
 #[tokio::test]
@@ -440,6 +447,7 @@ async fn test_multiple_users_automatic_cleanup_isolated() {
     let user2_workouts = user2_history_data["data"]["workouts"].as_array().unwrap();
     assert_eq!(user2_workouts.len(), 1, "User2 should have 1 workout after automatic cleanup");
     assert_eq!(user2_workouts[0]["calories_burned"], 350, "User2 should keep the higher calorie workout");
+
 }
 
 #[tokio::test]

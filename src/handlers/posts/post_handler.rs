@@ -70,6 +70,11 @@ pub async fn create_post(
 
     let visibility = body.visibility.clone().unwrap_or(PostVisibility::Public);
 
+    // Convert media_urls to JSON
+    let media_urls_json = body.media_urls.as_ref().map(|media| {
+        serde_json::to_value(media).unwrap_or(serde_json::Value::Null)
+    });
+
     // Insert post
     let post_id = Uuid::new_v4();
     let post_type_str = body.post_type.as_str();
@@ -79,9 +84,9 @@ pub async fn create_post(
         r#"
         INSERT INTO posts (
             id, user_id, post_type, content, workout_id,
-            image_urls, video_urls, visibility
+            media_urls, visibility
         )
-        VALUES ($1, $2, $3::post_type, $4, $5, $6, $7, $8::post_visibility)
+        VALUES ($1, $2, $3::post_type, $4, $5, $6, $7::post_visibility)
         RETURNING id
         "#
     )
@@ -90,8 +95,7 @@ pub async fn create_post(
     .bind(post_type_str)
     .bind(body.content.as_ref())
     .bind(body.workout_id)
-    .bind(body.image_urls.as_ref())
-    .bind(body.video_urls.as_ref())
+    .bind(media_urls_json)
     .bind(visibility_str)
     .fetch_one(&**pool)
     .await;
@@ -186,23 +190,26 @@ pub async fn update_post(
     let now = Utc::now();
     let visibility_str = body.visibility.as_ref().map(|v| v.as_str());
 
+    // Convert media_urls to JSON
+    let media_urls_json = body.media_urls.as_ref().map(|media| {
+        serde_json::to_value(media).unwrap_or(serde_json::Value::Null)
+    });
+
     // Update the post
     let result = sqlx::query(
         r#"
         UPDATE posts
         SET
             content = COALESCE($1, content),
-            image_urls = COALESCE($2, image_urls),
-            video_urls = COALESCE($3, video_urls),
-            visibility = COALESCE($4::post_visibility, visibility),
-            updated_at = $5,
-            edited_at = $5
-        WHERE id = $6
+            media_urls = COALESCE($2, media_urls),
+            visibility = COALESCE($3::post_visibility, visibility),
+            updated_at = $4,
+            edited_at = $4
+        WHERE id = $5
         "#
     )
     .bind(body.content.as_ref())
-    .bind(body.image_urls.as_ref())
-    .bind(body.video_urls.as_ref())
+    .bind(media_urls_json)
     .bind(visibility_str)
     .bind(now)
     .bind(post_id)
@@ -345,7 +352,7 @@ pub async fn get_post(
         r#"
         SELECT
             p.id, p.user_id, p.post_type::text, p.content, p.workout_id,
-            p.image_urls, p.video_urls, p.ad_metadata, p.visibility::text,
+            p.media_urls, p.ad_metadata, p.visibility::text,
             p.is_editable, p.created_at, p.updated_at, p.edited_at,
             u.username, u.profile_picture_url,
             wd.workout_start, wd.workout_end, wd.duration_minutes,
@@ -398,8 +405,7 @@ pub async fn get_post(
                     "content": row.try_get::<Option<String>, _>("content").ok().flatten(),
                     "workout_id": row.try_get::<Option<Uuid>, _>("workout_id").ok().flatten(),
                     "workout_data": workout_data,
-                    "image_urls": row.try_get::<Option<Vec<String>>, _>("image_urls").ok().flatten(),
-                    "video_urls": row.try_get::<Option<Vec<String>>, _>("video_urls").ok().flatten(),
+                    "media_urls": row.try_get::<Option<serde_json::Value>, _>("media_urls").ok().flatten(),
                     "ad_metadata": row.try_get::<Option<serde_json::Value>, _>("ad_metadata").ok().flatten(),
                     "visibility": row.try_get::<String, _>("visibility").ok(),
                     "is_editable": row.try_get::<bool, _>("is_editable").ok(),
@@ -454,7 +460,7 @@ pub async fn get_post_by_workout_id(
         r#"
         SELECT
             p.id, p.user_id, p.post_type::text, p.content, p.workout_id,
-            p.image_urls, p.video_urls, p.ad_metadata, p.visibility::text,
+            p.media_urls, p.ad_metadata, p.visibility::text,
             p.is_editable, p.created_at, p.updated_at, p.edited_at,
             u.username, u.profile_picture_url,
             wd.workout_start, wd.workout_end, wd.duration_minutes,
@@ -507,8 +513,7 @@ pub async fn get_post_by_workout_id(
                     "content": row.try_get::<Option<String>, _>("content").ok().flatten(),
                     "workout_id": row.try_get::<Option<Uuid>, _>("workout_id").ok().flatten(),
                     "workout_data": workout_data,
-                    "image_urls": row.try_get::<Option<Vec<String>>, _>("image_urls").ok().flatten(),
-                    "video_urls": row.try_get::<Option<Vec<String>>, _>("video_urls").ok().flatten(),
+                    "media_urls": row.try_get::<Option<serde_json::Value>, _>("media_urls").ok().flatten(),
                     "ad_metadata": row.try_get::<Option<serde_json::Value>, _>("ad_metadata").ok().flatten(),
                     "visibility": row.try_get::<String, _>("visibility").ok(),
                     "is_editable": row.try_get::<bool, _>("is_editable").ok(),

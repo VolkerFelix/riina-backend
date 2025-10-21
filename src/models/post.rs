@@ -3,6 +3,14 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
+// Media type enum
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum MediaType {
+    Image,
+    Video,
+}
+
 // Post type enum matching database
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, PartialEq)]
 #[sqlx(type_name = "post_type", rename_all = "lowercase")]
@@ -43,6 +51,14 @@ impl PostVisibility {
     }
 }
 
+// Media item for ordered media array
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MediaItem {
+    #[serde(rename = "type")]
+    pub media_type: MediaType,
+    pub url: String,
+}
+
 // Core Post model
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct Post {
@@ -51,8 +67,9 @@ pub struct Post {
     pub post_type: PostType,
     pub content: Option<String>,
     pub workout_id: Option<Uuid>,
-    pub image_urls: Option<Vec<String>>,
-    pub video_urls: Option<Vec<String>>,
+    pub image_urls: Option<Vec<String>>,  // Deprecated: use media_urls instead
+    pub video_urls: Option<Vec<String>>,  // Deprecated: use media_urls instead
+    pub media_urls: Option<serde_json::Value>,  // New: ordered array of {type, url} objects
     pub ad_metadata: Option<serde_json::Value>,
     pub visibility: PostVisibility,
     pub is_editable: bool,
@@ -83,8 +100,7 @@ pub struct CreatePostRequest {
     pub post_type: PostType,
     pub content: Option<String>,
     pub workout_id: Option<Uuid>, // For workout posts
-    pub image_urls: Option<Vec<String>>,
-    pub video_urls: Option<Vec<String>>,
+    pub media_urls: Option<Vec<MediaItem>>,
     pub visibility: Option<PostVisibility>,
 }
 
@@ -92,8 +108,7 @@ pub struct CreatePostRequest {
 #[derive(Debug, Deserialize)]
 pub struct UpdatePostRequest {
     pub content: Option<String>,
-    pub image_urls: Option<Vec<String>>,
-    pub video_urls: Option<Vec<String>>,
+    pub media_urls: Option<Vec<MediaItem>>,
     pub visibility: Option<PostVisibility>,
     pub activity_name: Option<String>, // For workout posts
 }

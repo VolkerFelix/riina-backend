@@ -4,7 +4,7 @@ use reqwest::Client;
 use serde_json::json;
 
 mod common;
-use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request};
+use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, delete_test_user};
 use common::workout_data_helpers::{upload_workout_data_for_user, WorkoutData, WorkoutType, create_health_profile_for_user};
 use common::admin_helpers::{create_admin_user_and_login, create_teams_for_test};
 use riina_backend::db::health_data::get_user_health_profile_details;
@@ -69,7 +69,7 @@ async fn test_trailing_7_day_average_calculation() {
     // Test the leaderboard endpoint to see if trailing average is calculated
     // Use a large page size to get all users
     let response = client
-        .get(&format!("{}/league/users/stats?sort_by=trailing_average&page_size=100", test_app.address))
+        .get(&format!("{}/league/users/stats?sort_by=trailing_average&page_size=200", test_app.address))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -118,6 +118,7 @@ async fn test_trailing_7_day_average_calculation() {
     println!("✅ Trailing 7-day average calculation test passed: {}", trailing_avg);
     
     println!("✅ Trailing average calculation test completed");
+
 }
 
 #[tokio::test]
@@ -176,7 +177,7 @@ async fn test_leaderboard_sort_by_trailing_average() {
     for workout_data in user1_workouts.iter_mut() {
         let _ = upload_workout_data_for_user(&client, &test_app.address, &user1.token, workout_data).await;
     }
-    
+
     for workout_data in user2_workouts.iter_mut() {
         let _ = upload_workout_data_for_user(&client, &test_app.address, &user2.token, workout_data).await;
     }
@@ -192,7 +193,7 @@ async fn test_leaderboard_sort_by_trailing_average() {
     // Test leaderboard with sort_by=trailing_average
     // Use a large page size to get all users
     let response = client
-        .get(&format!("{}/league/users/stats?sort_by=trailing_average&page_size=100", test_app.address))
+        .get(&format!("{}/league/users/stats?sort_by=trailing_average&page_size=200", test_app.address))
         .header("Authorization", format!("Bearer {}", user1.token))
         .send()
         .await
@@ -255,4 +256,9 @@ async fn test_leaderboard_sort_by_trailing_average() {
     println!("✅ User 1 trailing average: {} (rank: {})", user1_trailing_avg, user1_rank);
     println!("✅ User 2 trailing average: {} (rank: {})", user2_trailing_avg, user2_rank);
     println!("✅ Leaderboard sorting by trailing average test passed");
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, user1.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, user2.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
 }

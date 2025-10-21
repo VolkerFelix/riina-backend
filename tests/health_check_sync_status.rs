@@ -4,7 +4,8 @@ use uuid::Uuid;
 use chrono::Utc;
 
 mod common;
-use common::utils::{spawn_app, create_test_user_and_login};
+use common::utils::{spawn_app, create_test_user_and_login, delete_test_user};
+use common::admin_helpers::create_admin_user_and_login;
 use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user, WorkoutSyncRequest};
 
 #[tokio::test]
@@ -124,6 +125,7 @@ async fn test_check_sync_status_empty_list() {
     let data = &body["data"];
 
     assert_eq!(data["unsynced_workouts"].as_array().unwrap().len(), 0);
+
 }
 
 #[tokio::test]
@@ -147,4 +149,5 @@ async fn test_check_sync_status_unauthorized() {
         .expect("Failed to execute request");
 
     assert_eq!(response.status(), 401);
+
 }

@@ -23,9 +23,15 @@ pub struct WorkoutDetail {
     // Game stats gained from this workout
     pub stamina_gained: Option<f32>,
     pub strength_gained: Option<f32>,
-    // Media attachments
-    pub image_url: Option<String>,
-    pub video_url: Option<String>,
+    // Post information
+    pub post_id: Option<Uuid>,
+    pub post_content: Option<String>,
+    pub post_visibility: Option<String>,
+    pub post_is_editable: Option<bool>,
+    pub post_created_at: Option<DateTime<Utc>>,
+    pub post_updated_at: Option<DateTime<Utc>>,
+    pub post_edited_at: Option<DateTime<Utc>>,
+    pub post_media_urls: Option<serde_json::Value>,
 }
 
 fn calculate_duration_minutes(start: DateTime<Utc>, end: DateTime<Utc>) -> Option<i32> {
@@ -74,7 +80,7 @@ pub async fn get_workout_detail(
 
     let workout_id = workout_id.into_inner();
 
-    // Fetch specific workout with all stats from workout_data
+    // Fetch specific workout with all stats from workout_data and post info
     let workout = match sqlx::query!(
         r#"
         SELECT
@@ -92,9 +98,16 @@ pub async fn get_workout_detail(
             wd.heart_rate_zones,
             COALESCE(wd.stamina_gained, 0.0) as stamina_gained,
             COALESCE(wd.strength_gained, 0.0) as strength_gained,
-            wd.image_url,
-            wd.video_url
+            p.id as "post_id?",
+            p.content as "post_content?",
+            p.visibility::text as "post_visibility?",
+            p.is_editable as "post_is_editable?",
+            p.created_at as "post_created_at?",
+            COALESCE(p.updated_at, p.created_at) as "post_updated_at?",
+            COALESCE(p.edited_at, p.created_at) as "post_edited_at?",
+            p.media_urls as "post_media_urls?"
         FROM workout_data wd
+        LEFT JOIN posts p ON p.workout_id = wd.id
         WHERE wd.id = $1
         "#,
         workout_id
@@ -141,8 +154,15 @@ pub async fn get_workout_detail(
                 heart_rate_data,
                 stamina_gained: row.stamina_gained,
                 strength_gained: row.strength_gained,
-                image_url: row.image_url,
-                video_url: row.video_url,
+                // Post information
+                post_id: row.post_id,
+                post_content: row.post_content,
+                post_visibility: row.post_visibility,
+                post_is_editable: row.post_is_editable,
+                post_created_at: row.post_created_at,
+                post_updated_at: row.post_updated_at,
+                post_edited_at: row.post_edited_at,
+                post_media_urls: row.post_media_urls,
             }
         }
         Ok(None) => {

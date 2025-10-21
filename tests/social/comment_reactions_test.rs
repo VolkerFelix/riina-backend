@@ -63,6 +63,7 @@ async fn test_add_comment_reaction_success() {
     assert_eq!(response_body["reaction_type"], "fire");
     assert_eq!(response_body["user_id"], user.user_id.to_string());
     assert_eq!(response_body["comment_id"], comment_id);
+
 }
 
 #[tokio::test]
@@ -102,6 +103,7 @@ async fn test_add_invalid_comment_reaction_type_fails() {
         .expect("Failed to send comment reaction request");
 
     assert_eq!(response.status(), 400, "Should fail with invalid reaction type");
+
 }
 
 #[tokio::test]
@@ -622,6 +624,7 @@ async fn test_multiple_users_comment_reactions() {
     assert!(users_response.status().is_success(), "Should successfully get comment reaction users");
     let users_body: serde_json::Value = users_response.json().await.expect("Failed to parse users response");
     assert_eq!(users_body.as_array().unwrap().len(), 2, "Should have 2 users who reacted");
+
 }
 
 #[tokio::test]

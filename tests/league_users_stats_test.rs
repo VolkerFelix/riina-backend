@@ -36,6 +36,7 @@ async fn test_get_league_users_with_stats_success() {
         let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
         let upload_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout_data).await;
         assert!(upload_response.is_ok(), "Failed to upload health data for user: {}", upload_response.err().unwrap());
+
     }
 
     // Step 3: Create teams and add users as members
@@ -211,6 +212,7 @@ async fn test_get_league_users_with_stats_success() {
         // Check team status is active (since we only added active members)
         let team_status = user_data["team_status"].as_str().unwrap();
         assert_eq!(team_status, "active", "team_status should be active");
+
     }
 
     // Step 8: Validate specific user data
@@ -265,6 +267,7 @@ async fn test_get_league_users_with_stats_success() {
     println!("✅ Validated response structure and data integrity");
     println!("✅ Confirmed team membership and role assignments");
     println!("✅ Verified stats calculations and rankings");
+
 }
 
 #[tokio::test]
@@ -327,6 +330,7 @@ async fn test_league_users_stats_empty_response() {
     assert!(!solo_user_found, "Solo user (not in any team) should not appear in league users stats");
 
     println!("✅ Solo user correctly excluded from league stats");
+
 }
 
 #[tokio::test]
@@ -343,6 +347,7 @@ async fn test_league_users_stats_performance() {
     for _ in 1..=(num_teams * users_per_team) {
         let user = create_test_user_and_login(&test_app.address).await;
         all_users.push(user);
+
     }
 
     // Create teams and assign members
@@ -396,6 +401,7 @@ async fn test_league_users_stats_performance() {
 
             assert!(add_response.status().is_success());
         }
+
     }
 
     // Measure response time
@@ -429,4 +435,5 @@ async fn test_league_users_stats_performance() {
     println!("   - Created {} teams with {} users each", num_teams, users_per_team);
     println!("   - Total users: {}", num_teams * users_per_team);
     println!("   - Response time: {}ms", response_time.as_millis());
+
 }

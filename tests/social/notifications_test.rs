@@ -53,6 +53,7 @@ async fn test_notification_on_workout_reaction() {
     assert_eq!(notifications[0]["notification_type"], "reaction");
     assert_eq!(notifications[0]["entity_type"], "workout");
     assert_eq!(notifications[0]["read"], false);
+
 }
 
 #[tokio::test]
@@ -89,6 +90,7 @@ async fn test_notification_on_workout_comment() {
     assert_eq!(notifications[0]["notification_type"], "comment");
     assert_eq!(notifications[0]["entity_type"], "workout");
     assert_eq!(notifications[0]["read"], false);
+
 }
 
 #[tokio::test]
@@ -138,6 +140,7 @@ async fn test_notification_on_comment_reply() {
     assert_eq!(notifications[0]["notification_type"], "reply");
     assert_eq!(notifications[0]["entity_type"], "comment");
     assert_eq!(notifications[0]["read"], false);
+
 }
 
 #[tokio::test]
@@ -170,6 +173,7 @@ async fn test_no_notification_for_own_reaction() {
     assert_eq!(result["unread_count"], 0);
     let notifications = result["notifications"].as_array().unwrap();
     assert_eq!(notifications.len(), 0);
+
 }
 
 #[tokio::test]
@@ -221,6 +225,7 @@ async fn test_mark_notification_as_read() {
     let result: serde_json::Value = response.json().await.expect("Failed to parse response");
     assert_eq!(result["unread_count"], 0);
     assert_eq!(result["notifications"][0]["read"], true);
+
 }
 
 #[tokio::test]
@@ -273,7 +278,9 @@ async fn test_mark_all_notifications_as_read() {
     let notifications = result["notifications"].as_array().unwrap();
     for notification in notifications {
         assert_eq!(notification["read"], true);
+
     }
+
 }
 
 #[tokio::test]
@@ -313,6 +320,7 @@ async fn test_get_unread_notification_count() {
     assert!(response.status().is_success());
     let result: serde_json::Value = response.json().await.expect("Failed to parse response");
     assert_eq!(result["unread_count"], 2);
+
 }
 
 #[tokio::test]
@@ -360,6 +368,7 @@ async fn test_notification_websocket_broadcast() {
     }
 
     assert!(notification_received, "WebSocket notification event should be received");
+
 }
 
 #[tokio::test]
@@ -406,6 +415,7 @@ async fn test_notification_not_sent_to_actor() {
     }
 
     assert!(!notification_received, "Actor should not receive notification for their own action");
+
 }
 
 #[tokio::test]
@@ -455,6 +465,7 @@ async fn test_notification_on_comment_reaction() {
     assert_eq!(notifications[0]["notification_type"], "reaction");
     assert_eq!(notifications[0]["entity_type"], "comment");
     assert_eq!(notifications[0]["read"], false);
+
 }
 
 #[tokio::test]
@@ -500,4 +511,5 @@ async fn test_no_notification_for_own_comment_reaction() {
     assert_eq!(result["unread_count"], 0);
     let notifications = result["notifications"].as_array().unwrap();
     assert_eq!(notifications.len(), 0);
+
 }

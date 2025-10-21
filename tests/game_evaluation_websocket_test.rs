@@ -15,7 +15,7 @@ use riina_backend::config::settings::get_config;
 use secrecy::ExposeSecret;
 
 mod common;
-use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, get_next_date};
+use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, get_next_date, delete_test_user};
 use common::admin_helpers::{create_admin_user_and_login, create_league_season};
 use common::workout_data_helpers::{upload_workout_data_for_user, WorkoutData, WorkoutType};
 
