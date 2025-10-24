@@ -814,3 +814,104 @@ async fn test_cannot_edit_another_users_post() {
     assert_eq!(update_response.status(), reqwest::StatusCode::FORBIDDEN,
         "User should not be able to edit another user's post");
 }
+
+// ============================================================================
+// MAX HEART RATE UPDATE TESTS
+// ============================================================================
+
+#[tokio::test]
+async fn test_max_heart_rate_updated_when_workout_exceeds_stored_value() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
+
+    // Create health profile with initial max heart rate
+    let health_profile = json!({
+        "age": 30,
+        "gender": "male",
+        "resting_heart_rate": 60,
+        "weight": 75.0,
+        "height": 180.0
+    });
+
+    let profile_response = client
+        .put(&format!("{}/profile/health_profile", &test_app.address))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .json(&health_profile)
+        .send()
+        .await
+        .expect("Failed to create health profile");
+
+    assert!(profile_response.status().is_success(), "Health profile creation should succeed");
+
+    // Get the initial max heart rate
+    let initial_profile = client
+        .get(&format!("{}/profile/health_profile", &test_app.address))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .send()
+        .await
+        .expect("Failed to fetch health profile")
+        .json::<serde_json::Value>()
+        .await
+        .expect("Failed to parse health profile");
+
+    let initial_max_hr = initial_profile["data"]["max_heart_rate"]
+        .as_i64()
+        .expect("Max heart rate should be present") as i32;
+
+    tracing::info!("Initial max heart rate: {}", initial_max_hr);
+    assert!(initial_max_hr > 0, "Initial max heart rate should be positive");
+
+    // Upload a workout with heart rate exceeding the stored max heart rate
+    let mut workout_data = WorkoutData::new(WorkoutType::Hard, Utc::now(), 30);
+    let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
+
+    assert!(response.is_ok(), "Workout upload should succeed");
+
+    // Get the workout max heart rate from the uploaded data
+    let workout_max_hr = workout_data.get_heart_rate_data()
+        .iter()
+        .map(|hr| hr.heart_rate)
+        .max()
+        .expect("Should have heart rate data");
+
+    tracing::info!("Workout max heart rate: {}", workout_max_hr);
+
+    // Fetch the updated health profile
+    let updated_profile = client
+        .get(&format!("{}/profile/health_profile", &test_app.address))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .send()
+        .await
+        .expect("Failed to fetch updated health profile")
+        .json::<serde_json::Value>()
+        .await
+        .expect("Failed to parse updated health profile");
+
+    let updated_max_hr = updated_profile["data"]["max_heart_rate"]
+        .as_i64()
+        .expect("Max heart rate should be present") as i32;
+
+    tracing::info!("Updated max heart rate: {}", updated_max_hr);
+
+    // Verify that max heart rate was updated if workout exceeded it
+    if workout_max_hr > initial_max_hr {
+        let expected_max_hr = (workout_max_hr as f32 * 1.2) as i32;
+        assert_eq!(
+            updated_max_hr, expected_max_hr,
+            "Max heart rate should be updated to workout max * 1.2 ({} * 1.2 = {})",
+            workout_max_hr, expected_max_hr
+        );
+    } else {
+        assert_eq!(
+            updated_max_hr, initial_max_hr,
+            "Max heart rate should remain unchanged if workout didn't exceed it"
+        );
+    }
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
+}
