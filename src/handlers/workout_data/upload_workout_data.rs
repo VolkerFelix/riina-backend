@@ -8,11 +8,11 @@ use crate::middleware::auth::Claims;
 use crate::db::{
     workout_data::insert_workout_data,
     game_queries::GameQueries,
-    health_data::get_user_health_profile_details,
+    health_data::{get_user_health_profile_details, update_max_heart_rate_and_zones},
 };
 use crate::models::{
-    workout_data::{WorkoutDataUploadRequest, WorkoutUploadResponse, StatChanges, WorkoutStats},
-    health::HeartRateZones,
+    workout_data::{WorkoutDataUploadRequest, WorkoutUploadResponse, StatChanges, WorkoutStats, HeartRateData},
+    health::{HeartRateZones, HeartRateZoneName, UserHealthProfile},
     common::ApiResponse,
     league::{LeagueGame, LiveGameScoreUpdate},
     game_events::GameEvent,
@@ -170,7 +170,11 @@ pub async fn upload_workout_data(
     }
 
     // Get user health profile
-    let user_health_profile = get_user_health_profile_details(&pool, user_id).await.unwrap();
+    let mut user_health_profile = get_user_health_profile_details(&pool, user_id).await.unwrap();
+
+    // Check and update max heart rate if needed
+    update_max_heart_rate_if_needed(&mut user_health_profile, &heart_rate_data, user_id, &pool).await;
+
     let heart_rate_zones = user_health_profile.stored_heart_rate_zones.clone().unwrap_or(
         HeartRateZones::new(user_health_profile.age, user_health_profile.gender, user_health_profile.resting_heart_rate.unwrap_or(60))
     );
@@ -584,8 +588,8 @@ async fn update_user_stats(
 ) -> Result<(), Box<dyn std::error::Error>> {
     sqlx::query!(
         r#"
-        UPDATE user_avatars 
-        SET stamina = stamina + $1, 
+        UPDATE user_avatars
+        SET stamina = stamina + $1,
         strength = strength + $2
         WHERE user_id = $3
         "#,
@@ -597,5 +601,51 @@ async fn update_user_stats(
     .await?;
 
     Ok(())
+}
+
+/// Check if workout max heart rate exceeds stored max HR and update if needed
+async fn update_max_heart_rate_if_needed(
+    user_health_profile: &mut UserHealthProfile,
+    heart_rate_data: &[HeartRateData],
+    user_id: Uuid,
+    pool: &sqlx::PgPool,
+) {
+    // Find the maximum heart rate in the workout
+    let workout_max_hr = heart_rate_data.iter()
+        .map(|hr| hr.heart_rate)
+        .max()
+        .unwrap_or(0);
+
+    if let Some(stored_max_hr) = user_health_profile.max_heart_rate {
+        if workout_max_hr > stored_max_hr {
+            tracing::info!("🔄 Workout max HR ({}) exceeds stored max HR ({}), updating max heart rate",
+                workout_max_hr, stored_max_hr);
+
+            // Update max heart rate to measured max * 1.2
+            let new_max_hr = (workout_max_hr as f32 * 1.2) as i32;
+            let resting_hr = user_health_profile.resting_heart_rate.unwrap_or(60);
+
+            // Use the centralized function to update max HR and zones
+            match update_max_heart_rate_and_zones(
+                pool,
+                user_id,
+                new_max_hr,
+                user_health_profile.age,
+                user_health_profile.gender,
+                resting_hr,
+            ).await {
+                Ok(zones) => {
+                    tracing::info!("✅ Updated max heart rate from {} to {} and recalculated zones",
+                        stored_max_hr, new_max_hr);
+                    user_health_profile.max_heart_rate = Some(new_max_hr);
+                    user_health_profile.stored_heart_rate_zones = Some(zones);
+                }
+                Err(e) => {
+                    tracing::error!("❌ Failed to update max heart rate: {}", e);
+                    // Continue with old zones - don't fail the workout upload
+                }
+            }
+        }
+    }
 }
 
