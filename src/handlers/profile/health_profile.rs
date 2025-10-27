@@ -13,21 +13,44 @@ use crate::db::health_data::update_max_heart_rate_and_vt_thresholds;
 
 #[tracing::instrument(
     name = "Get health profile",
-    skip(pool, claims),
+    skip(pool, claims, query),
     fields(username = %claims.username)
 )]
 pub async fn get_health_profile(
     pool: web::Data<PgPool>,
-    claims: web::ReqData<Claims>
+    claims: web::ReqData<Claims>,
+    query: web::Query<std::collections::HashMap<String, String>>
 ) -> HttpResponse {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::BadRequest().json(json!({
-                "error": "Invalid user ID"
-            }));
+    // Check if a user_id query parameter was provided
+    let target_user_id = if let Some(user_id_str) = query.get("user_id") {
+        // Requesting another user's health profile (for viewing their workout's heart rate zones)
+        match Uuid::parse_str(user_id_str) {
+            Ok(id) => id,
+            Err(e) => {
+                tracing::error!("Failed to parse user_id query parameter: {}", e);
+                return HttpResponse::BadRequest().json(json!({
+                    "error": "Invalid user_id parameter"
+                }));
+            }
         }
+    } else {
+        // Default: get the current user's own health profile
+        match Uuid::parse_str(&claims.sub) {
+            Ok(id) => id,
+            Err(e) => {
+                tracing::error!("Failed to parse user ID from claims: {}", e);
+                return HttpResponse::BadRequest().json(json!({
+                    "error": "Invalid user ID"
+                }));
+            }
+        }
+    };
+
+    // For privacy, only return VT thresholds and heart rate zones (not sensitive data like weight/height)
+    // when fetching another user's profile
+    let is_own_profile = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id == target_user_id,
+        Err(_) => false,
     };
 
     match sqlx::query_as!(
@@ -38,20 +61,28 @@ pub async fn get_health_profile(
         FROM user_health_profiles
         WHERE user_id = $1
         "#,
-        user_id
+        target_user_id
     )
     .fetch_optional(&**pool)
     .await
     {
-        Ok(Some(profile)) => {
-            tracing::info!("Successfully retrieved health profile for user: {}", claims.username);
+        Ok(Some(mut profile)) => {
+            // For other users' profiles, redact sensitive personal data
+            if !is_own_profile {
+                profile.weight = None;
+                profile.height = None;
+                profile.age = None;
+            }
+
+            tracing::info!("Successfully retrieved health profile for user: {} (own profile: {})",
+                          target_user_id, is_own_profile);
             HttpResponse::Ok().json(json!({
                 "success": true,
                 "data": profile
             }))
         }
         Ok(None) => {
-            tracing::info!("No health profile found for user: {}", claims.username);
+            tracing::info!("No health profile found for user: {}", target_user_id);
             HttpResponse::NotFound().json(json!({
                 "error": "Health profile not found"
             }))
