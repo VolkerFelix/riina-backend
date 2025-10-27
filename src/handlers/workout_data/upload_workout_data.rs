@@ -618,8 +618,8 @@ async fn update_max_heart_rate_if_needed(
             tracing::info!("🔄 Workout max HR ({}) exceeds stored max HR ({}), updating max heart rate",
                 workout_max_hr, stored_max_hr);
 
-            // Update max heart rate to measured max * 1.2
-            let new_max_hr = (workout_max_hr as f32 * 1.2) as i32;
+            // Update max heart rate to measured max
+            let new_max_hr = workout_max_hr;
             let resting_hr = user_health_profile.resting_heart_rate.unwrap_or(60);
 
             // Use the centralized function to update max HR and VT thresholds
