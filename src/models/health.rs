@@ -131,7 +131,6 @@ pub struct UserHealthProfile {
     pub gender: Gender,
     pub resting_heart_rate: Option<i32>,
     pub max_heart_rate: Option<i32>,
-    pub stored_heart_rate_zones: Option<HeartRateZones>,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]

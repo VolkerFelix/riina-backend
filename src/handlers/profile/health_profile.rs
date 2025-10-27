@@ -9,7 +9,7 @@ use crate::models::{
     health::Gender,
 };
 use crate::utils::health_calculations::calc_max_heart_rate;
-use crate::db::health_data::update_max_heart_rate_and_zones;
+use crate::db::health_data::update_max_heart_rate_and_vt_thresholds;
 
 #[tracing::instrument(
     name = "Get health profile",
@@ -156,19 +156,19 @@ pub async fn update_health_profile(
                 };
                 let max_heart_rate = calc_max_heart_rate(age, gender);
 
-                // Use the centralized function to update max HR and zones
-                if let Err(e) = update_max_heart_rate_and_zones(
+                match update_max_heart_rate_and_vt_thresholds(
                     &pool,
                     user_id,
                     max_heart_rate,
-                    age,
-                    gender,
                     resting_heart_rate,
                 ).await {
-                    tracing::error!("Failed to update heart rate zones: {}", e);
-                    // Continue execution - zones are optional
-                } else {
-                    tracing::info!("Successfully calculated and stored heart rate zones for user: {}", claims.username);
+                    Ok(_) => {
+                        tracing::info!("Successfully calculated and stored VT thresholds for user: {}", claims.username);
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to update VT thresholds: {}", e);
+                        // Continue execution - thresholds are optional
+                    }
                 }
             }
             

@@ -8,11 +8,11 @@ use crate::middleware::auth::Claims;
 use crate::db::{
     workout_data::insert_workout_data,
     game_queries::GameQueries,
-    health_data::{get_user_health_profile_details, update_max_heart_rate_and_zones},
+    health_data::{get_user_health_profile_details, update_max_heart_rate_and_vt_thresholds},
 };
 use crate::models::{
     workout_data::{WorkoutDataUploadRequest, WorkoutUploadResponse, StatChanges, WorkoutStats, HeartRateData},
-    health::{HeartRateZones, HeartRateZoneName, UserHealthProfile},
+    health::{UserHealthProfile},
     common::ApiResponse,
     league::{LeagueGame, LiveGameScoreUpdate},
     game_events::GameEvent,
@@ -175,9 +175,6 @@ pub async fn upload_workout_data(
     // Check and update max heart rate if needed
     update_max_heart_rate_if_needed(&mut user_health_profile, &heart_rate_data, user_id, &pool).await;
 
-    let heart_rate_zones = user_health_profile.stored_heart_rate_zones.clone().unwrap_or(
-        HeartRateZones::new(user_health_profile.age, user_health_profile.gender, user_health_profile.resting_heart_rate.unwrap_or(60))
-    );
     // 🎲 NOW CALCULATE GAME STATS
     let calculator = WorkoutStatsCalculator::with_universal_hr_based();
     let workout_stats = match calculator.calculate_stat_changes(user_health_profile, heart_rate_data.clone()).await {
@@ -625,24 +622,21 @@ async fn update_max_heart_rate_if_needed(
             let new_max_hr = (workout_max_hr as f32 * 1.2) as i32;
             let resting_hr = user_health_profile.resting_heart_rate.unwrap_or(60);
 
-            // Use the centralized function to update max HR and zones
-            match update_max_heart_rate_and_zones(
+            // Use the centralized function to update max HR and VT thresholds
+            match update_max_heart_rate_and_vt_thresholds(
                 pool,
                 user_id,
                 new_max_hr,
-                user_health_profile.age,
-                user_health_profile.gender,
                 resting_hr,
             ).await {
-                Ok(zones) => {
-                    tracing::info!("✅ Updated max heart rate from {} to {} and recalculated zones",
+                Ok(_) => {
+                    tracing::info!("✅ Updated max heart rate from {} to {} and recalculated VT thresholds",
                         stored_max_hr, new_max_hr);
                     user_health_profile.max_heart_rate = Some(new_max_hr);
-                    user_health_profile.stored_heart_rate_zones = Some(zones);
                 }
                 Err(e) => {
                     tracing::error!("❌ Failed to update max heart rate: {}", e);
-                    // Continue with old zones - don't fail the workout upload
+                    // Continue with old thresholds - don't fail the workout upload
                 }
             }
         }
