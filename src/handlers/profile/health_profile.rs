@@ -1,4 +1,5 @@
 use actix_web::{web, HttpResponse};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 use sqlx::PgPool;
@@ -11,6 +12,11 @@ use crate::models::{
 use crate::utils::health_calculations::calc_max_heart_rate;
 use crate::db::health_data::update_max_heart_rate_and_vt_thresholds;
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct HealthProfileQuery {
+    pub user_id: Option<String>,
+}
+
 #[tracing::instrument(
     name = "Get health profile",
     skip(pool, claims, query),
@@ -19,10 +25,10 @@ use crate::db::health_data::update_max_heart_rate_and_vt_thresholds;
 pub async fn get_health_profile(
     pool: web::Data<PgPool>,
     claims: web::ReqData<Claims>,
-    query: web::Query<std::collections::HashMap<String, String>>
+    query: web::Query<HealthProfileQuery>
 ) -> HttpResponse {
     // Check if a user_id query parameter was provided
-    let target_user_id = if let Some(user_id_str) = query.get("user_id") {
+    let target_user_id = if let Some(user_id_str) = &query.user_id {
         // Requesting another user's health profile (for viewing their workout's heart rate zones)
         match Uuid::parse_str(user_id_str) {
             Ok(id) => id,
