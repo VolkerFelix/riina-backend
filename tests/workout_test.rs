@@ -1099,7 +1099,7 @@ async fn test_workout_detail_includes_user_id() {
     );
     assert_eq!(
         workout_detail["user_id"].as_str().unwrap(),
-        test_user.user_id,
+        test_user.user_id.to_string(),
         "Workout user_id should match the user who uploaded it"
     );
 
