@@ -7,7 +7,6 @@ use crate::models::{
     health::UserHealthProfile,
 };
 use crate::workout::{
-    hr_zone_based_scoring::HRZoneBasedScoring,
     universal_hr_based_scoring::UniversalHRBasedScoring,
 };  
 // Method trait for different scoring methods
@@ -22,10 +21,6 @@ pub struct WorkoutStatsCalculator {
 impl WorkoutStatsCalculator {
     pub fn new(scoring_method: Box<dyn ScoringMethod + Send + Sync>) -> Self {
         Self { scoring_method }
-    }
-    
-    pub fn with_hr_zone_based() -> Self {
-        Self::new(Box::new(HRZoneBasedScoring))
     }
     
     pub fn with_universal_hr_based() -> Self {

@@ -83,6 +83,19 @@ pub async fn get_unified_feed(
             wd.stamina_gained, wd.strength_gained,
             wd.image_url as workout_image, wd.video_url as workout_video,
 
+            -- Live game info (if workout was part of a live game)
+            lse.game_id as live_game_id,
+            CASE 
+                WHEN lse.team_side = 'home' THEN ht.team_name
+                WHEN lse.team_side = 'away' THEN at.team_name
+                ELSE NULL
+            END as user_team_name,
+            CASE 
+                WHEN lse.team_side = 'home' THEN at.team_name
+                WHEN lse.team_side = 'away' THEN ht.team_name
+                ELSE NULL
+            END as opponent_team_name,
+
             -- Social counts (from CTEs - much faster than subqueries)
             COALESCE(rc.count, 0) as reaction_count,
             COALESCE(cc.count, 0) as comment_count,
@@ -91,6 +104,10 @@ pub async fn get_unified_feed(
         FROM posts p
         JOIN users u ON u.id = p.user_id
         LEFT JOIN workout_data wd ON wd.id = p.workout_id
+        LEFT JOIN live_score_events lse ON lse.workout_data_id = wd.id
+        LEFT JOIN games g ON g.id = lse.game_id
+        LEFT JOIN teams ht ON g.home_team_id = ht.id
+        LEFT JOIN teams at ON g.away_team_id = at.id
         LEFT JOIN reaction_counts rc ON rc.workout_id = p.workout_id
         LEFT JOIN comment_counts cc ON cc.workout_id = p.workout_id
         LEFT JOIN user_reactions ur ON ur.workout_id = p.workout_id
@@ -141,6 +158,17 @@ pub async fn get_unified_feed(
                             "total_points_gained": row.stamina_gained + row.strength_gained,
                             "image_url": row.workout_image,
                             "video_url": row.workout_video,
+                        })
+                    } else {
+                        json!(null)
+                    },
+
+                    // Live game info (if workout was part of a live game)
+                    "live_game_info": if row.live_game_id.is_some() && row.user_team_name.is_some() && row.opponent_team_name.is_some() {
+                        json!({
+                            "game_id": row.live_game_id,
+                            "user_team_name": row.user_team_name,
+                            "opponent_team_name": row.opponent_team_name,
                         })
                     } else {
                         json!(null)

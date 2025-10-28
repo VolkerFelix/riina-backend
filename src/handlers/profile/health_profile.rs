@@ -1,4 +1,5 @@
 use actix_web::{web, HttpResponse};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 use sqlx::PgPool;
@@ -9,25 +10,53 @@ use crate::models::{
     health::Gender,
 };
 use crate::utils::health_calculations::calc_max_heart_rate;
-use crate::db::health_data::update_max_heart_rate_and_zones;
+use crate::db::health_data::update_max_heart_rate_and_vt_thresholds;
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct HealthProfileQuery {
+    pub user_id: Option<String>,
+}
 
 #[tracing::instrument(
     name = "Get health profile",
-    skip(pool, claims),
+    skip(pool, claims, query),
     fields(username = %claims.username)
 )]
 pub async fn get_health_profile(
     pool: web::Data<PgPool>,
-    claims: web::ReqData<Claims>
+    claims: web::ReqData<Claims>,
+    query: web::Query<HealthProfileQuery>
 ) -> HttpResponse {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::BadRequest().json(json!({
-                "error": "Invalid user ID"
-            }));
+    // Check if a user_id query parameter was provided
+    let target_user_id = if let Some(user_id_str) = &query.user_id {
+        // Requesting another user's health profile (for viewing their workout's heart rate zones)
+        match Uuid::parse_str(user_id_str) {
+            Ok(id) => id,
+            Err(e) => {
+                tracing::error!("Failed to parse user_id query parameter: {}", e);
+                return HttpResponse::BadRequest().json(json!({
+                    "error": "Invalid user_id parameter"
+                }));
+            }
         }
+    } else {
+        // Default: get the current user's own health profile
+        match Uuid::parse_str(&claims.sub) {
+            Ok(id) => id,
+            Err(e) => {
+                tracing::error!("Failed to parse user ID from claims: {}", e);
+                return HttpResponse::BadRequest().json(json!({
+                    "error": "Invalid user ID"
+                }));
+            }
+        }
+    };
+
+    // For privacy, only return VT thresholds and heart rate zones (not sensitive data like weight/height)
+    // when fetching another user's profile
+    let is_own_profile = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id == target_user_id,
+        Err(_) => false,
     };
 
     match sqlx::query_as!(
@@ -38,20 +67,28 @@ pub async fn get_health_profile(
         FROM user_health_profiles
         WHERE user_id = $1
         "#,
-        user_id
+        target_user_id
     )
     .fetch_optional(&**pool)
     .await
     {
-        Ok(Some(profile)) => {
-            tracing::info!("Successfully retrieved health profile for user: {}", claims.username);
+        Ok(Some(mut profile)) => {
+            // For other users' profiles, redact sensitive personal data
+            if !is_own_profile {
+                profile.weight = None;
+                profile.height = None;
+                profile.age = None;
+            }
+
+            tracing::info!("Successfully retrieved health profile for user: {} (own profile: {})",
+                          target_user_id, is_own_profile);
             HttpResponse::Ok().json(json!({
                 "success": true,
                 "data": profile
             }))
         }
         Ok(None) => {
-            tracing::info!("No health profile found for user: {}", claims.username);
+            tracing::info!("No health profile found for user: {}", target_user_id);
             HttpResponse::NotFound().json(json!({
                 "error": "Health profile not found"
             }))
@@ -156,19 +193,19 @@ pub async fn update_health_profile(
                 };
                 let max_heart_rate = calc_max_heart_rate(age, gender);
 
-                // Use the centralized function to update max HR and zones
-                if let Err(e) = update_max_heart_rate_and_zones(
+                match update_max_heart_rate_and_vt_thresholds(
                     &pool,
                     user_id,
                     max_heart_rate,
-                    age,
-                    gender,
                     resting_heart_rate,
                 ).await {
-                    tracing::error!("Failed to update heart rate zones: {}", e);
-                    // Continue execution - zones are optional
-                } else {
-                    tracing::info!("Successfully calculated and stored heart rate zones for user: {}", claims.username);
+                    Ok(_) => {
+                        tracing::info!("Successfully calculated and stored VT thresholds for user: {}", claims.username);
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to update VT thresholds: {}", e);
+                        // Continue execution - thresholds are optional
+                    }
                 }
             }
             

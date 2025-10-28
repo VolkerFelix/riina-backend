@@ -1,5 +1,5 @@
 //! Consolidated workout functionality tests
-//! 
+//!
 //! This test suite covers all workout operations including:
 //! - Workout data upload and validation
 //! - Workout history and retrieval
@@ -58,11 +58,11 @@ async fn upload_multiple_workout_data_sessions() {
     // Upload multiple workouts
     for i in 0..3 {
         let mut workout_data = WorkoutData::new(
-            if i % 2 == 0 { WorkoutType::Intense } else { WorkoutType::Moderate }, 
-            Utc::now(), 
+            if i % 2 == 0 { WorkoutType::Intense } else { WorkoutType::Moderate },
+            Utc::now(),
             30 + (i * 10)
         );
-        
+
         let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
         assert!(response.is_ok(), "Workout {} should upload successfully", i);
     }
@@ -131,7 +131,7 @@ async fn test_workout_history_empty() {
         .expect("Failed to execute workout history request");
 
     assert!(history_response.status().is_success());
-    
+
     let history_data: serde_json::Value = history_response
         .json()
         .await
@@ -169,7 +169,7 @@ async fn test_workout_history_with_data() {
         .expect("Failed to execute workout history request");
 
     assert!(history_response.status().is_success());
-    
+
     let history_data: serde_json::Value = history_response
         .json()
         .await
@@ -209,7 +209,7 @@ async fn test_workout_history_pagination() {
         .expect("Failed to execute workout history request");
 
     assert!(history_response.status().is_success());
-    
+
     let history_data: serde_json::Value = history_response
         .json()
         .await
@@ -237,7 +237,7 @@ async fn test_workout_detail_endpoint() {
     let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 45);
     let workout_response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
     assert!(workout_response.is_ok(), "Workout upload should succeed");
-    
+
     let _response_data = workout_response.unwrap();
 
     // Fetch workout history to get the workout ID
@@ -249,7 +249,7 @@ async fn test_workout_detail_endpoint() {
         .expect("Failed to execute workout history request");
 
     assert!(history_response.status().is_success());
-    
+
     let history_data: serde_json::Value = history_response
         .json()
         .await
@@ -257,7 +257,7 @@ async fn test_workout_detail_endpoint() {
 
     let workouts = history_data["data"]["workouts"].as_array().unwrap();
     assert!(!workouts.is_empty(), "Should have at least one workout");
-    
+
     let workout_id = workouts[0]["id"].as_str().unwrap();
 
     // Test the new workout detail endpoint
@@ -269,7 +269,7 @@ async fn test_workout_detail_endpoint() {
         .expect("Failed to execute workout detail request");
 
     assert!(detail_response.status().is_success(), "Workout detail request should succeed");
-    
+
     let detail_data: serde_json::Value = detail_response
         .json()
         .await
@@ -278,14 +278,14 @@ async fn test_workout_detail_endpoint() {
     // Verify the response structure and data makes sense
     assert!(detail_data["success"].as_bool().unwrap(), "Response should indicate success");
     assert!(detail_data["data"].is_object(), "Should have data object");
-    
+
     let workout_detail = &detail_data["data"];
-    
+
     // Verify basic workout fields
     assert_eq!(workout_detail["id"].as_str().unwrap(), workout_id, "Workout ID should match");
     assert!(workout_detail["workout_start"].is_string(), "Should have workout_start timestamp");
     assert!(workout_detail["workout_end"].is_string(), "Should have workout_end timestamp");
-    
+
     // Verify heart rate data if present
     if workout_detail["heart_rate_data"].is_array() {
         let heart_rate_data = workout_detail["heart_rate_data"].as_array().unwrap();
@@ -294,33 +294,33 @@ async fn test_workout_detail_endpoint() {
             for hr_point in heart_rate_data {
                 assert!(hr_point["timestamp"].is_string(), "Heart rate point should have timestamp");
                 assert!(hr_point["heart_rate"].is_number(), "Heart rate point should have heart_rate number");
-                
+
                 let hr_value = hr_point["heart_rate"].as_i64().unwrap();
                 assert!(hr_value > 0 && hr_value < 300, "Heart rate should be reasonable (0-300 BPM)");
             }
         }
     }
-    
+
     // Verify game stats are present (even if 0)
     assert!(workout_detail["stamina_gained"].is_number(), "Should have stamina_gained");
     assert!(workout_detail["strength_gained"].is_number(), "Should have strength_gained");
-    
+
     // Verify calculated fields make sense
     if workout_detail["duration_minutes"].is_number() {
         let duration = workout_detail["duration_minutes"].as_i64().unwrap();
         assert!(duration > 0, "Duration should be positive");
     }
-    
+
     if workout_detail["calories_burned"].is_number() {
         let calories = workout_detail["calories_burned"].as_i64().unwrap();
         assert!(calories > 0, "Calories should be positive");
     }
-    
+
     if workout_detail["avg_heart_rate"].is_number() {
         let avg_hr = workout_detail["avg_heart_rate"].as_i64().unwrap();
         assert!(avg_hr > 0 && avg_hr < 300, "Average heart rate should be reasonable");
     }
-    
+
     if workout_detail["max_heart_rate"].is_number() {
         let max_hr = workout_detail["max_heart_rate"].as_i64().unwrap();
         assert!(max_hr > 0 && max_hr < 300, "Max heart rate should be reasonable");
@@ -370,7 +370,7 @@ async fn test_workout_detail_endpoint_unauthorized_access() {
     let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
     let workout_response = upload_workout_data_for_user(&client, &test_app.address, &user1.token, &mut workout_data).await;
     assert!(workout_response.is_ok(), "Workout upload should succeed");
-    
+
     // Get the workout ID from user1's history
     let history_response = client
         .get(&format!("{}/health/history", &test_app.address))
@@ -465,7 +465,7 @@ async fn test_admin_can_view_all_workouts() {
     ).await;
 
     assert_eq!(200, response.status().as_u16());
-    
+
     let body: serde_json::Value = response.json().await.expect("Failed to parse response");
     assert!(body["data"]["workouts"].is_array());
 
@@ -499,7 +499,7 @@ async fn test_admin_can_get_workout_by_id() {
     ).await;
 
     assert_eq!(200, response.status().as_u16());
-    
+
     let body: serde_json::Value = response.json().await.expect("Failed to parse response");
     assert_eq!(body["data"]["id"].as_str().unwrap(), sync_id);
 
@@ -516,7 +516,7 @@ async fn test_admin_can_get_workout_by_id() {
 async fn test_signed_url_endpoints_exist() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    
+
     let test_user = create_test_user_and_login(&test_app.address).await;
     let admin_user = create_admin_user_and_login(&test_app.address).await;
 
@@ -531,7 +531,7 @@ async fn test_signed_url_endpoints_exist() {
     // Should return some response (not necessarily successful without S3 setup)
     assert!(image_response.status().as_u16() < 500, "Image signed URL endpoint should exist");
 
-    // Test video signed URL endpoint  
+    // Test video signed URL endpoint
     let video_response = client
         .get(&format!("{}/media/signed-url/video", &test_app.address))
         .header("Authorization", format!("Bearer {}", test_user.token))
@@ -562,7 +562,7 @@ async fn test_workout_with_media_urls() {
     workout_with_media.video_url = Some("https://example.com/workout-video.mp4".to_string());
     let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_with_media).await;
     assert!(response.is_ok(), "Workout with media URLs should succeed");
-    
+
     let response_data = response.unwrap();
     assert!(response_data["data"]["sync_id"].is_string());
 
@@ -589,7 +589,7 @@ async fn test_workout_upload_notification_integration() {
     let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
 
     assert!(response.is_ok(), "Workout upload should succeed and trigger notifications");
-    
+
     // Note: In a full integration test, we would verify that:
     // 1. Redis pub/sub message was sent
     // 2. WebSocket clients received notification
@@ -910,6 +910,204 @@ async fn test_max_heart_rate_updated_when_workout_exceeds_stored_value() {
             "Max heart rate should remain unchanged if workout didn't exceed it"
         );
     }
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
+}
+
+// ============================================================================
+// HEALTH PROFILE VT THRESHOLDS FOR OTHER USERS TEST
+// ============================================================================
+
+#[tokio::test]
+async fn test_fetch_other_user_health_profile_for_vt_thresholds() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    // Create user1 with a health profile
+    let user1 = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
+
+    let health_profile = json!({
+        "age": 30,
+        "gender": "male",
+        "resting_heart_rate": 60,
+        "weight": 75.0,
+        "height": 180.0
+    });
+
+    let profile_response = client
+        .put(&format!("{}/profile/health_profile", &test_app.address))
+        .header("Authorization", format!("Bearer {}", user1.token))
+        .json(&health_profile)
+        .send()
+        .await
+        .expect("Failed to create health profile");
+
+    assert!(profile_response.status().is_success(), "Health profile creation should succeed");
+
+    // Get user1's own profile to verify VT thresholds exist
+    let user1_profile = client
+        .get(&format!("{}/profile/health_profile", &test_app.address))
+        .header("Authorization", format!("Bearer {}", user1.token))
+        .send()
+        .await
+        .expect("Failed to fetch own health profile")
+        .json::<serde_json::Value>()
+        .await
+        .expect("Failed to parse own health profile");
+
+    assert!(user1_profile["success"].as_bool().unwrap(), "Response should indicate success");
+    let user1_data = &user1_profile["data"];
+
+    // Verify VT thresholds are present in own profile
+    assert!(user1_data["vt0_threshold"].is_number(), "VT0 threshold should be present");
+    assert!(user1_data["vt1_threshold"].is_number(), "VT1 threshold should be present");
+    assert!(user1_data["vt2_threshold"].is_number(), "VT2 threshold should be present");
+    assert!(user1_data["max_heart_rate"].is_number(), "Max heart rate should be present");
+    assert!(user1_data["resting_heart_rate"].is_number(), "Resting heart rate should be present");
+
+    // Verify sensitive data is present in own profile
+    assert!(user1_data["weight"].is_number(), "Weight should be present in own profile");
+    assert!(user1_data["height"].is_number(), "Height should be present in own profile");
+    assert!(user1_data["age"].is_number(), "Age should be present in own profile");
+
+    let user1_vt0 = user1_data["vt0_threshold"].as_i64().unwrap();
+    let user1_vt1 = user1_data["vt1_threshold"].as_i64().unwrap();
+    let user1_vt2 = user1_data["vt2_threshold"].as_i64().unwrap();
+
+    // Create user2 who will try to access user1's profile
+    let user2 = create_test_user_and_login(&test_app.address).await;
+
+    // User2 fetches user1's health profile using query parameter
+    let other_user_profile = client
+        .get(&format!("{}/profile/health_profile?user_id={}", &test_app.address, user1.user_id))
+        .header("Authorization", format!("Bearer {}", user2.token))
+        .send()
+        .await
+        .expect("Failed to fetch other user's health profile")
+        .json::<serde_json::Value>()
+        .await
+        .expect("Failed to parse other user's health profile");
+
+    assert!(other_user_profile["success"].as_bool().unwrap(), "Response should indicate success");
+    let other_user_data = &other_user_profile["data"];
+
+    // Verify VT thresholds are accessible for viewing workout zones
+    assert_eq!(
+        other_user_data["vt0_threshold"].as_i64().unwrap(),
+        user1_vt0,
+        "VT0 threshold should match user1's value"
+    );
+    assert_eq!(
+        other_user_data["vt1_threshold"].as_i64().unwrap(),
+        user1_vt1,
+        "VT1 threshold should match user1's value"
+    );
+    assert_eq!(
+        other_user_data["vt2_threshold"].as_i64().unwrap(),
+        user1_vt2,
+        "VT2 threshold should match user1's value"
+    );
+    assert!(other_user_data["max_heart_rate"].is_number(), "Max heart rate should be present");
+    assert!(other_user_data["resting_heart_rate"].is_number(), "Resting heart rate should be present");
+
+    // Verify sensitive data is redacted when fetching another user's profile
+    assert!(
+        other_user_data["weight"].is_null(),
+        "Weight should be null for other user's profile (privacy protection)"
+    );
+    assert!(
+        other_user_data["height"].is_null(),
+        "Height should be null for other user's profile (privacy protection)"
+    );
+    assert!(
+        other_user_data["age"].is_null(),
+        "Age should be null for other user's profile (privacy protection)"
+    );
+
+    tracing::info!(
+        "✅ Privacy check passed: VT thresholds accessible, sensitive data redacted for other user's profile"
+    );
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, user1.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, user2.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
+}
+
+#[tokio::test]
+async fn test_workout_detail_includes_user_id() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
+
+    // Upload a workout
+    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let workout_response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
+    assert!(workout_response.is_ok(), "Workout upload should succeed");
+
+    // Fetch workout history to get the workout ID
+    let history_response = client
+        .get(&format!("{}/health/history", &test_app.address))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .send()
+        .await
+        .expect("Failed to execute workout history request");
+
+    assert!(history_response.status().is_success());
+
+    let history_data: serde_json::Value = history_response
+        .json()
+        .await
+        .expect("Failed to parse workout history response");
+
+    let workouts = history_data["data"]["workouts"].as_array().unwrap();
+    assert!(!workouts.is_empty(), "Should have at least one workout");
+
+    let workout_id = workouts[0]["id"].as_str().unwrap();
+
+    // Test the workout detail endpoint
+    let detail_response = client
+        .get(&format!("{}/health/workout/{}", &test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .send()
+        .await
+        .expect("Failed to execute workout detail request");
+
+    assert!(detail_response.status().is_success(), "Workout detail request should succeed");
+
+    let detail_data: serde_json::Value = detail_response
+        .json()
+        .await
+        .expect("Failed to parse workout detail response");
+
+    // Verify the response includes user_id
+    assert!(detail_data["success"].as_bool().unwrap(), "Response should indicate success");
+    assert!(detail_data["data"].is_object(), "Should have data object");
+
+    let workout_detail = &detail_data["data"];
+
+    // Verify user_id is present and matches the test user
+    assert!(
+        workout_detail["user_id"].is_string(),
+        "Workout detail should include user_id field"
+    );
+    assert_eq!(
+        workout_detail["user_id"].as_str().unwrap(),
+        test_user.user_id.to_string(),
+        "Workout user_id should match the user who uploaded it"
+    );
+
+    tracing::info!(
+        "✅ Workout detail includes user_id: {} (expected: {})",
+        workout_detail["user_id"].as_str().unwrap(),
+        test_user.user_id
+    );
 
     // Cleanup
     delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;

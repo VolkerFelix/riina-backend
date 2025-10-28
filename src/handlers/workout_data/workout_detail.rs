@@ -10,6 +10,7 @@ use crate::{middleware::auth::Claims, models::workout_data::HeartRateData};
 #[derive(Debug, Serialize)]
 pub struct WorkoutDetail {
     pub id: Uuid,
+    pub user_id: Uuid,
     pub workout_date: Option<DateTime<Utc>>,
     pub workout_start: DateTime<Utc>,
     pub workout_end: DateTime<Utc>,
@@ -85,6 +86,7 @@ pub async fn get_workout_detail(
         r#"
         SELECT
             wd.id,
+            wd.user_id,
             COALESCE(wd.workout_start, wd.created_at) as workout_date,
             wd.workout_start,
             wd.workout_end,
@@ -142,6 +144,7 @@ pub async fn get_workout_detail(
 
             WorkoutDetail {
                 id: row.id,
+                user_id: row.user_id,
                 workout_date: row.workout_date,
                 workout_start: row.workout_start,
                 workout_end: row.workout_end,
