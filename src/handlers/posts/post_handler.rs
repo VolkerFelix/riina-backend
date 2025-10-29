@@ -191,30 +191,61 @@ pub async fn update_post(
     let visibility_str = body.visibility.as_ref().map(|v| v.as_str());
 
     // Convert media_urls to JSON
-    let media_urls_json = body.media_urls.as_ref().map(|media| {
-        serde_json::to_value(media).unwrap_or(serde_json::Value::Null)
-    });
+    // Important: We need to distinguish between "not updating media" (None) and "clearing media" (Some(empty array))
+    let media_urls_json = match &body.media_urls {
+        Some(media) => {
+            // If media array is provided (even if empty), convert it to JSON
+            Some(serde_json::to_value(media).unwrap_or(serde_json::Value::Null))
+        }
+        None => {
+            // If media_urls field is not provided at all, don't update it
+            None
+        }
+    };
 
-    // Update the post
-    let result = sqlx::query(
-        r#"
-        UPDATE posts
-        SET
-            content = COALESCE($1, content),
-            media_urls = COALESCE($2, media_urls),
-            visibility = COALESCE($3::post_visibility, visibility),
-            updated_at = $4,
-            edited_at = $4
-        WHERE id = $5
-        "#
-    )
-    .bind(body.content.as_ref())
-    .bind(media_urls_json)
-    .bind(visibility_str)
-    .bind(now)
-    .bind(post_id)
-    .execute(&**pool)
-    .await;
+    // Build the UPDATE query
+    // Note: Only update media_urls if it's explicitly provided (even if empty)
+    let result = if body.media_urls.is_some() {
+        // Media update is requested
+        sqlx::query(
+            r#"
+            UPDATE posts
+            SET
+                content = COALESCE($1, content),
+                media_urls = $2,
+                visibility = COALESCE($3::post_visibility, visibility),
+                updated_at = $4,
+                edited_at = $4
+            WHERE id = $5
+            "#
+        )
+        .bind(body.content.as_ref())
+        .bind(media_urls_json)
+        .bind(visibility_str)
+        .bind(now)
+        .bind(post_id)
+        .execute(&**pool)
+        .await
+    } else {
+        // No media update requested
+        sqlx::query(
+            r#"
+            UPDATE posts
+            SET
+                content = COALESCE($1, content),
+                visibility = COALESCE($2::post_visibility, visibility),
+                updated_at = $3,
+                edited_at = $3
+            WHERE id = $4
+            "#
+        )
+        .bind(body.content.as_ref())
+        .bind(visibility_str)
+        .bind(now)
+        .bind(post_id)
+        .execute(&**pool)
+        .await
+    };
 
     // If it's a workout post and activity_name is provided, update the workout
     if post.2 == "workout" && body.activity_name.is_some() {

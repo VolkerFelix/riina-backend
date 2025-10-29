@@ -146,7 +146,7 @@ EOF
 echo "⚡ Updating max heart rates and VT thresholds..."
 echo ""
 
-fly postgres connect -a evolveme-db-dev -d evolveme_db < "$TEMP_SQL"
+fly postgres connect -a evolveme-db -d evolveme_db < "$TEMP_SQL"
 
 # Clean up
 rm -f "$TEMP_SQL"
