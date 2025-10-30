@@ -39,6 +39,7 @@ pub struct WorkoutHistoryQuery {
     pub limit: Option<i32>,
     pub offset: Option<i32>,
     pub include_heart_rate_data: Option<bool>,
+    pub user_id: Option<String>,
 }
 
 fn calculate_duration_minutes(start: DateTime<Utc>, end: DateTime<Utc>) -> Option<i32> {
@@ -74,13 +75,28 @@ pub async fn get_workout_history(
     claims: web::ReqData<Claims>,
     query: web::Query<WorkoutHistoryQuery>,
 ) -> HttpResponse {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::BadRequest().json(json!({
-                "error": "Invalid user ID"
-            }));
+    // Check if a user_id query parameter was provided
+    let user_id = if let Some(user_id_str) = &query.user_id {
+        // Requesting another user's workout history
+        match Uuid::parse_str(user_id_str) {
+            Ok(id) => id,
+            Err(e) => {
+                tracing::error!("Failed to parse user_id query parameter: {}", e);
+                return HttpResponse::BadRequest().json(json!({
+                    "error": "Invalid user_id parameter"
+                }));
+            }
+        }
+    } else {
+        // Default: get the current user's own workout history
+        match Uuid::parse_str(&claims.sub) {
+            Ok(id) => id,
+            Err(e) => {
+                tracing::error!("Failed to parse user ID: {}", e);
+                return HttpResponse::BadRequest().json(json!({
+                    "error": "Invalid user ID"
+                }));
+            }
         }
     };
 

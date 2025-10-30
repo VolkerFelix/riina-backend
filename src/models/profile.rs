@@ -13,6 +13,12 @@ pub struct UserProfileResponse {
     pub profile_picture_url: Option<String>,
     pub created_at: DateTime<Utc>,
     pub last_login: Option<DateTime<Utc>>,
+    #[sqlx(skip)]
+    pub mvp_count: i64,
+    #[sqlx(skip)]
+    pub lvp_count: i64,
+    #[sqlx(skip)]
+    pub avg_exercise_minutes_per_day: f32,
 }
 
 #[derive(serde::Serialize)]
