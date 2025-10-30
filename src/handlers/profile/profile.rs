@@ -147,6 +147,65 @@ pub async fn get_user_profile(
         }
     };
 
+    // Count MVP badges
+    let mvp_count = match sqlx::query!(
+        r#"
+        SELECT COUNT(*) as count
+        FROM game_summaries
+        WHERE mvp_user_id = $1
+        "#,
+        user_id
+    )
+    .fetch_one(&**pool)
+    .await
+    {
+        Ok(row) => row.count.unwrap_or(0),
+        Err(e) => {
+            tracing::warn!("Failed to count MVP badges for user {}: {}", user_id, e);
+            0
+        }
+    };
+
+    // Count LVP badges
+    let lvp_count = match sqlx::query!(
+        r#"
+        SELECT COUNT(*) as count
+        FROM game_summaries
+        WHERE lvp_user_id = $1
+        "#,
+        user_id
+    )
+    .fetch_one(&**pool)
+    .await
+    {
+        Ok(row) => row.count.unwrap_or(0),
+        Err(e) => {
+            tracing::warn!("Failed to count LVP badges for user {}: {}", user_id, e);
+            0
+        }
+    };
+
+    // Calculate average exercise minutes per day (last 30 days)
+    let avg_exercise_minutes = match sqlx::query!(
+        r#"
+        SELECT COALESCE(AVG(duration_minutes)::FLOAT, 0.0) as avg_minutes
+        FROM workout_data
+        WHERE user_id = $1
+        AND workout_start >= NOW() - INTERVAL '30 days'
+        AND duration_minutes IS NOT NULL
+        "#,
+        user_id
+    )
+    .fetch_one(&**pool)
+    .await
+    {
+        Ok(row) => row.avg_minutes.unwrap_or(0.0) as f32,
+        Err(e) => {
+            tracing::warn!("Failed to calculate average exercise minutes for user {}: {}", user_id, e);
+            0.0
+        }
+    };
+
     let profile = UserProfileResponse {
         id: user_info.id,
         username: user_info.username,
@@ -158,6 +217,9 @@ pub async fn get_user_profile(
         profile_picture_url: user_info.profile_picture_url,
         created_at: user_info.created_at,
         last_login: None,
+        mvp_count,
+        lvp_count,
+        avg_exercise_minutes_per_day: avg_exercise_minutes,
     };
 
     tracing::info!("Successfully retrieved profile for user: {}", claims.username);
