@@ -185,13 +185,13 @@ pub async fn get_user_profile(
         }
     };
 
-    // Calculate average exercise minutes per day (last 30 days)
+    // Calculate average exercise minutes per day (last 7 days)
     let avg_exercise_minutes = match sqlx::query!(
         r#"
         SELECT COALESCE(AVG(duration_minutes)::FLOAT, 0.0) as avg_minutes
         FROM workout_data
         WHERE user_id = $1
-        AND workout_start >= NOW() - INTERVAL '30 days'
+        AND workout_start >= NOW() - INTERVAL '7 days'
         AND duration_minutes IS NOT NULL
         "#,
         user_id
