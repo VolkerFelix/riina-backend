@@ -1,6 +1,6 @@
 use actix_web::{web, get, put, post, HttpResponse};
 use sqlx::PgPool;
-use crate::handlers::profile::profile::get_user_profile;
+use crate::handlers::profile::profile::{get_user_profile, UserProfileQuery};
 use crate::handlers::profile::health_profile::{get_health_profile, update_health_profile, HealthProfileQuery};
 use crate::handlers::profile::profile_picture::{
     request_profile_picture_upload_url, 
@@ -14,9 +14,10 @@ use crate::services::MinIOService;
 #[get("/user")]
 async fn get_user(
     pool: web::Data<PgPool>,
-    claims: web::ReqData<Claims>
+    claims: web::ReqData<Claims>,
+    query: web::Query<UserProfileQuery>
 ) -> HttpResponse {
-    get_user_profile(pool, claims).await
+    get_user_profile(pool, claims, query).await
 }
 
 #[get("/health_profile")]

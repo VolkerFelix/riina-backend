@@ -8,22 +8,45 @@ use crate::models::profile::{UserProfileResponse, GameStats};
 use crate::models::common::ApiResponse;
 use crate::utils::trailing_average;
 
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+pub struct UserProfileQuery {
+    pub user_id: Option<String>,
+}
+
 #[tracing::instrument(
     name = "Get user profile",
-    skip(pool, claims),
+    skip(pool, claims, query),
     fields(username = %claims.username)
 )]
 pub async fn get_user_profile(
     pool: web::Data<PgPool>,
-    claims: web::ReqData<Claims>
+    claims: web::ReqData<Claims>,
+    query: web::Query<UserProfileQuery>
 ) -> HttpResponse {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::BadRequest().json(
-                ApiResponse::<()>::error("Invalid user ID")
-            );
+    // Check if a user_id query parameter was provided
+    let user_id = if let Some(user_id_str) = &query.user_id {
+        // Requesting another user's profile
+        match Uuid::parse_str(user_id_str) {
+            Ok(id) => id,
+            Err(e) => {
+                tracing::error!("Failed to parse user_id query parameter: {}", e);
+                return HttpResponse::BadRequest().json(
+                    ApiResponse::<()>::error("Invalid user_id parameter")
+                );
+            }
+        }
+    } else {
+        // Default: get the current user's own profile
+        match Uuid::parse_str(&claims.sub) {
+            Ok(id) => id,
+            Err(e) => {
+                tracing::error!("Failed to parse user ID: {}", e);
+                return HttpResponse::BadRequest().json(
+                    ApiResponse::<()>::error("Invalid user ID")
+                );
+            }
         }
     };
 
