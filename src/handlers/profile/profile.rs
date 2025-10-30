@@ -248,28 +248,34 @@ async fn create_default_avatar(pool: &PgPool, user_id: Uuid) -> Result<GameStats
 }
 
 async fn get_user_rank(pool: &PgPool, user_id: Uuid) -> Result<i32, sqlx::Error> {
-    let result = sqlx::query!(
+    // Get all active users with their trailing averages
+    let active_users = sqlx::query!(
         r#"
-        WITH user_rankings AS (
-            SELECT 
-                u.id as user_id,
-                COALESCE(ua.stamina + ua.strength, 0.0) as total_stats,
-                ROW_NUMBER() OVER (ORDER BY COALESCE(ua.stamina + ua.strength, 0.0) DESC) as rank
-            FROM users u
-            INNER JOIN team_members tm ON u.id = tm.user_id AND tm.status = 'active'
-            LEFT JOIN user_avatars ua ON u.id = ua.user_id
-        )
-        SELECT rank::int as rank
-        FROM user_rankings
-        WHERE user_id = $1
-        "#,
-        user_id
+        SELECT u.id as user_id
+        FROM users u
+        INNER JOIN team_members tm ON u.id = tm.user_id AND tm.status = 'active'
+        "#
     )
-    .fetch_optional(pool)
+    .fetch_all(pool)
     .await?;
 
-    match result {
-        Some(row) => Ok(row.rank.unwrap_or(999)),
-        None => Ok(999), // User not found in league rankings
-    }
+    let user_ids: Vec<Uuid> = active_users.iter().map(|row| row.user_id).collect();
+
+    // Calculate trailing averages for all users in batch
+    let trailing_averages = trailing_average::calculate_trailing_averages_batch(pool, &user_ids).await?;
+
+    // Sort users by trailing average (descending)
+    let mut users_with_avg: Vec<(Uuid, f32)> = user_ids.iter()
+        .map(|&id| (id, trailing_averages.get(&id).copied().unwrap_or(0.0)))
+        .collect();
+
+    users_with_avg.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Find the rank of the target user
+    let rank = users_with_avg.iter()
+        .position(|(id, _)| *id == user_id)
+        .map(|pos| (pos + 1) as i32)
+        .unwrap_or(999);
+
+    Ok(rank)
 }
