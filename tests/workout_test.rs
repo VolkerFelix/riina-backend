@@ -682,7 +682,12 @@ async fn test_edit_workout_post() {
     assert!(get_response.status().is_success(), "Failed to fetch updated post");
     let post_data: serde_json::Value = get_response.json().await.unwrap();
     assert_eq!(post_data["data"]["content"], "Updated workout description!");
-    assert_eq!(post_data["data"]["workout_data"]["activity_name"], "Trail Running");
+    // User-edited activity should be stored in user_activity, not activity_name
+    assert_eq!(post_data["data"]["workout_data"]["user_activity"], "Trail Running");
+    // Original activity_name should remain unchanged
+    assert!(post_data["data"]["workout_data"]["activity_name"].is_null() ||
+            post_data["data"]["workout_data"]["activity_name"].as_str().unwrap_or("") != "Trail Running",
+            "activity_name should not be modified by user edits");
 
     // Cleanup
     delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
@@ -1108,6 +1113,277 @@ async fn test_workout_detail_includes_user_id() {
         workout_detail["user_id"].as_str().unwrap(),
         test_user.user_id
     );
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
+}
+
+// ============================================================================
+// WORKOUT SCORING FEEDBACK TESTS
+// ============================================================================
+
+#[tokio::test]
+async fn test_submit_and_retrieve_scoring_feedback() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
+
+    // Upload a workout
+    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 45);
+    let workout_response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
+    assert!(workout_response.is_ok(), "Workout upload should succeed");
+
+    // Get workout ID from history
+    let history_response = client
+        .get(&format!("{}/health/history", &test_app.address))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .send()
+        .await
+        .expect("Failed to fetch workout history");
+
+    let history_data: serde_json::Value = history_response.json().await.unwrap();
+    let workouts = history_data["data"]["workouts"].as_array().unwrap();
+    let workout_id = workouts[0]["id"].as_str().unwrap();
+
+    // Submit scoring feedback - "too_high"
+    let feedback_payload = json!({
+        "feedback_type": "too_high"
+    });
+
+    let submit_response = client
+        .post(&format!("{}/health/workout/{}/scoring-feedback", &test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .json(&feedback_payload)
+        .send()
+        .await
+        .expect("Failed to submit scoring feedback");
+
+    assert_eq!(submit_response.status(), reqwest::StatusCode::OK, "Feedback submission should succeed");
+
+    let submit_data: serde_json::Value = submit_response.json().await.unwrap();
+    assert_eq!(submit_data["feedback_type"], "too_high");
+    assert_eq!(submit_data["workout_data_id"], workout_id);
+
+    // Retrieve the submitted feedback
+    let get_response = client
+        .get(&format!("{}/health/workout/{}/scoring-feedback", &test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .send()
+        .await
+        .expect("Failed to retrieve scoring feedback");
+
+    assert_eq!(get_response.status(), reqwest::StatusCode::OK);
+
+    let get_data: serde_json::Value = get_response.json().await.unwrap();
+    assert_eq!(get_data["feedback_type"], "too_high");
+    assert_eq!(get_data["workout_data_id"], workout_id);
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
+}
+
+#[tokio::test]
+async fn test_update_scoring_feedback() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
+
+    // Upload a workout
+    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await
+        .expect("Workout upload should succeed");
+
+    // Get workout ID
+    let history_response = client
+        .get(&format!("{}/health/history", &test_app.address))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .send()
+        .await
+        .expect("Failed to fetch workout history");
+
+    let history_data: serde_json::Value = history_response.json().await.unwrap();
+    let workouts = history_data["data"]["workouts"].as_array().unwrap();
+    let workout_id = workouts[0]["id"].as_str().unwrap();
+
+    // Submit initial feedback - "too_low"
+    let initial_feedback = json!({
+        "feedback_type": "too_low"
+    });
+
+    let initial_response = client
+        .post(&format!("{}/health/workout/{}/scoring-feedback", &test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .json(&initial_feedback)
+        .send()
+        .await
+        .expect("Failed to submit initial feedback");
+
+    assert_eq!(initial_response.status(), reqwest::StatusCode::OK);
+    let initial_data: serde_json::Value = initial_response.json().await.unwrap();
+    assert_eq!(initial_data["feedback_type"], "too_low");
+
+    // Update feedback - "accurate"
+    let updated_feedback = json!({
+        "feedback_type": "accurate"
+    });
+
+    let update_response = client
+        .post(&format!("{}/health/workout/{}/scoring-feedback", &test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .json(&updated_feedback)
+        .send()
+        .await
+        .expect("Failed to update feedback");
+
+    assert_eq!(update_response.status(), reqwest::StatusCode::OK);
+    let update_data: serde_json::Value = update_response.json().await.unwrap();
+    assert_eq!(update_data["feedback_type"], "accurate");
+
+    // Verify the feedback was updated
+    let get_response = client
+        .get(&format!("{}/health/workout/{}/scoring-feedback", &test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .send()
+        .await
+        .expect("Failed to retrieve feedback");
+
+    let get_data: serde_json::Value = get_response.json().await.unwrap();
+    assert_eq!(get_data["feedback_type"], "accurate", "Feedback should be updated to 'accurate'");
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
+}
+
+#[tokio::test]
+async fn test_scoring_feedback_for_nonexistent_workout() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
+
+    // Try to submit feedback for a non-existent workout
+    let fake_workout_id = Uuid::new_v4();
+    let feedback_payload = json!({
+        "feedback_type": "too_high"
+    });
+
+    let response = client
+        .post(&format!("{}/health/workout/{}/scoring-feedback", &test_app.address, fake_workout_id))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .json(&feedback_payload)
+        .send()
+        .await
+        .expect("Failed to execute request");
+
+    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND, "Should return 404 for non-existent workout");
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
+}
+
+#[tokio::test]
+async fn test_all_feedback_types() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
+
+    let feedback_types = vec!["too_high", "too_low", "accurate"];
+
+    for (i, feedback_type) in feedback_types.iter().enumerate() {
+        // Upload a workout for each feedback type with different start times to avoid duplicates
+        let workout_start = Utc::now() - chrono::Duration::hours((i + 1) as i64);
+        let mut workout_data = WorkoutData::new(WorkoutType::Light, workout_start, 20);
+        upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await
+            .expect("Workout upload should succeed");
+
+        // Get workout ID (latest workout will be first)
+        let history_response = client
+            .get(&format!("{}/health/history?limit=1", &test_app.address))
+            .header("Authorization", format!("Bearer {}", test_user.token))
+            .send()
+            .await
+            .expect("Failed to fetch workout history");
+
+        let history_data: serde_json::Value = history_response.json().await.unwrap();
+        let workouts = history_data["data"]["workouts"].as_array().unwrap();
+        let workout_id = workouts[0]["id"].as_str().unwrap();
+
+        // Submit feedback
+        let feedback_payload = json!({
+            "feedback_type": feedback_type
+        });
+
+        let response = client
+            .post(&format!("{}/health/workout/{}/scoring-feedback", &test_app.address, workout_id))
+            .header("Authorization", format!("Bearer {}", test_user.token))
+            .json(&feedback_payload)
+            .send()
+            .await
+            .expect("Failed to submit feedback");
+
+        assert_eq!(response.status(), reqwest::StatusCode::OK, "Feedback submission for '{}' should succeed", feedback_type);
+
+        let data: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(data["feedback_type"].as_str().unwrap(), *feedback_type);
+    }
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
+}
+
+#[tokio::test]
+async fn test_get_feedback_without_submission() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
+
+    // Upload a workout
+    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await
+        .expect("Workout upload should succeed");
+
+    // Get workout ID
+    let history_response = client
+        .get(&format!("{}/health/history", &test_app.address))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .send()
+        .await
+        .expect("Failed to fetch workout history");
+
+    let history_data: serde_json::Value = history_response.json().await.unwrap();
+    let workouts = history_data["data"]["workouts"].as_array().unwrap();
+    let workout_id = workouts[0]["id"].as_str().unwrap();
+
+    // Try to get feedback before submitting any
+    let get_response = client
+        .get(&format!("{}/health/workout/{}/scoring-feedback", &test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .send()
+        .await
+        .expect("Failed to retrieve feedback");
+
+    assert_eq!(get_response.status(), reqwest::StatusCode::OK);
+
+    let get_data: serde_json::Value = get_response.json().await.unwrap();
+    assert_eq!(get_data["feedback"], serde_json::Value::Null, "Should return null feedback when none submitted");
 
     // Cleanup
     delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;

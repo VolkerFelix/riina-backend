@@ -248,12 +248,14 @@ pub async fn update_post(
     };
 
     // If it's a workout post and activity_name is provided, update the workout
+    // Store user-edited activity in user_activity field (not activity_name which is read-only)
     if post.2 == "workout" && body.activity_name.is_some() {
         if let Some(workout_id) = post.3 {
             let _ = sqlx::query(
                 r#"
                 UPDATE workout_data
-                SET activity_name = $1
+                SET user_activity = $1,
+                    updated_at = NOW()
                 WHERE id = $2
                 "#
             )
@@ -387,7 +389,7 @@ pub async fn get_post(
             p.is_editable, p.created_at, p.updated_at, p.edited_at,
             u.username, u.profile_picture_url,
             wd.workout_start, wd.workout_end, wd.duration_minutes,
-            wd.calories_burned, wd.activity_name, wd.avg_heart_rate,
+            wd.calories_burned, wd.activity_name, wd.user_activity, wd.avg_heart_rate,
             wd.max_heart_rate, wd.heart_rate_zones, wd.stamina_gained,
             wd.strength_gained, wd.total_points_gained,
             wd.image_url as workout_image_url, wd.video_url as workout_video_url
@@ -411,6 +413,7 @@ pub async fn get_post(
                     "duration_minutes": row.try_get::<Option<i32>, _>("duration_minutes").ok().flatten(),
                     "calories_burned": row.try_get::<Option<i32>, _>("calories_burned").ok().flatten(),
                     "activity_name": row.try_get::<Option<String>, _>("activity_name").ok().flatten(),
+                    "user_activity": row.try_get::<Option<String>, _>("user_activity").ok().flatten(),
                     "avg_heart_rate": row.try_get::<Option<f32>, _>("avg_heart_rate").ok().flatten(),
                     "max_heart_rate": row.try_get::<Option<f32>, _>("max_heart_rate").ok().flatten(),
                     "heart_rate_zones": row.try_get::<Option<serde_json::Value>, _>("heart_rate_zones").ok().flatten(),

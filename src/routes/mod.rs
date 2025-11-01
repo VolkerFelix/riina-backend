@@ -29,6 +29,8 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .service(workout_sync::get_workout_hist)
             .service(workout_sync::get_workout_detail_handler)
             .service(workout_sync::check_workout_sync_handler)
+            .service(workout_sync::submit_scoring_feedback_handler)
+            .service(workout_sync::get_scoring_feedback_handler)
     );
     // Profile routes (require authentication)
     cfg.service(

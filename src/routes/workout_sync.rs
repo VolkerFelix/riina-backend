@@ -4,6 +4,7 @@ use crate::middleware::auth::Claims;
 use crate::handlers::workout_data::workout_history::get_workout_history;
 use crate::handlers::workout_data::workout_detail::get_workout_detail;
 use crate::handlers::workout_data::check_workout_sync::{check_workout_sync, CheckSyncStatusRequest};
+use crate::handlers::workout_data::scoring_feedback::{submit_scoring_feedback, get_scoring_feedback};
 use crate::config::jwt::JwtSettings;
 
 #[get("/history")]
@@ -32,4 +33,23 @@ async fn check_workout_sync_handler(
     jwt_settings: web::Data<JwtSettings>,
 ) -> HttpResponse {
     check_workout_sync(pool, claims, request, jwt_settings).await
+}
+
+#[post("/workout/{workout_id}/scoring-feedback")]
+async fn submit_scoring_feedback_handler(
+    pool: web::Data<PgPool>,
+    workout_id: web::Path<uuid::Uuid>,
+    claims: web::ReqData<Claims>,
+    request: web::Json<crate::models::workout_data::SubmitScoringFeedbackRequest>,
+) -> actix_web::Result<HttpResponse> {
+    submit_scoring_feedback(pool, workout_id, claims, request).await
+}
+
+#[get("/workout/{workout_id}/scoring-feedback")]
+async fn get_scoring_feedback_handler(
+    pool: web::Data<PgPool>,
+    workout_id: web::Path<uuid::Uuid>,
+    claims: web::ReqData<Claims>,
+) -> actix_web::Result<HttpResponse> {
+    get_scoring_feedback(pool, workout_id, claims).await
 }

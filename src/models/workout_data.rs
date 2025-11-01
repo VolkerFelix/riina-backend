@@ -12,7 +12,8 @@ pub struct WorkoutData {
     pub heart_rate: Option<Vec<HeartRateData>>,
     pub calories_burned: Option<i32>,
     pub created_at: DateTime<Utc>,
-    pub activity_name: Option<String>,
+    pub activity_name: Option<String>,  // Original activity from health data source (read-only)
+    pub user_activity: Option<String>,  // User-edited activity type (takes precedence)
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow, sqlx::Decode)]
@@ -98,4 +99,30 @@ impl WorkoutStats {
             zone_breakdown: None,
         }
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, sqlx::Type)]
+#[sqlx(type_name = "text")]
+#[serde(rename_all = "snake_case")]
+pub enum ScoringFeedbackType {
+    #[sqlx(rename = "too_high")]
+    TooHigh,
+    #[sqlx(rename = "too_low")]
+    TooLow,
+    #[sqlx(rename = "accurate")]
+    Accurate,
+}
+
+#[derive(Debug, FromRow, Serialize)]
+pub struct WorkoutScoringFeedback {
+    pub id: Uuid,
+    pub workout_data_id: Uuid,
+    pub user_id: Uuid,
+    pub feedback_type: ScoringFeedbackType,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SubmitScoringFeedbackRequest {
+    pub feedback_type: ScoringFeedbackType,
 }
