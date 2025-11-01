@@ -12,7 +12,8 @@ pub struct WorkoutData {
     pub heart_rate: Option<Vec<HeartRateData>>,
     pub calories_burned: Option<i32>,
     pub created_at: DateTime<Utc>,
-    pub activity_name: Option<String>,
+    pub activity_name: Option<String>,  // Original activity from health data source (read-only)
+    pub user_activity: Option<String>,  // User-edited activity type (takes precedence)
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow, sqlx::Decode)]

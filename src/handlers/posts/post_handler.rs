@@ -248,12 +248,14 @@ pub async fn update_post(
     };
 
     // If it's a workout post and activity_name is provided, update the workout
+    // Store user-edited activity in user_activity field (not activity_name which is read-only)
     if post.2 == "workout" && body.activity_name.is_some() {
         if let Some(workout_id) = post.3 {
             let _ = sqlx::query(
                 r#"
                 UPDATE workout_data
-                SET activity_name = $1
+                SET user_activity = $1,
+                    updated_at = NOW()
                 WHERE id = $2
                 "#
             )

@@ -682,7 +682,12 @@ async fn test_edit_workout_post() {
     assert!(get_response.status().is_success(), "Failed to fetch updated post");
     let post_data: serde_json::Value = get_response.json().await.unwrap();
     assert_eq!(post_data["data"]["content"], "Updated workout description!");
-    assert_eq!(post_data["data"]["workout_data"]["activity_name"], "Trail Running");
+    // User-edited activity should be stored in user_activity, not activity_name
+    assert_eq!(post_data["data"]["workout_data"]["user_activity"], "Trail Running");
+    // Original activity_name should remain unchanged
+    assert!(post_data["data"]["workout_data"]["activity_name"].is_null() ||
+            post_data["data"]["workout_data"]["activity_name"].as_str().unwrap_or("") != "Trail Running",
+            "activity_name should not be modified by user edits");
 
     // Cleanup
     delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
