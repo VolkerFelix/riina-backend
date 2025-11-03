@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id,\n            workout_data_id,\n            user_id,\n            feedback_type as \"feedback_type: ScoringFeedbackType\",\n            created_at\n        FROM workout_scoring_feedback\n        WHERE workout_data_id = $1 AND user_id = $2\n        ",
+  "query": "\n        SELECT\n            id,\n            workout_data_id,\n            user_id,\n            effort_rating,\n            created_at\n        FROM workout_scoring_feedback\n        WHERE workout_data_id = $1 AND user_id = $2\n        ",
   "describe": {
     "columns": [
       {
@@ -20,8 +20,8 @@
       },
       {
         "ordinal": 3,
-        "name": "feedback_type: ScoringFeedbackType",
-        "type_info": "Varchar"
+        "name": "effort_rating",
+        "type_info": "Int2"
       },
       {
         "ordinal": 4,
@@ -43,5 +43,5 @@
       false
     ]
   },
-  "hash": "8fc38a6a976244eaf8392776fd5eb7830af927b25f6f4f6fcea86f373f076f47"
+  "hash": "e9fa7c4eb1f0478f0a12faa12acd3643a1cfb9f2aab9b8537ad10f2a2a43e5fc"
 }

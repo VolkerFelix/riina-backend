@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        INSERT INTO workout_scoring_feedback (workout_data_id, user_id, feedback_type)\n        VALUES ($1, $2, $3)\n        ON CONFLICT (workout_data_id, user_id)\n        DO UPDATE SET\n            feedback_type = $3,\n            created_at = NOW()\n        RETURNING\n            id,\n            workout_data_id,\n            user_id,\n            feedback_type as \"feedback_type: ScoringFeedbackType\",\n            created_at\n        ",
+  "query": "\n        INSERT INTO workout_scoring_feedback (workout_data_id, user_id, effort_rating)\n        VALUES ($1, $2, $3)\n        ON CONFLICT (workout_data_id, user_id)\n        DO UPDATE SET\n            effort_rating = $3,\n            created_at = NOW()\n        RETURNING\n            id,\n            workout_data_id,\n            user_id,\n            effort_rating,\n            created_at\n        ",
   "describe": {
     "columns": [
       {
@@ -20,8 +20,8 @@
       },
       {
         "ordinal": 3,
-        "name": "feedback_type: ScoringFeedbackType",
-        "type_info": "Varchar"
+        "name": "effort_rating",
+        "type_info": "Int2"
       },
       {
         "ordinal": 4,
@@ -33,7 +33,7 @@
       "Left": [
         "Uuid",
         "Uuid",
-        "Varchar"
+        "Int2"
       ]
     },
     "nullable": [
@@ -44,5 +44,5 @@
       false
     ]
   },
-  "hash": "80c62651ecd4ef75af20fc95bc5591af498e9e9252bff814fd755f2db4954275"
+  "hash": "7d76c013713984024628b117adc004ef1f39ed6ac07ed215d5e7560860a9d214"
 }
