@@ -9,3 +9,4 @@ pub mod common;
 pub mod social;
 pub mod health;
 pub mod post;
+pub mod player_pool;
