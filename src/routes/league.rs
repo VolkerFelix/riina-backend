@@ -295,3 +295,37 @@ async fn get_player_pool(
     Ok(player_pool_handler::get_player_pool(pool, claims).await)
 }
 
+/// Send team invitation to a free agent
+#[post("/teams/{team_id}/invitations")]
+async fn send_team_invitation(
+    pool: web::Data<PgPool>,
+    claims: web::ReqData<Claims>,
+    team_id: web::Path<Uuid>,
+    request: web::Json<crate::models::team_invitation::SendInvitationRequest>,
+) -> Result<HttpResponse> {
+    use crate::handlers::league::team_invitation_handler;
+    Ok(team_invitation_handler::send_invitation(pool, claims, team_id, request).await)
+}
+
+/// Get user's team invitations
+#[get("/invitations")]
+async fn get_user_invitations(
+    pool: web::Data<PgPool>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    use crate::handlers::league::team_invitation_handler;
+    Ok(team_invitation_handler::get_user_invitations(pool, claims).await)
+}
+
+/// Respond to team invitation
+#[post("/invitations/{invitation_id}/respond")]
+async fn respond_to_invitation(
+    pool: web::Data<PgPool>,
+    claims: web::ReqData<Claims>,
+    invitation_id: web::Path<Uuid>,
+    request: web::Json<crate::models::team_invitation::RespondToInvitationRequest>,
+) -> Result<HttpResponse> {
+    use crate::handlers::league::team_invitation_handler;
+    Ok(team_invitation_handler::respond_to_invitation(pool, claims, invitation_id, request).await)
+}
+
