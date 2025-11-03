@@ -86,11 +86,6 @@ impl std::fmt::Display for RegistrationRequest{
     }
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct UpdateUserStatusRequest {
-    pub status: UserStatus,
-}
-
 pub fn serialize_secret_string<S>(_: &SecretString, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,

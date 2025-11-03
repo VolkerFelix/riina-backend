@@ -209,7 +209,7 @@ pub async fn update_user_status(
         in_player_pool,
     };
 
-    HttpResponse::Ok().json(ApiResponse::success(response))
+    HttpResponse::Ok().json(ApiResponse::success("Status updated successfully", response))
 }
 
 #[tracing::instrument(
@@ -250,7 +250,7 @@ pub async fn get_user_status(
                 status: record.status,
                 in_player_pool: record.in_player_pool,
             };
-            HttpResponse::Ok().json(ApiResponse::success(response))
+            HttpResponse::Ok().json(ApiResponse::success("User status retrieved successfully", response))
         }
         Ok(None) => {
             HttpResponse::NotFound().json(ApiResponse::<()>::error("User not found"))

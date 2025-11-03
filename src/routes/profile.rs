@@ -7,10 +7,9 @@ use crate::handlers::profile::profile_picture::{
     confirm_profile_picture_upload,
     get_profile_picture_download_url
 };
-use crate::handlers::profile::user_status::{update_user_status, get_user_status};
+use crate::handlers::profile::user_status::{update_user_status, get_user_status, UpdateUserStatusRequest};
 use crate::middleware::auth::Claims;
 use crate::models::profile::UpdateHealthProfileRequest;
-use crate::models::user::UpdateUserStatusRequest;
 use crate::services::MinIOService;
 
 #[get("/user")]

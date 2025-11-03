@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS player_pool (
     league_id UUID REFERENCES leagues(id) ON DELETE CASCADE, -- Optional: filter by league
     joined_pool_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_active_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), -- Track user activity
+    last_active_at TIMESTAMPTZ NOT NULL DEFAULT NOW() -- Track user activity
 );
 
 -- Create indexes for performance
