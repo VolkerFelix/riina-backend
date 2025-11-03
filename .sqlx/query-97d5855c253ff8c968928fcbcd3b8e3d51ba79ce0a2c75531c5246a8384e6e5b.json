@@ -1,0 +1,56 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            pp.user_id,\n            u.username,\n            u.profile_picture_url,\n            pp.joined_pool_at,\n            pp.last_active_at,\n            COALESCE(ua.stamina, 0) as stamina,\n            COALESCE(ua.strength, 0) as strength\n        FROM player_pool pp\n        INNER JOIN users u ON pp.user_id = u.id\n        LEFT JOIN user_avatars ua ON pp.user_id = ua.user_id\n        WHERE u.status = 'active'\n        ORDER BY pp.joined_pool_at DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "username",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "profile_picture_url",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "joined_pool_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "last_active_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "stamina",
+        "type_info": "Float4"
+      },
+      {
+        "ordinal": 6,
+        "name": "strength",
+        "type_info": "Float4"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "97d5855c253ff8c968928fcbcd3b8e3d51ba79ce0a2c75531c5246a8384e6e5b"
+}
