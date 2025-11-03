@@ -5,14 +5,43 @@
 //! - User status changes (active/inactive) and player pool management
 //! - Team membership changes affecting player pool
 //! - Player pool queries and filtering
+//! - Redis WebSocket event notifications
 
 use reqwest::Client;
 use serde_json::json;
 use uuid::Uuid;
+use redis::Client as RedisClient;
+use std::time::Duration;
+use futures_util::StreamExt;
+use serde::{Deserialize, Serialize};
+use secrecy::ExposeSecret;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, delete_test_user};
 use common::admin_helpers::create_admin_user_and_login;
+
+use common::redis_helpers::setup_redis_pubsub;
+
+// Redis event types matching the backend
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum PlayerPoolEventType {
+    PlayerJoined,
+    PlayerLeft,
+    PlayerAssigned,
+    PlayerLeftTeam,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct PlayerPoolEvent {
+    event_type: PlayerPoolEventType,
+    user_id: Uuid,
+    username: String,
+    league_id: Option<Uuid>,
+    team_id: Option<Uuid>,
+    team_name: Option<String>,
+    timestamp: String,
+}
 
 // ============================================================================
 // PLAYER POOL REGISTRATION TESTS
@@ -24,8 +53,39 @@ async fn test_new_user_automatically_added_to_player_pool() {
     let client = Client::new();
     let admin = create_admin_user_and_login(&test_app.address).await;
 
+    // Set up Redis subscription for player pool events
+    let mut pubsub = setup_redis_pubsub("player_pool_events").await;
+
     // Register a new user
     let test_user = create_test_user_and_login(&test_app.address).await;
+
+    // Verify Redis event was published
+    let mut stream = pubsub.on_message();
+    let timeout = Duration::from_secs(5);
+    let start_time = std::time::Instant::now();
+    let mut event_received = false;
+
+    while start_time.elapsed() < timeout && !event_received {
+        tokio::select! {
+            msg = stream.next() => {
+                if let Some(msg) = msg {
+                    if let Ok(payload) = msg.get_payload::<String>() {
+                        if let Ok(event) = serde_json::from_str::<PlayerPoolEvent>(&payload) {
+                            if event.event_type == PlayerPoolEventType::PlayerJoined
+                                && event.user_id == test_user.user_id {
+                                tracing::info!("✅ Received player_joined event for user {}", test_user.user_id);
+                                assert_eq!(event.username, test_user.username);
+                                event_received = true;
+                            }
+                        }
+                    }
+                }
+            }
+            _ = tokio::time::sleep(Duration::from_millis(100)) => {}
+        }
+    }
+
+    assert!(event_received, "Did not receive player_joined Redis event for new user");
 
     // Check if user is in player pool
     let pool_response = client
@@ -160,14 +220,15 @@ async fn test_inactive_user_with_team_removes_from_team() {
     let owner = create_test_user_and_login(&test_app.address).await;
 
     // Create a team
+    let team_name = format!("Test Team {}", Uuid::new_v4().to_string()[..8].to_string());
     let team_request = json!({
-        "team_name": "Test Team",
+        "team_name": team_name,
         "team_description": "Test Description",
         "team_color": "#FF0000"
     });
 
     let team_response = client
-        .post(&format!("{}/league/teams", &test_app.address))
+        .post(&format!("{}/league/teams/register", &test_app.address))
         .header("Authorization", format!("Bearer {}", owner.token))
         .json(&team_request)
         .send()
@@ -354,13 +415,14 @@ async fn test_user_in_team_not_in_player_pool() {
     // Create a user and team
     let owner = create_test_user_and_login(&test_app.address).await;
 
+    let team_name = format!("Test Team {}", Uuid::new_v4().to_string()[..8].to_string());
     let team_request = json!({
-        "team_name": "Pool Test Team",
+        "team_name": team_name,
         "team_color": "#00FF00"
     });
 
     let team_response = client
-        .post(&format!("{}/league/teams", &test_app.address))
+        .post(&format!("{}/league/teams/register", &test_app.address))
         .header("Authorization", format!("Bearer {}", owner.token))
         .json(&team_request)
         .send()
@@ -388,5 +450,206 @@ async fn test_user_in_team_not_in_player_pool() {
 
     // Cleanup
     delete_test_user(&test_app.address, &admin.token, owner.user_id).await;
+    delete_test_user(&test_app.address, &admin.token, admin.user_id).await;
+}
+
+#[tokio::test]
+async fn test_redis_player_assigned_event_on_team_join() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+    let admin = create_admin_user_and_login(&test_app.address).await;
+
+    // Create a team owner
+    let owner = create_test_user_and_login(&test_app.address).await;
+
+    // Set up Redis subscription BEFORE creating team
+    let mut pubsub = setup_redis_pubsub("player_pool_events").await;
+    let mut stream = pubsub.on_message();
+
+    // Create a team - this should trigger player_assigned event for the owner
+    let team_name = format!("Test Team {}", Uuid::new_v4().to_string()[..8].to_string());
+    let team_request = json!({
+        "team_name": team_name,
+        "team_color": "#FF0000"
+    });
+
+    let team_response = client
+        .post(&format!("{}/league/teams/register", &test_app.address))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&team_request)
+        .send()
+        .await
+        .expect("Failed to create team");
+
+    assert!(team_response.status().is_success());
+
+    let team_data: serde_json::Value = team_response
+        .json()
+        .await
+        .expect("Failed to parse team response");
+
+    let team_id = Uuid::parse_str(team_data["data"]["team_id"].as_str().unwrap()).unwrap();
+
+    // Verify both Redis events were published (player_left and player_assigned)
+    let timeout = Duration::from_secs(5);
+    let start_time = std::time::Instant::now();
+    let mut player_left_received = false;
+    let mut player_assigned_received = false;
+
+    while start_time.elapsed() < timeout && (!player_left_received || !player_assigned_received) {
+        tokio::select! {
+            msg = stream.next() => {
+                if let Some(msg) = msg {
+                    if let Ok(payload) = msg.get_payload::<String>() {
+                        if let Ok(event) = serde_json::from_str::<PlayerPoolEvent>(&payload) {
+                            if event.user_id == owner.user_id {
+                                match event.event_type {
+                                    PlayerPoolEventType::PlayerLeft => {
+                                        tracing::info!("✅ Received player_left event for team owner {}", owner.user_id);
+                                        assert_eq!(event.username, owner.username);
+                                        player_left_received = true;
+                                    }
+                                    PlayerPoolEventType::PlayerAssigned => {
+                                        tracing::info!("✅ Received player_assigned event for team owner {}", owner.user_id);
+                                        assert_eq!(event.username, owner.username);
+                                        assert_eq!(event.team_id, Some(team_id));
+                                        assert_eq!(event.team_name, Some(team_name.clone()));
+                                        player_assigned_received = true;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ = tokio::time::sleep(Duration::from_millis(100)) => {}
+        }
+    }
+
+    assert!(player_left_received, "Did not receive player_left Redis event when team was created");
+    assert!(player_assigned_received, "Did not receive player_assigned Redis event when team was created");
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin.token, owner.user_id).await;
+    delete_test_user(&test_app.address, &admin.token, admin.user_id).await;
+}
+
+
+#[tokio::test]
+async fn test_redis_player_left_team_event_on_team_leave() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+    let admin = create_admin_user_and_login(&test_app.address).await;
+
+    // Create a team with owner and a member
+    let owner = create_test_user_and_login(&test_app.address).await;
+    let member = create_test_user_and_login(&test_app.address).await;
+
+    // Create team
+    let team_name = format!("Test Team {}", Uuid::new_v4().to_string()[..8].to_string());
+    let team_request = json!({
+        "team_name": team_name,
+        "team_color": "#FF0000"
+    });
+
+    let team_response = client
+        .post(&format!("{}/league/teams/register", &test_app.address))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&team_request)
+        .send()
+        .await
+        .expect("Failed to create team");
+
+    assert!(team_response.status().is_success());
+    let team_data: serde_json::Value = team_response.json().await.unwrap();
+    let team_id = team_data["data"]["team_id"].as_str().unwrap();
+
+    // Add member to team
+    let add_member_request = json!({
+        "member_request": [{
+            "user_id": member.user_id,
+            "role": "member"
+        }]
+    });
+
+    let add_response = client
+        .post(&format!("{}/league/teams/{}/members", &test_app.address, team_id))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&add_member_request)
+        .send()
+        .await
+        .expect("Failed to add member");
+
+    assert!(add_response.status().is_success());
+
+    // Set up Redis subscription BEFORE removing member
+    let mut pubsub = setup_redis_pubsub("player_pool_events").await;
+    let mut stream = pubsub.on_message();
+
+    // Remove member from team
+    let remove_response = client
+        .delete(&format!("{}/league/teams/{}/members/{}", &test_app.address, team_id, member.user_id))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .send()
+        .await
+        .expect("Failed to remove member");
+
+    assert!(remove_response.status().is_success());
+
+    // Verify both Redis events were published (player_left_team and player_joined)
+    let timeout = Duration::from_secs(5);
+    let start_time = std::time::Instant::now();
+    let mut player_left_team_received = false;
+    let mut player_joined_received = false;
+
+    while start_time.elapsed() < timeout && (!player_left_team_received || !player_joined_received) {
+        tokio::select! {
+            msg = stream.next() => {
+                if let Some(msg) = msg {
+                    if let Ok(payload) = msg.get_payload::<String>() {
+                        if let Ok(event) = serde_json::from_str::<PlayerPoolEvent>(&payload) {
+                            if event.user_id == member.user_id {
+                                match event.event_type {
+                                    PlayerPoolEventType::PlayerLeftTeam => {
+                                        tracing::info!("✅ Received player_left_team event for user {} after leaving team", member.user_id);
+                                        assert_eq!(event.username, member.username);
+                                        assert!(event.team_id.is_some(), "Team ID should be present in player_left_team event");
+                                        assert!(event.team_name.is_some(), "Team name should be present in player_left_team event");
+                                        player_left_team_received = true;
+                                    }
+                                    PlayerPoolEventType::PlayerJoined => {
+                                        tracing::info!("✅ Received player_joined event for user {} after leaving team", member.user_id);
+                                        assert_eq!(event.username, member.username);
+                                        player_joined_received = true;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ = tokio::time::sleep(Duration::from_millis(100)) => {}
+        }
+    }
+
+    assert!(player_left_team_received, "Did not receive player_left_team Redis event when member left team");
+    assert!(player_joined_received, "Did not receive player_joined Redis event when member left team");
+
+    // Verify member is back in player pool
+    let status_response = client
+        .get(&format!("{}/profile/status", &test_app.address))
+        .header("Authorization", format!("Bearer {}", member.token))
+        .send()
+        .await
+        .expect("Failed to get status");
+
+    let status_data: serde_json::Value = status_response.json().await.unwrap();
+    assert_eq!(status_data["data"]["in_player_pool"], true, "Member should be back in player pool after leaving team");
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin.token, owner.user_id).await;
+    delete_test_user(&test_app.address, &admin.token, member.user_id).await;
     delete_test_user(&test_app.address, &admin.token, admin.user_id).await;
 }

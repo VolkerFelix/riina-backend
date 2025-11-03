@@ -3,6 +3,7 @@ use secrecy::ExposeSecret;
 use sqlx::PgPool;
 use chrono::Utc;
 use uuid::Uuid;
+use std::sync::Arc;
 
 use crate::models::user::{RegistrationRequest, UserRole, UserStatus};
 use crate::utils::password::hash_password;
@@ -20,7 +21,7 @@ use crate::services::player_pool_events;
 pub async fn register_user(
     user_form: web::Json<RegistrationRequest>,
     pool: web::Data<PgPool>,
-    redis_client: web::Data<redis::Client>,
+    redis_client: web::Data<Arc<redis::Client>>,
 ) -> HttpResponse {
     match insert_user(&user_form, &pool, &redis_client).await
     {
@@ -32,7 +33,7 @@ pub async fn register_user(
 pub async fn insert_user(
     user_form: &web::Json<RegistrationRequest>,
     pool: &PgPool,
-    redis_client: &redis::Client,
+    redis_client: &Arc<redis::Client>,
 ) -> Result<(), sqlx::Error> {
     let user_id = Uuid::new_v4();
     let username = user_form.username.clone();

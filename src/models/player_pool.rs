@@ -9,8 +9,9 @@ use uuid::Uuid;
 #[serde(rename_all = "snake_case")]
 pub enum PlayerPoolEventType {
     PlayerJoined,      // New player joined the pool
-    PlayerLeft,        // Player left the pool (joined team or went inactive)
+    PlayerLeft,        // Player left the pool (went inactive)
     PlayerAssigned,    // Player was assigned to a team
+    PlayerLeftTeam,    // Player left a team and returned to pool
 }
 
 impl PlayerPoolEventType {
@@ -19,6 +20,7 @@ impl PlayerPoolEventType {
             PlayerPoolEventType::PlayerJoined => "player_joined",
             PlayerPoolEventType::PlayerLeft => "player_left",
             PlayerPoolEventType::PlayerAssigned => "player_assigned",
+            PlayerPoolEventType::PlayerLeftTeam => "player_left_team",
         }
     }
 }

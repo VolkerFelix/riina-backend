@@ -3,6 +3,7 @@ use actix_web::{get, post, put, web, HttpResponse, Result};
 use sqlx::PgPool;
 use uuid::Uuid;
 use std::sync::Arc;
+use redis::Client as RedisClient;
 
 use crate::handlers::league::{team_handler, team_member_handler, game_handler, league_handler, season_handler, league_users_handler};
 use crate::handlers::league::league_users_handler::PaginationParams;
@@ -130,9 +131,10 @@ async fn get_game_week(
 async fn register_team(
     team_request: web::Json<TeamRegistrationRequest>,
     pool: web::Data<PgPool>,
+    redis_client: web::Data<Arc<RedisClient>>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
-    team_handler::register_new_team(team_request, pool, claims).await
+    team_handler::register_new_team(team_request, pool, redis_client, claims).await
 }
 
 /// Get team information
@@ -182,9 +184,10 @@ async fn add_team_member(
     path: web::Path<Uuid>,
     request: web::Json<AddTeamMemberRequest>,
     pool: web::Data<PgPool>,
+    redis_client: web::Data<Arc<RedisClient>>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
-    team_member_handler::add_team_member(path, request, pool, claims).await
+    team_member_handler::add_team_member(path, request, pool, redis_client, claims).await
 }
 
 /// Get all members of a team
@@ -202,9 +205,10 @@ async fn get_team_members(
 async fn remove_team_member(
     path: web::Path<(Uuid, Uuid)>,
     pool: web::Data<PgPool>,
+    redis_client: web::Data<Arc<RedisClient>>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
-    team_member_handler::remove_team_member(path, pool, claims).await
+    team_member_handler::remove_team_member(path, pool, redis_client, claims).await
 }
 
 /// Update a team member's role or status
@@ -279,5 +283,15 @@ async fn get_game_summary(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse> {
     game_handler::get_game_summary(path, pool).await
+}
+
+/// Get player pool (active users not in teams)
+#[get("/player-pool")]
+async fn get_player_pool(
+    pool: web::Data<PgPool>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    use crate::handlers::league::player_pool_handler;
+    Ok(player_pool_handler::get_player_pool(pool, claims).await)
 }
 

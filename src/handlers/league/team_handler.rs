@@ -3,16 +3,18 @@ use sqlx::PgPool;
 use uuid::Uuid;
 use serde_json::json;
 use chrono::Utc;
+use std::sync::Arc;
 
 use crate::middleware::auth::Claims;
 use crate::models::league::*;
 use crate::models::team::{TeamRegistrationRequest, TeamUpdateRequest, TeamInfo, TeamInfoWithPower};
 use crate::utils::team_power;
+use crate::services::player_pool_events;
 
 /// Register a new team
 #[tracing::instrument(
     name = "Register team",
-    skip(team_request, pool, claims),
+    skip(team_request, pool, redis_client, claims),
     fields(
         team_name = %team_request.team_name,
         user = %claims.username
@@ -21,6 +23,7 @@ use crate::utils::team_power;
 pub async fn register_new_team(
     team_request: web::Json<TeamRegistrationRequest>,
     pool: web::Data<PgPool>,
+    redis_client: web::Data<Arc<redis::Client>>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
     tracing::info!("Registering team '{}' for user: {}", 
@@ -180,8 +183,48 @@ pub async fn register_new_team(
     // Commit the transaction
     match tx.commit().await {
         Ok(_) => {
-            tracing::info!("Successfully registered team '{}' with ID: {} and added owner as member", 
+            tracing::info!("Successfully registered team '{}' with ID: {} and added owner as member",
                 team_request.team_name, team_id);
+
+            // Remove owner from player pool
+            match sqlx::query!(
+                "DELETE FROM player_pool WHERE user_id = $1",
+                user_id
+            )
+            .execute(pool.get_ref())
+            .await
+            {
+                Ok(_) => {
+                    tracing::info!("Removed user {} from player pool after joining team", user_id);
+
+                    // Publish player_left event (left the pool)
+                    if let Err(e) = player_pool_events::publish_player_left(
+                        &redis_client,
+                        user_id,
+                        claims.username.clone(),
+                        None, // league_id
+                    ).await {
+                        tracing::warn!("Failed to publish player_left event: {}", e);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to remove user from player pool: {}", e);
+                    // Don't fail team registration if pool removal fails
+                }
+            }
+
+            // Publish player_assigned event for team owner (non-blocking)
+            if let Err(e) = player_pool_events::publish_player_assigned(
+                &redis_client,
+                user_id,
+                claims.username.clone(),
+                None, // league_id
+                team_id,
+                team_request.team_name.clone(),
+            ).await {
+                tracing::warn!("Failed to publish player_assigned event for team owner: {}", e);
+                // Don't fail team registration if notification fails
+            }
 
             Ok(HttpResponse::Created().json(json!({
                 "success": true,

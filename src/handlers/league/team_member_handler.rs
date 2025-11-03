@@ -2,11 +2,14 @@ use actix_web::{web, HttpResponse, Result};
 use sqlx::PgPool;
 use uuid::Uuid;
 use serde_json::json;
+use std::sync::Arc;
 
 use crate::middleware::auth::Claims;
 use crate::models::team::*;
 use crate::models::common::ApiResponse;
 use crate::handlers::league::team_member_helper::*;
+use crate::models::user::UserRole;
+use crate::services::player_pool_events;
 
 /// Add a user to a team
 #[tracing::instrument(
@@ -21,10 +24,11 @@ pub async fn add_team_member(
     team_id: web::Path<Uuid>,
     request: web::Json<AddTeamMemberRequest>,
     pool: web::Data<PgPool>,
+    redis_client: web::Data<Arc<redis::Client>>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
     let team_id = team_id.into_inner();
-    
+
     tracing::info!("Adding member(s) to team {}", team_id);
 
     // Validate the request
@@ -58,13 +62,64 @@ pub async fn add_team_member(
         return Ok(HttpResponse::Forbidden().json(ApiResponse::<()>::error("Only team owners and admins can add members")));
     }
 
+    // Get team info for notifications
+    let team_info = match get_team_info(&team_id, &pool).await {
+        Ok(Some(team)) => team,
+        Ok(None) => {
+            return Ok(HttpResponse::NotFound().json(ApiResponse::<()>::error("Team not found")));
+        }
+        Err(e) => {
+            tracing::error!("Failed to get team info: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Failed to get team information")));
+        }
+    };
+
     let mut added_members = Vec::new();
     let mut errors = Vec::new();
 
     for member in &request.member_request {
         match add_member(team_id, member, &pool, &requester_role).await {
             Ok(member_info) => {
-                // Successfully added member
+                // Remove member from player pool
+                match sqlx::query!(
+                    "DELETE FROM player_pool WHERE user_id = $1",
+                    member_info.user_id
+                )
+                .execute(pool.get_ref())
+                .await
+                {
+                    Ok(_) => {
+                        tracing::info!("Removed user {} from player pool after joining team", member_info.user_id);
+
+                        // Publish player_left event (left the pool)
+                        if let Err(e) = player_pool_events::publish_player_left(
+                            &redis_client,
+                            member_info.user_id,
+                            member_info.username.clone(),
+                            None, // league_id
+                        ).await {
+                            tracing::warn!("Failed to publish player_left event: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to remove user from player pool: {}", e);
+                        // Don't fail the operation if pool removal fails
+                    }
+                }
+
+                // Publish player_assigned event
+                if let Err(e) = player_pool_events::publish_player_assigned(
+                    &redis_client,
+                    member_info.user_id,
+                    member_info.username.clone(),
+                    None, // league_id - could be added if needed
+                    team_id,
+                    team_info.team_name.clone(),
+                ).await {
+                    tracing::warn!("Failed to publish player_assigned event: {}", e);
+                    // Don't fail the operation if notification fails
+                }
+
                 added_members.push(member_info);
             }
             Err(e) => {
@@ -111,17 +166,21 @@ pub async fn get_team_members(
         }
     };
 
-    // Check if requester is a member of the team
-    match check_team_member_role(&team_id, &requester_id, &pool).await {
-        Ok(Some(_)) => {
-            // User is a member, proceed
-        }
-        Ok(None) => {
-            return Ok(HttpResponse::Forbidden().json(ApiResponse::<()>::error("You must be a team member to view the member list")));
-        }
-        Err(e) => {
-            tracing::error!("Failed to check requester membership: {}", e);
-            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Failed to verify membership")));
+    // Check if requester is a member of the team or an admin
+    let is_admin = matches!(claims.role, UserRole::Admin);
+
+    if !is_admin {
+        match check_team_member_role(&team_id, &requester_id, &pool).await {
+            Ok(Some(_)) => {
+                // User is a member, proceed
+            }
+            Ok(None) => {
+                return Ok(HttpResponse::Forbidden().json(ApiResponse::<()>::error("You must be a team member to view the member list")));
+            }
+            Err(e) => {
+                tracing::error!("Failed to check requester membership: {}", e);
+                return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Failed to verify membership")));
+            }
         }
     }
 
@@ -187,10 +246,11 @@ pub async fn get_team_members(
 pub async fn remove_team_member(
     path: web::Path<(Uuid, Uuid)>, // (team_id, user_id)
     pool: web::Data<PgPool>,
+    redis_client: web::Data<Arc<redis::Client>>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
     let (team_id, target_user_id) = path.into_inner();
-    
+
     // Parse requester user ID from claims
     let requester_id = match Uuid::parse_str(&claims.sub) {
         Ok(id) => id,
@@ -256,6 +316,44 @@ pub async fn remove_team_member(
         }
     }
 
+    // Get user info before removal for notifications
+    let user_info = match sqlx::query!(
+        r#"
+        SELECT username, status as "status: crate::models::user::UserStatus"
+        FROM users
+        WHERE id = $1
+        "#,
+        target_user_id
+    )
+    .fetch_one(pool.get_ref())
+    .await
+    {
+        Ok(user) => user,
+        Err(e) => {
+            tracing::error!("Failed to get user info: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Failed to get user information")));
+        }
+    };
+
+    // Get team info before removal for notifications
+    let team_info = match sqlx::query!(
+        r#"
+        SELECT team_name
+        FROM teams
+        WHERE id = $1
+        "#,
+        team_id
+    )
+    .fetch_one(pool.get_ref())
+    .await
+    {
+        Ok(team) => team,
+        Err(e) => {
+            tracing::error!("Failed to get team info: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Failed to get team information")));
+        }
+    };
+
     // Remove the member
     match sqlx::query!(
         "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2",
@@ -268,6 +366,57 @@ pub async fn remove_team_member(
         Ok(result) => {
             if result.rows_affected() > 0 {
                 tracing::info!("Successfully removed user {} from team {}", target_user_id, team_id);
+
+                // If user is still active, add them back to player pool
+                if user_info.status == crate::models::user::UserStatus::Active {
+                    // Add to player pool
+                    let add_result = sqlx::query!(
+                        r#"
+                        INSERT INTO player_pool (user_id, last_active_at)
+                        VALUES ($1, NOW())
+                        ON CONFLICT (user_id)
+                        DO UPDATE SET
+                            last_active_at = NOW(),
+                            updated_at = NOW()
+                        "#,
+                        target_user_id
+                    )
+                    .execute(pool.get_ref())
+                    .await;
+
+                    match add_result {
+                        Ok(_) => {
+                            tracing::info!("Added user {} back to player pool after team removal", target_user_id);
+
+                            // Publish player_left_team event (left the team)
+                            if let Err(e) = player_pool_events::publish_player_left_team(
+                                &redis_client,
+                                target_user_id,
+                                user_info.username.clone(),
+                                None, // league_id
+                                team_id,
+                                team_info.team_name.clone(),
+                            ).await {
+                                tracing::warn!("Failed to publish player_left_team event: {}", e);
+                            }
+
+                            // Publish player_joined event (joined the pool)
+                            if let Err(e) = player_pool_events::publish_player_joined(
+                                &redis_client,
+                                target_user_id,
+                                user_info.username.clone(),
+                                None, // league_id
+                            ).await {
+                                tracing::warn!("Failed to publish player_joined event: {}", e);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to add user back to player pool: {}", e);
+                            // Don't fail the removal operation
+                        }
+                    }
+                }
+
                 Ok(HttpResponse::Ok().json(ApiResponse::<()>::success_message("User removed from team successfully")))
             } else {
                 Ok(HttpResponse::NotFound().json(ApiResponse::<()>::error("User not found in team")))
