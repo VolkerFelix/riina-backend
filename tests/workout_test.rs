@@ -1149,9 +1149,9 @@ async fn test_submit_and_retrieve_scoring_feedback() {
     let workouts = history_data["data"]["workouts"].as_array().unwrap();
     let workout_id = workouts[0]["id"].as_str().unwrap();
 
-    // Submit scoring feedback - "too_high"
+    // Submit scoring feedback - effort rating 8 (hard effort)
     let feedback_payload = json!({
-        "feedback_type": "too_high"
+        "effort_rating": 8
     });
 
     let submit_response = client
@@ -1165,7 +1165,7 @@ async fn test_submit_and_retrieve_scoring_feedback() {
     assert_eq!(submit_response.status(), reqwest::StatusCode::OK, "Feedback submission should succeed");
 
     let submit_data: serde_json::Value = submit_response.json().await.unwrap();
-    assert_eq!(submit_data["feedback_type"], "too_high");
+    assert_eq!(submit_data["effort_rating"], 8);
     assert_eq!(submit_data["workout_data_id"], workout_id);
 
     // Retrieve the submitted feedback
@@ -1179,7 +1179,7 @@ async fn test_submit_and_retrieve_scoring_feedback() {
     assert_eq!(get_response.status(), reqwest::StatusCode::OK);
 
     let get_data: serde_json::Value = get_response.json().await.unwrap();
-    assert_eq!(get_data["feedback_type"], "too_high");
+    assert_eq!(get_data["effort_rating"], 8);
     assert_eq!(get_data["workout_data_id"], workout_id);
 
     // Cleanup
@@ -1213,9 +1213,9 @@ async fn test_update_scoring_feedback() {
     let workouts = history_data["data"]["workouts"].as_array().unwrap();
     let workout_id = workouts[0]["id"].as_str().unwrap();
 
-    // Submit initial feedback - "too_low"
+    // Submit initial feedback - effort rating 3 (light effort)
     let initial_feedback = json!({
-        "feedback_type": "too_low"
+        "effort_rating": 3
     });
 
     let initial_response = client
@@ -1228,11 +1228,11 @@ async fn test_update_scoring_feedback() {
 
     assert_eq!(initial_response.status(), reqwest::StatusCode::OK);
     let initial_data: serde_json::Value = initial_response.json().await.unwrap();
-    assert_eq!(initial_data["feedback_type"], "too_low");
+    assert_eq!(initial_data["effort_rating"], 3);
 
-    // Update feedback - "accurate"
+    // Update feedback - effort rating 5 (moderate effort)
     let updated_feedback = json!({
-        "feedback_type": "accurate"
+        "effort_rating": 5
     });
 
     let update_response = client
@@ -1245,7 +1245,7 @@ async fn test_update_scoring_feedback() {
 
     assert_eq!(update_response.status(), reqwest::StatusCode::OK);
     let update_data: serde_json::Value = update_response.json().await.unwrap();
-    assert_eq!(update_data["feedback_type"], "accurate");
+    assert_eq!(update_data["effort_rating"], 5);
 
     // Verify the feedback was updated
     let get_response = client
@@ -1256,7 +1256,7 @@ async fn test_update_scoring_feedback() {
         .expect("Failed to retrieve feedback");
 
     let get_data: serde_json::Value = get_response.json().await.unwrap();
-    assert_eq!(get_data["feedback_type"], "accurate", "Feedback should be updated to 'accurate'");
+    assert_eq!(get_data["effort_rating"], 5, "Feedback should be updated to effort rating 5");
 
     // Cleanup
     delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
@@ -1274,7 +1274,7 @@ async fn test_scoring_feedback_for_nonexistent_workout() {
     // Try to submit feedback for a non-existent workout
     let fake_workout_id = Uuid::new_v4();
     let feedback_payload = json!({
-        "feedback_type": "too_high"
+        "effort_rating": 7
     });
 
     let response = client
@@ -1293,7 +1293,7 @@ async fn test_scoring_feedback_for_nonexistent_workout() {
 }
 
 #[tokio::test]
-async fn test_all_feedback_types() {
+async fn test_all_effort_ratings() {
     let test_app = spawn_app().await;
     let client = Client::new();
 
@@ -1301,10 +1301,11 @@ async fn test_all_feedback_types() {
     let admin_user = create_admin_user_and_login(&test_app.address).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
-    let feedback_types = vec!["too_high", "too_low", "accurate"];
+    // Test various effort ratings (1-10 scale)
+    let effort_ratings = vec![1, 3, 5, 7, 10];
 
-    for (i, feedback_type) in feedback_types.iter().enumerate() {
-        // Upload a workout for each feedback type with different start times to avoid duplicates
+    for (i, &effort_rating) in effort_ratings.iter().enumerate() {
+        // Upload a workout for each effort rating with different start times to avoid duplicates
         let workout_start = Utc::now() - chrono::Duration::hours((i + 1) as i64);
         let mut workout_data = WorkoutData::new(WorkoutType::Light, workout_start, 20);
         upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await
@@ -1324,7 +1325,7 @@ async fn test_all_feedback_types() {
 
         // Submit feedback
         let feedback_payload = json!({
-            "feedback_type": feedback_type
+            "effort_rating": effort_rating
         });
 
         let response = client
@@ -1335,11 +1336,72 @@ async fn test_all_feedback_types() {
             .await
             .expect("Failed to submit feedback");
 
-        assert_eq!(response.status(), reqwest::StatusCode::OK, "Feedback submission for '{}' should succeed", feedback_type);
+        assert_eq!(response.status(), reqwest::StatusCode::OK, "Feedback submission for effort rating {} should succeed", effort_rating);
 
         let data: serde_json::Value = response.json().await.unwrap();
-        assert_eq!(data["feedback_type"].as_str().unwrap(), *feedback_type);
+        assert_eq!(data["effort_rating"].as_i64().unwrap(), effort_rating as i64);
     }
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
+}
+
+#[tokio::test]
+async fn test_invalid_effort_rating() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
+
+    // Upload a workout
+    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await
+        .expect("Workout upload should succeed");
+
+    // Get workout ID
+    let history_response = client
+        .get(&format!("{}/health/history", &test_app.address))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .send()
+        .await
+        .expect("Failed to fetch workout history");
+
+    let history_data: serde_json::Value = history_response.json().await.unwrap();
+    let workouts = history_data["data"]["workouts"].as_array().unwrap();
+    let workout_id = workouts[0]["id"].as_str().unwrap();
+
+    // Test invalid effort rating (too high)
+    let invalid_feedback_high = json!({
+        "effort_rating": 15
+    });
+
+    let response_high = client
+        .post(&format!("{}/health/workout/{}/scoring-feedback", &test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .json(&invalid_feedback_high)
+        .send()
+        .await
+        .expect("Failed to submit feedback");
+
+    assert_eq!(response_high.status(), reqwest::StatusCode::BAD_REQUEST, "Should reject effort rating > 10");
+
+    // Test invalid effort rating (negative)
+    let invalid_feedback_negative = json!({
+        "effort_rating": -1
+    });
+
+    let response_negative = client
+        .post(&format!("{}/health/workout/{}/scoring-feedback", &test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .json(&invalid_feedback_negative)
+        .send()
+        .await
+        .expect("Failed to submit feedback");
+
+    assert_eq!(response_negative.status(), reqwest::StatusCode::BAD_REQUEST, "Should reject negative effort rating");
 
     // Cleanup
     delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
