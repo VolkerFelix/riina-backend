@@ -168,7 +168,7 @@ impl NotificationType {
 #[derive(Debug, Serialize)]
 pub struct NotificationWithUser {
     pub id: Uuid,
-    pub recipient_id: Uuid,
+    pub recipient_id: Option<Uuid>,
     pub actor_id: Uuid,
     pub actor_username: String,
     pub notification_type: String,

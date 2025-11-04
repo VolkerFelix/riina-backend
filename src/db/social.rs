@@ -612,7 +612,7 @@ pub async fn get_notifications(
             n.created_at
         FROM notifications n
         INNER JOIN users u ON u.id = n.actor_id
-        WHERE n.recipient_id = $1 OR n.recipient_id IS NULL
+        WHERE (n.recipient_id = $1 OR n.recipient_id IS NULL)
         ORDER BY n.created_at DESC
         LIMIT $2 OFFSET $3
         "#
