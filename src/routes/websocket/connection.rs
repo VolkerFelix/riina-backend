@@ -110,6 +110,7 @@ impl GameConnection {
                             "game:events:global".to_string(),                  // Global events (leaderboards, etc.)
                             "game:events:battles".to_string(),                 // Battle events
                             "game:events:territories".to_string(),             // Territory events
+                            "player_pool_events".to_string(),                  // Player pool events (join/leave/team assignment)
                         ];
                         
                         let mut successful_subscriptions = 0;
