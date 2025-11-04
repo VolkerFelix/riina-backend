@@ -106,9 +106,17 @@ pub async fn send_invitation(
     .await;
 
     match existing_invitation {
-        Ok(Some(_)) => {
-            return HttpResponse::Conflict().json(ApiResponse::<()>::error(
-                "An invitation to this user is already pending"
+        Ok(Some(inv)) => {
+            // Return success with the existing invitation ID instead of an error
+            tracing::info!(
+                "Pending invitation already exists: team_id={}, invitee_id={}, invitation_id={}",
+                team_id,
+                request.invitee_id,
+                inv.id
+            );
+            return HttpResponse::Ok().json(ApiResponse::success(
+                "An invitation to this user is already pending",
+                serde_json::json!({ "invitation_id": inv.id })
             ));
         }
         Err(e) => {

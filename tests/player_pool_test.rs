@@ -536,6 +536,172 @@ async fn test_redis_player_assigned_event_on_team_join() {
 }
 
 
+// ============================================================================
+// TEAM INVITATION TESTS
+// ============================================================================
+
+#[tokio::test]
+async fn test_send_invitation_to_free_agent() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    // Create team owner and free agent
+    let owner = create_test_user_and_login(&test_app.address).await;
+    let free_agent = create_test_user_and_login(&test_app.address).await;
+
+    // Create a team
+    let team_name = format!("Test Team {}", Uuid::new_v4().to_string()[..8].to_string());
+    let team_request = json!({
+        "team_name": team_name,
+        "team_description": "Test Description",
+        "team_color": "#FF0000"
+    });
+
+    let team_response = client
+        .post(&format!("{}/league/teams/register", &test_app.address))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&team_request)
+        .send()
+        .await
+        .expect("Failed to create team");
+
+    assert!(team_response.status().is_success());
+
+    let team_data: serde_json::Value = team_response
+        .json()
+        .await
+        .expect("Failed to parse team response");
+
+    let team_id = team_data["data"]["team_id"].as_str().unwrap();
+
+    // Send invitation to free agent
+    let invitation_request = json!({
+        "invitee_id": free_agent.user_id,
+        "message": "Join our awesome team!"
+    });
+
+    let invite_response = client
+        .post(&format!("{}/league/teams/{}/invitations", &test_app.address, team_id))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&invitation_request)
+        .send()
+        .await
+        .expect("Failed to send invitation");
+
+    assert!(invite_response.status().is_success());
+
+    let invite_data: serde_json::Value = invite_response
+        .json()
+        .await
+        .expect("Failed to parse invitation response");
+
+    assert_eq!(invite_data["success"], true);
+    assert!(invite_data["data"]["invitation_id"].is_string());
+
+    // Cleanup
+    delete_test_user(&test_app.address, &owner.token, owner.user_id).await;
+    delete_test_user(&test_app.address, &owner.token, free_agent.user_id).await;
+}
+
+#[tokio::test]
+async fn test_duplicate_invitation_handled_gracefully() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    // Create team owner and free agent
+    let owner = create_test_user_and_login(&test_app.address).await;
+    let free_agent = create_test_user_and_login(&test_app.address).await;
+
+    // Create a team
+    let team_name = format!("Test Team {}", Uuid::new_v4().to_string()[..8].to_string());
+    let team_request = json!({
+        "team_name": team_name,
+        "team_color": "#00FF00"
+    });
+
+    let team_response = client
+        .post(&format!("{}/league/teams/register", &test_app.address))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&team_request)
+        .send()
+        .await
+        .expect("Failed to create team");
+
+    let team_data: serde_json::Value = team_response.json().await.unwrap();
+    let team_id = team_data["data"]["team_id"].as_str().unwrap();
+
+    // Send first invitation
+    let invitation_request = json!({
+        "invitee_id": free_agent.user_id,
+        "message": "Join our team!"
+    });
+
+    let first_invite_response = client
+        .post(&format!("{}/league/teams/{}/invitations", &test_app.address, team_id))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&invitation_request)
+        .send()
+        .await
+        .expect("Failed to send first invitation");
+
+    assert!(first_invite_response.status().is_success());
+
+    let first_invite_data: serde_json::Value = first_invite_response.json().await.unwrap();
+    let first_invitation_id = first_invite_data["data"]["invitation_id"].as_str().unwrap();
+
+    // Send duplicate invitation to the same free agent
+    let second_invite_response = client
+        .post(&format!("{}/league/teams/{}/invitations", &test_app.address, team_id))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&invitation_request)
+        .send()
+        .await
+        .expect("Failed to send duplicate invitation");
+
+    // Should return 200 OK (not an error)
+    assert_eq!(second_invite_response.status(), 200, "Duplicate invitation should return 200 OK");
+
+    let second_invite_data: serde_json::Value = second_invite_response.json().await.unwrap();
+
+    // Should be a success response
+    assert_eq!(second_invite_data["success"], true, "Duplicate invitation should be successful");
+
+    // Should return the same invitation ID
+    let second_invitation_id = second_invite_data["data"]["invitation_id"].as_str().unwrap();
+    assert_eq!(first_invitation_id, second_invitation_id, "Should return the existing invitation ID");
+
+    // Message should indicate it's already pending
+    let message = second_invite_data["message"].as_str().unwrap();
+    assert!(
+        message.to_lowercase().contains("already pending"),
+        "Message should indicate invitation is already pending. Got: {}",
+        message
+    );
+
+    // Verify only one invitation exists for this user-team combination
+    let invitations_response = client
+        .get(&format!("{}/league/invitations", &test_app.address))
+        .header("Authorization", format!("Bearer {}", free_agent.token))
+        .send()
+        .await
+        .expect("Failed to get invitations");
+
+    let invitations_data: serde_json::Value = invitations_response.json().await.unwrap();
+    let invitations = invitations_data["data"]["invitations"].as_array().unwrap();
+
+    // Count pending invitations from this team
+    let pending_from_team = invitations.iter().filter(|inv| {
+        inv["team_id"].as_str().unwrap() == team_id
+            && inv["status"].as_str().unwrap() == "pending"
+    }).count();
+
+    assert_eq!(pending_from_team, 1, "Should have exactly one pending invitation from the team");
+
+    // Cleanup
+    delete_test_user(&test_app.address, &owner.token, owner.user_id).await;
+    delete_test_user(&test_app.address, &owner.token, free_agent.user_id).await;
+}
+
 #[tokio::test]
 async fn test_redis_player_left_team_event_on_team_leave() {
     let test_app = spawn_app().await;
