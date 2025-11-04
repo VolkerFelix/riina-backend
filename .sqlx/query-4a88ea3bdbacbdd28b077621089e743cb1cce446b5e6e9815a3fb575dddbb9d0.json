@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    UPDATE games \n                    SET \n                        home_score = home_score + $2,\n                        last_score_time = NOW(),\n                        last_scorer_id = $3,\n                        last_scorer_name = $4,\n                        last_scorer_team = 'home',\n                        updated_at = NOW()\n                    WHERE id = $1\n                    ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int4",
+        "Uuid",
+        "Varchar"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4a88ea3bdbacbdd28b077621089e743cb1cce446b5e6e9815a3fb575dddbb9d0"
+}

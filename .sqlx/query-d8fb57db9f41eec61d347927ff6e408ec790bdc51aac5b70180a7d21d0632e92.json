@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE games\n            SET\n                status = 'finished',\n                game_end_time = NOW(),\n                updated_at = NOW()\n            WHERE id = $1 AND status = 'in_progress'\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d8fb57db9f41eec61d347927ff6e408ec790bdc51aac5b70180a7d21d0632e92"
+}

@@ -1,0 +1,88 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            ti.id,\n            ti.team_id,\n            t.team_name,\n            t.team_color,\n            ti.inviter_id,\n            u_inviter.username as inviter_username,\n            ti.invitee_id,\n            u_invitee.username as invitee_username,\n            ti.status as \"status: InvitationStatus\",\n            ti.message,\n            ti.created_at,\n            ti.responded_at\n        FROM team_invitations ti\n        INNER JOIN teams t ON ti.team_id = t.id\n        INNER JOIN users u_inviter ON ti.inviter_id = u_inviter.id\n        INNER JOIN users u_invitee ON ti.invitee_id = u_invitee.id\n        WHERE ti.invitee_id = $1\n        ORDER BY\n            CASE WHEN ti.status = 'pending' THEN 0 ELSE 1 END,\n            ti.created_at DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "team_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "team_color",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "inviter_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "inviter_username",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "invitee_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 7,
+        "name": "invitee_username",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "status: InvitationStatus",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 9,
+        "name": "message",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "responded_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "0e798c1b842ac1fd279fda364c4b997d2cce0ba45300c1f5c1a8cd58e7219fc7"
+}

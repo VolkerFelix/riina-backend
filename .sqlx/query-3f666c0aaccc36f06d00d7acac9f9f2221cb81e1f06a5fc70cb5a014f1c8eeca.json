@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT COUNT(*) as count\n        FROM users u\n        INNER JOIN team_members tm ON u.id = tm.user_id AND tm.status = 'active'\n        INNER JOIN teams t ON tm.team_id = t.id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "3f666c0aaccc36f06d00d7acac9f9f2221cb81e1f06a5fc70cb5a014f1c8eeca"
+}

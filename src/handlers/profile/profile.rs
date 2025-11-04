@@ -300,12 +300,21 @@ async fn get_user_rank(pool: &PgPool, user_id: Uuid) -> Result<i32, sqlx::Error>
     // Calculate trailing averages for all users in batch
     let trailing_averages = trailing_average::calculate_trailing_averages_batch(pool, &user_ids).await?;
 
-    // Sort users by trailing average (descending)
+    // Sort users by trailing average (descending), then by user_id for stable ordering
     let mut users_with_avg: Vec<(Uuid, f32)> = user_ids.iter()
         .map(|&id| (id, trailing_averages.get(&id).copied().unwrap_or(0.0)))
         .collect();
 
-    users_with_avg.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    users_with_avg.sort_by(|a, b| {
+        // First sort by trailing average (descending)
+        match b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal) {
+            std::cmp::Ordering::Equal => {
+                // If trailing averages are equal, sort by user_id for stability
+                a.0.cmp(&b.0)
+            }
+            other => other,
+        }
+    });
 
     // Find the rank of the target user
     let rank = users_with_avg.iter()

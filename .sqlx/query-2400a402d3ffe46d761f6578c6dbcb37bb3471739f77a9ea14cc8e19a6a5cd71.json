@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT \n            t.id,\n            t.user_id,\n            t.team_name,\n            t.team_description,\n            t.team_color,\n            t.league_id,\n            t.created_at,\n            t.updated_at,\n            u.username as owner_username\n        FROM teams t\n        JOIN users u ON t.user_id = u.id\n        ORDER BY t.created_at DESC\n        LIMIT $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "team_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "team_description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "team_color",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "league_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "owner_username",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "2400a402d3ffe46d761f6578c6dbcb37bb3471739f77a9ea14cc8e19a6a5cd71"
+}

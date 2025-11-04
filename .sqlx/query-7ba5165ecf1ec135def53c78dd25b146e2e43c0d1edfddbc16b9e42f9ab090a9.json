@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                user_id,\n                SUM(score_points) as total_score,\n                COUNT(*) as workout_count\n            FROM live_score_events\n            WHERE game_id = $1\n            GROUP BY user_id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "total_score",
+        "type_info": "Float4"
+      },
+      {
+        "ordinal": 2,
+        "name": "workout_count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "7ba5165ecf1ec135def53c78dd25b146e2e43c0d1edfddbc16b9e42f9ab090a9"
+}

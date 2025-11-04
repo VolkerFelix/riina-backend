@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM live_score_events WHERE workout_data_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7776d28d17e146ea0a8c2987ab12da0043156c93b7a9689f27fb0c7e8d96686e"
+}
