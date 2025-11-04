@@ -101,28 +101,25 @@ impl WorkoutStats {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, sqlx::Type)]
-#[sqlx(type_name = "text")]
-#[serde(rename_all = "snake_case")]
-pub enum ScoringFeedbackType {
-    #[sqlx(rename = "too_high")]
-    TooHigh,
-    #[sqlx(rename = "too_low")]
-    TooLow,
-    #[sqlx(rename = "accurate")]
-    Accurate,
-}
-
 #[derive(Debug, FromRow, Serialize)]
 pub struct WorkoutScoringFeedback {
     pub id: Uuid,
     pub workout_data_id: Uuid,
     pub user_id: Uuid,
-    pub feedback_type: ScoringFeedbackType,
+    pub effort_rating: i16,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct SubmitScoringFeedbackRequest {
-    pub feedback_type: ScoringFeedbackType,
+    pub effort_rating: i16,
+}
+
+impl SubmitScoringFeedbackRequest {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.effort_rating < 0 || self.effort_rating > 10 {
+            return Err("Effort rating must be between 0 and 10".to_string());
+        }
+        Ok(())
+    }
 }

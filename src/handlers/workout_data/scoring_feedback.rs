@@ -2,7 +2,7 @@ use actix_web::{web, HttpResponse, Result};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::models::workout_data::{SubmitScoringFeedbackRequest, ScoringFeedbackType, WorkoutScoringFeedback};
+use crate::models::workout_data::{SubmitScoringFeedbackRequest, WorkoutScoringFeedback};
 use crate::middleware::auth::Claims;
 
 /// Submit scoring feedback for a workout
@@ -22,7 +22,15 @@ pub async fn submit_scoring_feedback(
             })));
         }
     };
-    let feedback_type = request.feedback_type;
+
+    // Validate effort rating
+    if let Err(e) = request.validate() {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": e
+        })));
+    }
+
+    let effort_rating = request.effort_rating;
 
     // Verify the workout exists and belongs to this user
     let workout_exists = sqlx::query!(
@@ -47,31 +55,25 @@ pub async fn submit_scoring_feedback(
     }
 
     // Insert or update feedback (upsert)
-    let feedback_type_str = match feedback_type {
-        ScoringFeedbackType::TooHigh => "too_high",
-        ScoringFeedbackType::TooLow => "too_low",
-        ScoringFeedbackType::Accurate => "accurate",
-    };
-
     let feedback = sqlx::query_as!(
         WorkoutScoringFeedback,
         r#"
-        INSERT INTO workout_scoring_feedback (workout_data_id, user_id, feedback_type)
+        INSERT INTO workout_scoring_feedback (workout_data_id, user_id, effort_rating)
         VALUES ($1, $2, $3)
         ON CONFLICT (workout_data_id, user_id)
         DO UPDATE SET
-            feedback_type = $3,
+            effort_rating = $3,
             created_at = NOW()
         RETURNING
             id,
             workout_data_id,
             user_id,
-            feedback_type as "feedback_type: ScoringFeedbackType",
+            effort_rating,
             created_at
         "#,
         workout_id,
         user_id,
-        feedback_type_str
+        effort_rating
     )
     .fetch_one(pool.as_ref())
     .await
@@ -130,7 +132,7 @@ pub async fn get_scoring_feedback(
             id,
             workout_data_id,
             user_id,
-            feedback_type as "feedback_type: ScoringFeedbackType",
+            effort_rating,
             created_at
         FROM workout_scoring_feedback
         WHERE workout_data_id = $1 AND user_id = $2
