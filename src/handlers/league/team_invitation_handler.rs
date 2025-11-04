@@ -9,6 +9,7 @@ use crate::models::team_invitation::{
     TeamInvitationWithDetails,
 };
 use crate::models::team::TeamRole;
+use crate::league::constants::MAX_TEAM_SIZE;
 
 /// Send a team invitation to a free agent
 #[tracing::instrument(
@@ -92,6 +93,36 @@ pub async fn send_invitation(
         _ => {}
     }
 
+    // Check if team already has maximum members
+    let member_count_result = sqlx::query!(
+        r#"
+        SELECT COUNT(*) as count
+        FROM team_members
+        WHERE team_id = $1 AND status = 'active'
+        "#,
+        team_id
+    )
+    .fetch_one(pool.get_ref())
+    .await;
+
+    match member_count_result {
+        Ok(row) => {
+            if let Some(count) = row.count {
+                if count >= MAX_TEAM_SIZE {
+                    return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+                        &format!("Your team is already full (maximum {} members)", MAX_TEAM_SIZE)
+                    ));
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("Database error checking team size: {}", e);
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                "Failed to verify team size"
+            ));
+        }
+    }
+
     // Check if there's already a pending invitation
     let existing_invitation = sqlx::query!(
         r#"
@@ -145,16 +176,55 @@ pub async fn send_invitation(
 
     match result {
         Ok(row) => {
+            let invitation_id = row.id;
+
             tracing::info!(
                 "Team invitation sent: team_id={}, inviter_id={}, invitee_id={}, invitation_id={}",
                 team_id,
                 inviter_id,
                 request.invitee_id,
-                row.id
+                invitation_id
             );
+
+            // Create notification for the invitee
+            // Fetch team name and inviter username
+            let notification_data = sqlx::query!(
+                r#"
+                SELECT t.team_name, u.username as inviter_username
+                FROM teams t
+                CROSS JOIN users u
+                WHERE t.id = $1 AND u.id = $2
+                "#,
+                team_id,
+                inviter_id
+            )
+            .fetch_optional(pool.get_ref())
+            .await;
+
+            if let Ok(Some(data)) = notification_data {
+                let message = format!(
+                    "{} invited you to join {}",
+                    data.inviter_username,
+                    data.team_name
+                );
+
+                let _ = sqlx::query!(
+                    r#"
+                    INSERT INTO notifications (recipient_id, actor_id, notification_type, entity_type, entity_id, message)
+                    VALUES ($1, $2, 'team_invitation', 'invitation', $3, $4)
+                    "#,
+                    request.invitee_id,
+                    inviter_id,
+                    invitation_id,
+                    message
+                )
+                .execute(pool.get_ref())
+                .await;
+            }
+
             HttpResponse::Created().json(ApiResponse::success(
                 "Invitation sent successfully",
-                serde_json::json!({ "invitation_id": row.id })
+                serde_json::json!({ "invitation_id": invitation_id })
             ))
         }
         Err(e) => {

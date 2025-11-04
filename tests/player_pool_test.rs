@@ -819,3 +819,165 @@ async fn test_redis_player_left_team_event_on_team_leave() {
     delete_test_user(&test_app.address, &admin.token, member.user_id).await;
     delete_test_user(&test_app.address, &admin.token, admin.user_id).await;
 }
+
+#[tokio::test]
+async fn test_team_invitation_creates_notification() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    // Create team owner and free agent
+    let owner = create_test_user_and_login(&test_app.address).await;
+    let free_agent = create_test_user_and_login(&test_app.address).await;
+
+    // Create team
+    let team_name = format!("Test Team {}", Uuid::new_v4().to_string()[..8].to_string());
+    let team_request = json!({
+        "team_name": team_name,
+        "team_color": "#FF0000"
+    });
+
+    let team_response = client
+        .post(&format!("{}/league/teams/register", &test_app.address))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&team_request)
+        .send()
+        .await
+        .expect("Failed to create team");
+
+    assert!(team_response.status().is_success());
+    let team_data: serde_json::Value = team_response.json().await.unwrap();
+    let team_id = team_data["data"]["team_id"].as_str().unwrap();
+
+    // Send invitation to free agent
+    let invitation_request = json!({
+        "invitee_id": free_agent.user_id,
+        "message": "Join our team!"
+    });
+
+    let invite_response = client
+        .post(&format!("{}/league/teams/{}/invitations", &test_app.address, team_id))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&invitation_request)
+        .send()
+        .await
+        .expect("Failed to send invitation");
+
+    assert_eq!(invite_response.status(), 201, "Invitation should be created successfully");
+
+    // Check that free agent received a notification
+    let notifications_response = client
+        .get(&format!("{}/social/notifications?page=1&per_page=20", &test_app.address))
+        .header("Authorization", format!("Bearer {}", free_agent.token))
+        .send()
+        .await
+        .expect("Failed to get notifications");
+
+    assert!(notifications_response.status().is_success());
+    let notifications_data: serde_json::Value = notifications_response.json().await.unwrap();
+    let notifications = notifications_data["notifications"].as_array().unwrap();
+
+    // Find team invitation notification
+    let team_invitation_notification = notifications.iter().find(|n| {
+        n["notification_type"].as_str() == Some("team_invitation")
+    });
+
+    assert!(team_invitation_notification.is_some(), "Free agent should have received a team invitation notification");
+
+    let notification = team_invitation_notification.unwrap();
+    assert_eq!(notification["entity_type"].as_str().unwrap(), "invitation");
+    assert_eq!(notification["actor_username"].as_str().unwrap(), owner.username);
+    assert!(notification["message"].as_str().unwrap().contains("invited you to join"));
+    assert!(notification["message"].as_str().unwrap().contains(&team_name));
+
+    // Cleanup
+    delete_test_user(&test_app.address, &owner.token, owner.user_id).await;
+    delete_test_user(&test_app.address, &owner.token, free_agent.user_id).await;
+}
+
+#[tokio::test]
+async fn test_cannot_invite_when_team_is_full() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+    let admin = create_admin_user_and_login(&test_app.address).await;
+
+    // Create team owner
+    let owner = create_test_user_and_login(&test_app.address).await;
+
+    // Create team
+    let team_name = format!("Test Team {}", Uuid::new_v4().to_string()[..8].to_string());
+    let team_request = json!({
+        "team_name": team_name,
+        "team_color": "#FF0000"
+    });
+
+    let team_response = client
+        .post(&format!("{}/league/teams/register", &test_app.address))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&team_request)
+        .send()
+        .await
+        .expect("Failed to create team");
+
+    assert!(team_response.status().is_success());
+    let team_data: serde_json::Value = team_response.json().await.unwrap();
+    let team_id = team_data["data"]["team_id"].as_str().unwrap();
+
+    // Create 4 additional members to fill the team (owner + 4 = 5 members)
+    let mut member_ids = Vec::new();
+    for _ in 0..4 {
+        let member = create_test_user_and_login(&test_app.address).await;
+        member_ids.push(member.user_id.clone());
+
+        // Add member to team
+        let add_member_request = json!({
+            "member_request": [{
+                "user_id": member.user_id,
+                "role": "member"
+            }]
+        });
+
+        let add_response = client
+            .post(&format!("{}/league/teams/{}/members", &test_app.address, team_id))
+            .header("Authorization", format!("Bearer {}", owner.token))
+            .json(&add_member_request)
+            .send()
+            .await
+            .expect("Failed to add member");
+
+        assert!(add_response.status().is_success(), "Should be able to add member to team");
+    }
+
+    // Create a free agent to invite
+    let free_agent = create_test_user_and_login(&test_app.address).await;
+
+    // Try to send invitation when team is full (should fail)
+    let invitation_request = json!({
+        "invitee_id": free_agent.user_id,
+        "message": "Join our team!"
+    });
+
+    let invite_response = client
+        .post(&format!("{}/league/teams/{}/invitations", &test_app.address, team_id))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&invitation_request)
+        .send()
+        .await
+        .expect("Failed to send invitation");
+
+    assert_eq!(invite_response.status(), 400, "Invitation should fail when team is full");
+
+    let error_data: serde_json::Value = invite_response.json().await.unwrap();
+    let error_message = error_data["error"].as_str().unwrap();
+    assert!(error_message.contains("full") || error_message.contains("maximum"),
+        "Error message should indicate team is full: {}", error_message);
+    assert!(error_message.contains("5"),
+        "Error message should mention the maximum team size of 5: {}", error_message);
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin.token, owner.user_id).await;
+    delete_test_user(&test_app.address, &admin.token, free_agent.user_id).await;
+    for member_id in member_ids {
+        delete_test_user(&test_app.address, &admin.token, member_id).await;
+    }
+    delete_test_user(&test_app.address, &admin.token, admin.user_id).await;
+}
