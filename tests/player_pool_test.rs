@@ -981,3 +981,217 @@ async fn test_cannot_invite_when_team_is_full() {
     }
     delete_test_user(&test_app.address, &admin.token, admin.user_id).await;
 }
+
+#[tokio::test]
+async fn test_invitation_acceptance_creates_notification() {
+    use reqwest::StatusCode;
+    
+    let test_app = spawn_app().await;
+    let client = Client::new();
+    let admin = create_admin_user_and_login(&test_app.address).await;
+
+    // Create team owner
+    let owner = create_test_user_and_login(&test_app.address).await;
+
+    // Create team
+    let team_name = format!("Test Team {}", Uuid::new_v4().to_string()[..8].to_string());
+    let team_request = json!({
+        "team_name": team_name,
+        "team_color": "#FF0000"
+    });
+
+    let team_response = client
+        .post(&format!("{}/league/teams/register", &test_app.address))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&team_request)
+        .send()
+        .await
+        .expect("Failed to create team");
+
+    assert!(team_response.status().is_success());
+    let team_data: serde_json::Value = team_response.json().await.unwrap();
+    let team_id = team_data["data"]["team_id"].as_str().unwrap();
+
+    // Create free agent
+    let free_agent = create_test_user_and_login(&test_app.address).await;
+
+    // Send invitation
+    let invitation_request = json!({
+        "invitee_id": free_agent.user_id,
+        "message": "Join us"
+    });
+
+    let invite_response = client
+        .post(&format!("{}/league/teams/{}/invitations", &test_app.address, team_id))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&invitation_request)
+        .send()
+        .await
+        .expect("Failed to send invitation");
+
+    assert_eq!(invite_response.status(), StatusCode::CREATED);
+
+    // Get invitation ID
+    let invitations_response = client
+        .get(&format!("{}/league/invitations", &test_app.address))
+        .header("Authorization", format!("Bearer {}", free_agent.token))
+        .send()
+        .await
+        .expect("Failed to get invitations");
+
+    let invitations_data: serde_json::Value = invitations_response.json().await.unwrap();
+    let invitation_id = invitations_data["data"]["invitations"][0]["id"].as_str().unwrap();
+
+    // Accept invitation
+    let accept_body = json!({
+        "accept": true
+    });
+
+    let accept_response = client
+        .post(&format!("{}/league/invitations/{}/respond", &test_app.address, invitation_id))
+        .header("Authorization", format!("Bearer {}", free_agent.token))
+        .json(&accept_body)
+        .send()
+        .await
+        .expect("Failed to accept invitation");
+
+    assert_eq!(accept_response.status(), StatusCode::OK);
+
+    // Check that owner received notification
+    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+
+    let notifications_response = client
+        .get(&format!("{}/social/notifications?page=1&per_page=20", &test_app.address))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .send()
+        .await
+        .expect("Failed to get notifications");
+
+    assert_eq!(notifications_response.status(), StatusCode::OK);
+
+    let notifications_data: serde_json::Value = notifications_response.json().await.unwrap();
+    let notifications = notifications_data["notifications"].as_array().unwrap();
+
+    // Find invitation_accepted notification
+    let acceptance_notification = notifications
+        .iter()
+        .find(|n| n["notification_type"] == "invitation_accepted");
+
+    assert!(acceptance_notification.is_some(), "Should have invitation_accepted notification");
+    let notification = acceptance_notification.unwrap();
+    assert_eq!(notification["actor_username"], free_agent.username);
+    assert!(notification["message"].as_str().unwrap().contains("accepted"));
+    assert!(notification["message"].as_str().unwrap().contains(&team_name));
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin.token, free_agent.user_id).await;
+    delete_test_user(&test_app.address, &admin.token, owner.user_id).await;
+    delete_test_user(&test_app.address, &admin.token, admin.user_id).await;
+}
+
+#[tokio::test]
+async fn test_invitation_decline_creates_notification() {
+    use reqwest::StatusCode;
+    
+    let test_app = spawn_app().await;
+    let client = Client::new();
+    let admin = create_admin_user_and_login(&test_app.address).await;
+
+    // Create team owner
+    let owner = create_test_user_and_login(&test_app.address).await;
+
+    // Create team
+    let team_name = format!("Test Team {}", Uuid::new_v4().to_string()[..8].to_string());
+    let team_request = json!({
+        "team_name": team_name,
+        "team_color": "#FF0000"
+    });
+
+    let team_response = client
+        .post(&format!("{}/league/teams/register", &test_app.address))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&team_request)
+        .send()
+        .await
+        .expect("Failed to create team");
+
+    assert!(team_response.status().is_success());
+    let team_data: serde_json::Value = team_response.json().await.unwrap();
+    let team_id = team_data["data"]["team_id"].as_str().unwrap();
+
+    // Create free agent
+    let free_agent = create_test_user_and_login(&test_app.address).await;
+
+    // Send invitation
+    let invitation_request = json!({
+        "invitee_id": free_agent.user_id,
+        "message": "Join us"
+    });
+
+    let invite_response = client
+        .post(&format!("{}/league/teams/{}/invitations", &test_app.address, team_id))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&invitation_request)
+        .send()
+        .await
+        .expect("Failed to send invitation");
+
+    assert_eq!(invite_response.status(), StatusCode::CREATED);
+
+    // Get invitation ID
+    let invitations_response = client
+        .get(&format!("{}/league/invitations", &test_app.address))
+        .header("Authorization", format!("Bearer {}", free_agent.token))
+        .send()
+        .await
+        .expect("Failed to get invitations");
+
+    let invitations_data: serde_json::Value = invitations_response.json().await.unwrap();
+    let invitation_id = invitations_data["data"]["invitations"][0]["id"].as_str().unwrap();
+
+    // Decline invitation
+    let decline_body = json!({
+        "accept": false
+    });
+
+    let decline_response = client
+        .post(&format!("{}/league/invitations/{}/respond", &test_app.address, invitation_id))
+        .header("Authorization", format!("Bearer {}", free_agent.token))
+        .json(&decline_body)
+        .send()
+        .await
+        .expect("Failed to decline invitation");
+
+    assert_eq!(decline_response.status(), StatusCode::OK);
+
+    // Check that owner received notification
+    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+
+    let notifications_response = client
+        .get(&format!("{}/social/notifications?page=1&per_page=20", &test_app.address))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .send()
+        .await
+        .expect("Failed to get notifications");
+
+    assert_eq!(notifications_response.status(), StatusCode::OK);
+
+    let notifications_data: serde_json::Value = notifications_response.json().await.unwrap();
+    let notifications = notifications_data["notifications"].as_array().unwrap();
+
+    // Find invitation_declined notification
+    let decline_notification = notifications
+        .iter()
+        .find(|n| n["notification_type"] == "invitation_declined");
+
+    assert!(decline_notification.is_some(), "Should have invitation_declined notification");
+    let notification = decline_notification.unwrap();
+    assert_eq!(notification["actor_username"], free_agent.username);
+    assert!(notification["message"].as_str().unwrap().contains("declined"));
+    assert!(notification["message"].as_str().unwrap().contains(&team_name));
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin.token, free_agent.user_id).await;
+    delete_test_user(&test_app.address, &admin.token, owner.user_id).await;
+    delete_test_user(&test_app.address, &admin.token, admin.user_id).await;
+}

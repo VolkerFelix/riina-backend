@@ -332,11 +332,12 @@ pub async fn get_user_invitations(
 /// Respond to a team invitation (accept or decline)
 #[tracing::instrument(
     name = "Respond to team invitation",
-    skip(pool, claims, invitation_id, request),
+    skip(pool, redis_client, claims, invitation_id, request),
     fields(username = %claims.username, invitation_id = %invitation_id)
 )]
 pub async fn respond_to_invitation(
     pool: web::Data<PgPool>,
+    redis_client: web::Data<Arc<redis::Client>>,
     claims: web::ReqData<Claims>,
     invitation_id: web::Path<Uuid>,
     request: web::Json<RespondToInvitationRequest>,
@@ -467,6 +468,90 @@ pub async fn respond_to_invitation(
         Ok(_) => {
             let action = if request.accept { "accepted" } else { "declined" };
             tracing::info!("Invitation {} by user {}", action, user_id);
+
+            // Send notifications to all active team members
+            let notification_data = sqlx::query!(
+                r#"
+                SELECT
+                    t.team_name,
+                    u.username as respondent_username,
+                    tm.user_id as member_id
+                FROM team_invitations ti
+                INNER JOIN teams t ON ti.team_id = t.id
+                INNER JOIN users u ON ti.invitee_id = u.id
+                INNER JOIN team_members tm ON tm.team_id = t.id
+                WHERE ti.id = $1 AND tm.status = 'active'
+                "#,
+                invitation_id
+            )
+            .fetch_all(pool.get_ref())
+            .await;
+
+            if let Ok(members) = notification_data {
+                let respondent_username = if let Some(first_member) = members.first() {
+                    first_member.respondent_username.clone()
+                } else {
+                    claims.username.clone()
+                };
+
+                let team_name = if let Some(first_member) = members.first() {
+                    first_member.team_name.clone()
+                } else {
+                    "the team".to_string()
+                };
+
+                let message = if request.accept {
+                    format!("{} accepted the invitation to join {}", respondent_username, team_name)
+                } else {
+                    format!("{} declined the invitation to join {}", respondent_username, team_name)
+                };
+
+                let notification_type = if request.accept {
+                    "invitation_accepted"
+                } else {
+                    "invitation_declined"
+                };
+
+                // Create notifications for each team member
+                for member in &members {
+                    match sqlx::query!(
+                        r#"
+                        INSERT INTO notifications (recipient_id, actor_id, notification_type, entity_type, entity_id, message)
+                        VALUES ($1, $2, $3, 'invitation', $4, $5)
+                        RETURNING id
+                        "#,
+                        member.member_id,
+                        user_id,
+                        notification_type,
+                        invitation_id,
+                        message
+                    )
+                    .fetch_one(pool.get_ref())
+                    .await {
+                        Ok(notification_row) => {
+                            let notification_id = notification_row.id;
+                            tracing::info!("Created notification {} for team member {}", notification_id, member.member_id);
+
+                            // Send notification via WebSocket
+                            if let Err(e) = send_notification_to_user(
+                                &redis_client,
+                                member.member_id,
+                                notification_id,
+                                respondent_username.clone(),
+                                notification_type.to_string(),
+                                message.clone(),
+                            ).await {
+                                tracing::error!("Failed to send notification to team member {}: {}", member.member_id, e);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to create notification for team member {}: {}", member.member_id, e);
+                        }
+                    }
+                }
+            } else {
+                tracing::error!("Failed to fetch team members for notifications");
+            }
 
             HttpResponse::Ok().json(ApiResponse::success(
                 format!("Invitation {} successfully", action),

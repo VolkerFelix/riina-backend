@@ -322,11 +322,12 @@ async fn get_user_invitations(
 #[post("/invitations/{invitation_id}/respond")]
 async fn respond_to_invitation(
     pool: web::Data<PgPool>,
+    redis_client: web::Data<Arc<RedisClient>>,
     claims: web::ReqData<Claims>,
     invitation_id: web::Path<Uuid>,
     request: web::Json<crate::models::team_invitation::RespondToInvitationRequest>,
 ) -> Result<HttpResponse> {
     use crate::handlers::league::team_invitation_handler;
-    Ok(team_invitation_handler::respond_to_invitation(pool, claims, invitation_id, request).await)
+    Ok(team_invitation_handler::respond_to_invitation(pool, redis_client, claims, invitation_id, request).await)
 }
 
