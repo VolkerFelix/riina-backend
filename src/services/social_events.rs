@@ -157,8 +157,8 @@ pub async fn broadcast_comment_reaction_removed(
     Ok(())
 }
 
-/// Broadcast new notification event via Redis to a specific user's channel
-pub async fn broadcast_notification(
+/// Send notification event via Redis to a specific user's channel
+pub async fn send_notification_to_user(
     redis_client: &web::Data<Arc<redis::Client>>,
     recipient_id: Uuid,
     notification_id: Uuid,
@@ -178,20 +178,33 @@ pub async fn broadcast_notification(
     let mut conn = redis_client.get_async_connection().await?;
     let event_message = serde_json::to_string(&event)?;
 
-    // Broadcast to user-specific channel only
+    // Send to user-specific channel only
     let user_channel = format!("game:events:user:{}", recipient_id);
     let result: Result<i32, redis::RedisError> = conn.publish(&user_channel, event_message).await;
 
     match result {
         Ok(subscriber_count) => {
-            tracing::info!("📢 Broadcasted notification to user {} on channel {} ({} subscribers)", recipient_id, user_channel, subscriber_count);
+            tracing::info!("📬 Sent notification to user {} on channel {} ({} subscribers)", recipient_id, user_channel, subscriber_count);
             Ok(())
         },
         Err(e) => {
-            tracing::error!("❌ Failed to broadcast notification to user channel: {}", e);
+            tracing::error!("❌ Failed to send notification to user channel: {}", e);
             Err(Box::new(e))
         }
     }
+}
+
+/// Legacy alias for backward compatibility
+#[deprecated(since = "0.2.0", note = "Use send_notification_to_user instead")]
+pub async fn broadcast_notification(
+    redis_client: &web::Data<Arc<redis::Client>>,
+    recipient_id: Uuid,
+    notification_id: Uuid,
+    actor_username: String,
+    notification_type: String,
+    message: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    send_notification_to_user(redis_client, recipient_id, notification_id, actor_username, notification_type, message).await
 }
 
 /// Helper function to broadcast any GameEvent to the global channel

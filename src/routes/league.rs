@@ -299,12 +299,13 @@ async fn get_player_pool(
 #[post("/teams/{team_id}/invitations")]
 async fn send_team_invitation(
     pool: web::Data<PgPool>,
+    redis_client: web::Data<Arc<RedisClient>>,
     claims: web::ReqData<Claims>,
     team_id: web::Path<Uuid>,
     request: web::Json<crate::models::team_invitation::SendInvitationRequest>,
 ) -> Result<HttpResponse> {
     use crate::handlers::league::team_invitation_handler;
-    Ok(team_invitation_handler::send_invitation(pool, claims, team_id, request).await)
+    Ok(team_invitation_handler::send_invitation(pool, redis_client, claims, team_id, request).await)
 }
 
 /// Get user's team invitations

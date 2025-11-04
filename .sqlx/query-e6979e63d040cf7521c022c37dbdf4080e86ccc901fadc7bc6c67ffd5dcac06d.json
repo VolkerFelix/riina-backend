@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    INSERT INTO notifications (recipient_id, actor_id, notification_type, entity_type, entity_id, message)\n                    VALUES ($1, $2, 'team_invitation', 'invitation', $3, $4)\n                    RETURNING id\n                    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "e6979e63d040cf7521c022c37dbdf4080e86ccc901fadc7bc6c67ffd5dcac06d"
+}

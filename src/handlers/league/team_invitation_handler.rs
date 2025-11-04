@@ -1,6 +1,7 @@
 use actix_web::{web, HttpResponse};
 use sqlx::PgPool;
 use uuid::Uuid;
+use std::sync::Arc;
 
 use crate::middleware::auth::Claims;
 use crate::models::common::ApiResponse;
@@ -10,15 +11,17 @@ use crate::models::team_invitation::{
 };
 use crate::models::team::TeamRole;
 use crate::league::constants::MAX_TEAM_SIZE;
+use crate::services::social_events::send_notification_to_user;
 
 /// Send a team invitation to a free agent
 #[tracing::instrument(
     name = "Send team invitation",
-    skip(pool, claims, team_id, request),
+    skip(pool, claims, team_id, request, redis_client),
     fields(username = %claims.username, team_id = %team_id)
 )]
 pub async fn send_invitation(
     pool: web::Data<PgPool>,
+    redis_client: web::Data<Arc<redis::Client>>,
     claims: web::ReqData<Claims>,
     team_id: web::Path<Uuid>,
     request: web::Json<SendInvitationRequest>,
@@ -208,18 +211,42 @@ pub async fn send_invitation(
                     data.team_name
                 );
 
-                let _ = sqlx::query!(
+                // Save notification to database
+                match sqlx::query!(
                     r#"
                     INSERT INTO notifications (recipient_id, actor_id, notification_type, entity_type, entity_id, message)
                     VALUES ($1, $2, 'team_invitation', 'invitation', $3, $4)
+                    RETURNING id
                     "#,
                     request.invitee_id,
                     inviter_id,
                     invitation_id,
                     message
                 )
-                .execute(pool.get_ref())
-                .await;
+                .fetch_one(pool.get_ref())
+                .await {
+                    Ok(notification_row) => {
+                        let notification_id = notification_row.id;
+                        tracing::info!("Created notification {} for team invitation", notification_id);
+
+                        // Send notification to user via WebSocket
+                        if let Err(e) = send_notification_to_user(
+                            &redis_client,
+                            request.invitee_id,
+                            notification_id,
+                            data.inviter_username.clone(),
+                            "team_invitation".to_string(),
+                            message.clone(),
+                        ).await {
+                            tracing::error!("Failed to send team invitation notification to user: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to create team invitation notification: {}", e);
+                    }
+                }
+            } else {
+                tracing::error!("Failed to fetch team/inviter data for notification");
             }
 
             HttpResponse::Created().json(ApiResponse::success(
