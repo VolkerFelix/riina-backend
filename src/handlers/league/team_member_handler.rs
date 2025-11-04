@@ -94,6 +94,7 @@ pub async fn add_team_member(
                         // Publish player_left event (left the pool)
                         if let Err(e) = player_pool_events::publish_player_left(
                             &redis_client,
+                            &pool,
                             member_info.user_id,
                             member_info.username.clone(),
                             None, // league_id
@@ -110,6 +111,7 @@ pub async fn add_team_member(
                 // Publish player_assigned event
                 if let Err(e) = player_pool_events::publish_player_assigned(
                     &redis_client,
+                    &pool,
                     member_info.user_id,
                     member_info.username.clone(),
                     None, // league_id - could be added if needed
@@ -391,6 +393,7 @@ pub async fn remove_team_member(
                             // Publish player_left_team event (left the team)
                             if let Err(e) = player_pool_events::publish_player_left_team(
                                 &redis_client,
+                                &pool,
                                 target_user_id,
                                 user_info.username.clone(),
                                 None, // league_id
@@ -403,6 +406,7 @@ pub async fn remove_team_member(
                             // Publish player_joined event (joined the pool)
                             if let Err(e) = player_pool_events::publish_player_joined(
                                 &redis_client,
+                                &pool,
                                 target_user_id,
                                 user_info.username.clone(),
                                 None, // league_id

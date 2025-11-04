@@ -577,7 +577,7 @@ pub async fn get_notifications(
     .fetch_one(pool)
     .await?;
 
-    // Get notifications
+    // Get notifications (user-specific AND broadcast notifications)
     let query_str = if unread_only {
         r#"
         SELECT
@@ -593,7 +593,7 @@ pub async fn get_notifications(
             n.created_at
         FROM notifications n
         INNER JOIN users u ON u.id = n.actor_id
-        WHERE n.recipient_id = $1 AND n.read = false
+        WHERE (n.recipient_id = $1 OR n.recipient_id IS NULL) AND n.read = false
         ORDER BY n.created_at DESC
         LIMIT $2 OFFSET $3
         "#
@@ -612,7 +612,7 @@ pub async fn get_notifications(
             n.created_at
         FROM notifications n
         INNER JOIN users u ON u.id = n.actor_id
-        WHERE n.recipient_id = $1
+        WHERE n.recipient_id = $1 OR n.recipient_id IS NULL
         ORDER BY n.created_at DESC
         LIMIT $2 OFFSET $3
         "#

@@ -102,6 +102,7 @@ pub async fn insert_user(
     // Publish player pool event (non-blocking, don't fail registration if it fails)
     if let Err(e) = player_pool_events::publish_player_joined(
         redis_client,
+        &pool,
         user_id,
         username,
         None, // New users don't have a league yet

@@ -200,6 +200,7 @@ pub async fn register_new_team(
                     // Publish player_left event (left the pool)
                     if let Err(e) = player_pool_events::publish_player_left(
                         &redis_client,
+                        &pool,
                         user_id,
                         claims.username.clone(),
                         None, // league_id
@@ -216,6 +217,7 @@ pub async fn register_new_team(
             // Publish player_assigned event for team owner (non-blocking)
             if let Err(e) = player_pool_events::publish_player_assigned(
                 &redis_client,
+                &pool,
                 user_id,
                 claims.username.clone(),
                 None, // league_id
