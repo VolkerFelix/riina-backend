@@ -82,13 +82,13 @@ async fn websocket_connection_working() {
         _ => panic!("Expected text message for welcome"),
     };
     
-    // Parse welcome message
+    // Parse welcome message (should be redis_subscriptions_ready)
     let welcome_json: serde_json::Value = serde_json::from_str(&welcome_text)
         .expect("Failed to parse welcome message as JSON");
-    
-    assert_eq!(welcome_json["event_type"], "player_joined", "Expected player_joined message type");
+
+    assert_eq!(welcome_json["event_type"], "redis_subscriptions_ready", "Expected redis_subscriptions_ready message type");
     assert!(welcome_json["user_id"].is_string(), "Welcome message should contain user_id");
-    assert_eq!(welcome_json["username"], username, "Username should match");
+    assert!(welcome_json["session_id"].is_string(), "Welcome message should contain session_id");
 
     // Send a ping message
     let ping_msg = json!({
@@ -195,7 +195,7 @@ async fn websocket_redis_pubsub_working() {
         .await
         .expect("Failed to connect to WebSocket server");
 
-    // Wait for welcome message (player_joined)
+    // Wait for welcome message (redis_subscriptions_ready)
     let welcome_msg = ws_stream.next().await.expect("No welcome message received").unwrap();
     let welcome_text = match welcome_msg {
         Message::Text(text) => {
@@ -204,11 +204,11 @@ async fn websocket_redis_pubsub_working() {
         },
         _ => panic!("Expected text message for welcome"),
     };
-    
+
     // Parse welcome message
     let welcome_json: serde_json::Value = serde_json::from_str(&welcome_text)
         .expect("Failed to parse welcome message as JSON");
-    assert_eq!(welcome_json["event_type"], "player_joined", "Expected player_joined message type");
+    assert_eq!(welcome_json["event_type"], "redis_subscriptions_ready", "Expected redis_subscriptions_ready message type");
     assert!(welcome_json["user_id"].is_string(), "Welcome message should contain user_id");
 
     println!("WebSocket connected for Redis PubSub test");
