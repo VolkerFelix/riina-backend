@@ -417,7 +417,7 @@ pub struct TeamPoll {
     pub executed_at: Option<DateTime<Utc>>,
 }
 
-/// Team poll with additional information
+/// Team poll with additional information (internal use, includes creator)
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TeamPollInfo {
     pub id: Uuid,
@@ -436,6 +436,49 @@ pub struct TeamPollInfo {
     pub votes_for: i32,
     pub votes_against: i32,
     pub total_eligible_voters: i32,
+}
+
+/// Anonymous poll response (for API responses - creator identity hidden)
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AnonymousPollInfo {
+    pub id: Uuid,
+    pub team_id: Uuid,
+    pub team_name: String,
+    pub poll_type: PollType,
+    pub target_user_id: Uuid,
+    pub target_username: String,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub status: PollStatus,
+    pub result: Option<PollResult>,
+    pub executed_at: Option<DateTime<Utc>>,
+    pub votes_for: i32,
+    pub votes_against: i32,
+    pub total_eligible_voters: i32,
+    pub is_creator: bool, // True if current user created this poll
+}
+
+impl TeamPollInfo {
+    /// Convert to anonymous response, indicating if the given user is the creator
+    pub fn to_anonymous(&self, current_user_id: Uuid) -> AnonymousPollInfo {
+        AnonymousPollInfo {
+            id: self.id,
+            team_id: self.team_id,
+            team_name: self.team_name.clone(),
+            poll_type: self.poll_type.clone(),
+            target_user_id: self.target_user_id,
+            target_username: self.target_username.clone(),
+            created_at: self.created_at,
+            expires_at: self.expires_at,
+            status: self.status.clone(),
+            result: self.result.clone(),
+            executed_at: self.executed_at,
+            votes_for: self.votes_for,
+            votes_against: self.votes_against,
+            total_eligible_voters: self.total_eligible_voters,
+            is_creator: self.created_by == current_user_id,
+        }
+    }
 }
 
 /// Poll type enumeration

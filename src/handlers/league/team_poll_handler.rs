@@ -220,11 +220,11 @@ pub async fn create_poll(
         }
     }
 
-    HttpResponse::Created().json(PollResponse {
-        success: true,
-        message: "Poll created successfully".to_string(),
-        poll: Some(poll_info),
-    })
+    HttpResponse::Created().json(serde_json::json!({
+        "success": true,
+        "message": "Poll created successfully",
+        "poll": poll_info.to_anonymous(user_id)
+    }))
 }
 
 /// Cast a vote on a poll
@@ -398,11 +398,11 @@ pub async fn cast_vote(
         }
     };
 
-    HttpResponse::Ok().json(PollResponse {
-        success: true,
-        message: "Vote cast successfully".to_string(),
-        poll: Some(poll_info),
-    })
+    HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "message": "Vote cast successfully",
+        "poll": poll_info.to_anonymous(user_id)
+    }))
 }
 
 /// Get active polls for a team
@@ -460,7 +460,7 @@ pub async fn get_team_polls(
     let mut polls = Vec::new();
     for poll in poll_ids {
         if let Ok(poll_info) = get_poll_info(&pool, poll.id).await {
-            polls.push(poll_info);
+            polls.push(poll_info.to_anonymous(user_id));
         }
     }
 
