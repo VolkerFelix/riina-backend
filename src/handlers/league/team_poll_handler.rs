@@ -185,8 +185,7 @@ pub async fn create_poll(
     .unwrap_or_default();
 
     let notification_message = format!(
-        "{} created a poll to remove {} from {}",
-        &claims.username,
+        "A poll has been created to remove {} from {}",
         poll_info.target_username,
         poll_info.team_name
     );
@@ -213,7 +212,7 @@ pub async fn create_poll(
                 &redis_client,
                 member.user_id,
                 notification_row.id,
-                claims.username.clone(),
+                "Team Vote".to_string(), // Anonymous sender
                 "team_poll_created".to_string(),
                 notification_message.clone(),
             ).await;
