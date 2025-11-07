@@ -1,10 +1,11 @@
 use reqwest::Client;
 use serde_json::json;
 use uuid::Uuid;
+use std::time::Duration;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login};
-use common::admin_helpers::{create_admin_user_and_login, create_league};
+use common::admin_helpers::{create_admin_user_and_login, create_league, create_team, TeamConfig};
 
 #[tokio::test]
 async fn test_create_poll_success() {
@@ -25,23 +26,17 @@ async fn test_create_poll_success() {
     ).await;
 
     // Create team
-    let team_data = json!({
-        "team_name": format!("Team_{}", Uuid::new_v4()),
-        "team_description": "Test team",
-        "team_color": "#FF0000",
-        "league_id": league_id
-    });
-
-    let team_response = client
-        .post(&format!("{}/league/teams/register", test_app.address))
-        .header("Authorization", format!("Bearer {}", owner.token))
-        .json(&team_data)
-        .send()
-        .await
-        .expect("Failed to create team");
-
-    let team_body: serde_json::Value = team_response.json().await.unwrap();
-    let team_id = team_body["data"]["team_id"].as_str().unwrap();
+    let unique_suffix = &Uuid::new_v4().to_string()[..8];
+    let team_id = create_team(
+        &test_app.address,
+        &admin.token,
+        TeamConfig {
+            name: Some(format!("Team A {}", unique_suffix)),
+            color: Some("#FF0000".to_string()),
+            description: Some("Team A".to_string()),
+            owner_id: Some(owner.user_id),
+        }
+    ).await;
 
     // Create members
     let member1 = create_test_user_and_login(&test_app.address).await;
@@ -99,6 +94,28 @@ async fn test_create_poll_success() {
     assert_eq!(poll_body["poll"]["target_user_id"], member2_id);
     assert_eq!(poll_body["poll"]["status"], "active");
     assert_eq!(poll_body["poll"]["total_eligible_voters"].as_u64().unwrap(), 3); // owner + member1 + member3 (excluding target)
+
+    // Check notifications - owner should receive poll creation notification
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let notif_response = client.get(&format!("{}/social/notifications", test_app.address)).header("Authorization", format!("Bearer {}", owner.token)).send().await.unwrap();
+    let notif_result: serde_json::Value = notif_response.json().await.unwrap();
+    let notifications = notif_result["notifications"].as_array().unwrap();
+    let poll_notif = notifications.iter().find(|n| n["notification_type"] == "team_poll_created");
+    assert!(poll_notif.is_some(), "Owner should receive poll creation notification");
+
+    // Member3 should also receive notification
+    let notif_response = client.get(&format!("{}/social/notifications", test_app.address)).header("Authorization", format!("Bearer {}", member3.token)).send().await.unwrap();
+    let notif_result: serde_json::Value = notif_response.json().await.unwrap();
+    let notifications = notif_result["notifications"].as_array().unwrap();
+    let poll_notif = notifications.iter().find(|n| n["notification_type"] == "team_poll_created");
+    assert!(poll_notif.is_some(), "Member3 should receive poll creation notification");
+
+    // Member2 (target) should NOT receive poll creation notification
+    let notif_response = client.get(&format!("{}/social/notifications", test_app.address)).header("Authorization", format!("Bearer {}", member2.token)).send().await.unwrap();
+    let notif_result: serde_json::Value = notif_response.json().await.unwrap();
+    let notifications = notif_result["notifications"].as_array().unwrap();
+    let poll_notif = notifications.iter().find(|n| n["notification_type"] == "team_poll_created");
+    assert!(poll_notif.is_none(), "Target should NOT receive poll creation notification");
 }
 
 #[tokio::test]
@@ -116,16 +133,17 @@ async fn test_cannot_create_poll_for_owner() {
         8  // max_teams
     ).await;
 
-    let team_data = json!({"team_name": format!("Team_{}", Uuid::new_v4()), "team_description": "Test", "team_color": "#FF0000", "league_id": league_id});
-    let team_response = client
-        .post(&format!("{}/league/teams/register", test_app.address))
-        .header("Authorization", format!("Bearer {}", owner.token))
-        .json(&team_data)
-        .send()
-        .await
-        .expect("Failed to create team");
-    let team_body: serde_json::Value = team_response.json().await.unwrap();
-    let team_id = team_body["data"]["team_id"].as_str().unwrap();
+    let unique_suffix = &Uuid::new_v4().to_string()[..8];
+    let team_id = create_team(
+        &test_app.address,
+        &admin.token,
+        TeamConfig {
+            name: Some(format!("Team A {}", unique_suffix)),
+            color: Some("#FF0000".to_string()),
+            description: Some("Team A".to_string()),
+            owner_id: Some(owner.user_id),
+        }
+    ).await;
 
     // Add member
     let member1 = create_test_user_and_login(&test_app.address).await;
@@ -181,10 +199,17 @@ async fn test_can_create_poll_for_self() {
         8  // max_teams
     ).await;
 
-    let team_data = json!({"team_name": format!("Team_{}", Uuid::new_v4()), "team_description": "Test", "team_color": "#FF0000", "league_id": league_id});
-    let team_response = client.post(&format!("{}/league/teams/register", test_app.address)).header("Authorization", format!("Bearer {}", owner.token)).json(&team_data).send().await.unwrap();
-    let team_body: serde_json::Value = team_response.json().await.unwrap();
-    let team_id = team_body["data"]["team_id"].as_str().unwrap();
+    let unique_suffix = &Uuid::new_v4().to_string()[..8];
+    let team_id = create_team(
+        &test_app.address,
+        &admin.token,
+        TeamConfig {
+            name: Some(format!("Team A {}", unique_suffix)),
+            color: Some("#FF0000".to_string()),
+            description: Some("Team A".to_string()),
+            owner_id: Some(owner.user_id),
+        }
+    ).await;
 
     // Add members
     let member1 = create_test_user_and_login(&test_app.address).await;
@@ -224,10 +249,17 @@ async fn test_cast_vote_and_check_result() {
         8  // max_teams
     ).await;
 
-    let team_data = json!({"team_name": format!("Team_{}", Uuid::new_v4()), "team_description": "Test", "team_color": "#FF0000", "league_id": league_id});
-    let team_response = client.post(&format!("{}/league/teams/register", test_app.address)).header("Authorization", format!("Bearer {}", owner.token)).json(&team_data).send().await.unwrap();
-    let team_body: serde_json::Value = team_response.json().await.unwrap();
-    let team_id = team_body["data"]["team_id"].as_str().unwrap();
+    let unique_suffix = &Uuid::new_v4().to_string()[..8];
+    let team_id = create_team(
+        &test_app.address,
+        &admin.token,
+        TeamConfig {
+            name: Some(format!("Team A {}", unique_suffix)),
+            color: Some("#FF0000".to_string()),
+            description: Some("Team A".to_string()),
+            owner_id: Some(owner.user_id),
+        }
+    ).await;
 
     // Create and add members
     let member1 = create_test_user_and_login(&test_app.address).await;
@@ -285,10 +317,17 @@ async fn test_early_consensus_approval() {
         8  // max_teams
     ).await;
 
-    let team_data = json!({"team_name": format!("Team_{}", Uuid::new_v4()), "team_description": "Test", "team_color": "#FF0000", "league_id": league_id});
-    let team_response = client.post(&format!("{}/league/teams/register", test_app.address)).header("Authorization", format!("Bearer {}", owner.token)).json(&team_data).send().await.unwrap();
-    let team_body: serde_json::Value = team_response.json().await.unwrap();
-    let team_id = team_body["data"]["team_id"].as_str().unwrap();
+    let unique_suffix = &Uuid::new_v4().to_string()[..8];
+    let team_id = create_team(
+        &test_app.address,
+        &admin.token,
+        TeamConfig {
+            name: Some(format!("Team A {}", unique_suffix)),
+            color: Some("#FF0000".to_string()),
+            description: Some("Team A".to_string()),
+            owner_id: Some(owner.user_id),
+        }
+    ).await;
 
     // Create and add members
     let member1 = create_test_user_and_login(&test_app.address).await;
@@ -337,6 +376,27 @@ async fn test_early_consensus_approval() {
 
     assert_eq!(members.len(), 4, "Should have 4 members (owner + 3 members)");
     assert!(members.iter().all(|m| m["username"] != member4.username), "Member4 should have been removed");
+
+    // Check notifications - member4 should receive removal notification
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let notif_response = client.get(&format!("{}/social/notifications", test_app.address)).header("Authorization", format!("Bearer {}", member4.token)).send().await.unwrap();
+    let notif_result: serde_json::Value = notif_response.json().await.unwrap();
+    let notifications = notif_result["notifications"].as_array().unwrap();
+    let removal_notif = notifications.iter().find(|n| n["notification_type"] == "removed_from_team");
+    assert!(removal_notif.is_some(), "Removed member should receive removal notification");
+
+    // Remaining members should receive completion notification
+    let notif_response = client.get(&format!("{}/social/notifications", test_app.address)).header("Authorization", format!("Bearer {}", owner.token)).send().await.unwrap();
+    let notif_result: serde_json::Value = notif_response.json().await.unwrap();
+    let notifications = notif_result["notifications"].as_array().unwrap();
+    let completion_notif = notifications.iter().find(|n| n["notification_type"] == "team_poll_completed");
+    assert!(completion_notif.is_some(), "Team members should receive poll completion notification");
+
+    let notif_response = client.get(&format!("{}/social/notifications", test_app.address)).header("Authorization", format!("Bearer {}", member1.token)).send().await.unwrap();
+    let notif_result: serde_json::Value = notif_response.json().await.unwrap();
+    let notifications = notif_result["notifications"].as_array().unwrap();
+    let completion_notif = notifications.iter().find(|n| n["notification_type"] == "team_poll_completed");
+    assert!(completion_notif.is_some(), "Poll creator should also receive completion notification");
 }
 
 #[tokio::test]
@@ -354,10 +414,17 @@ async fn test_cannot_vote_twice() {
         8  // max_teams
     ).await;
 
-    let team_data = json!({"team_name": format!("Team_{}", Uuid::new_v4()), "team_description": "Test", "team_color": "#FF0000", "league_id": league_id});
-    let team_response = client.post(&format!("{}/league/teams/register", test_app.address)).header("Authorization", format!("Bearer {}", owner.token)).json(&team_data).send().await.unwrap();
-    let team_body: serde_json::Value = team_response.json().await.unwrap();
-    let team_id = team_body["data"]["team_id"].as_str().unwrap();
+    let unique_suffix = &Uuid::new_v4().to_string()[..8];
+    let team_id = create_team(
+        &test_app.address,
+        &admin.token,
+        TeamConfig {
+            name: Some(format!("Team A {}", unique_suffix)),
+            color: Some("#FF0000".to_string()),
+            description: Some("Team A".to_string()),
+            owner_id: Some(owner.user_id),
+        }
+    ).await;
 
     // Add members
     let member1 = create_test_user_and_login(&test_app.address).await;
