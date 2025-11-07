@@ -84,6 +84,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .service(league::create_team_poll)
             .service(league::get_team_polls)
             .service(league::cast_poll_vote)
+            .service(league::delete_poll)
     );
     // WebSocket routes (authentication handled in route)
     cfg.service(

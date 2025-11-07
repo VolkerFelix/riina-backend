@@ -550,6 +550,111 @@ async fn get_poll_info(pool: &PgPool, poll_id: Uuid) -> Result<TeamPollInfo, sql
     })
 }
 
+/// Delete a poll (only by creator, and only if active)
+pub async fn delete_poll(
+    pool: web::Data<PgPool>,
+    path: web::Path<(Uuid, Uuid)>,
+    claims: web::ReqData<Claims>,
+) -> HttpResponse {
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "success": false,
+                "message": "Invalid user ID in token"
+            }));
+        }
+    };
+
+    let (team_id, poll_id) = path.into_inner();
+
+    // Get the poll
+    let poll = match sqlx::query_as!(
+        TeamPoll,
+        r#"
+        SELECT
+            id, team_id, poll_type as "poll_type: PollType", target_user_id, created_by,
+            created_at, expires_at, status as "status: PollStatus",
+            result as "result: PollResult", executed_at
+        FROM team_polls
+        WHERE id = $1 AND team_id = $2
+        "#,
+        poll_id,
+        team_id
+    )
+    .fetch_optional(pool.as_ref())
+    .await
+    {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            return HttpResponse::NotFound().json(serde_json::json!({
+                "success": false,
+                "message": "Poll not found"
+            }));
+        }
+        Err(e) => {
+            tracing::error!("Database error fetching poll: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "message": "Failed to fetch poll"
+            }));
+        }
+    };
+
+    // Only the creator can delete the poll
+    if poll.created_by != user_id {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "success": false,
+            "message": "Only the poll creator can delete this poll"
+        }));
+    }
+
+    // Can only delete active polls
+    if poll.status != PollStatus::Active {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "success": false,
+            "message": "Only active polls can be deleted"
+        }));
+    }
+
+    // Delete associated votes first (foreign key constraint)
+    let delete_votes_result = sqlx::query!(
+        "DELETE FROM poll_votes WHERE poll_id = $1",
+        poll_id
+    )
+    .execute(pool.as_ref())
+    .await;
+
+    if let Err(e) = delete_votes_result {
+        tracing::error!("Database error deleting poll votes: {}", e);
+        return HttpResponse::InternalServerError().json(serde_json::json!({
+            "success": false,
+            "message": "Failed to delete poll votes"
+        }));
+    }
+
+    // Delete the poll
+    let delete_result = sqlx::query!(
+        "DELETE FROM team_polls WHERE id = $1",
+        poll_id
+    )
+    .execute(pool.as_ref())
+    .await;
+
+    if let Err(e) = delete_result {
+        tracing::error!("Database error deleting poll: {}", e);
+        return HttpResponse::InternalServerError().json(serde_json::json!({
+            "success": false,
+            "message": "Failed to delete poll"
+        }));
+    }
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "message": "Poll deleted successfully"
+    }))
+}
+
 /// Check if a poll has reached consensus and complete it if so
 async fn check_and_complete_poll(
     pool: &PgPool,

@@ -1,5 +1,5 @@
 // src/routes/league.rs
-use actix_web::{get, post, put, web, HttpResponse, Result};
+use actix_web::{delete, get, post, put, web, HttpResponse, Result};
 use sqlx::PgPool;
 use uuid::Uuid;
 use std::sync::Arc;
@@ -366,5 +366,16 @@ async fn cast_poll_vote(
 ) -> Result<HttpResponse> {
     use crate::handlers::league::team_poll_handler;
     Ok(team_poll_handler::cast_vote(request, pool, redis_client, path, claims).await)
+}
+
+/// Delete a poll (creator only)
+#[delete("/teams/{team_id}/polls/{poll_id}")]
+async fn delete_poll(
+    pool: web::Data<PgPool>,
+    path: web::Path<(Uuid, Uuid)>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    use crate::handlers::league::team_poll_handler;
+    Ok(team_poll_handler::delete_poll(pool, path, claims).await)
 }
 
