@@ -12,7 +12,7 @@ use sqlx;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, get_next_date, delete_test_user};
-use common::admin_helpers::{create_admin_user_and_login, create_league_season};
+use common::admin_helpers::{create_admin_user_and_login, create_league_season, create_league, create_team, TeamConfig, add_team_to_league};
 use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user};
 
 use riina_backend::config::settings::get_config;
@@ -54,81 +54,40 @@ async fn test_redis_game_evaluation_notifications() {
     
     let unique_suffix = &Uuid::new_v4().to_string()[..8];
     // Create league
-    let league_request = json!({
-        "name": format!("Redis Test League {}", unique_suffix),
-        "description": "Testing Redis notifications",
-        "max_teams": 2
-    });
-    
-    let league_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/leagues", &app.address),
+    let league_id = create_league(
+        &app.address,
         &admin_user.token,
-        Some(league_request),
+        2
     ).await;
-    assert_eq!(league_response.status(), 201);
-    
-    let league_data = league_response.json::<serde_json::Value>().await.unwrap();
-    let league_id = league_data["data"]["id"].as_str().unwrap();
     
     // Create teams
-    let team_a_request = json!({
-        "name": format!("Redis Team A {}", unique_suffix),
-        "color": "#FF0000",
-        "description": "Team A for Redis testing",
-        "owner_id": user1.user_id
-    });
-    
-    let team_a_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/teams", &app.address),
+    let team_a_id = create_team(
+        &app.address,
         &admin_user.token,
-        Some(team_a_request),
+        TeamConfig {
+            name: Some(format!("Redis Team A {}", unique_suffix)),
+            color: Some("#FF0000".to_string()),
+            description: Some("Team A for Redis testing".to_string()),
+            owner_id: Some(user1.user_id),
+        }
     ).await;
-    assert_eq!(team_a_response.status(), 201);
     
-    let team_a_data = team_a_response.json::<serde_json::Value>().await.unwrap();
-    let team_a_id = team_a_data["data"]["id"].as_str().unwrap();
-    
-    let team_b_request = json!({
-        "name": format!("Redis Team B {}", unique_suffix),
-        "color": "#0000FF",
-        "description": "Team B for Redis testing",
-        "owner_id": user2.user_id
-    });
-    
-    let team_b_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/teams", &app.address),
+    let team_b_id = create_team(
+        &app.address,
         &admin_user.token,
-        Some(team_b_request),
+        TeamConfig {
+            name: Some(format!("Redis Team B {}", unique_suffix)),
+            color: Some("#0000FF".to_string()),
+            description: Some("Team B for Redis testing".to_string()),
+            owner_id: Some(user2.user_id),
+        }
     ).await;
-    assert_eq!(team_b_response.status(), 201);
-    
-    let team_b_data = team_b_response.json::<serde_json::Value>().await.unwrap();
-    let team_b_id = team_b_data["data"]["id"].as_str().unwrap();
     
     // Note: user1 and user2 are already team members since they are the owners of their respective teams
     
     // Assign teams to league
-    make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/leagues/{}/teams", &app.address, league_id),
-        &admin_user.token,
-        Some(json!({"team_id": team_a_id})),
-    ).await;
-    
-    make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/leagues/{}/teams", &app.address, league_id),
-        &admin_user.token,
-        Some(json!({"team_id": team_b_id})),
-    ).await;
+    add_team_to_league(&app.address, &admin_user.token, &league_id, &team_a_id).await;
+    add_team_to_league(&app.address, &admin_user.token, &league_id, &team_b_id).await;
     
     // Create season
     let start_date = get_next_date(Weekday::Sat, NaiveTime::from_hms_opt(22, 0, 0).unwrap());
@@ -137,7 +96,7 @@ async fn test_redis_game_evaluation_notifications() {
     let _season_id = create_league_season(
         &app.address,
         &admin_user.token,
-        league_id,
+        &league_id,
         &season_name,
         &start_date.to_rfc3339()
     ).await;
@@ -145,7 +104,7 @@ async fn test_redis_game_evaluation_notifications() {
     println!("✅ Test data setup complete");
     
     // Update games to current time before evaluation (like other tests)
-    update_games_to_current_time(&app, league_id).await;
+    update_games_to_current_time(&app, &league_id).await;
     
     // Trigger game cycle to start and finish games before evaluation
     println!("🔄 Running game management cycle...");
@@ -163,7 +122,7 @@ async fn test_redis_game_evaluation_notifications() {
     // Check game statuses after cycle
     let games_after_cycle = sqlx::query!(
         "SELECT id, status FROM games WHERE season_id IN (SELECT id FROM league_seasons WHERE league_id = $1)",
-        Uuid::parse_str(league_id).expect("Invalid league ID")
+        Uuid::parse_str(&league_id).expect("Invalid league ID")
     )
     .fetch_all(&app.db_pool)
     .await
@@ -194,7 +153,7 @@ async fn test_redis_game_evaluation_notifications() {
     // Check final game statuses
     let games_final = sqlx::query!(
         "SELECT id, status FROM games WHERE season_id IN (SELECT id FROM league_seasons WHERE league_id = $1)",
-        Uuid::parse_str(league_id).expect("Invalid league ID")
+        Uuid::parse_str(&league_id).expect("Invalid league ID")
     )
     .fetch_all(&app.db_pool)
     .await

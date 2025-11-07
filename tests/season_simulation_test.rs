@@ -14,7 +14,7 @@ use common::utils::{
     get_next_date,
     make_authenticated_request
 , delete_test_user};
-use common::admin_helpers::{create_admin_user_and_login, create_league_season};
+use common::admin_helpers::{create_admin_user_and_login, create_league_season, create_league, create_team, TeamConfig, add_team_to_league, add_user_to_team};
 use common::workout_data_helpers::{
     WorkoutData,
     WorkoutType,
@@ -43,132 +43,48 @@ async fn simulate_complete_season_with_4_players_2_teams() {
     println!("✅ Created 5 users (1 admin + 4 players)");
     
     // Step 2: Create a league
-    let league_request = json!({
-        "name": "Simulation League",
-        "description": "League for season simulation with 4 players",
-        "max_teams": 2
-    });
-    
-    let league_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/leagues", &app.address),
+    let league_id = create_league(
+        &app.address,
         &admin_user.token,
-        Some(league_request),
+        2
     ).await;
-    
-    let status = league_response.status();
-    
-    if status != 201 {
-        let error_text = league_response.text().await.unwrap();
-        panic!("Failed to create league. Status: {}, Body: {}", status, error_text);
-    }
-    
-    let league_data: serde_json::Value = league_response.json().await.unwrap();
-    let league_id = league_data["data"]["id"].as_str().unwrap();
     
     println!("✅ Created league: {}", league_id);
     
-    // Step 3: Create 2 teams
-    let team1_request = json!({
-        "name": format!("Fire Dragons {}", &Uuid::new_v4().to_string()[..8]),
-        "color": "#DC2626",
-        "owner_id": user1.user_id
-    });
-    
-    let team1_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/teams", &app.address),
+    // Step 3: Create 2 teams with specific names and owners
+    let team1_id = create_team(
+        &app.address,
         &admin_user.token,
-        Some(team1_request)
+        TeamConfig {
+            name: Some(format!("Fire Dragons {}", &Uuid::new_v4().to_string()[..8])),
+            color: Some("#DC2626".to_string()),
+            owner_id: Some(user1.user_id),
+            description: None,
+        }
     ).await;
     
-    assert_eq!(team1_response.status(), 201);
-    let team1_data: serde_json::Value = team1_response.json().await.unwrap();
-    let team1_id = team1_data["data"]["id"].as_str().unwrap();
-    
-    let team2_request = json!({
-        "name": format!("Ice Warriors {}", &Uuid::new_v4().to_string()[..8]),
-        "color": "#2563EB",
-        "owner_id": user3.user_id
-    });
-    
-    let team2_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/teams", &app.address),
+    let team2_id = create_team(
+        &app.address,
         &admin_user.token,
-        Some(team2_request)
+        TeamConfig {
+            name: Some(format!("Ice Warriors {}", &Uuid::new_v4().to_string()[..8])),
+            color: Some("#2563EB".to_string()),
+            owner_id: Some(user3.user_id),
+            description: None,
+        }
     ).await;
-    
-    assert_eq!(team2_response.status(), 201);
-    let team2_data: serde_json::Value = team2_response.json().await.unwrap();
-    let team2_id = team2_data["data"]["id"].as_str().unwrap();
     
     println!("✅ Created teams: {} (Fire Dragons), {} (Ice Warriors)", team1_id, team2_id);
     
     // Step 4: Add second player to each team (team members)
-    let add_member1_request = json!({
-        "user_id": user2.user_id,
-        "role": "member"
-    });
-    
-    let member1_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/teams/{}/members", &app.address, team1_id),
-        &admin_user.token,
-        Some(add_member1_request),
-    ).await;
-    
-    assert_eq!(member1_response.status(), 201);
-    
-    let add_member2_request = json!({
-        "user_id": user4.user_id,
-        "role": "member"
-    });
-    
-    let member2_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/teams/{}/members", &app.address, team2_id),
-        &admin_user.token,
-        Some(add_member2_request),
-    ).await;
-    
-    assert_eq!(member2_response.status(), 201);
+    add_user_to_team(&app.address, &admin_user.token, &team1_id, user2.user_id).await;
+    add_user_to_team(&app.address, &admin_user.token, &team2_id, user4.user_id).await;
     
     println!("✅ Added team members: User2 → Fire Dragons, User4 → Ice Warriors");
     
     // Step 5: Assign teams to league
-    let assign_team1_request = json!({
-        "team_id": team1_id
-    });
-    
-    let assign1_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/leagues/{}/teams", &app.address, league_id),
-        &admin_user.token,
-        Some(assign_team1_request),
-    ).await;
-    
-    assert_eq!(assign1_response.status(), 201);
-    
-    let assign_team2_request = json!({
-        "team_id": team2_id
-    });
-    
-    let assign2_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/leagues/{}/teams", &app.address, league_id),
-        &admin_user.token,
-        Some(assign_team2_request),
-    ).await;
-    
-    assert_eq!(assign2_response.status(), 201);
+    add_team_to_league(&app.address, &admin_user.token, &league_id, &team1_id).await;
+    add_team_to_league(&app.address, &admin_user.token, &league_id, &team2_id).await;
     
     println!("✅ Assigned both teams to league");
     
@@ -177,7 +93,7 @@ async fn simulate_complete_season_with_4_players_2_teams() {
     let season_id = create_league_season(
         &app.address,
         &admin_user.token,
-        league_id,
+        &league_id,
         "Simulation Season 2025",
         &start_date.to_rfc3339()
     ).await;

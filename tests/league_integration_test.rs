@@ -4,8 +4,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 mod common;
-use common::utils::{spawn_app, create_test_user_and_login, delete_test_user};
-use common::admin_helpers::create_admin_user_and_login;
+use common::utils::{spawn_app, create_test_user_and_login};
 
 use crate::common::utils::make_authenticated_request;
 

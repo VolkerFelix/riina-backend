@@ -341,14 +341,28 @@ pub async fn cast_vote(
         }));
     }
 
-    // Insert or update vote (upsert)
+    // Check if user has already voted
+    let existing_vote = sqlx::query!(
+        "SELECT id FROM poll_votes WHERE poll_id = $1 AND user_id = $2",
+        poll_id,
+        user_id
+    )
+    .fetch_optional(pool.as_ref())
+    .await;
+
+    if let Ok(Some(_)) = existing_vote {
+        return HttpResponse::Conflict().json(serde_json::json!({
+            "success": false,
+            "message": "You have already voted on this poll"
+        }));
+    }
+
+    // Insert vote
     let vote_id = Uuid::new_v4();
     let result = sqlx::query!(
         r#"
         INSERT INTO poll_votes (id, poll_id, user_id, vote)
         VALUES ($1, $2, $3, $4)
-        ON CONFLICT (poll_id, user_id)
-        DO UPDATE SET vote = $4, voted_at = NOW()
         "#,
         vote_id,
         poll_id,
@@ -367,7 +381,10 @@ pub async fn cast_vote(
     }
 
     // Check if we have enough votes to make a decision
-    let _ = check_and_complete_poll(&pool, &redis_client, poll_id, team_id).await;
+    if let Err(e) = check_and_complete_poll(&pool, &redis_client, poll_id, team_id).await {
+        tracing::error!("Error checking/completing poll: {}", e);
+        // Don't fail the vote if consensus check fails, just log it
+    }
 
     // Get updated poll info
     let poll_info = match get_poll_info(&pool, poll_id).await {
@@ -422,9 +439,9 @@ pub async fn get_team_polls(
         }));
     }
 
-    // Get all active polls for the team
+    // Get all polls for the team (active and completed)
     let poll_ids = match sqlx::query!(
-        "SELECT id FROM team_polls WHERE team_id = $1 AND status = 'active' ORDER BY created_at DESC",
+        "SELECT id FROM team_polls WHERE team_id = $1 ORDER BY created_at DESC",
         team_id
     )
     .fetch_all(pool.as_ref())

@@ -441,7 +441,7 @@ pub struct TeamPollInfo {
 /// Poll type enumeration
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, sqlx::Type)]
 #[sqlx(type_name = "text")]
-#[sqlx(rename_all = "lowercase")]
+#[sqlx(rename_all = "snake_case")]
 pub enum PollType {
     #[serde(rename = "member_removal")]
     MemberRemoval,

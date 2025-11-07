@@ -11,7 +11,7 @@ use uuid::Uuid;
 use base64::{Engine as _, engine::general_purpose};
 
 mod common;
-use common::utils::spawn_app;
+use common::utils::{spawn_app, create_test_user_and_login};
 
 #[tokio::test]
 async fn websocket_connection_working() {
@@ -19,47 +19,11 @@ async fn websocket_connection_working() {
     let test_app = spawn_app().await;
     let client = Client::new();
 
-    // Register a new user
-    let username = format!("wsuser{}", Uuid::new_v4());
-    let password = "password123";
-    let email = format!("{}@example.com", username);
-
-    let user_request = json!({
-        "username": username,
-        "password": password,
-        "email": email
-    });
-
-    let response = client
-        .post(&format!("{}/register_user", &test_app.address))
-        .json(&user_request)
-        .send()
-        .await
-        .expect("Failed to execute registration request.");
-
-    assert!(response.status().is_success(), "Registration should succeed");
-
-    // Login to get JWT token
-    let login_request = json!({
-        "username": username,
-        "password": password
-    });
-
-    let login_response = client
-        .post(&format!("{}/login", &test_app.address))
-        .json(&login_request)
-        .send()
-        .await
-        .expect("Failed to execute login request.");
-
-    assert!(login_response.status().is_success(), "Login should succeed");
-    
-    let login_json = login_response.json::<serde_json::Value>().await
-        .expect("Failed to parse login response as JSON");
-    let token = login_json["token"].as_str().expect("Token not found in response");
+    // Create a user and get token
+    let user = create_test_user_and_login(&test_app.address).await;
 
     // Connect to WebSocket with token in query parameter
-    let ws_url = format!("{}/game-ws?token={}", test_app.address.replace("http", "ws"), token);
+    let ws_url = format!("{}/game-ws?token={}", test_app.address.replace("http", "ws"), user.token);
     println!("Connecting to WebSocket server at: {}", ws_url);
     
     // Create client request with proper WebSocket headers
@@ -146,46 +110,12 @@ async fn websocket_redis_pubsub_working() {
     println!("Waiting for test app to fully initialize...");
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    // Register a new user
-    let username = format!("wsuser{}", Uuid::new_v4());
-    let password = "password123";
-    let email = format!("{}@example.com", username);
-
-    let user_request = json!({
-        "username": username,
-        "password": password,
-        "email": email
-    });
-
-    client
-        .post(&format!("{}/register_user", &test_app.address))
-        .json(&user_request)
-        .send()
-        .await
-        .expect("Failed to execute registration request.");
-
-    // Login to get JWT token
-    let login_request = json!({
-        "username": username,
-        "password": password
-    });
-
-    let login_response = client
-        .post(&format!("{}/login", &test_app.address))
-        .json(&login_request)
-        .send()
-        .await
-        .expect("Failed to execute login request.");
-    
-    let login_json = login_response.json::<serde_json::Value>().await
-        .expect("Failed to parse login response as JSON");
-    let token = login_json["token"].as_str().expect("Token not found in response");
-
-    // Get user_id from JWT token
-    let user_id = decode_jwt_user_id(token).expect("Failed to decode JWT token");
+    // Create a user and get token
+    let user = create_test_user_and_login(&test_app.address).await;
+    let user_id = user.user_id.to_string();
 
     // Connect to WebSocket with token in query parameter
-    let ws_url = format!("{}/game-ws?token={}", test_app.address.replace("http", "ws"), token);
+    let ws_url = format!("{}/game-ws?token={}", test_app.address.replace("http", "ws"), user.token);
     
     // Create a proper WebSocket request
     let request = ws_url.into_client_request().expect("Failed to create request");
@@ -289,7 +219,7 @@ async fn websocket_redis_pubsub_working() {
     let test_message = json!({
         "event_type": "workout_data_processed",
         "user_id": user_id.clone(),
-        "username": username.clone(),
+        "username": user.username.clone(),
         "sync_id": Uuid::new_v4().to_string(),
         "stat_changes": {
             "stamina_change": 5,
