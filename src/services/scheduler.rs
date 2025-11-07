@@ -46,9 +46,11 @@ impl SchedulerService {
     /// Create poll expiration job that runs every 5 minutes
     fn create_poll_expiration_job(&self) -> Result<Job, JobSchedulerError> {
         let pool = self.pool.clone();
+        let redis_client = self.redis_client.clone();
 
         Job::new_async("0 */5 * * * *", move |_uuid, _l| {
             let pool = pool.clone();
+            let redis_client = redis_client.clone();
 
             Box::pin(async move {
                 tracing::info!("🗳️ Running scheduled poll expiration check");
@@ -79,7 +81,7 @@ impl SchedulerService {
                 tracing::info!("Found {} expired polls to process", expired_polls.len());
 
                 for poll in expired_polls {
-                    if let Err(e) = Self::process_expired_poll(&pool, poll.id).await {
+                    if let Err(e) = Self::process_expired_poll(&pool, &redis_client, poll.id).await {
                         tracing::error!("❌ Failed to process expired poll {}: {}", poll.id, e);
                     }
                 }
@@ -88,8 +90,13 @@ impl SchedulerService {
     }
 
     /// Process an expired poll
-    async fn process_expired_poll(pool: &PgPool, poll_id: uuid::Uuid) -> Result<(), Box<dyn Error>> {
+    async fn process_expired_poll(
+        pool: &PgPool,
+        redis_client: &Arc<redis::Client>,
+        poll_id: uuid::Uuid
+    ) -> Result<(), Box<dyn Error>> {
         use crate::models::team::PollResult;
+        use actix_web::web;
 
         // Get poll information with vote counts
         let poll_data = sqlx::query!(
@@ -175,10 +182,81 @@ impl SchedulerService {
             .execute(pool)
             .await?;
 
+            // Create notification for the removed user
+            let notification_message = format!("You have been removed from team {} by a member vote", poll_data.team_name);
+
+            let notification_result = sqlx::query!(
+                r#"
+                INSERT INTO notifications (recipient_id, actor_id, notification_type, entity_type, entity_id, message)
+                VALUES ($1, $1, 'removed_from_team', 'poll', $2, $3)
+                RETURNING id
+                "#,
+                poll_data.target_user_id,
+                poll_id,
+                notification_message
+            )
+            .fetch_one(pool)
+            .await;
+
+            if let Ok(notification_row) = notification_result {
+                // Send WebSocket notification
+                let redis_data = web::Data::new(redis_client.clone());
+                let _ = crate::services::social_events::send_notification_to_user(
+                    &redis_data,
+                    poll_data.target_user_id,
+                    notification_row.id,
+                    "Team Vote".to_string(),
+                    "removed_from_team".to_string(),
+                    notification_message,
+                ).await;
+            }
+
             tracing::info!("✅ Poll {} expired with approval - removed user {} from team {}",
                 poll_id, poll_data.target_username, poll_data.team_name);
         } else {
             tracing::info!("✅ Poll {} expired with result: {:?}", poll_id, result);
+        }
+
+        // Notify all team members of the result
+        let team_members = sqlx::query!(
+            "SELECT user_id FROM team_members WHERE team_id = $1 AND status = 'active'",
+            poll_data.team_id
+        )
+        .fetch_all(pool)
+        .await?;
+
+        let notification_message = match result {
+            PollResult::Approved => format!("Poll expired: {} has been removed from {}", poll_data.target_username, poll_data.team_name),
+            PollResult::Rejected => format!("Poll expired: {} will remain in {}", poll_data.target_username, poll_data.team_name),
+            PollResult::NoConsensus => format!("Poll expired without consensus: {} will remain in {}", poll_data.target_username, poll_data.team_name),
+        };
+
+        for member in team_members {
+            let notification_result = sqlx::query!(
+                r#"
+                INSERT INTO notifications (recipient_id, actor_id, notification_type, entity_type, entity_id, message)
+                VALUES ($1, $1, 'team_poll_expired', 'poll', $2, $3)
+                RETURNING id
+                "#,
+                member.user_id,
+                poll_id,
+                &notification_message
+            )
+            .fetch_one(pool)
+            .await;
+
+            if let Ok(notification_row) = notification_result {
+                // Send WebSocket notification
+                let redis_data = web::Data::new(redis_client.clone());
+                let _ = crate::services::social_events::send_notification_to_user(
+                    &redis_data,
+                    member.user_id,
+                    notification_row.id,
+                    "Team Vote".to_string(),
+                    "team_poll_expired".to_string(),
+                    notification_message.clone(),
+                ).await;
+            }
         }
 
         Ok(())
