@@ -196,57 +196,29 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     // Connect user1 to WebSocket
     let user1_ws_url = format!("{}/game-ws?token={}", app.address.replace("http", "ws"), user1.token);
     let user1_request = user1_ws_url.into_client_request().expect("Failed to create user1 request");
-    let (mut user1_ws, _) = connect_async(user1_request).await.expect("Failed to connect user1 WebSocket");
-    
-    // Wait for welcome message from user1
-    let user1_welcome = user1_ws.next().await.expect("No welcome message for user1").unwrap();
-    if let Message::Text(text) = user1_welcome {
-        let welcome_json: serde_json::Value = serde_json::from_str(&text).unwrap();
-        assert_eq!(welcome_json["event_type"], "player_joined");
-        println!("✅ User1 WebSocket connected and received welcome");
-    }
+    let (user1_ws, _) = connect_async(user1_request).await.expect("Failed to connect user1 WebSocket");
+    println!("✅ User1 WebSocket connected");
     websocket_connections.insert("user1", user1_ws);
     
-    // Connect user2 to WebSocket  
+    // Connect user2 to WebSocket
     let user2_ws_url = format!("{}/game-ws?token={}", app.address.replace("http", "ws"), user2.token);
     let user2_request = user2_ws_url.into_client_request().expect("Failed to create user2 request");
-    let (mut user2_ws, _) = connect_async(user2_request).await.expect("Failed to connect user2 WebSocket");
-    
-    // Wait for welcome message from user2
-    let user2_welcome = user2_ws.next().await.expect("No welcome message for user2").unwrap();
-    if let Message::Text(text) = user2_welcome {
-        let welcome_json: serde_json::Value = serde_json::from_str(&text).unwrap();
-        assert_eq!(welcome_json["event_type"], "player_joined");
-        println!("✅ User2 WebSocket connected and received welcome");
-    }
+    let (user2_ws, _) = connect_async(user2_request).await.expect("Failed to connect user2 WebSocket");
+    println!("✅ User2 WebSocket connected");
     websocket_connections.insert("user2", user2_ws);
     
     // Connect user3 to WebSocket
     let user3_ws_url = format!("{}/game-ws?token={}", app.address.replace("http", "ws"), user3.token);
     let user3_request = user3_ws_url.into_client_request().expect("Failed to create user3 request");
-    let (mut user3_ws, _) = connect_async(user3_request).await.expect("Failed to connect user3 WebSocket");
-    
-    // Wait for welcome message from user3
-    let user3_welcome = user3_ws.next().await.expect("No welcome message for user3").unwrap();
-    if let Message::Text(text) = user3_welcome {
-        let welcome_json: serde_json::Value = serde_json::from_str(&text).unwrap();
-        assert_eq!(welcome_json["event_type"], "player_joined");
-        println!("✅ User3 WebSocket connected and received welcome");
-    }
+    let (user3_ws, _) = connect_async(user3_request).await.expect("Failed to connect user3 WebSocket");
+    println!("✅ User3 WebSocket connected");
     websocket_connections.insert("user3", user3_ws);
     
     // Connect user4 to WebSocket
     let user4_ws_url = format!("{}/game-ws?token={}", app.address.replace("http", "ws"), user4.token);
     let user4_request = user4_ws_url.into_client_request().expect("Failed to create user4 request");
-    let (mut user4_ws, _) = connect_async(user4_request).await.expect("Failed to connect user4 WebSocket");
-    
-    // Wait for welcome message from user4
-    let user4_welcome = user4_ws.next().await.expect("No welcome message for user4").unwrap();
-    if let Message::Text(text) = user4_welcome {
-        let welcome_json: serde_json::Value = serde_json::from_str(&text).unwrap();
-        assert_eq!(welcome_json["event_type"], "player_joined");
-        println!("✅ User4 WebSocket connected and received welcome");
-    }
+    let (user4_ws, _) = connect_async(user4_request).await.expect("Failed to connect user4 WebSocket");
+    println!("✅ User4 WebSocket connected");
     websocket_connections.insert("user4", user4_ws);
     
     println!("✅ All WebSocket connections established");

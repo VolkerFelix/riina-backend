@@ -43,6 +43,8 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .service(profile::confirm_profile_picture_upload_handler)
             .service(profile::get_profile_picture_download_url_handler)
             .service(profile::serve_profile_picture)
+            .service(profile::get_status)
+            .service(profile::update_status)
     );
     // League routes (require authentication)
     cfg.service(
@@ -75,6 +77,10 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .service(league::get_active_games)
             .service(league::manage_games)
             .service(league::get_game_summary)
+            .service(league::get_player_pool)
+            .service(league::send_team_invitation)
+            .service(league::get_user_invitations)
+            .service(league::respond_to_invitation)
     );
     // WebSocket routes (authentication handled in route)
     cfg.service(

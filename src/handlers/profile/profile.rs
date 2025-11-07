@@ -206,6 +206,26 @@ pub async fn get_user_profile(
         }
     };
 
+    // Get user's team_id if they're in a team
+    let team_id = match sqlx::query!(
+        r#"
+        SELECT team_id
+        FROM team_members
+        WHERE user_id = $1 AND status = 'active'
+        "#,
+        user_id
+    )
+    .fetch_optional(&**pool)
+    .await
+    {
+        Ok(Some(row)) => Some(row.team_id),
+        Ok(None) => None,
+        Err(e) => {
+            tracing::warn!("Failed to fetch team_id for user {}: {}", user_id, e);
+            None
+        }
+    };
+
     let profile = UserProfileResponse {
         id: user_info.id,
         username: user_info.username,
@@ -220,6 +240,7 @@ pub async fn get_user_profile(
         mvp_count,
         lvp_count,
         avg_exercise_minutes_per_day: avg_exercise_minutes,
+        team_id,
     };
 
     tracing::info!("Successfully retrieved profile for user: {}", claims.username);
@@ -248,8 +269,8 @@ async fn create_default_avatar(pool: &PgPool, user_id: Uuid) -> Result<GameStats
 }
 
 async fn get_user_rank(pool: &PgPool, user_id: Uuid) -> Result<i32, sqlx::Error> {
-    // Get all active users with their trailing averages
-    let active_users = sqlx::query!(
+    // Get all active users (both in teams and in player pool)
+    let team_users = sqlx::query!(
         r#"
         SELECT u.id as user_id
         FROM users u
@@ -259,17 +280,41 @@ async fn get_user_rank(pool: &PgPool, user_id: Uuid) -> Result<i32, sqlx::Error>
     .fetch_all(pool)
     .await?;
 
-    let user_ids: Vec<Uuid> = active_users.iter().map(|row| row.user_id).collect();
+    let pool_users = sqlx::query!(
+        r#"
+        SELECT user_id
+        FROM player_pool
+        "#
+    )
+    .fetch_all(pool)
+    .await?;
+
+    // Combine both sets of user IDs
+    let mut user_ids: Vec<Uuid> = team_users.iter().map(|row| row.user_id).collect();
+    user_ids.extend(pool_users.iter().map(|row| row.user_id));
+
+    // Remove duplicates (in case a user is in both, though they shouldn't be)
+    user_ids.sort();
+    user_ids.dedup();
 
     // Calculate trailing averages for all users in batch
     let trailing_averages = trailing_average::calculate_trailing_averages_batch(pool, &user_ids).await?;
 
-    // Sort users by trailing average (descending)
+    // Sort users by trailing average (descending), then by user_id for stable ordering
     let mut users_with_avg: Vec<(Uuid, f32)> = user_ids.iter()
         .map(|&id| (id, trailing_averages.get(&id).copied().unwrap_or(0.0)))
         .collect();
 
-    users_with_avg.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    users_with_avg.sort_by(|a, b| {
+        // First sort by trailing average (descending)
+        match b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal) {
+            std::cmp::Ordering::Equal => {
+                // If trailing averages are equal, sort by user_id for stability
+                a.0.cmp(&b.0)
+            }
+            other => other,
+        }
+    });
 
     // Find the rank of the target user
     let rank = users_with_avg.iter()

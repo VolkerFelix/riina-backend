@@ -540,13 +540,15 @@ pub async fn get_notifications(
 ) -> Result<NotificationListResponse, sqlx::Error> {
     let offset = (page - 1) * per_page;
 
-    // Get total count
+    // Get total count (including broadcast notifications)
     let total_count: i64 = if unread_only {
         sqlx::query_scalar(
             r#"
             SELECT COUNT(*)
-            FROM notifications
-            WHERE recipient_id = $1 AND read = false
+            FROM notifications n
+            LEFT JOIN user_notification_reads unr ON n.id = unr.notification_id AND unr.user_id = $1
+            WHERE (n.recipient_id = $1 AND n.read = false)
+               OR (n.recipient_id IS NULL AND unr.notification_id IS NULL)
             "#,
         )
         .bind(user_id)
@@ -557,7 +559,7 @@ pub async fn get_notifications(
             r#"
             SELECT COUNT(*)
             FROM notifications
-            WHERE recipient_id = $1
+            WHERE recipient_id = $1 OR recipient_id IS NULL
             "#,
         )
         .bind(user_id)
@@ -565,19 +567,22 @@ pub async fn get_notifications(
         .await?
     };
 
-    // Get unread count
+    // Get unread count (user-specific unread + broadcast notifications not yet read by user)
     let unread_count: i64 = sqlx::query_scalar(
         r#"
         SELECT COUNT(*)
-        FROM notifications
-        WHERE recipient_id = $1 AND read = false
+        FROM notifications n
+        LEFT JOIN user_notification_reads unr ON n.id = unr.notification_id AND unr.user_id = $1
+        WHERE (n.recipient_id = $1 AND n.read = false)
+           OR (n.recipient_id IS NULL AND unr.notification_id IS NULL)
         "#,
     )
     .bind(user_id)
     .fetch_one(pool)
     .await?;
 
-    // Get notifications
+    // Get notifications (user-specific AND broadcast notifications)
+    // For broadcast notifications, check user_notification_reads to determine read status
     let query_str = if unread_only {
         r#"
         SELECT
@@ -589,11 +594,16 @@ pub async fn get_notifications(
             n.entity_type,
             n.entity_id,
             n.message,
-            n.read,
+            CASE
+                WHEN n.recipient_id IS NULL THEN (unr.notification_id IS NOT NULL)
+                ELSE n.read
+            END as read,
             n.created_at
         FROM notifications n
         INNER JOIN users u ON u.id = n.actor_id
-        WHERE n.recipient_id = $1 AND n.read = false
+        LEFT JOIN user_notification_reads unr ON n.id = unr.notification_id AND unr.user_id = $1
+        WHERE (n.recipient_id = $1 AND n.read = false)
+           OR (n.recipient_id IS NULL AND unr.notification_id IS NULL)
         ORDER BY n.created_at DESC
         LIMIT $2 OFFSET $3
         "#
@@ -608,11 +618,15 @@ pub async fn get_notifications(
             n.entity_type,
             n.entity_id,
             n.message,
-            n.read,
+            CASE
+                WHEN n.recipient_id IS NULL THEN (unr.notification_id IS NOT NULL)
+                ELSE n.read
+            END as read,
             n.created_at
         FROM notifications n
         INNER JOIN users u ON u.id = n.actor_id
-        WHERE n.recipient_id = $1
+        LEFT JOIN user_notification_reads unr ON n.id = unr.notification_id AND unr.user_id = $1
+        WHERE (n.recipient_id = $1 OR n.recipient_id IS NULL)
         ORDER BY n.created_at DESC
         LIMIT $2 OFFSET $3
         "#
@@ -655,19 +669,49 @@ pub async fn mark_notification_read(
     notification_id: Uuid,
     user_id: Uuid,
 ) -> Result<bool, sqlx::Error> {
-    let result = sqlx::query(
-        r#"
-        UPDATE notifications
-        SET read = true
-        WHERE id = $1 AND recipient_id = $2
-        "#,
+    // First check if this is a broadcast notification (recipient_id IS NULL)
+    let notification = sqlx::query!(
+        "SELECT recipient_id FROM notifications WHERE id = $1",
+        notification_id
     )
-    .bind(notification_id)
-    .bind(user_id)
-    .execute(pool)
+    .fetch_optional(pool)
     .await?;
 
-    Ok(result.rows_affected() > 0)
+    match notification {
+        Some(notif) if notif.recipient_id.is_none() => {
+            // Broadcast notification - insert into user_notification_reads
+            let result = sqlx::query(
+                r#"
+                INSERT INTO user_notification_reads (user_id, notification_id)
+                VALUES ($1, $2)
+                ON CONFLICT (user_id, notification_id) DO NOTHING
+                "#,
+            )
+            .bind(user_id)
+            .bind(notification_id)
+            .execute(pool)
+            .await?;
+
+            Ok(result.rows_affected() > 0)
+        }
+        Some(_) => {
+            // Regular notification - update the read flag
+            let result = sqlx::query(
+                r#"
+                UPDATE notifications
+                SET read = true
+                WHERE id = $1 AND recipient_id = $2
+                "#,
+            )
+            .bind(notification_id)
+            .bind(user_id)
+            .execute(pool)
+            .await?;
+
+            Ok(result.rows_affected() > 0)
+        }
+        None => Ok(false), // Notification not found
+    }
 }
 
 pub async fn mark_all_notifications_read(
@@ -692,11 +736,14 @@ pub async fn get_unread_count(
     pool: &PgPool,
     user_id: Uuid,
 ) -> Result<i64, sqlx::Error> {
+    // Count user-specific unread + broadcast notifications not yet read by user
     let count: i64 = sqlx::query_scalar(
         r#"
         SELECT COUNT(*)
-        FROM notifications
-        WHERE recipient_id = $1 AND read = false
+        FROM notifications n
+        LEFT JOIN user_notification_reads unr ON n.id = unr.notification_id AND unr.user_id = $1
+        WHERE (n.recipient_id = $1 AND n.read = false)
+           OR (n.recipient_id IS NULL AND unr.notification_id IS NULL)
         "#,
     )
     .bind(user_id)

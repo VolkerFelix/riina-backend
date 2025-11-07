@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                UPDATE team_members\n                SET status = 'inactive', updated_at = $2\n                WHERE user_id = $1\n                AND status IN ('active', 'pending')\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9623dc352d582a3809a6da9c6a792ef67cecb4950e671cb0e1976593a31ab6d6"
+}

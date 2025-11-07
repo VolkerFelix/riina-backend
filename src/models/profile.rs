@@ -19,6 +19,8 @@ pub struct UserProfileResponse {
     pub lvp_count: i64,
     #[sqlx(skip)]
     pub avg_exercise_minutes_per_day: f32,
+    #[sqlx(skip)]
+    pub team_id: Option<Uuid>,
 }
 
 #[derive(serde::Serialize)]

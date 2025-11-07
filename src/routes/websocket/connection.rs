@@ -30,19 +30,16 @@ impl Actor for GameConnection {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        tracing::info!("🔗 GameConnection started for user {} ({}) - session: {}", 
+        tracing::info!("🔗 GameConnection started for user {} ({}) - session: {}",
             self.user_id, self.username, self.session_id);
-        
+
         self.heartbeat(ctx);
-        self.send_connection_established(ctx);
         self.setup_game_event_subscription(ctx);
     }
 
     fn stopped(&mut self, _ctx: &mut Self::Context) {
-        tracing::info!("❌ GameConnection stopped for user {} ({}) - session: {}", 
+        tracing::info!("❌ GameConnection stopped for user {} ({}) - session: {}",
             self.user_id, self.username, self.session_id);
-        
-        self.broadcast_player_left();
     }
 }
 
@@ -76,19 +73,6 @@ impl GameConnection {
         });
     }
 
-    fn send_connection_established(&self, ctx: &mut ws::WebsocketContext<Self>) {
-        let connection_event = GameEvent::PlayerJoined {
-            user_id: self.user_id,
-            username: self.username.clone(),
-            position: crate::models::game_events::Position { x: 0.0, y: 0.0 }, // TODO: Get from database
-            timestamp: Utc::now(),
-        };
-
-        if let Ok(message) = serde_json::to_string(&connection_event) {
-            ctx.text(message);
-        }
-    }
-
     fn setup_game_event_subscription(&self, ctx: &mut ws::WebsocketContext<Self>) {
         let user_id = self.user_id;
         let session_id = self.session_id;
@@ -110,6 +94,7 @@ impl GameConnection {
                             "game:events:global".to_string(),                  // Global events (leaderboards, etc.)
                             "game:events:battles".to_string(),                 // Battle events
                             "game:events:territories".to_string(),             // Territory events
+                            "player_pool_events".to_string(),                  // Player pool events (join/leave/team assignment)
                         ];
                         
                         let mut successful_subscriptions = 0;
@@ -209,31 +194,6 @@ impl GameConnection {
         }
     }
 
-    fn broadcast_player_left(&self) {
-        if let Some(redis_client) = &self.redis {
-            let user_id = self.user_id;
-            let username = self.username.clone();
-            let redis_client = redis_client.clone();
-            
-            tokio::spawn(async move {
-                if let Ok(mut conn) = redis_client.get_async_connection().await {
-                    let leave_event = GameEvent::PlayerLeft {
-                        user_id,
-                        username,
-                        timestamp: Utc::now(),
-                    };
-                    
-                    if let Ok(message) = serde_json::to_string(&leave_event) {
-                        let _: Result<i32, redis::RedisError> = redis::AsyncCommands::publish(
-                            &mut conn, 
-                            "game:events:global", 
-                            message
-                        ).await;
-                    }
-                }
-            });
-        }
-    }
 }
 
 /// Message from Redis to WebSocket
