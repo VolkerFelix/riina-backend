@@ -2,17 +2,20 @@ use actix_web::{web, HttpResponse};
 use sqlx::PgPool;
 use uuid::Uuid;
 use chrono::{Utc, Duration};
+use std::sync::Arc;
 
 use crate::middleware::auth::Claims;
 use crate::models::team::{
     CreatePollRequest, CastVoteRequest, PollResponse, TeamPollInfo,
     TeamPoll, PollType, PollStatus, PollResult, MemberStatus, TeamRole
 };
+use crate::services::social_events::send_notification_to_user;
 
 /// Create a new poll to remove a team member
 pub async fn create_poll(
     request: web::Json<CreatePollRequest>,
     pool: web::Data<PgPool>,
+    redis_client: web::Data<Arc<redis::Client>>,
     team_id: web::Path<Uuid>,
     claims: web::ReqData<Claims>,
 ) -> HttpResponse {
@@ -111,14 +114,6 @@ pub async fn create_poll(
         }));
     }
 
-    // Cannot create poll for yourself
-    if user_id == target_user_id {
-        return HttpResponse::BadRequest().json(serde_json::json!({
-            "success": false,
-            "message": "You cannot create a poll to remove yourself"
-        }));
-    }
-
     // Check if there's already an active poll for this user
     let existing_poll = sqlx::query!(
         "SELECT id FROM team_polls WHERE team_id = $1 AND target_user_id = $2 AND status = 'active'",
@@ -174,6 +169,57 @@ pub async fn create_poll(
         }
     };
 
+    // Notify all active team members (except creator and target)
+    let team_members = sqlx::query!(
+        r#"
+        SELECT user_id
+        FROM team_members
+        WHERE team_id = $1 AND status = 'active' AND user_id != $2 AND user_id != $3
+        "#,
+        team_id,
+        user_id,
+        target_user_id
+    )
+    .fetch_all(pool.as_ref())
+    .await
+    .unwrap_or_default();
+
+    let notification_message = format!(
+        "{} created a poll to remove {} from {}",
+        &claims.username,
+        poll_info.target_username,
+        poll_info.team_name
+    );
+
+    for member in team_members {
+        // Create database notification
+        let notification_result = sqlx::query!(
+            r#"
+            INSERT INTO notifications (recipient_id, actor_id, notification_type, entity_type, entity_id, message)
+            VALUES ($1, $2, 'team_poll_created', 'poll', $3, $4)
+            RETURNING id
+            "#,
+            member.user_id,
+            user_id,
+            poll_id,
+            &notification_message
+        )
+        .fetch_one(pool.as_ref())
+        .await;
+
+        if let Ok(notification_row) = notification_result {
+            // Send WebSocket notification
+            let _ = send_notification_to_user(
+                &redis_client,
+                member.user_id,
+                notification_row.id,
+                claims.username.clone(),
+                "team_poll_created".to_string(),
+                notification_message.clone(),
+            ).await;
+        }
+    }
+
     HttpResponse::Created().json(PollResponse {
         success: true,
         message: "Poll created successfully".to_string(),
@@ -185,6 +231,7 @@ pub async fn create_poll(
 pub async fn cast_vote(
     request: web::Json<CastVoteRequest>,
     pool: web::Data<PgPool>,
+    redis_client: web::Data<Arc<redis::Client>>,
     path: web::Path<(Uuid, Uuid)>,
     claims: web::ReqData<Claims>,
 ) -> HttpResponse {
@@ -320,7 +367,7 @@ pub async fn cast_vote(
     }
 
     // Check if we have enough votes to make a decision
-    let _ = check_and_complete_poll(&pool, poll_id).await;
+    let _ = check_and_complete_poll(&pool, &redis_client, poll_id, team_id).await;
 
     // Get updated poll info
     let poll_info = match get_poll_info(&pool, poll_id).await {
@@ -487,20 +534,35 @@ async fn get_poll_info(pool: &PgPool, poll_id: Uuid) -> Result<TeamPollInfo, sql
 }
 
 /// Check if a poll has reached consensus and complete it if so
-async fn check_and_complete_poll(pool: &PgPool, poll_id: Uuid) -> Result<(), String> {
+async fn check_and_complete_poll(
+    pool: &PgPool,
+    redis_client: &web::Data<Arc<redis::Client>>,
+    poll_id: Uuid,
+    team_id: Uuid,
+) -> Result<(), String> {
     let poll_info = get_poll_info(pool, poll_id).await
         .map_err(|e| format!("Failed to get poll info: {}", e))?;
 
-    // Check if all eligible voters have voted
     let total_votes = poll_info.votes_for + poll_info.votes_against;
+    let votes_remaining = poll_info.total_eligible_voters - total_votes;
+    let votes_needed_to_approve = (poll_info.total_eligible_voters / 2) + 1; // Need majority
 
-    if total_votes < poll_info.total_eligible_voters {
-        // Not all votes are in yet
+    // Check if consensus has been reached (even if not everyone has voted)
+    let consensus_reached =
+        // Approval is certain: enough votes for approval already
+        poll_info.votes_for >= votes_needed_to_approve ||
+        // Rejection is certain: even if all remaining votes are "for", won't reach majority
+        poll_info.votes_for + votes_remaining < votes_needed_to_approve ||
+        // All eligible voters have voted
+        total_votes >= poll_info.total_eligible_voters;
+
+    if !consensus_reached {
+        // Consensus not yet reached, poll remains active
         return Ok(());
     }
 
     // Determine result - need majority (more than 50%) to approve
-    let result = if poll_info.votes_for > poll_info.total_eligible_voters / 2 {
+    let result = if poll_info.votes_for >= votes_needed_to_approve {
         PollResult::Approved
     } else {
         PollResult::Rejected
@@ -529,8 +591,76 @@ async fn check_and_complete_poll(pool: &PgPool, poll_id: Uuid) -> Result<(), Str
         if let Err(e) = removal_result {
             tracing::error!("Failed to remove member after poll approval: {}", e);
         } else {
+            // Notify the removed user
+            let notification_message = format!("You have been removed from team {} by a member vote", poll_info.team_name);
+
+            let notification_result = sqlx::query!(
+                r#"
+                INSERT INTO notifications (recipient_id, actor_id, notification_type, entity_type, entity_id, message)
+                VALUES ($1, $1, 'removed_from_team', 'poll', $2, $3)
+                RETURNING id
+                "#,
+                poll_info.target_user_id,
+                poll_id,
+                &notification_message
+            )
+            .fetch_one(pool)
+            .await;
+
+            if let Ok(notification_row) = notification_result {
+                let _ = send_notification_to_user(
+                    redis_client,
+                    poll_info.target_user_id,
+                    notification_row.id,
+                    "Team Vote".to_string(),
+                    "removed_from_team".to_string(),
+                    notification_message,
+                ).await;
+            }
+
             tracing::info!("✅ Poll {} completed: removed user {} from team {}",
                 poll_id, poll_info.target_username, poll_info.team_name);
+        }
+    }
+
+    // Notify all team members of the poll completion
+    let team_members = sqlx::query!(
+        "SELECT user_id FROM team_members WHERE team_id = $1 AND status = 'active'",
+        team_id
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| format!("Failed to fetch team members: {}", e))?;
+
+    let notification_message = if result == PollResult::Approved {
+        format!("Poll completed: {} has been removed from {}", poll_info.target_username, poll_info.team_name)
+    } else {
+        format!("Poll completed: {} will remain in {}", poll_info.target_username, poll_info.team_name)
+    };
+
+    for member in team_members {
+        let notification_result = sqlx::query!(
+            r#"
+            INSERT INTO notifications (recipient_id, actor_id, notification_type, entity_type, entity_id, message)
+            VALUES ($1, $1, 'team_poll_completed', 'poll', $2, $3)
+            RETURNING id
+            "#,
+            member.user_id,
+            poll_id,
+            &notification_message
+        )
+        .fetch_one(pool)
+        .await;
+
+        if let Ok(notification_row) = notification_result {
+            let _ = send_notification_to_user(
+                redis_client,
+                member.user_id,
+                notification_row.id,
+                "Team Vote".to_string(),
+                "team_poll_completed".to_string(),
+                notification_message.clone(),
+            ).await;
         }
     }
 

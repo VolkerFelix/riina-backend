@@ -335,12 +335,13 @@ async fn respond_to_invitation(
 #[post("/teams/{team_id}/polls")]
 async fn create_team_poll(
     pool: web::Data<PgPool>,
+    redis_client: web::Data<Arc<RedisClient>>,
     team_id: web::Path<Uuid>,
     request: web::Json<CreatePollRequest>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
     use crate::handlers::league::team_poll_handler;
-    Ok(team_poll_handler::create_poll(request, pool, team_id, claims).await)
+    Ok(team_poll_handler::create_poll(request, pool, redis_client, team_id, claims).await)
 }
 
 /// Get active polls for a team
@@ -358,11 +359,12 @@ async fn get_team_polls(
 #[post("/teams/{team_id}/polls/{poll_id}/vote")]
 async fn cast_poll_vote(
     pool: web::Data<PgPool>,
+    redis_client: web::Data<Arc<RedisClient>>,
     path: web::Path<(Uuid, Uuid)>,
     request: web::Json<CastVoteRequest>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
     use crate::handlers::league::team_poll_handler;
-    Ok(team_poll_handler::cast_vote(request, pool, path, claims).await)
+    Ok(team_poll_handler::cast_vote(request, pool, redis_client, path, claims).await)
 }
 
