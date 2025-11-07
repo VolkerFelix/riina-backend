@@ -1,0 +1,77 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            id, team_id, poll_type as \"poll_type: PollType\", target_user_id, created_by,\n            created_at, expires_at, status as \"status: PollStatus\",\n            result as \"result: PollResult\", executed_at\n        FROM team_polls\n        WHERE id = $1 AND team_id = $2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "poll_type: PollType",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "target_user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "created_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "expires_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "status: PollStatus",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "result: PollResult",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "executed_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "d74d7248c5f218d1abc1af4d448ded9ac07f6821489cc5a144db3645fb5b2057"
+}

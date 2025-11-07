@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                tp.id, tp.team_id, tp.target_user_id,\n                t.team_name,\n                target_user.username as target_username\n            FROM team_polls tp\n            JOIN teams t ON tp.team_id = t.id\n            JOIN users target_user ON tp.target_user_id = target_user.id\n            WHERE tp.id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "target_user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "team_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "target_username",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "5c1662c45df6c50e8d30e9d637b7270c16eca407af472167f52de97e6517b6cf"
+}

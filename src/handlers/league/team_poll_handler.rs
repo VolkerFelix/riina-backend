@@ -1,0 +1,538 @@
+use actix_web::{web, HttpResponse};
+use sqlx::PgPool;
+use uuid::Uuid;
+use chrono::{Utc, Duration};
+
+use crate::middleware::auth::Claims;
+use crate::models::team::{
+    CreatePollRequest, CastVoteRequest, PollResponse, TeamPollInfo,
+    TeamPoll, PollType, PollStatus, PollResult, MemberStatus, TeamRole
+};
+
+/// Create a new poll to remove a team member
+pub async fn create_poll(
+    request: web::Json<CreatePollRequest>,
+    pool: web::Data<PgPool>,
+    team_id: web::Path<Uuid>,
+    claims: web::ReqData<Claims>,
+) -> HttpResponse {
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "success": false,
+                "message": "Invalid user ID in token"
+            }));
+        }
+    };
+
+    // Validate request
+    if let Err(e) = request.validate() {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "success": false,
+            "message": e
+        }));
+    }
+
+    let team_id = team_id.into_inner();
+    let target_user_id = request.target_user_id;
+
+    // Check if creator is a member of the team
+    let creator_membership = match sqlx::query!(
+        r#"
+        SELECT role as "role: TeamRole", status as "status: MemberStatus"
+        FROM team_members
+        WHERE team_id = $1 AND user_id = $2
+        "#,
+        team_id,
+        user_id
+    )
+    .fetch_optional(pool.as_ref())
+    .await
+    {
+        Ok(Some(m)) => m,
+        Ok(None) => {
+            return HttpResponse::Forbidden().json(serde_json::json!({
+                "success": false,
+                "message": "You are not a member of this team"
+            }));
+        }
+        Err(e) => {
+            tracing::error!("Database error checking creator membership: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "message": "Failed to check team membership"
+            }));
+        }
+    };
+
+    // Creator must be an active member
+    if creator_membership.status != MemberStatus::Active {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "success": false,
+            "message": "Only active members can create polls"
+        }));
+    }
+
+    // Check if target user is a member of the team
+    let target_membership = match sqlx::query!(
+        r#"
+        SELECT role as "role: TeamRole", status as "status: MemberStatus"
+        FROM team_members
+        WHERE team_id = $1 AND user_id = $2
+        "#,
+        team_id,
+        target_user_id
+    )
+    .fetch_optional(pool.as_ref())
+    .await
+    {
+        Ok(Some(m)) => m,
+        Ok(None) => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "success": false,
+                "message": "Target user is not a member of this team"
+            }));
+        }
+        Err(e) => {
+            tracing::error!("Database error checking target membership: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "message": "Failed to check target user membership"
+            }));
+        }
+    };
+
+    // Cannot remove owner/captain
+    if target_membership.role == TeamRole::Owner {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "success": false,
+            "message": "Team captains cannot be removed"
+        }));
+    }
+
+    // Cannot create poll for yourself
+    if user_id == target_user_id {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "success": false,
+            "message": "You cannot create a poll to remove yourself"
+        }));
+    }
+
+    // Check if there's already an active poll for this user
+    let existing_poll = sqlx::query!(
+        "SELECT id FROM team_polls WHERE team_id = $1 AND target_user_id = $2 AND status = 'active'",
+        team_id,
+        target_user_id
+    )
+    .fetch_optional(pool.as_ref())
+    .await;
+
+    if let Ok(Some(_)) = existing_poll {
+        return HttpResponse::Conflict().json(serde_json::json!({
+            "success": false,
+            "message": "There is already an active poll for this member"
+        }));
+    }
+
+    // Create the poll (expires in 24 hours)
+    let expires_at = Utc::now() + Duration::hours(24);
+    let poll_id = Uuid::new_v4();
+
+    let result = sqlx::query!(
+        r#"
+        INSERT INTO team_polls (id, team_id, poll_type, target_user_id, created_by, expires_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        "#,
+        poll_id,
+        team_id,
+        request.poll_type.to_string(),
+        target_user_id,
+        user_id,
+        expires_at
+    )
+    .execute(pool.as_ref())
+    .await;
+
+    if let Err(e) = result {
+        tracing::error!("Database error creating poll: {}", e);
+        return HttpResponse::InternalServerError().json(serde_json::json!({
+            "success": false,
+            "message": "Failed to create poll"
+        }));
+    }
+
+    // Get the created poll with full information
+    let poll_info = match get_poll_info(&pool, poll_id).await {
+        Ok(info) => info,
+        Err(e) => {
+            tracing::error!("Failed to fetch created poll info: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "message": "Poll created but failed to fetch details"
+            }));
+        }
+    };
+
+    HttpResponse::Created().json(PollResponse {
+        success: true,
+        message: "Poll created successfully".to_string(),
+        poll: Some(poll_info),
+    })
+}
+
+/// Cast a vote on a poll
+pub async fn cast_vote(
+    request: web::Json<CastVoteRequest>,
+    pool: web::Data<PgPool>,
+    path: web::Path<(Uuid, Uuid)>,
+    claims: web::ReqData<Claims>,
+) -> HttpResponse {
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "success": false,
+                "message": "Invalid user ID in token"
+            }));
+        }
+    };
+
+    let (team_id, poll_id) = path.into_inner();
+
+    // Get the poll
+    let poll = match sqlx::query_as!(
+        TeamPoll,
+        r#"
+        SELECT
+            id, team_id, poll_type as "poll_type: PollType", target_user_id, created_by,
+            created_at, expires_at, status as "status: PollStatus",
+            result as "result: PollResult", executed_at
+        FROM team_polls
+        WHERE id = $1 AND team_id = $2
+        "#,
+        poll_id,
+        team_id
+    )
+    .fetch_optional(pool.as_ref())
+    .await
+    {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            return HttpResponse::NotFound().json(serde_json::json!({
+                "success": false,
+                "message": "Poll not found"
+            }));
+        }
+        Err(e) => {
+            tracing::error!("Database error fetching poll: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "message": "Failed to fetch poll"
+            }));
+        }
+    };
+
+    // Check poll is still active
+    if poll.status != PollStatus::Active {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "success": false,
+            "message": "This poll is no longer active"
+        }));
+    }
+
+    // Check poll hasn't expired
+    if poll.expires_at < Utc::now() {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "success": false,
+            "message": "This poll has expired"
+        }));
+    }
+
+    // Check if user is an active member of the team
+    let membership = match sqlx::query!(
+        r#"
+        SELECT role as "role: TeamRole", status as "status: MemberStatus"
+        FROM team_members
+        WHERE team_id = $1 AND user_id = $2
+        "#,
+        team_id,
+        user_id
+    )
+    .fetch_optional(pool.as_ref())
+    .await
+    {
+        Ok(Some(m)) => m,
+        Ok(None) => {
+            return HttpResponse::Forbidden().json(serde_json::json!({
+                "success": false,
+                "message": "You are not a member of this team"
+            }));
+        }
+        Err(e) => {
+            tracing::error!("Database error checking membership: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "message": "Failed to check team membership"
+            }));
+        }
+    };
+
+    // Only active members can vote
+    if membership.status != MemberStatus::Active {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "success": false,
+            "message": "Only active members can vote on polls"
+        }));
+    }
+
+    // Target user cannot vote on their own removal poll
+    if user_id == poll.target_user_id {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "success": false,
+            "message": "You cannot vote on a poll about your own removal"
+        }));
+    }
+
+    // Insert or update vote (upsert)
+    let vote_id = Uuid::new_v4();
+    let result = sqlx::query!(
+        r#"
+        INSERT INTO poll_votes (id, poll_id, user_id, vote)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (poll_id, user_id)
+        DO UPDATE SET vote = $4, voted_at = NOW()
+        "#,
+        vote_id,
+        poll_id,
+        user_id,
+        request.vote.to_string()
+    )
+    .execute(pool.as_ref())
+    .await;
+
+    if let Err(e) = result {
+        tracing::error!("Database error casting vote: {}", e);
+        return HttpResponse::InternalServerError().json(serde_json::json!({
+            "success": false,
+            "message": "Failed to cast vote"
+        }));
+    }
+
+    // Check if we have enough votes to make a decision
+    let _ = check_and_complete_poll(&pool, poll_id).await;
+
+    // Get updated poll info
+    let poll_info = match get_poll_info(&pool, poll_id).await {
+        Ok(info) => info,
+        Err(e) => {
+            tracing::error!("Failed to fetch poll info after vote: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "message": "Vote recorded but failed to fetch updated poll"
+            }));
+        }
+    };
+
+    HttpResponse::Ok().json(PollResponse {
+        success: true,
+        message: "Vote cast successfully".to_string(),
+        poll: Some(poll_info),
+    })
+}
+
+/// Get active polls for a team
+pub async fn get_team_polls(
+    pool: web::Data<PgPool>,
+    team_id: web::Path<Uuid>,
+    claims: web::ReqData<Claims>,
+) -> HttpResponse {
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "success": false,
+                "message": "Invalid user ID in token"
+            }));
+        }
+    };
+
+    let team_id = team_id.into_inner();
+
+    // Check if user is a member of the team
+    let is_member = sqlx::query!(
+        "SELECT id FROM team_members WHERE team_id = $1 AND user_id = $2",
+        team_id,
+        user_id
+    )
+    .fetch_optional(pool.as_ref())
+    .await;
+
+    if let Ok(None) = is_member {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "success": false,
+            "message": "You are not a member of this team"
+        }));
+    }
+
+    // Get all active polls for the team
+    let poll_ids = match sqlx::query!(
+        "SELECT id FROM team_polls WHERE team_id = $1 AND status = 'active' ORDER BY created_at DESC",
+        team_id
+    )
+    .fetch_all(pool.as_ref())
+    .await
+    {
+        Ok(polls) => polls,
+        Err(e) => {
+            tracing::error!("Database error fetching polls: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "message": "Failed to fetch polls"
+            }));
+        }
+    };
+
+    let mut polls = Vec::new();
+    for poll in poll_ids {
+        if let Ok(poll_info) = get_poll_info(&pool, poll.id).await {
+            polls.push(poll_info);
+        }
+    }
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "polls": polls
+    }))
+}
+
+/// Helper function to get poll information with vote counts
+async fn get_poll_info(pool: &PgPool, poll_id: Uuid) -> Result<TeamPollInfo, sqlx::Error> {
+    let poll_data = sqlx::query!(
+        r#"
+        SELECT
+            tp.id, tp.team_id, tp.poll_type, tp.target_user_id, tp.created_by,
+            tp.created_at, tp.expires_at, tp.status, tp.result, tp.executed_at,
+            t.team_name,
+            target_user.username as target_username,
+            creator.username as creator_username
+        FROM team_polls tp
+        JOIN teams t ON tp.team_id = t.id
+        JOIN users target_user ON tp.target_user_id = target_user.id
+        JOIN users creator ON tp.created_by = creator.id
+        WHERE tp.id = $1
+        "#,
+        poll_id
+    )
+    .fetch_one(pool)
+    .await?;
+
+    // Count votes
+    let vote_counts = sqlx::query!(
+        r#"
+        SELECT
+            vote,
+            COUNT(*) as count
+        FROM poll_votes
+        WHERE poll_id = $1
+        GROUP BY vote
+        "#,
+        poll_id
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut votes_for = 0;
+    let mut votes_against = 0;
+
+    for vc in vote_counts {
+        match vc.vote.as_str() {
+            "for" => votes_for = vc.count.unwrap_or(0) as i32,
+            "against" => votes_against = vc.count.unwrap_or(0) as i32,
+            _ => {}
+        }
+    }
+
+    // Count total eligible voters (active members excluding target)
+    let eligible_voters = sqlx::query!(
+        r#"
+        SELECT COUNT(*) as count
+        FROM team_members
+        WHERE team_id = $1 AND status = 'active' AND user_id != $2
+        "#,
+        poll_data.team_id,
+        poll_data.target_user_id
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(TeamPollInfo {
+        id: poll_data.id,
+        team_id: poll_data.team_id,
+        team_name: poll_data.team_name,
+        poll_type: poll_data.poll_type.parse().unwrap_or(PollType::MemberRemoval),
+        target_user_id: poll_data.target_user_id,
+        target_username: poll_data.target_username,
+        created_by: poll_data.created_by,
+        created_by_username: poll_data.creator_username,
+        created_at: poll_data.created_at,
+        expires_at: poll_data.expires_at,
+        status: poll_data.status.parse().unwrap_or(PollStatus::Active),
+        result: poll_data.result.and_then(|r| r.parse().ok()),
+        executed_at: poll_data.executed_at,
+        votes_for,
+        votes_against,
+        total_eligible_voters: eligible_voters.count.unwrap_or(0) as i32,
+    })
+}
+
+/// Check if a poll has reached consensus and complete it if so
+async fn check_and_complete_poll(pool: &PgPool, poll_id: Uuid) -> Result<(), String> {
+    let poll_info = get_poll_info(pool, poll_id).await
+        .map_err(|e| format!("Failed to get poll info: {}", e))?;
+
+    // Check if all eligible voters have voted
+    let total_votes = poll_info.votes_for + poll_info.votes_against;
+
+    if total_votes < poll_info.total_eligible_voters {
+        // Not all votes are in yet
+        return Ok(());
+    }
+
+    // Determine result - need majority (more than 50%) to approve
+    let result = if poll_info.votes_for > poll_info.total_eligible_voters / 2 {
+        PollResult::Approved
+    } else {
+        PollResult::Rejected
+    };
+
+    // Update poll status
+    sqlx::query!(
+        "UPDATE team_polls SET status = 'completed', result = $1, executed_at = NOW() WHERE id = $2",
+        result.to_string(),
+        poll_id
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| format!("Failed to update poll status: {}", e))?;
+
+    // If approved, remove the member from the team
+    if result == PollResult::Approved {
+        let removal_result = sqlx::query!(
+            "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2",
+            poll_info.team_id,
+            poll_info.target_user_id
+        )
+        .execute(pool)
+        .await;
+
+        if let Err(e) = removal_result {
+            tracing::error!("Failed to remove member after poll approval: {}", e);
+        } else {
+            tracing::info!("✅ Poll {} completed: removed user {} from team {}",
+                poll_id, poll_info.target_username, poll_info.team_name);
+        }
+    }
+
+    Ok(())
+}

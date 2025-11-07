@@ -29,13 +29,158 @@ impl SchedulerService {
     }
 
     pub async fn start(&self) -> Result<(), Box<dyn Error>> {
-        let scheduler = self.scheduler.lock().await;
-        
+        let mut scheduler = self.scheduler.lock().await;
+
+        // Schedule poll expiration job
+        let poll_job = self.create_poll_expiration_job()?;
+        scheduler.add(poll_job).await?;
+
         // For now, just start the scheduler without loading from DB
         // Seasons will be scheduled when created via the API
         scheduler.start().await?;
-        
+
         tracing::info!("✅ Scheduler service started successfully (dynamic scheduling mode)");
+        Ok(())
+    }
+
+    /// Create poll expiration job that runs every 5 minutes
+    fn create_poll_expiration_job(&self) -> Result<Job, JobSchedulerError> {
+        let pool = self.pool.clone();
+
+        Job::new_async("0 */5 * * * *", move |_uuid, _l| {
+            let pool = pool.clone();
+
+            Box::pin(async move {
+                tracing::info!("🗳️ Running scheduled poll expiration check");
+
+                // Find all active polls that have expired
+                let expired_polls = match sqlx::query!(
+                    r#"
+                    SELECT id
+                    FROM team_polls
+                    WHERE status = 'active' AND expires_at < NOW()
+                    "#
+                )
+                .fetch_all(&pool)
+                .await
+                {
+                    Ok(polls) => polls,
+                    Err(e) => {
+                        tracing::error!("❌ Failed to fetch expired polls: {}", e);
+                        return;
+                    }
+                };
+
+                if expired_polls.is_empty() {
+                    tracing::debug!("No expired polls found");
+                    return;
+                }
+
+                tracing::info!("Found {} expired polls to process", expired_polls.len());
+
+                for poll in expired_polls {
+                    if let Err(e) = Self::process_expired_poll(&pool, poll.id).await {
+                        tracing::error!("❌ Failed to process expired poll {}: {}", poll.id, e);
+                    }
+                }
+            })
+        })
+    }
+
+    /// Process an expired poll
+    async fn process_expired_poll(pool: &PgPool, poll_id: uuid::Uuid) -> Result<(), Box<dyn Error>> {
+        use crate::models::team::PollResult;
+
+        // Get poll information with vote counts
+        let poll_data = sqlx::query!(
+            r#"
+            SELECT
+                tp.id, tp.team_id, tp.target_user_id,
+                t.team_name,
+                target_user.username as target_username
+            FROM team_polls tp
+            JOIN teams t ON tp.team_id = t.id
+            JOIN users target_user ON tp.target_user_id = target_user.id
+            WHERE tp.id = $1
+            "#,
+            poll_id
+        )
+        .fetch_one(pool)
+        .await?;
+
+        // Count votes
+        let vote_counts = sqlx::query!(
+            r#"
+            SELECT vote, COUNT(*) as count
+            FROM poll_votes
+            WHERE poll_id = $1
+            GROUP BY vote
+            "#,
+            poll_id
+        )
+        .fetch_all(pool)
+        .await?;
+
+        let mut votes_for = 0;
+        let mut votes_against = 0;
+
+        for vc in vote_counts {
+            match vc.vote.as_str() {
+                "for" => votes_for = vc.count.unwrap_or(0),
+                "against" => votes_against = vc.count.unwrap_or(0),
+                _ => {}
+            }
+        }
+
+        // Count total eligible voters
+        let eligible_voters = sqlx::query!(
+            r#"
+            SELECT COUNT(*) as count
+            FROM team_members
+            WHERE team_id = $1 AND status = 'active' AND user_id != $2
+            "#,
+            poll_data.team_id,
+            poll_data.target_user_id
+        )
+        .fetch_one(pool)
+        .await?;
+
+        let total_eligible = eligible_voters.count.unwrap_or(0);
+
+        // Determine result - need majority (more than 50%) to approve
+        let result = if votes_for > total_eligible / 2 {
+            PollResult::Approved
+        } else if votes_against >= total_eligible / 2 {
+            PollResult::Rejected
+        } else {
+            PollResult::NoConsensus
+        };
+
+        // Update poll status
+        sqlx::query!(
+            "UPDATE team_polls SET status = 'expired', result = $1, executed_at = NOW() WHERE id = $2",
+            result.to_string(),
+            poll_id
+        )
+        .execute(pool)
+        .await?;
+
+        // If approved, remove the member from the team
+        if result == PollResult::Approved {
+            sqlx::query!(
+                "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2",
+                poll_data.team_id,
+                poll_data.target_user_id
+            )
+            .execute(pool)
+            .await?;
+
+            tracing::info!("✅ Poll {} expired with approval - removed user {} from team {}",
+                poll_id, poll_data.target_username, poll_data.team_name);
+        } else {
+            tracing::info!("✅ Poll {} expired with result: {:?}", poll_id, result);
+        }
+
         Ok(())
     }
 

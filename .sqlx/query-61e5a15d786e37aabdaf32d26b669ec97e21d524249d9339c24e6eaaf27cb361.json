@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE team_polls SET status = 'expired', result = $1, executed_at = NOW() WHERE id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "61e5a15d786e37aabdaf32d26b669ec97e21d524249d9339c24e6eaaf27cb361"
+}

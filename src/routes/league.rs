@@ -9,7 +9,7 @@ use crate::handlers::league::{team_handler, team_member_handler, game_handler, l
 use crate::handlers::league::league_users_handler::PaginationParams;
 use crate::middleware::auth::Claims;
 use crate::models::league::*;
-use crate::models::team::{TeamRegistrationRequest, TeamUpdateRequest, AddTeamMemberRequest, UpdateTeamMemberRequest};
+use crate::models::team::{TeamRegistrationRequest, TeamUpdateRequest, AddTeamMemberRequest, UpdateTeamMemberRequest, CreatePollRequest, CastVoteRequest};
 
 /// Create a new league season
 #[post("/season_create")]
@@ -329,5 +329,40 @@ async fn respond_to_invitation(
 ) -> Result<HttpResponse> {
     use crate::handlers::league::team_invitation_handler;
     Ok(team_invitation_handler::respond_to_invitation(pool, redis_client, claims, invitation_id, request).await)
+}
+
+/// Create a poll to remove a team member
+#[post("/teams/{team_id}/polls")]
+async fn create_team_poll(
+    pool: web::Data<PgPool>,
+    team_id: web::Path<Uuid>,
+    request: web::Json<CreatePollRequest>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    use crate::handlers::league::team_poll_handler;
+    Ok(team_poll_handler::create_poll(request, pool, team_id, claims).await)
+}
+
+/// Get active polls for a team
+#[get("/teams/{team_id}/polls")]
+async fn get_team_polls(
+    pool: web::Data<PgPool>,
+    team_id: web::Path<Uuid>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    use crate::handlers::league::team_poll_handler;
+    Ok(team_poll_handler::get_team_polls(pool, team_id, claims).await)
+}
+
+/// Cast a vote on a poll
+#[post("/teams/{team_id}/polls/{poll_id}/vote")]
+async fn cast_poll_vote(
+    pool: web::Data<PgPool>,
+    path: web::Path<(Uuid, Uuid)>,
+    request: web::Json<CastVoteRequest>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    use crate::handlers::league::team_poll_handler;
+    Ok(team_poll_handler::cast_vote(request, pool, path, claims).await)
 }
 
