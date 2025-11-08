@@ -115,6 +115,7 @@ pub async fn get_workout_history(
             wd.calories_burned as calories_burned,
             wd.duration_minutes,
             wd.activity_name,
+            wd.user_activity,
             wd.avg_heart_rate,
             wd.max_heart_rate,
             wd.heart_rate_data,
