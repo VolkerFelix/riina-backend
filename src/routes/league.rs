@@ -126,6 +126,15 @@ async fn get_game_week(
     league_handler::get_league_game_week(season_id, week_number, pool).await
 }
 
+/// Get current user's team
+#[get("/teams/my-team")]
+async fn get_user_team(
+    pool: web::Data<PgPool>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    team_handler::get_user_team(pool, claims).await
+}
+
 /// Register a new team for league participation
 #[post("/teams/register")]
 async fn register_team(

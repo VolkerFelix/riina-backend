@@ -508,3 +508,89 @@ pub async fn get_team_league_history(
         "message": "Team history endpoint - implementation needed"
     })))
 }
+
+/// Get the current user's team
+#[tracing::instrument(
+    name = "Get user's team",
+    skip(pool, claims),
+    fields(user = %claims.username)
+)]
+pub async fn get_user_team(
+    pool: web::Data<PgPool>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(json!({
+                "success": false,
+                "error": "Invalid user ID"
+            })));
+        }
+    };
+
+    // Get the team the user belongs to
+    let team_member = sqlx::query!(
+        r#"
+        SELECT team_id
+        FROM team_members
+        WHERE user_id = $1 AND status = 'active'
+        "#,
+        user_id
+    )
+    .fetch_optional(pool.as_ref())
+    .await;
+
+    match team_member {
+        Ok(Some(member)) => {
+            // Get team details
+            let team = sqlx::query!(
+                r#"
+                SELECT id, team_name, team_color, team_description, created_at
+                FROM teams
+                WHERE id = $1
+                "#,
+                member.team_id
+            )
+            .fetch_one(pool.as_ref())
+            .await;
+
+            match team {
+                Ok(team_info) => {
+                    Ok(HttpResponse::Ok().json(json!({
+                        "success": true,
+                        "data": {
+                            "id": team_info.id,
+                            "name": team_info.team_name,
+                            "team_color": team_info.team_color,
+                            "description": team_info.team_description,
+                            "created_at": team_info.created_at
+                        }
+                    })))
+                }
+                Err(e) => {
+                    tracing::error!("Failed to fetch team: {}", e);
+                    Ok(HttpResponse::InternalServerError().json(json!({
+                        "success": false,
+                        "error": "Failed to fetch team details"
+                    })))
+                }
+            }
+        }
+        Ok(None) => {
+            // User is not in a team
+            Ok(HttpResponse::Ok().json(json!({
+                "success": true,
+                "data": null,
+                "message": "User is not in a team"
+            })))
+        }
+        Err(e) => {
+            tracing::error!("Database error: {}", e);
+            Ok(HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "error": "Database error"
+            })))
+        }
+    }
+}

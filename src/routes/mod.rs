@@ -63,6 +63,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .service(league::get_recent_results)
             .service(league::get_game_week)
             .service(league::register_team)
+            .service(league::get_user_team)
             .service(league::get_team_info)
             .service(league::get_all_teams)
             .service(league::update_team)
