@@ -698,7 +698,7 @@ async fn check_and_complete_poll(
     .await
     .map_err(|e| format!("Failed to update poll status: {}", e))?;
 
-    // If approved, remove the member from the team
+    // If approved, remove the member from the team and add back to player pool
     if result == PollResult::Approved {
         let removal_result = sqlx::query!(
             "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2",
@@ -711,6 +711,25 @@ async fn check_and_complete_poll(
         if let Err(e) = removal_result {
             tracing::error!("Failed to remove member after poll approval: {}", e);
         } else {
+            // Add user back to player pool
+            match sqlx::query!(
+                r#"
+                INSERT INTO player_pool (user_id)
+                VALUES ($1)
+                ON CONFLICT (user_id) DO NOTHING
+                "#,
+                poll_info.target_user_id
+            )
+            .execute(pool)
+            .await {
+                Ok(_) => {
+                    tracing::info!("✅ Added user {} back to player pool after team removal", poll_info.target_user_id);
+                },
+                Err(e) => {
+                    tracing::error!("❌ Failed to add user {} to player pool: {}", poll_info.target_user_id, e);
+                }
+            }
+
             // Notify the removed user
             let notification_message = format!("You have been removed from team {} by a member vote", poll_info.team_name);
 

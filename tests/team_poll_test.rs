@@ -93,7 +93,7 @@ async fn test_create_poll_success() {
     assert!(poll_body["success"].as_bool().unwrap());
     assert_eq!(poll_body["poll"]["target_user_id"], member2_id);
     assert_eq!(poll_body["poll"]["status"], "active");
-    assert_eq!(poll_body["poll"]["total_eligible_voters"].as_u64().unwrap(), 3); // owner + member1 + member3 (excluding target)
+    assert_eq!(poll_body["poll"]["total_eligible_voters"].as_u64().unwrap(), 4); // owner + member1 + member2 + member3 (all active members can vote)
 
     // Check notifications - owner should receive poll creation notification
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -110,12 +110,12 @@ async fn test_create_poll_success() {
     let poll_notif = notifications.iter().find(|n| n["notification_type"] == "team_poll_created");
     assert!(poll_notif.is_some(), "Member3 should receive poll creation notification");
 
-    // Member2 (target) should NOT receive poll creation notification
+    // Member2 (target) should ALSO receive poll creation notification (can vote on their own removal)
     let notif_response = client.get(&format!("{}/social/notifications", test_app.address)).header("Authorization", format!("Bearer {}", member2.token)).send().await.unwrap();
     let notif_result: serde_json::Value = notif_response.json().await.unwrap();
     let notifications = notif_result["notifications"].as_array().unwrap();
     let poll_notif = notifications.iter().find(|n| n["notification_type"] == "team_poll_created");
-    assert!(poll_notif.is_none(), "Target should NOT receive poll creation notification");
+    assert!(poll_notif.is_some(), "Target should receive poll creation notification (can vote on their own removal)");
 }
 
 #[tokio::test]
@@ -784,4 +784,125 @@ async fn test_delete_poll_after_completion() {
     let delete_result: serde_json::Value = delete_response.json().await.unwrap();
     assert_eq!(delete_result["success"].as_bool().unwrap(), false);
     assert!(delete_result["message"].as_str().unwrap().contains("Only active polls"));
+}
+
+#[tokio::test]
+async fn test_removed_user_appears_in_leaderboard() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let owner = create_test_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address).await;
+
+    // Create league
+    let league_id = create_league(
+        &test_app.address,
+        &admin.token,
+        8  // max_teams
+    ).await;
+
+    let unique_suffix = &Uuid::new_v4().to_string()[..8];
+    let team_id = create_team(
+        &test_app.address,
+        &admin.token,
+        TeamConfig {
+            name: Some(format!("Team Leaderboard {}", unique_suffix)),
+            color: Some("#FF00FF".to_string()),
+            description: Some("Team for leaderboard test".to_string()),
+            owner_id: Some(owner.user_id),
+        }
+    ).await;
+
+    // Create and add members
+    let member1 = create_test_user_and_login(&test_app.address).await;
+    let member2 = create_test_user_and_login(&test_app.address).await;
+    let member3 = create_test_user_and_login(&test_app.address).await;
+    let member4 = create_test_user_and_login(&test_app.address).await;
+    let add_members = json!({"member_request": [
+        {"username": member1.username.clone(), "role": "member"},
+        {"username": member2.username.clone(), "role": "member"},
+        {"username": member3.username.clone(), "role": "member"},
+        {"username": member4.username.clone(), "role": "member"}
+    ]});
+    client.post(&format!("{}/league/teams/{}/members", test_app.address, team_id))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&add_members)
+        .send()
+        .await
+        .unwrap();
+
+    // Get member4's ID
+    let members_response = client.get(&format!("{}/league/teams/{}/members", test_app.address, team_id))
+        .header("Authorization", format!("Bearer {}", member1.token))
+        .send()
+        .await
+        .unwrap();
+    let members_body: serde_json::Value = members_response.json().await.unwrap();
+    let members = members_body["data"]["members"].as_array().unwrap();
+    let member4_data = members.iter().find(|m| m["username"] == member4.username).unwrap();
+    let member4_id = member4_data["user_id"].as_str().unwrap();
+
+    // Create poll (5 eligible voters: owner, member1, member2, member3, member4)
+    let poll_data = json!({"target_user_id": member4_id, "poll_type": "member_removal"});
+    let poll_response = client.post(&format!("{}/league/teams/{}/polls", test_app.address, team_id))
+        .header("Authorization", format!("Bearer {}", member1.token))
+        .json(&poll_data)
+        .send()
+        .await
+        .unwrap();
+    let poll_body: serde_json::Value = poll_response.json().await.unwrap();
+    let poll_id = poll_body["poll"]["id"].as_str().unwrap();
+
+    // Cast 3 "for" votes to reach consensus (need 3 out of 5)
+    client.post(&format!("{}/league/teams/{}/polls/{}/vote", test_app.address, team_id, poll_id))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&json!({"vote": "for"}))
+        .send()
+        .await
+        .unwrap();
+    client.post(&format!("{}/league/teams/{}/polls/{}/vote", test_app.address, team_id, poll_id))
+        .header("Authorization", format!("Bearer {}", member1.token))
+        .json(&json!({"vote": "for"}))
+        .send()
+        .await
+        .unwrap();
+    client.post(&format!("{}/league/teams/{}/polls/{}/vote", test_app.address, team_id, poll_id))
+        .header("Authorization", format!("Bearer {}", member2.token))
+        .json(&json!({"vote": "for"}))
+        .send()
+        .await
+        .unwrap();
+
+    // Verify member4 was removed from team
+    let members_response = client.get(&format!("{}/league/teams/{}/members", test_app.address, team_id))
+        .header("Authorization", format!("Bearer {}", member1.token))
+        .send()
+        .await
+        .unwrap();
+    let members_body: serde_json::Value = members_response.json().await.unwrap();
+    let members = members_body["data"]["members"].as_array().unwrap();
+    assert!(members.iter().all(|m| m["username"] != member4.username), "Member4 should have been removed from team");
+
+    // CRITICAL: Verify member4 is in player pool
+    let pool_response = client.get(&format!("{}/league/player-pool", test_app.address))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(pool_response.status().as_u16(), 200);
+    let pool_body: serde_json::Value = pool_response.json().await.unwrap();
+    let pool_entries = pool_body["data"]["entries"].as_array().unwrap();
+    let member4_in_pool = pool_entries.iter().any(|p| p["user_id"] == member4_id);
+    assert!(member4_in_pool, "Member4 should be in player pool after being removed from team");
+
+    // CRITICAL: Verify member4's profile still has a rank (proves they're in leaderboard)
+    let profile_response = client.get(&format!("{}/profile/user", test_app.address))
+        .header("Authorization", format!("Bearer {}", member4.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(profile_response.status().as_u16(), 200);
+    let profile_body: serde_json::Value = profile_response.json().await.unwrap();
+    let rank = profile_body["data"]["rank"].as_i64().unwrap();
+    assert!(rank > 0 && rank < 999, "Member4 should have a valid rank (not 999) after being removed from team (proves they're in leaderboard). Got rank: {}", rank);
 }
