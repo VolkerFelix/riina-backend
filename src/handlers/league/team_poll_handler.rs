@@ -332,14 +332,6 @@ pub async fn cast_vote(
         }));
     }
 
-    // Target user cannot vote on their own removal poll
-    if user_id == poll.target_user_id {
-        return HttpResponse::Forbidden().json(serde_json::json!({
-            "success": false,
-            "message": "You cannot vote on a poll about your own removal"
-        }));
-    }
-
     // Check if user has already voted
     let existing_vote = sqlx::query!(
         "SELECT id FROM poll_votes WHERE poll_id = $1 AND user_id = $2",
@@ -516,15 +508,14 @@ async fn get_poll_info(pool: &PgPool, poll_id: Uuid) -> Result<TeamPollInfo, sql
         }
     }
 
-    // Count total eligible voters (active members excluding target)
+    // Count total eligible voters (all active members including target)
     let eligible_voters = sqlx::query!(
         r#"
         SELECT COUNT(*) as count
         FROM team_members
-        WHERE team_id = $1 AND status = 'active' AND user_id != $2
+        WHERE team_id = $1 AND status = 'active'
         "#,
-        poll_data.team_id,
-        poll_data.target_user_id
+        poll_data.team_id
     )
     .fetch_one(pool)
     .await?;
