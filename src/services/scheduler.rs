@@ -89,194 +89,21 @@ impl SchedulerService {
         })
     }
 
-    /// Process an expired poll
+    /// Process an expired poll - just mark it as expired
     async fn process_expired_poll(
         pool: &PgPool,
-        redis_client: &Arc<redis::Client>,
+        _redis_client: &Arc<redis::Client>,
         poll_id: uuid::Uuid
     ) -> Result<(), Box<dyn Error>> {
-        use crate::models::team::PollResult;
-        use actix_web::web;
-
-        // Get poll information with vote counts
-        let poll_data = sqlx::query!(
-            r#"
-            SELECT
-                tp.id, tp.team_id, tp.target_user_id,
-                t.team_name,
-                target_user.username as target_username
-            FROM team_polls tp
-            JOIN teams t ON tp.team_id = t.id
-            JOIN users target_user ON tp.target_user_id = target_user.id
-            WHERE tp.id = $1
-            "#,
-            poll_id
-        )
-        .fetch_one(pool)
-        .await?;
-
-        // Count votes
-        let vote_counts = sqlx::query!(
-            r#"
-            SELECT vote, COUNT(*) as count
-            FROM poll_votes
-            WHERE poll_id = $1
-            GROUP BY vote
-            "#,
-            poll_id
-        )
-        .fetch_all(pool)
-        .await?;
-
-        let mut votes_for = 0;
-        let mut votes_against = 0;
-
-        for vc in vote_counts {
-            match vc.vote.as_str() {
-                "for" => votes_for = vc.count.unwrap_or(0),
-                "against" => votes_against = vc.count.unwrap_or(0),
-                _ => {}
-            }
-        }
-
-        // Count total eligible voters (all active members including target)
-        let eligible_voters = sqlx::query!(
-            r#"
-            SELECT COUNT(*) as count
-            FROM team_members
-            WHERE team_id = $1 AND status = 'active'
-            "#,
-            poll_data.team_id
-        )
-        .fetch_one(pool)
-        .await?;
-
-        let total_eligible = eligible_voters.count.unwrap_or(0);
-
-        // Determine result - need majority (more than 50%) to approve
-        let result = if votes_for > total_eligible / 2 {
-            PollResult::Approved
-        } else if votes_against >= total_eligible / 2 {
-            PollResult::Rejected
-        } else {
-            PollResult::NoConsensus
-        };
-
-        // Update poll status
+        // Simply mark the poll as expired
         sqlx::query!(
-            "UPDATE team_polls SET status = 'expired', result = $1, executed_at = NOW() WHERE id = $2",
-            result.to_string(),
+            "UPDATE team_polls SET status = 'expired', executed_at = NOW() WHERE id = $1",
             poll_id
         )
         .execute(pool)
         .await?;
 
-        // If approved, remove the member from the team and add back to player pool
-        if result == PollResult::Approved {
-            // Remove from team
-            sqlx::query!(
-                "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2",
-                poll_data.team_id,
-                poll_data.target_user_id
-            )
-            .execute(pool)
-            .await?;
-
-            // Add back to player pool
-            match sqlx::query!(
-                r#"
-                INSERT INTO player_pool (user_id)
-                VALUES ($1)
-                ON CONFLICT (user_id) DO NOTHING
-                "#,
-                poll_data.target_user_id
-            )
-            .execute(pool)
-            .await {
-                Ok(_) => {
-                    tracing::info!("✅ Added user {} back to player pool after team removal", poll_data.target_user_id);
-                },
-                Err(e) => {
-                    tracing::error!("❌ Failed to add user {} to player pool: {}", poll_data.target_user_id, e);
-                }
-            }
-
-            // Create notification for the removed user
-            let notification_message = format!("You have been removed from team {} by a member vote", poll_data.team_name);
-
-            let notification_result = sqlx::query!(
-                r#"
-                INSERT INTO notifications (recipient_id, actor_id, notification_type, entity_type, entity_id, message)
-                VALUES ($1, $1, 'removed_from_team', 'poll', $2, $3)
-                RETURNING id
-                "#,
-                poll_data.target_user_id,
-                poll_id,
-                notification_message
-            )
-            .fetch_one(pool)
-            .await;
-
-            if let Ok(notification_row) = notification_result {
-                // Send WebSocket notification
-                let redis_data = web::Data::new(redis_client.clone());
-                let _ = crate::services::social_events::send_notification_to_user(
-                    &redis_data,
-                    poll_data.target_user_id,
-                    notification_row.id,
-                    "Team Vote".to_string(),
-                    "removed_from_team".to_string(),
-                    notification_message,
-                ).await;
-            }
-
-            tracing::info!("✅ Poll {} expired with approval - removed user {} from team {}",
-                poll_id, poll_data.target_username, poll_data.team_name);
-        } else {
-            tracing::info!("✅ Poll {} expired with result: {:?}", poll_id, result);
-        }
-
-        // Notify all team members of the result
-        let team_members = sqlx::query!(
-            "SELECT user_id FROM team_members WHERE team_id = $1 AND status = 'active'",
-            poll_data.team_id
-        )
-        .fetch_all(pool)
-        .await?;
-
-        let notification_message = match result {
-            PollResult::Approved => format!("Poll expired: {} has been removed from {}", poll_data.target_username, poll_data.team_name),
-            PollResult::Rejected => format!("Poll expired: {} will remain in {}", poll_data.target_username, poll_data.team_name),
-            PollResult::NoConsensus => format!("Poll expired without consensus: {} will remain in {}", poll_data.target_username, poll_data.team_name),
-        };
-
-        for member in team_members {
-            let notification_result = sqlx::query!(
-                r#"
-                INSERT INTO notifications (recipient_id, actor_id, notification_type, entity_type, entity_id, message)
-                VALUES ($1, $1, 'team_poll_expired', 'poll', $2, $3)
-                RETURNING id
-                "#,
-                member.user_id,
-                poll_id,
-                &notification_message
-            )
-            .fetch_one(pool)
-            .await;
-
-            if let Ok(notification_row) = notification_result {
-                // Send WebSocket notification
-                let redis_data = web::Data::new(redis_client.clone());
-                let _ = crate::services::social_events::send_notification_to_user(
-                    &redis_data,
-                    member.user_id,
-                    notification_row.id,
-                    "Team Vote".to_string(),
-                    "team_poll_expired".to_string(),
-                    notification_message.clone(),
-                ).await;
-            }
-        }
+        tracing::info!("✅ Poll {} marked as expired", poll_id);
 
         Ok(())
     }
@@ -363,13 +190,24 @@ impl SchedulerService {
     /// Remove scheduling for a season (when season is deleted)
         pub async fn unschedule_season(&self, season_id: Uuid) -> Result<(), Box<dyn Error>> {
         let mut active_jobs = self.active_jobs.lock().await;
-        
+
         if let Some(job_id) = active_jobs.remove(&season_id) {
             let scheduler = self.scheduler.lock().await;
             scheduler.remove(&job_id).await?;
             tracing::info!("✅ Removed scheduling for season {}", season_id);
         }
-        
+
         Ok(())
+    }
+
+    /// Public test helper to process a specific expired poll
+    /// Only available in test and debug builds
+    #[cfg(any(test, debug_assertions))]
+    pub async fn process_expired_poll_test(
+        pool: &PgPool,
+        redis_client: &Arc<redis::Client>,
+        poll_id: uuid::Uuid
+    ) -> Result<(), Box<dyn Error>> {
+        Self::process_expired_poll(pool, redis_client, poll_id).await
     }
 }

@@ -730,7 +730,7 @@ async fn check_and_complete_poll(
                 }
             }
 
-            // Notify the removed user
+            // Notify the removed user about team removal
             let notification_message = format!("You have been removed from team {} by a member vote", poll_info.team_name);
 
             let notification_result = sqlx::query!(
@@ -757,7 +757,36 @@ async fn check_and_complete_poll(
                 ).await;
             }
 
-            tracing::info!("✅ Poll {} completed: removed user {} from team {}",
+            // Also notify about becoming a free agent
+            let free_agent_message = "You are now a free agent";
+            match sqlx::query!(
+                r#"
+                INSERT INTO notifications (recipient_id, actor_id, notification_type, entity_type, entity_id, message)
+                VALUES ($1, $1, 'player_pool_event', 'player_pool', $1, $2)
+                RETURNING id
+                "#,
+                poll_info.target_user_id,
+                free_agent_message
+            )
+            .fetch_one(pool)
+            .await {
+                Ok(notif_row) => {
+                    let _ = send_notification_to_user(
+                        redis_client,
+                        poll_info.target_user_id,
+                        notif_row.id,
+                        "Player Pool".to_string(),
+                        "player_pool_event".to_string(),
+                        free_agent_message.to_string(),
+                    ).await;
+                    tracing::info!("📬 Sent free agent notification to user {}", poll_info.target_user_id);
+                },
+                Err(e) => {
+                    tracing::error!("❌ Failed to create free agent notification for user {}: {}", poll_info.target_user_id, e);
+                }
+            }
+
+            tracing::info!("✅ Poll {} completed: removed user {} from team {} and added to player pool",
                 poll_id, poll_info.target_username, poll_info.team_name);
         }
     }

@@ -2,6 +2,11 @@ use reqwest::Client;
 use serde_json::json;
 use uuid::Uuid;
 use std::time::Duration;
+use std::sync::Arc;
+use riina_backend::services::SchedulerService;
+use riina_backend::config::settings::get_config;
+use riina_backend::config::redis::RedisSettings;
+use secrecy::ExposeSecret;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login};
@@ -905,4 +910,138 @@ async fn test_removed_user_appears_in_leaderboard() {
     let profile_body: serde_json::Value = profile_response.json().await.unwrap();
     let rank = profile_body["data"]["rank"].as_i64().unwrap();
     assert!(rank > 0 && rank < 999, "Member4 should have a valid rank (not 999) after being removed from team (proves they're in leaderboard). Got rank: {}", rank);
+
+    // CRITICAL: Verify free agent notification was sent
+    let notifications_response = client
+        .get(&format!("{}/social/notifications", test_app.address))
+        .header("Authorization", format!("Bearer {}", member4.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(notifications_response.status().as_u16(), 200);
+    let notifications_body: serde_json::Value = notifications_response.json().await.unwrap();
+    let notifications = notifications_body["notifications"].as_array().unwrap();
+
+    // Should have 2 notifications: removed_from_team and player_pool_event (free agent)
+    let has_removal_notification = notifications.iter().any(|n|
+        n["notification_type"] == "removed_from_team"
+    );
+    let has_free_agent_notification = notifications.iter().any(|n|
+        n["notification_type"] == "player_pool_event" &&
+        n["message"].as_str().map(|s| s.contains("free agent")).unwrap_or(false)
+    );
+
+    assert!(has_removal_notification, "Should have removal notification");
+    assert!(has_free_agent_notification, "Should have free agent notification when removed from team (early consensus path)");
+}
+
+#[tokio::test]
+async fn test_expired_poll_leaves_team_unchanged() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    // Create team owner
+    let owner = create_test_user_and_login(&test_app.address).await;
+
+    // Create admin for league creation
+    let admin = create_admin_user_and_login(&test_app.address).await;
+
+    // Create league
+    let _league_id = create_league(
+        &test_app.address,
+        &admin.token,
+        8  // max_teams
+    ).await;
+
+    // Create team
+    let unique_suffix = &Uuid::new_v4().to_string()[..8];
+    let team_id = create_team(
+        &test_app.address,
+        &admin.token,
+        TeamConfig {
+            name: Some(format!("ExpiredPollTeam_{}", unique_suffix)),
+            color: Some("#FF00FF".to_string()),
+            description: Some("Team for expired poll test".to_string()),
+            owner_id: Some(owner.user_id),
+        }
+    ).await;
+
+    // Add 3 members
+    let member2 = create_test_user_and_login(&test_app.address).await;
+    let member3 = create_test_user_and_login(&test_app.address).await;
+    let member4 = create_test_user_and_login(&test_app.address).await;
+
+    let add_members = json!({"member_request": [
+        {"username": member2.username.clone(), "role": "member"},
+        {"username": member3.username.clone(), "role": "member"},
+        {"username": member4.username.clone(), "role": "member"}
+    ]});
+    client.post(&format!("{}/league/teams/{}/members", test_app.address, team_id))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&add_members)
+        .send()
+        .await
+        .unwrap();
+
+    // Get team members before poll expiration
+    let members_before_response = client.get(&format!("{}/league/teams/{}/members", test_app.address, team_id))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .send()
+        .await
+        .unwrap();
+    let members_before_body: serde_json::Value = members_before_response.json().await.unwrap();
+    let members_before = members_before_body["data"]["members"].as_array().unwrap();
+    let member_count_before = members_before.len();
+    let member4_data = members_before.iter().find(|m| m["username"] == member4.username).unwrap();
+    let member4_id = member4_data["user_id"].as_str().unwrap();
+
+    // Create a poll that will expire without consensus
+    let poll_data = json!({"target_user_id": member4_id, "poll_type": "member_removal"});
+    let poll_response = client.post(&format!("{}/league/teams/{}/polls", test_app.address, team_id))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&poll_data)
+        .send()
+        .await
+        .unwrap();
+    let poll_body: serde_json::Value = poll_response.json().await.unwrap();
+    let poll_id = Uuid::parse_str(poll_body["poll"]["id"].as_str().unwrap()).unwrap();
+
+    // Manually set poll to expired (move both created_at and expires_at to past to satisfy constraint)
+    sqlx::query!(
+        "UPDATE team_polls SET created_at = NOW() - INTERVAL '2 hours', expires_at = NOW() - INTERVAL '1 hour' WHERE id = $1",
+        poll_id
+    )
+    .execute(&test_app.db_pool)
+    .await
+    .unwrap();
+
+    // Create redis client and trigger scheduler to process this expired poll
+    let configuration = get_config().expect("Failed to read configuration");
+    let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
+    SchedulerService::process_expired_poll_test(&test_app.db_pool, &redis_client, poll_id).await.unwrap();
+
+    // CRITICAL: Verify poll status is 'expired'
+    let poll_status = sqlx::query!(
+        "SELECT status FROM team_polls WHERE id = $1",
+        poll_id
+    )
+    .fetch_one(&test_app.db_pool)
+    .await
+    .unwrap();
+    assert_eq!(poll_status.status, "expired", "Poll status should be 'expired'");
+
+    // CRITICAL: Verify team structure remains unchanged - member4 should still be in team
+    let members_after_response = client
+        .get(&format!("{}/league/teams/{}/members", test_app.address, team_id))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .send()
+        .await
+        .unwrap();
+    let members_after_body: serde_json::Value = members_after_response.json().await.unwrap();
+    let members_after = members_after_body["data"]["members"].as_array().unwrap();
+    let member_count_after = members_after.len();
+    let member4_still_in_team = members_after.iter().any(|m| m["username"] == member4.username);
+
+    assert_eq!(member_count_before, member_count_after, "Team member count should remain the same");
+    assert!(member4_still_in_team, "Member4 should still be in team after poll expires without consensus");
 }
