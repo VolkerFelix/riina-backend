@@ -139,15 +139,14 @@ impl SchedulerService {
             }
         }
 
-        // Count total eligible voters
+        // Count total eligible voters (all active members including target)
         let eligible_voters = sqlx::query!(
             r#"
             SELECT COUNT(*) as count
             FROM team_members
-            WHERE team_id = $1 AND status = 'active' AND user_id != $2
+            WHERE team_id = $1 AND status = 'active'
             "#,
-            poll_data.team_id,
-            poll_data.target_user_id
+            poll_data.team_id
         )
         .fetch_one(pool)
         .await?;
@@ -172,8 +171,9 @@ impl SchedulerService {
         .execute(pool)
         .await?;
 
-        // If approved, remove the member from the team
+        // If approved, remove the member from the team and add back to player pool
         if result == PollResult::Approved {
+            // Remove from team
             sqlx::query!(
                 "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2",
                 poll_data.team_id,
@@ -181,6 +181,25 @@ impl SchedulerService {
             )
             .execute(pool)
             .await?;
+
+            // Add back to player pool
+            match sqlx::query!(
+                r#"
+                INSERT INTO player_pool (user_id)
+                VALUES ($1)
+                ON CONFLICT (user_id) DO NOTHING
+                "#,
+                poll_data.target_user_id
+            )
+            .execute(pool)
+            .await {
+                Ok(_) => {
+                    tracing::info!("✅ Added user {} back to player pool after team removal", poll_data.target_user_id);
+                },
+                Err(e) => {
+                    tracing::error!("❌ Failed to add user {} to player pool: {}", poll_data.target_user_id, e);
+                }
+            }
 
             // Create notification for the removed user
             let notification_message = format!("You have been removed from team {} by a member vote", poll_data.team_name);

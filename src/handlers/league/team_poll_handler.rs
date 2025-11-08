@@ -169,16 +169,15 @@ pub async fn create_poll(
         }
     };
 
-    // Notify all active team members (except creator and target)
+    // Notify all active team members (except creator)
     let team_members = sqlx::query!(
         r#"
         SELECT user_id
         FROM team_members
-        WHERE team_id = $1 AND status = 'active' AND user_id != $2 AND user_id != $3
+        WHERE team_id = $1 AND status = 'active' AND user_id != $2
         "#,
         team_id,
-        user_id,
-        target_user_id
+        user_id
     )
     .fetch_all(pool.as_ref())
     .await
@@ -208,14 +207,23 @@ pub async fn create_poll(
 
         if let Ok(notification_row) = notification_result {
             // Send WebSocket notification
-            let _ = send_notification_to_user(
+            match send_notification_to_user(
                 &redis_client,
                 member.user_id,
                 notification_row.id,
                 "Team Vote".to_string(), // Anonymous sender
                 "team_poll_created".to_string(),
                 notification_message.clone(),
-            ).await;
+            ).await {
+                Ok(_) => {
+                    tracing::info!("✅ Sent poll notification to user {}", member.user_id);
+                },
+                Err(e) => {
+                    tracing::error!("❌ Failed to send poll notification to user {}: {}", member.user_id, e);
+                }
+            }
+        } else {
+            tracing::error!("❌ Failed to create notification in database for user {}", member.user_id);
         }
     }
 

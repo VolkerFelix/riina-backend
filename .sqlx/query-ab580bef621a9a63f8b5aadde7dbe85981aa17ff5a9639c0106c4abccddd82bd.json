@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT COUNT(*) as count\n            FROM team_members\n            WHERE team_id = $1 AND status = 'active' AND user_id != $2\n            ",
+  "query": "\n            SELECT COUNT(*) as count\n            FROM team_members\n            WHERE team_id = $1 AND status = 'active'\n            ",
   "describe": {
     "columns": [
       {
@@ -11,7 +11,6 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid",
         "Uuid"
       ]
     },
@@ -19,5 +18,5 @@
       null
     ]
   },
-  "hash": "5aba6d4ea3e03da379a6f064d28d6039e90bae7bf90f6d2728594e0707763a35"
+  "hash": "ab580bef621a9a63f8b5aadde7dbe85981aa17ff5a9639c0106c4abccddd82bd"
 }
