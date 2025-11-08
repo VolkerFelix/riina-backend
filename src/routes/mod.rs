@@ -63,6 +63,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .service(league::get_recent_results)
             .service(league::get_game_week)
             .service(league::register_team)
+            .service(league::get_user_team)
             .service(league::get_team_info)
             .service(league::get_all_teams)
             .service(league::update_team)
@@ -81,6 +82,10 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .service(league::send_team_invitation)
             .service(league::get_user_invitations)
             .service(league::respond_to_invitation)
+            .service(league::create_team_poll)
+            .service(league::get_team_polls)
+            .service(league::cast_poll_vote)
+            .service(league::delete_poll)
     );
     // WebSocket routes (authentication handled in route)
     cfg.service(

@@ -16,7 +16,7 @@ use secrecy::ExposeSecret;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, get_next_date, delete_test_user};
-use common::admin_helpers::{create_admin_user_and_login, create_league_season};
+use common::admin_helpers::{create_admin_user_and_login, create_league_season, create_league, create_team, TeamConfig, add_team_to_league, add_user_to_team};
 use common::workout_data_helpers::{upload_workout_data_for_user, WorkoutData, WorkoutType};
 
 #[tokio::test]
@@ -47,114 +47,44 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     println!("✅ Uploaded health data for all users");
 
     // Step 3: Create league and teams
-    let league_request = json!({
-        "name": "WebSocket Test League",
-        "description": "Testing WebSocket notifications for game evaluation",
-        "max_teams": 2
-    });
-    
-    let league_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/leagues", &app.address),
+    let league_id = create_league(
+        &app.address,
         &admin_user.token,
-        Some(league_request),
+        2
     ).await;
-    assert_eq!(league_response.status(), 201);
-    
-    let league_data = league_response.json::<serde_json::Value>().await.unwrap();
-    let league_id = league_data["data"]["id"].as_str().unwrap();
     
     // Create Team A with unique name
     let unique_suffix = Uuid::new_v4().to_string().chars().take(8).collect::<String>();
-    let team_a_request = json!({
-        "name": format!("Elite Warriors {}", unique_suffix),
-        "color": "#FF0000",
-        "description": "Team with strong power",
-        "owner_id": user1.user_id
-    });
-    
-    let team_a_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/teams", &app.address),
+    let team_a_id = create_team(
+        &app.address,
         &admin_user.token,
-        Some(team_a_request),
+        TeamConfig {
+            name: Some(format!("Elite Warriors {}", unique_suffix)),
+            color: Some("#FF0000".to_string()),
+            description: Some("Team with strong power".to_string()),
+            owner_id: Some(user1.user_id),
+        }
     ).await;
-    assert_eq!(team_a_response.status(), 201);
-    
-    let team_a_data = team_a_response.json::<serde_json::Value>().await.unwrap();
-    let team_a_id = team_a_data["data"]["id"].as_str().unwrap();
     
     // Create Team B
-    let team_b_request = json!({
-        "name": format!("Advanced Fighters {}", unique_suffix),
-        "color": "#0000FF", 
-        "description": "Team with moderate power",
-        "owner_id": user3.user_id
-    });
-    
-    let team_b_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/teams", &app.address),
+    let team_b_id = create_team(
+        &app.address,
         &admin_user.token,
-        Some(team_b_request),
+        TeamConfig {
+            name: Some(format!("Advanced Fighters {}", unique_suffix)),
+            color: Some("#0000FF".to_string()),
+            description: Some("Team with moderate power".to_string()),
+            owner_id: Some(user3.user_id),
+        }
     ).await;
-    assert_eq!(team_b_response.status(), 201);
-    
-    let team_b_data = team_b_response.json::<serde_json::Value>().await.unwrap();
-    let team_b_id = team_b_data["data"]["id"].as_str().unwrap();
     
     // Add members to teams
-    let add_user2_to_team_a = json!({
-        "user_id": user2.user_id,
-        "role": "member"
-    });
-    
-    let member2_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/teams/{}/members", &app.address, team_a_id),
-        &admin_user.token,
-        Some(add_user2_to_team_a),
-    ).await;
-    assert_eq!(member2_response.status(), 201);
-    
-    let add_user4_to_team_b = json!({
-        "user_id": user4.user_id,
-        "role": "member"
-    });
-    
-    let member4_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/teams/{}/members", &app.address, team_b_id),
-        &admin_user.token,
-        Some(add_user4_to_team_b),
-    ).await;
-    assert_eq!(member4_response.status(), 201);
+    add_user_to_team(&app.address, &admin_user.token, &team_a_id, user2.user_id).await;
+    add_user_to_team(&app.address, &admin_user.token, &team_b_id, user4.user_id).await;
     
     // Assign teams to league
-    let assign_team_a = json!({"team_id": team_a_id});
-    let assign_a_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/leagues/{}/teams", &app.address, league_id),
-        &admin_user.token,
-        Some(assign_team_a),
-    ).await;
-    assert_eq!(assign_a_response.status(), 201);
-    
-    let assign_team_b = json!({"team_id": team_b_id});
-    let assign_b_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/leagues/{}/teams", &app.address, league_id),
-        &admin_user.token,
-        Some(assign_team_b),
-    ).await;
-    assert_eq!(assign_b_response.status(), 201);
+    add_team_to_league(&app.address, &admin_user.token, &league_id, &team_a_id).await;
+    add_team_to_league(&app.address, &admin_user.token, &league_id, &team_b_id).await;
     
     println!("✅ Created teams and assigned to league");
 
@@ -164,7 +94,7 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     let _season_id = create_league_season(
         &app.address,
         &admin_user.token,
-        league_id,
+        &league_id,
         "WebSocket Test Season",
         &start_date.to_rfc3339()
     ).await;
@@ -172,7 +102,7 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     println!("✅ Created season with games for next Saturday at 10pm");
 
     // Step 5: Set games to current time before evaluation
-    update_games_to_current_time(&app, league_id).await;
+    update_games_to_current_time(&app, &league_id).await;
     
     // Wait for games to complete their lifecycle (start → finish)
     let week_game_service = riina_backend::services::ManageGameService::new(app.db_pool.clone());

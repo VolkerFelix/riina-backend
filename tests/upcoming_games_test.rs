@@ -3,7 +3,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 mod common;
-use common::utils::spawn_app;
+use common::utils::{spawn_app, create_test_user_and_login};
 
 #[tokio::test]
 async fn test_upcoming_games_endpoint_unauthorized() {
@@ -26,48 +26,12 @@ async fn test_upcoming_games_endpoint_with_auth() {
     let client = Client::new();
 
     // Create a user and get token
-    let username = format!("testuser_{}", Uuid::new_v4());
-    let password = "password123";
-    let email = format!("{}@example.com", username);
-
-    let user_request = json!({
-        "username": username,
-        "password": password,
-        "email": email
-    });
-
-    let response = client
-        .post(&format!("{}/register_user", &test_app.address))
-        .json(&user_request)
-        .send()
-        .await
-        .expect("Failed to register user");
-
-    assert!(response.status().is_success(), "User registration should succeed");
-
-    // Login to get JWT token
-    let login_request = json!({
-        "username": username,
-        "password": password
-    });
-
-    let login_response = client
-        .post(&format!("{}/login", &test_app.address))
-        .json(&login_request)
-        .send()
-        .await
-        .expect("Failed to login");
-
-    assert!(login_response.status().is_success(), "Login should succeed");
-    
-    let login_json = login_response.json::<serde_json::Value>().await
-        .expect("Failed to parse login response");
-    let token = login_json["token"].as_str().expect("Token not found");
+    let user = create_test_user_and_login(&test_app.address).await;
 
     // Test upcoming games endpoint with authentication
     let response = client
         .get(&format!("{}/league/games/upcoming", &test_app.address))
-        .header("Authorization", format!("Bearer {}", token))
+        .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
         .expect("Failed to get upcoming games");
@@ -91,43 +55,12 @@ async fn test_upcoming_games_with_query_params() {
     let client = Client::new();
 
     // Create a user and get token
-    let username = format!("testuser_{}", Uuid::new_v4());
-    let password = "password123";
-    let email = format!("{}@example.com", username);
-
-    let user_request = json!({
-        "username": username,
-        "password": password,
-        "email": email
-    });
-
-    client
-        .post(&format!("{}/register_user", &test_app.address))
-        .json(&user_request)
-        .send()
-        .await
-        .expect("Failed to register user");
-
-    let login_request = json!({
-        "username": username,
-        "password": password
-    });
-
-    let login_response = client
-        .post(&format!("{}/login", &test_app.address))
-        .json(&login_request)
-        .send()
-        .await
-        .expect("Failed to login");
-
-    let login_json = login_response.json::<serde_json::Value>().await
-        .expect("Failed to parse login response");
-    let token = login_json["token"].as_str().expect("Token not found");
+    let user = create_test_user_and_login(&test_app.address).await;
 
     // Test with limit parameter
     let response = client
         .get(&format!("{}/league/games/upcoming?limit=5", &test_app.address))
-        .header("Authorization", format!("Bearer {}", token))
+        .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
         .expect("Failed to get upcoming games with limit");

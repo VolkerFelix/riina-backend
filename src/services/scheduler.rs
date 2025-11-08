@@ -29,13 +29,82 @@ impl SchedulerService {
     }
 
     pub async fn start(&self) -> Result<(), Box<dyn Error>> {
-        let scheduler = self.scheduler.lock().await;
-        
+        let mut scheduler = self.scheduler.lock().await;
+
+        // Schedule poll expiration job
+        let poll_job = self.create_poll_expiration_job()?;
+        scheduler.add(poll_job).await?;
+
         // For now, just start the scheduler without loading from DB
         // Seasons will be scheduled when created via the API
         scheduler.start().await?;
-        
+
         tracing::info!("✅ Scheduler service started successfully (dynamic scheduling mode)");
+        Ok(())
+    }
+
+    /// Create poll expiration job that runs every 5 minutes
+    fn create_poll_expiration_job(&self) -> Result<Job, JobSchedulerError> {
+        let pool = self.pool.clone();
+        let redis_client = self.redis_client.clone();
+
+        Job::new_async("0 */5 * * * *", move |_uuid, _l| {
+            let pool = pool.clone();
+            let redis_client = redis_client.clone();
+
+            Box::pin(async move {
+                tracing::info!("🗳️ Running scheduled poll expiration check");
+
+                // Find all active polls that have expired
+                let expired_polls = match sqlx::query!(
+                    r#"
+                    SELECT id
+                    FROM team_polls
+                    WHERE status = 'active' AND expires_at < NOW()
+                    "#
+                )
+                .fetch_all(&pool)
+                .await
+                {
+                    Ok(polls) => polls,
+                    Err(e) => {
+                        tracing::error!("❌ Failed to fetch expired polls: {}", e);
+                        return;
+                    }
+                };
+
+                if expired_polls.is_empty() {
+                    tracing::debug!("No expired polls found");
+                    return;
+                }
+
+                tracing::info!("Found {} expired polls to process", expired_polls.len());
+
+                for poll in expired_polls {
+                    if let Err(e) = Self::process_expired_poll(&pool, &redis_client, poll.id).await {
+                        tracing::error!("❌ Failed to process expired poll {}: {}", poll.id, e);
+                    }
+                }
+            })
+        })
+    }
+
+    /// Process an expired poll - just mark it as expired
+    async fn process_expired_poll(
+        pool: &PgPool,
+        _redis_client: &Arc<redis::Client>,
+        poll_id: uuid::Uuid
+    ) -> Result<(), Box<dyn Error>> {
+        // Simply mark the poll as expired
+        sqlx::query!(
+            "UPDATE team_polls SET status = 'expired', executed_at = NOW() WHERE id = $1",
+            poll_id
+        )
+        .execute(pool)
+        .await?;
+
+        tracing::info!("✅ Poll {} marked as expired", poll_id);
+
         Ok(())
     }
 
@@ -121,13 +190,24 @@ impl SchedulerService {
     /// Remove scheduling for a season (when season is deleted)
         pub async fn unschedule_season(&self, season_id: Uuid) -> Result<(), Box<dyn Error>> {
         let mut active_jobs = self.active_jobs.lock().await;
-        
+
         if let Some(job_id) = active_jobs.remove(&season_id) {
             let scheduler = self.scheduler.lock().await;
             scheduler.remove(&job_id).await?;
             tracing::info!("✅ Removed scheduling for season {}", season_id);
         }
-        
+
         Ok(())
+    }
+
+    /// Public test helper to process a specific expired poll
+    /// Only available in test and debug builds
+    #[cfg(any(test, debug_assertions))]
+    pub async fn process_expired_poll_test(
+        pool: &PgPool,
+        redis_client: &Arc<redis::Client>,
+        poll_id: uuid::Uuid
+    ) -> Result<(), Box<dyn Error>> {
+        Self::process_expired_poll(pool, redis_client, poll_id).await
     }
 }

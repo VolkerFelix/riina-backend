@@ -27,7 +27,7 @@ use common::utils::{
     create_test_user_and_login,
     make_authenticated_request
 , delete_test_user};
-use common::admin_helpers::{create_admin_user_and_login, create_teams_for_test, add_user_to_team};
+use common::admin_helpers::{create_admin_user_and_login, create_teams_for_test, add_user_to_team, create_league_with_teams, LeagueWithTeamsResult};
 
 // ============================================================================
 // SCHEDULER SERVICE UNIT TESTS
@@ -192,37 +192,16 @@ async fn test_automated_scheduler_game_lifecycle() {
     let user2 = create_test_user_and_login(&app.address).await;
     
     // Create league and teams
-    let league_request = json!({
-        "name": format!("Scheduler Test League {}", &Uuid::new_v4().to_string()[..4]),
-        "description": "Testing automated scheduler",
-        "max_teams": 2
-    });
-    
-    let league_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/leagues", &app.address),
+    let LeagueWithTeamsResult { league_id, team_ids } = create_league_with_teams(
+        &app.address,
         &admin_user.token,
-        Some(league_request),
+        2,  // max_teams
+        2,  // team_count
+        None,  // team_owners (will create new users)
+        true,  // add_to_league
+        Some(format!("Scheduler Test League {}", &Uuid::new_v4().to_string()[..4])),
+        Some("Testing automated scheduler".to_string()),
     ).await;
-    
-    assert_eq!(league_response.status(), 201);
-    let league_data: serde_json::Value = league_response.json().await.unwrap();
-    let league_id = league_data["data"]["id"].as_str().unwrap();
-    
-    // Create and assign 2 teams
-    let team_ids = create_teams_for_test(&app.address, &admin_user.token, 2).await;
-    for team_id in &team_ids {
-        let assign_request = json!({"team_id": team_id});
-        let assign_response = make_authenticated_request(
-            &client,
-            reqwest::Method::POST,
-            &format!("{}/admin/leagues/{}/teams", &app.address, league_id),
-            &admin_user.token,
-            Some(assign_request),
-        ).await;
-        assert_eq!(assign_response.status(), 201);
-    }
 
     // Add users to teams
     add_user_to_team(&app.address, &admin_user.token, &team_ids[0], user1.user_id).await;
@@ -571,66 +550,27 @@ async fn test_scheduler_multiple_seasons() {
     let admin_user = create_admin_user_and_login(&app.address).await;
     
     // Create 2 leagues with different teams
-    let league1_request = json!({
-        "name": "League One",
-        "description": "First test league",
-        "max_teams": 2
-    });
-    
-    let league2_request = json!({
-        "name": "League Two", 
-        "description": "Second test league",
-        "max_teams": 2
-    });
-    
-    let league1_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/leagues", &app.address),
+    let LeagueWithTeamsResult { league_id: league1_id, team_ids: team_ids1 } = create_league_with_teams(
+        &app.address,
         &admin_user.token,
-        Some(league1_request),
+        2,  // max_teams
+        2,  // team_count
+        None,  // team_owners
+        true,  // add_to_league
+        Some("League One".to_string()),
+        Some("First test league".to_string()),
     ).await;
-    assert_eq!(league1_response.status(), 201);
-    let league1_data: serde_json::Value = league1_response.json().await.unwrap();
-    let league1_id = league1_data["data"]["id"].as_str().unwrap();
     
-    let league2_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/leagues", &app.address),
+    let LeagueWithTeamsResult { league_id: league2_id, team_ids: team_ids2 } = create_league_with_teams(
+        &app.address,
         &admin_user.token,
-        Some(league2_request),
+        2,  // max_teams
+        2,  // team_count
+        None,  // team_owners
+        true,  // add_to_league
+        Some("League Two".to_string()),
+        Some("Second test league".to_string()),
     ).await;
-    assert_eq!(league2_response.status(), 201);
-    let league2_data: serde_json::Value = league2_response.json().await.unwrap();
-    let league2_id = league2_data["data"]["id"].as_str().unwrap();
-    
-    // Create teams for both leagues
-    let team_ids1 = create_teams_for_test(&app.address, &admin_user.token, 2).await;
-    let team_ids2 = create_teams_for_test(&app.address, &admin_user.token, 2).await;
-    
-    // Assign teams to leagues
-    for team_id in &team_ids1 {
-        let assign_request = json!({"team_id": team_id});
-        make_authenticated_request(
-            &client,
-            reqwest::Method::POST,
-            &format!("{}/admin/leagues/{}/teams", &app.address, league1_id),
-            &admin_user.token,
-            Some(assign_request),
-        ).await;
-    }
-    
-    for team_id in &team_ids2 {
-        let assign_request = json!({"team_id": team_id});
-        make_authenticated_request(
-            &client,
-            reqwest::Method::POST,
-            &format!("{}/admin/leagues/{}/teams", &app.address, league2_id),
-            &admin_user.token,
-            Some(assign_request),
-        ).await;
-    }
     
     println!("✅ Created 2 leagues with teams");
     
@@ -726,37 +666,17 @@ async fn test_scheduler_error_recovery() {
     // Create admin user
     let admin_user = create_admin_user_and_login(&app.address).await;
     
-    // Create league
-    let league_request = json!({
-        "name": "Error Recovery League",
-        "description": "Testing scheduler error recovery",
-        "max_teams": 2
-    });
-    
-    let league_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/leagues", &app.address),
+    // Create league and teams
+    let LeagueWithTeamsResult { league_id, team_ids } = create_league_with_teams(
+        &app.address,
         &admin_user.token,
-        Some(league_request),
+        2,  // max_teams
+        2,  // team_count
+        None,  // team_owners
+        true,  // add_to_league
+        Some("Error Recovery League".to_string()),
+        Some("Testing scheduler error recovery".to_string()),
     ).await;
-    assert_eq!(league_response.status(), 201);
-    let league_data: serde_json::Value = league_response.json().await.unwrap();
-    let league_id = league_data["data"]["id"].as_str().unwrap();
-    
-    // Create and assign teams for the league
-    let team_ids = create_teams_for_test(&app.address, &admin_user.token, 2).await;
-    for team_id in &team_ids {
-        let assign_request = json!({"team_id": team_id});
-        let assign_response = make_authenticated_request(
-            &client,
-            reqwest::Method::POST,
-            &format!("{}/admin/leagues/{}/teams", &app.address, league_id),
-            &admin_user.token,
-            Some(assign_request),
-        ).await;
-        assert_eq!(assign_response.status(), 201);
-    }
     
     // Create season that will be deleted (to test unscheduling)
     let start_date = Utc::now() + Duration::minutes(1); // Future start

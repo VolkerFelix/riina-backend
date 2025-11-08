@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        WITH reaction_counts AS (\n            SELECT workout_id, COUNT(*) as count\n            FROM post_reactions\n            WHERE workout_id IS NOT NULL\n            GROUP BY workout_id\n        ),\n        comment_counts AS (\n            SELECT workout_id, COUNT(*) as count\n            FROM post_comments\n            WHERE workout_id IS NOT NULL\n            GROUP BY workout_id\n        ),\n        user_reactions AS (\n            SELECT workout_id\n            FROM post_reactions\n            WHERE user_id = $1 AND workout_id IS NOT NULL\n        )\n        SELECT\n            p.id, p.user_id, p.post_type as \"post_type: String\",\n            p.content, p.workout_id, p.media_urls,\n            p.ad_metadata, p.visibility as \"visibility: String\",\n            p.is_editable, p.created_at, p.updated_at, p.edited_at,\n            u.username, u.profile_picture_url,\n\n            -- Workout data (if post is workout type)\n            wd.workout_start, wd.workout_end,\n            wd.duration_minutes, wd.calories_burned, wd.activity_name,\n            wd.avg_heart_rate, wd.max_heart_rate, wd.heart_rate_zones,\n            wd.stamina_gained, wd.strength_gained,\n            wd.image_url as workout_image, wd.video_url as workout_video,\n\n            -- Live game info (if workout was part of a live game)\n            lse.game_id as live_game_id,\n            CASE \n                WHEN lse.team_side = 'home' THEN ht.team_name\n                WHEN lse.team_side = 'away' THEN at.team_name\n                ELSE NULL\n            END as user_team_name,\n            CASE \n                WHEN lse.team_side = 'home' THEN at.team_name\n                WHEN lse.team_side = 'away' THEN ht.team_name\n                ELSE NULL\n            END as opponent_team_name,\n\n            -- Social counts (from CTEs - much faster than subqueries)\n            COALESCE(rc.count, 0) as reaction_count,\n            COALESCE(cc.count, 0) as comment_count,\n            (ur.workout_id IS NOT NULL) as user_has_reacted\n\n        FROM posts p\n        JOIN users u ON u.id = p.user_id\n        LEFT JOIN workout_data wd ON wd.id = p.workout_id\n        LEFT JOIN live_score_events lse ON lse.workout_data_id = wd.id\n        LEFT JOIN games g ON g.id = lse.game_id\n        LEFT JOIN teams ht ON g.home_team_id = ht.id\n        LEFT JOIN teams at ON g.away_team_id = at.id\n        LEFT JOIN reaction_counts rc ON rc.workout_id = p.workout_id\n        LEFT JOIN comment_counts cc ON cc.workout_id = p.workout_id\n        LEFT JOIN user_reactions ur ON ur.workout_id = p.workout_id\n        WHERE\n            p.visibility = 'public'\n            AND ($2::timestamptz IS NULL OR p.created_at < $2)\n        ORDER BY p.created_at DESC\n        LIMIT $3\n        ",
+  "query": "\n        WITH reaction_counts AS (\n            SELECT workout_id, COUNT(*) as count\n            FROM post_reactions\n            WHERE workout_id IS NOT NULL\n            GROUP BY workout_id\n        ),\n        comment_counts AS (\n            SELECT workout_id, COUNT(*) as count\n            FROM post_comments\n            WHERE workout_id IS NOT NULL\n            GROUP BY workout_id\n        ),\n        user_reactions AS (\n            SELECT workout_id\n            FROM post_reactions\n            WHERE user_id = $1 AND workout_id IS NOT NULL\n        )\n        SELECT\n            p.id, p.user_id, p.post_type as \"post_type: String\",\n            p.content, p.workout_id, p.media_urls,\n            p.ad_metadata, p.visibility as \"visibility: String\",\n            p.is_editable, p.created_at, p.updated_at, p.edited_at,\n            u.username, u.profile_picture_url,\n\n            -- Workout data (if post is workout type)\n            wd.workout_start, wd.workout_end,\n            wd.duration_minutes, wd.calories_burned, wd.activity_name, wd.user_activity,\n            wd.avg_heart_rate, wd.max_heart_rate, wd.heart_rate_zones,\n            wd.stamina_gained, wd.strength_gained,\n            wd.image_url as workout_image, wd.video_url as workout_video,\n\n            -- Live game info (if workout was part of a live game)\n            lse.game_id as live_game_id,\n            CASE \n                WHEN lse.team_side = 'home' THEN ht.team_name\n                WHEN lse.team_side = 'away' THEN at.team_name\n                ELSE NULL\n            END as user_team_name,\n            CASE \n                WHEN lse.team_side = 'home' THEN at.team_name\n                WHEN lse.team_side = 'away' THEN ht.team_name\n                ELSE NULL\n            END as opponent_team_name,\n\n            -- Social counts (from CTEs - much faster than subqueries)\n            COALESCE(rc.count, 0) as reaction_count,\n            COALESCE(cc.count, 0) as comment_count,\n            (ur.workout_id IS NOT NULL) as user_has_reacted\n\n        FROM posts p\n        JOIN users u ON u.id = p.user_id\n        LEFT JOIN workout_data wd ON wd.id = p.workout_id\n        LEFT JOIN live_score_events lse ON lse.workout_data_id = wd.id\n        LEFT JOIN games g ON g.id = lse.game_id\n        LEFT JOIN teams ht ON g.home_team_id = ht.id\n        LEFT JOIN teams at ON g.away_team_id = at.id\n        LEFT JOIN reaction_counts rc ON rc.workout_id = p.workout_id\n        LEFT JOIN comment_counts cc ON cc.workout_id = p.workout_id\n        LEFT JOIN user_reactions ur ON ur.workout_id = p.workout_id\n        WHERE\n            p.visibility = 'public'\n            AND ($2::timestamptz IS NULL OR p.created_at < $2)\n        ORDER BY p.created_at DESC\n        LIMIT $3\n        ",
   "describe": {
     "columns": [
       {
@@ -122,66 +122,71 @@
       },
       {
         "ordinal": 19,
+        "name": "user_activity",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 20,
         "name": "avg_heart_rate",
         "type_info": "Int4"
       },
       {
-        "ordinal": 20,
+        "ordinal": 21,
         "name": "max_heart_rate",
         "type_info": "Int4"
       },
       {
-        "ordinal": 21,
+        "ordinal": 22,
         "name": "heart_rate_zones",
         "type_info": "Jsonb"
       },
       {
-        "ordinal": 22,
+        "ordinal": 23,
         "name": "stamina_gained",
         "type_info": "Float4"
       },
       {
-        "ordinal": 23,
+        "ordinal": 24,
         "name": "strength_gained",
         "type_info": "Float4"
       },
       {
-        "ordinal": 24,
+        "ordinal": 25,
         "name": "workout_image",
         "type_info": "Text"
       },
       {
-        "ordinal": 25,
+        "ordinal": 26,
         "name": "workout_video",
         "type_info": "Text"
       },
       {
-        "ordinal": 26,
+        "ordinal": 27,
         "name": "live_game_id",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 27,
+        "ordinal": 28,
         "name": "user_team_name",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 28,
+        "ordinal": 29,
         "name": "opponent_team_name",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 29,
+        "ordinal": 30,
         "name": "reaction_count",
         "type_info": "Int8"
       },
       {
-        "ordinal": 30,
+        "ordinal": 31,
         "name": "comment_count",
         "type_info": "Int8"
       },
       {
-        "ordinal": 31,
+        "ordinal": 32,
         "name": "user_has_reacted",
         "type_info": "Bool"
       }
@@ -216,6 +221,7 @@
       true,
       true,
       true,
+      true,
       false,
       false,
       true,
@@ -228,5 +234,5 @@
       null
     ]
   },
-  "hash": "0cb6f26be2173964f8ed581987d7fe8b92a09d3f65315a86d4c498f9372c0a01"
+  "hash": "3ef40d5ba7d1a27ff20b234f85cec4c84c3af576324be224a37453c31e74ca75"
 }

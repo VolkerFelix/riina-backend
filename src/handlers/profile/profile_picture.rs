@@ -224,9 +224,9 @@ pub async fn get_profile_picture_download_url(
     let profile_picture_url = match user_record.profile_picture_url {
         Some(url) => url,
         None => {
-            tracing::warn!("❌ User {} has no profile picture", user_id);
-            return HttpResponse::NotFound().json(
-                ApiResponse::<()>::error("User has no profile picture")
+            tracing::debug!("User {} has no profile picture, returning null", user_id);
+            return HttpResponse::Ok().json(
+                ApiResponse::success("No profile picture", serde_json::json!({ "url": null }))
             );
         }
     };

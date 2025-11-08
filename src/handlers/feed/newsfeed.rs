@@ -78,7 +78,7 @@ pub async fn get_unified_feed(
 
             -- Workout data (if post is workout type)
             wd.workout_start, wd.workout_end,
-            wd.duration_minutes, wd.calories_burned, wd.activity_name,
+            wd.duration_minutes, wd.calories_burned, wd.activity_name, wd.user_activity,
             wd.avg_heart_rate, wd.max_heart_rate, wd.heart_rate_zones,
             wd.stamina_gained, wd.strength_gained,
             wd.image_url as workout_image, wd.video_url as workout_video,
@@ -150,6 +150,7 @@ pub async fn get_unified_feed(
                             "duration_minutes": row.duration_minutes,
                             "calories_burned": row.calories_burned,
                             "activity_name": row.activity_name,
+                            "user_activity": row.user_activity,
                             "avg_heart_rate": row.avg_heart_rate,
                             "max_heart_rate": row.max_heart_rate,
                             "heart_rate_zones": row.heart_rate_zones,

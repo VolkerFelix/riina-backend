@@ -6,7 +6,7 @@ use serde_json::json;
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, delete_test_user};
 use common::workout_data_helpers::{upload_workout_data_for_user, WorkoutData, WorkoutType, create_health_profile_for_user};
-use common::admin_helpers::{create_admin_user_and_login, create_teams_for_test};
+use common::admin_helpers::{create_admin_user_and_login, create_teams_for_test, add_user_to_team};
 use riina_backend::db::health_data::get_user_health_profile_details;
 use riina_backend::game::stats_calculator::WorkoutStatsCalculator;
 
@@ -29,21 +29,8 @@ async fn test_trailing_7_day_average_calculation() {
     
     println!("Created test user with ID: {}", user.user_id);
     
-    // Add user to team using admin API
-    let add_user_response = make_authenticated_request(
-        &client,
-        reqwest::Method::POST,
-        &format!("{}/admin/teams/{}/members", test_app.address, team),
-        &admin_user.token,
-        Some(json!({
-            "user_id": user.user_id,
-            "role": "member"
-        })),
-    ).await;
-
-    let status = add_user_response.status();
-    let response_body = add_user_response.text().await.unwrap_or_default();
-    assert!(status.is_success(), "Should successfully add user to team. Status: {}, Body: {}", status, response_body);
+    // Add user to team
+    add_user_to_team(&test_app.address, &admin_user.token, team, user.user_id).await;
     
     let user_health_profile = get_user_health_profile_details(&test_app.db_pool, user.user_id).await.unwrap();
 
@@ -141,22 +128,8 @@ async fn test_leaderboard_sort_by_trailing_average() {
     create_health_profile_for_user(&client, &test_app.address, &user2).await.unwrap();
     
     // Add both users to team
-    for user in [&user1, &user2] {
-        let add_user_response = make_authenticated_request(
-            &client,
-            reqwest::Method::POST,
-            &format!("{}/admin/teams/{}/members", test_app.address, team),
-            &admin_user.token,
-            Some(json!({
-                "user_id": user.user_id,
-                "role": "member"
-            })),
-        ).await;
-
-        let status = add_user_response.status();
-        let response_body = add_user_response.text().await.unwrap_or_default();
-        assert!(status.is_success(), "Should successfully add user to team. Status: {}, Body: {}", status, response_body);
-    }
+    add_user_to_team(&test_app.address, &admin_user.token, team, user1.user_id).await;
+    add_user_to_team(&test_app.address, &admin_user.token, team, user2.user_id).await;
     
     let user1_health_profile = get_user_health_profile_details(&test_app.db_pool, user1.user_id).await.unwrap();
     let user2_health_profile = get_user_health_profile_details(&test_app.db_pool, user2.user_id).await.unwrap();

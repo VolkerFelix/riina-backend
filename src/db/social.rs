@@ -718,7 +718,11 @@ pub async fn mark_all_notifications_read(
     pool: &PgPool,
     user_id: Uuid,
 ) -> Result<u64, sqlx::Error> {
-    let result = sqlx::query(
+    // Start a transaction to handle both user-specific and broadcast notifications
+    let mut tx = pool.begin().await?;
+
+    // 1. Mark all user-specific unread notifications as read
+    let user_result = sqlx::query(
         r#"
         UPDATE notifications
         SET read = true
@@ -726,10 +730,29 @@ pub async fn mark_all_notifications_read(
         "#,
     )
     .bind(user_id)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
-    Ok(result.rows_affected())
+    // 2. Mark all broadcast notifications as read by inserting into user_notification_reads
+    // Get all unread broadcast notification IDs for this user
+    let broadcast_result = sqlx::query(
+        r#"
+        INSERT INTO user_notification_reads (user_id, notification_id)
+        SELECT $1, n.id
+        FROM notifications n
+        LEFT JOIN user_notification_reads unr ON n.id = unr.notification_id AND unr.user_id = $1
+        WHERE n.recipient_id IS NULL AND unr.notification_id IS NULL
+        ON CONFLICT (user_id, notification_id) DO NOTHING
+        "#,
+    )
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    // Return total rows affected (user-specific + broadcast)
+    Ok(user_result.rows_affected() + broadcast_result.rows_affected())
 }
 
 pub async fn get_unread_count(
