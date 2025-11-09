@@ -593,15 +593,19 @@ pub async fn get_notifications(
             n.entity_type,
             n.entity_id,
             n.message,
-            n.read,
+            CASE
+                WHEN n.recipient_id IS NULL THEN (unr.notification_id IS NOT NULL)
+                ELSE n.read
+            END as read,
             n.created_at
         FROM notifications n
         INNER JOIN users actor ON actor.id = n.actor_id
         CROSS JOIN users recipient
+        LEFT JOIN user_notification_reads unr ON n.id = unr.notification_id AND unr.user_id = $1
         WHERE recipient.id = $1
           AND (
             (n.recipient_id = $1 AND n.read = false)
-            OR (n.recipient_id IS NULL AND n.read = false)
+            OR (n.recipient_id IS NULL AND unr.notification_id IS NULL)
           )
           AND n.created_at >= recipient.created_at
         ORDER BY n.created_at DESC
@@ -618,11 +622,15 @@ pub async fn get_notifications(
             n.entity_type,
             n.entity_id,
             n.message,
-            n.read,
+            CASE
+                WHEN n.recipient_id IS NULL THEN (unr.notification_id IS NOT NULL)
+                ELSE n.read
+            END as read,
             n.created_at
         FROM notifications n
         INNER JOIN users actor ON actor.id = n.actor_id
         CROSS JOIN users recipient
+        LEFT JOIN user_notification_reads unr ON n.id = unr.notification_id AND unr.user_id = $1
         WHERE recipient.id = $1
           AND (n.recipient_id = $1 OR n.recipient_id IS NULL)
           AND n.created_at >= recipient.created_at
@@ -764,9 +772,12 @@ pub async fn get_unread_count(
         SELECT COUNT(*)
         FROM notifications n
         CROSS JOIN users u
+        LEFT JOIN user_notification_reads unr ON n.id = unr.notification_id AND unr.user_id = $1
         WHERE u.id = $1
-          AND (n.recipient_id = $1 OR n.recipient_id IS NULL)
-          AND n.read = false
+          AND (
+            (n.recipient_id = $1 AND n.read = false)
+            OR (n.recipient_id IS NULL AND unr.notification_id IS NULL)
+          )
           AND n.created_at >= u.created_at
         "#,
     )
