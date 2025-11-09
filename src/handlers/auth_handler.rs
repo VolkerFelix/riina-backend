@@ -5,9 +5,9 @@ use sqlx::PgPool;
 use chrono::{Utc, Duration};
 use jsonwebtoken::{encode, EncodingKey, Header};
 
-use crate::models::auth::{LoginRequest, LoginResponse, BiometricRefreshRequest};
+use crate::models::auth::{LoginRequest, LoginResponse, BiometricRefreshRequest, ResetPasswordRequest};
 use crate::models::user::{UserRole, UserStatus};
-use crate::utils::password::verify_password;
+use crate::utils::password::{verify_password, hash_password};
 use crate::config::jwt::JwtSettings;
 use crate::middleware::auth::Claims;
 
@@ -212,4 +212,72 @@ pub async fn refresh_biometric_token(
 
     tracing::info!("Successfully refreshed token for user {}", new_claims.sub);
     HttpResponse::Ok().json(LoginResponse { token: new_token })
+}
+
+#[tracing::instrument(
+    name = "Reset password",
+    skip(reset_request, pool),
+    fields(
+        username = %reset_request.username
+    )
+)]
+pub async fn reset_password(
+    reset_request: web::Json<ResetPasswordRequest>,
+    pool: web::Data<PgPool>,
+) -> HttpResponse {
+    // Check if user exists
+    let user_result = sqlx::query!(
+        r#"
+        SELECT id
+        FROM users
+        WHERE username = $1
+        "#,
+        reset_request.username,
+    )
+    .fetch_optional(pool.get_ref())
+    .await;
+
+    let user = match user_result {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            tracing::info!("User not found for password reset");
+            return HttpResponse::NotFound().json(serde_json::json!({
+                "error": "User not found"
+            }));
+        }
+        Err(e) => {
+            tracing::error!("Database error during password reset: {:?}", e);
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+
+    // Hash the new password
+    let password_hash = hash_password(reset_request.new_password.expose_secret());
+
+    // Update the password in the database
+    let update_result = sqlx::query!(
+        r#"
+        UPDATE users
+        SET password_hash = $1
+        WHERE id = $2
+        "#,
+        password_hash,
+        user.id,
+    )
+    .execute(pool.get_ref())
+    .await;
+
+    match update_result {
+        Ok(_) => {
+            tracing::info!("Password reset successful for user {}", reset_request.username);
+            HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "message": "Password reset successful"
+            }))
+        }
+        Err(e) => {
+            tracing::error!("Error updating password: {:?}", e);
+            HttpResponse::InternalServerError().finish()
+        }
+    }
 }

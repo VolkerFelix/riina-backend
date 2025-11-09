@@ -19,3 +19,11 @@ pub struct LoginResponse {
 pub struct BiometricRefreshRequest {
     pub token: String,
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct ResetPasswordRequest {
+    pub username: String,
+    #[serde(serialize_with = "crate::models::user::serialize_secret_string",
+            deserialize_with = "crate::models::user::deserialize_secret_string")]
+    pub new_password: SecretString,
+}
