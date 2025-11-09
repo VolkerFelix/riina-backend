@@ -108,7 +108,10 @@ pub async fn get_unified_feed(
 
             -- Effort rating info
             er.effort_rating as effort_rating,
-            (p.workout_id IS NOT NULL AND p.user_id = $1 AND er.effort_rating IS NULL) as needs_effort_rating
+            CASE
+                WHEN p.workout_id IS NOT NULL AND p.user_id = $1 AND er.effort_rating IS NULL THEN true
+                ELSE false
+            END as "needs_effort_rating!"
 
         FROM posts p
         JOIN users u ON u.id = p.user_id
@@ -192,7 +195,7 @@ pub async fn get_unified_feed(
 
                     // Effort rating (null if not rated, only for current user's workouts)
                     "effort_rating": row.effort_rating,
-                    "needs_effort_rating": row.needs_effort_rating.unwrap_or(false),
+                    "needs_effort_rating": row.needs_effort_rating,
                 })
             }).collect()
         },
