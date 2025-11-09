@@ -33,6 +33,9 @@ pub struct WorkoutHistoryItem {
     pub post_updated_at: DateTime<Utc>,
     pub post_edited_at: DateTime<Utc>,
     pub post_media_urls: Option<serde_json::Value>,
+    // Effort rating
+    pub effort_rating: Option<i16>,
+    pub needs_effort_rating: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -107,7 +110,7 @@ pub async fn get_workout_history(
     // Fetch workout history as posts that wrap workouts
     let workouts: Vec<WorkoutHistoryItem> = match sqlx::query!(
         r#"
-        SELECT 
+        SELECT
             wd.id,
             COALESCE(wd.workout_start, wd.created_at) as workout_date,
             wd.workout_start,
@@ -130,9 +133,11 @@ pub async fn get_workout_history(
             p.created_at as post_created_at,
             COALESCE(p.updated_at, p.created_at) as post_updated_at,
             COALESCE(p.edited_at, p.created_at) as post_edited_at,
-            p.media_urls as post_media_urls
+            p.media_urls as post_media_urls,
+            wsf.effort_rating as "effort_rating?"
         FROM workout_data wd
         INNER JOIN posts p ON p.workout_id = wd.id AND p.user_id = wd.user_id
+        LEFT JOIN workout_scoring_feedback wsf ON wsf.workout_data_id = wd.id AND wsf.user_id = wd.user_id
         WHERE wd.user_id = $1
         AND (wd.calories_burned > 100 OR wd.heart_rate_data IS NOT NULL)
         ORDER BY COALESCE(wd.workout_start, wd.created_at) DESC
@@ -199,6 +204,9 @@ pub async fn get_workout_history(
                     post_updated_at: row.post_updated_at.unwrap(),
                     post_edited_at: row.post_edited_at.unwrap(),
                     post_media_urls: row.post_media_urls,
+                    // Effort rating
+                    effort_rating: row.effort_rating,
+                    needs_effort_rating: row.effort_rating.is_none(),
                 }
             }).collect()
         },

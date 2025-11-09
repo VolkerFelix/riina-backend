@@ -68,6 +68,11 @@ pub async fn get_unified_feed(
             SELECT workout_id
             FROM post_reactions
             WHERE user_id = $1 AND workout_id IS NOT NULL
+        ),
+        effort_ratings AS (
+            SELECT workout_data_id, effort_rating
+            FROM workout_scoring_feedback
+            WHERE user_id = $1
         )
         SELECT
             p.id, p.user_id, p.post_type as "post_type: String",
@@ -99,7 +104,11 @@ pub async fn get_unified_feed(
             -- Social counts (from CTEs - much faster than subqueries)
             COALESCE(rc.count, 0) as reaction_count,
             COALESCE(cc.count, 0) as comment_count,
-            (ur.workout_id IS NOT NULL) as user_has_reacted
+            (CASE WHEN ur.workout_id IS NOT NULL THEN true ELSE false END)::boolean as "user_has_reacted!",
+
+            -- Effort rating info
+            er.effort_rating as "effort_rating?",
+            (CASE WHEN p.workout_id IS NOT NULL AND p.user_id = $1 AND er.effort_rating IS NULL THEN true ELSE false END)::boolean as "needs_effort_rating!"
 
         FROM posts p
         JOIN users u ON u.id = p.user_id
@@ -111,6 +120,7 @@ pub async fn get_unified_feed(
         LEFT JOIN reaction_counts rc ON rc.workout_id = p.workout_id
         LEFT JOIN comment_counts cc ON cc.workout_id = p.workout_id
         LEFT JOIN user_reactions ur ON ur.workout_id = p.workout_id
+        LEFT JOIN effort_ratings er ON er.workout_data_id = p.workout_id
         WHERE
             p.visibility = 'public'
             AND ($2::timestamptz IS NULL OR p.created_at < $2)
@@ -178,7 +188,11 @@ pub async fn get_unified_feed(
                     // Social counts
                     "reaction_count": row.reaction_count.unwrap_or(0),
                     "comment_count": row.comment_count.unwrap_or(0),
-                    "user_has_reacted": row.user_has_reacted.unwrap_or(false),
+                    "user_has_reacted": row.user_has_reacted,
+
+                    // Effort rating (null if not rated, only for current user's workouts)
+                    "effort_rating": row.effort_rating,
+                    "needs_effort_rating": row.needs_effort_rating,
                 })
             }).collect()
         },
