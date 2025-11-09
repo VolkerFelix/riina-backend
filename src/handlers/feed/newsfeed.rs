@@ -104,14 +104,11 @@ pub async fn get_unified_feed(
             -- Social counts (from CTEs - much faster than subqueries)
             COALESCE(rc.count, 0) as reaction_count,
             COALESCE(cc.count, 0) as comment_count,
-            (ur.workout_id IS NOT NULL) as user_has_reacted,
+            (CASE WHEN ur.workout_id IS NOT NULL THEN true ELSE false END)::boolean as "user_has_reacted!",
 
             -- Effort rating info
-            er.effort_rating as effort_rating,
-            CASE
-                WHEN p.workout_id IS NOT NULL AND p.user_id = $1 AND er.effort_rating IS NULL THEN true
-                ELSE false
-            END as "needs_effort_rating!"
+            er.effort_rating as "effort_rating?",
+            (CASE WHEN p.workout_id IS NOT NULL AND p.user_id = $1 AND er.effort_rating IS NULL THEN true ELSE false END)::boolean as "needs_effort_rating!"
 
         FROM posts p
         JOIN users u ON u.id = p.user_id
@@ -191,7 +188,7 @@ pub async fn get_unified_feed(
                     // Social counts
                     "reaction_count": row.reaction_count.unwrap_or(0),
                     "comment_count": row.comment_count.unwrap_or(0),
-                    "user_has_reacted": row.user_has_reacted.unwrap_or(false),
+                    "user_has_reacted": row.user_has_reacted,
 
                     // Effort rating (null if not rated, only for current user's workouts)
                     "effort_rating": row.effort_rating,
