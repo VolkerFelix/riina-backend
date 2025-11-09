@@ -581,7 +581,7 @@ pub async fn get_notifications(
     .fetch_one(pool)
     .await?;
 
-    // Get notifications
+    // Get notifications (both user-specific AND broadcast)
     let query_str = if unread_only {
         r#"
         SELECT
@@ -597,9 +597,12 @@ pub async fn get_notifications(
             n.created_at
         FROM notifications n
         INNER JOIN users actor ON actor.id = n.actor_id
-        INNER JOIN users recipient ON recipient.id = $1
-        WHERE n.recipient_id = $1
-          AND n.read = false
+        CROSS JOIN users recipient
+        WHERE recipient.id = $1
+          AND (
+            (n.recipient_id = $1 AND n.read = false)
+            OR (n.recipient_id IS NULL AND n.read = false)
+          )
           AND n.created_at >= recipient.created_at
         ORDER BY n.created_at DESC
         LIMIT $2 OFFSET $3
@@ -619,8 +622,9 @@ pub async fn get_notifications(
             n.created_at
         FROM notifications n
         INNER JOIN users actor ON actor.id = n.actor_id
-        INNER JOIN users recipient ON recipient.id = $1
-        WHERE n.recipient_id = $1
+        CROSS JOIN users recipient
+        WHERE recipient.id = $1
+          AND (n.recipient_id = $1 OR n.recipient_id IS NULL)
           AND n.created_at >= recipient.created_at
         ORDER BY n.created_at DESC
         LIMIT $2 OFFSET $3
@@ -754,13 +758,14 @@ pub async fn get_unread_count(
     pool: &PgPool,
     user_id: Uuid,
 ) -> Result<i64, sqlx::Error> {
-    // Count user-specific unread + broadcast notifications not yet read by user
+    // Count user-specific AND broadcast notifications (unread only)
     let count: i64 = sqlx::query_scalar(
         r#"
         SELECT COUNT(*)
         FROM notifications n
-        LEFT JOIN users u ON u.id = $1
-        WHERE n.recipient_id = $1
+        CROSS JOIN users u
+        WHERE u.id = $1
+          AND (n.recipient_id = $1 OR n.recipient_id IS NULL)
           AND n.read = false
           AND n.created_at >= u.created_at
         "#,
