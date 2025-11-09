@@ -20,7 +20,8 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(registration::register)
         .service(backend_health::backend_health)
         .service(auth::login)
-        .service(auth::biometric_refresh);
+        .service(auth::biometric_refresh)
+        .service(auth::reset_password_route);
     // Health routes (require authentication)
     cfg.service(
         web::scope("/health")
