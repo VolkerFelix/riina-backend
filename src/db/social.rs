@@ -581,29 +581,26 @@ pub async fn get_notifications(
     .fetch_one(pool)
     .await?;
 
-    // Get notifications (user-specific AND broadcast notifications)
-    // For broadcast notifications, check user_notification_reads to determine read status
+    // Get notifications
     let query_str = if unread_only {
         r#"
         SELECT
             n.id,
             n.recipient_id,
             n.actor_id,
-            u.username as actor_username,
+            actor.username as actor_username,
             n.notification_type,
             n.entity_type,
             n.entity_id,
             n.message,
-            CASE
-                WHEN n.recipient_id IS NULL THEN (unr.notification_id IS NOT NULL)
-                ELSE n.read
-            END as read,
+            n.read,
             n.created_at
         FROM notifications n
-        INNER JOIN users u ON u.id = n.actor_id
-        LEFT JOIN user_notification_reads unr ON n.id = unr.notification_id AND unr.user_id = $1
-        WHERE (n.recipient_id = $1 AND n.read = false)
-           OR (n.recipient_id IS NULL AND unr.notification_id IS NULL)
+        INNER JOIN users actor ON actor.id = n.actor_id
+        INNER JOIN users recipient ON recipient.id = $1
+        WHERE n.recipient_id = $1
+          AND n.read = false
+          AND n.created_at >= recipient.created_at
         ORDER BY n.created_at DESC
         LIMIT $2 OFFSET $3
         "#
@@ -613,20 +610,18 @@ pub async fn get_notifications(
             n.id,
             n.recipient_id,
             n.actor_id,
-            u.username as actor_username,
+            actor.username as actor_username,
             n.notification_type,
             n.entity_type,
             n.entity_id,
             n.message,
-            CASE
-                WHEN n.recipient_id IS NULL THEN (unr.notification_id IS NOT NULL)
-                ELSE n.read
-            END as read,
+            n.read,
             n.created_at
         FROM notifications n
-        INNER JOIN users u ON u.id = n.actor_id
-        LEFT JOIN user_notification_reads unr ON n.id = unr.notification_id AND unr.user_id = $1
-        WHERE (n.recipient_id = $1 OR n.recipient_id IS NULL)
+        INNER JOIN users actor ON actor.id = n.actor_id
+        INNER JOIN users recipient ON recipient.id = $1
+        WHERE n.recipient_id = $1
+          AND n.created_at >= recipient.created_at
         ORDER BY n.created_at DESC
         LIMIT $2 OFFSET $3
         "#
@@ -764,9 +759,10 @@ pub async fn get_unread_count(
         r#"
         SELECT COUNT(*)
         FROM notifications n
-        LEFT JOIN user_notification_reads unr ON n.id = unr.notification_id AND unr.user_id = $1
-        WHERE (n.recipient_id = $1 AND n.read = false)
-           OR (n.recipient_id IS NULL AND unr.notification_id IS NULL)
+        LEFT JOIN users u ON u.id = $1
+        WHERE n.recipient_id = $1
+          AND n.read = false
+          AND n.created_at >= u.created_at
         "#,
     )
     .bind(user_id)
