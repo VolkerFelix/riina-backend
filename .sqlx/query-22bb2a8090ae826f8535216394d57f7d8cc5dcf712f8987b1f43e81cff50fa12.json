@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT \n            wd.id,\n            COALESCE(wd.workout_start, wd.created_at) as workout_date,\n            wd.workout_start,\n            wd.workout_end,\n            wd.created_at,\n            wd.calories_burned as calories_burned,\n            wd.duration_minutes,\n            wd.activity_name,\n            wd.user_activity,\n            wd.avg_heart_rate,\n            wd.max_heart_rate,\n            wd.heart_rate_data,\n            wd.heart_rate_zones,\n            COALESCE(wd.stamina_gained, 0.0) as stamina_gained,\n            COALESCE(wd.strength_gained, 0.0) as strength_gained,\n            p.id as post_id,\n            p.content,\n            p.visibility::text as post_visibility,\n            p.is_editable,\n            p.created_at as post_created_at,\n            COALESCE(p.updated_at, p.created_at) as post_updated_at,\n            COALESCE(p.edited_at, p.created_at) as post_edited_at,\n            p.media_urls as post_media_urls\n        FROM workout_data wd\n        INNER JOIN posts p ON p.workout_id = wd.id AND p.user_id = wd.user_id\n        WHERE wd.user_id = $1\n        AND (wd.calories_burned > 100 OR wd.heart_rate_data IS NOT NULL)\n        ORDER BY COALESCE(wd.workout_start, wd.created_at) DESC\n        LIMIT $2 OFFSET $3\n        ",
+  "query": "\n        SELECT\n            wd.id,\n            COALESCE(wd.workout_start, wd.created_at) as workout_date,\n            wd.workout_start,\n            wd.workout_end,\n            wd.created_at,\n            wd.calories_burned as calories_burned,\n            wd.duration_minutes,\n            wd.activity_name,\n            wd.user_activity,\n            wd.avg_heart_rate,\n            wd.max_heart_rate,\n            wd.heart_rate_data,\n            wd.heart_rate_zones,\n            COALESCE(wd.stamina_gained, 0.0) as stamina_gained,\n            COALESCE(wd.strength_gained, 0.0) as strength_gained,\n            p.id as post_id,\n            p.content,\n            p.visibility::text as post_visibility,\n            p.is_editable,\n            p.created_at as post_created_at,\n            COALESCE(p.updated_at, p.created_at) as post_updated_at,\n            COALESCE(p.edited_at, p.created_at) as post_edited_at,\n            p.media_urls as post_media_urls,\n            wsf.effort_rating as \"effort_rating?\"\n        FROM workout_data wd\n        INNER JOIN posts p ON p.workout_id = wd.id AND p.user_id = wd.user_id\n        LEFT JOIN workout_scoring_feedback wsf ON wsf.workout_data_id = wd.id AND wsf.user_id = wd.user_id\n        WHERE wd.user_id = $1\n        AND (wd.calories_burned > 100 OR wd.heart_rate_data IS NOT NULL)\n        ORDER BY COALESCE(wd.workout_start, wd.created_at) DESC\n        LIMIT $2 OFFSET $3\n        ",
   "describe": {
     "columns": [
       {
@@ -117,6 +117,11 @@
         "ordinal": 22,
         "name": "post_media_urls",
         "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 23,
+        "name": "effort_rating?",
+        "type_info": "Int2"
       }
     ],
     "parameters": {
@@ -149,8 +154,9 @@
       false,
       null,
       null,
-      true
+      true,
+      false
     ]
   },
-  "hash": "fa3aa25e9a9d3b3c9cb622b8d278fee5b586b45bf6b3b6460eb8b6781bdc1e52"
+  "hash": "22bb2a8090ae826f8535216394d57f7d8cc5dcf712f8987b1f43e81cff50fa12"
 }
