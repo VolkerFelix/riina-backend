@@ -144,11 +144,13 @@ pub async fn get_game_live_score(
                     wd.duration_minutes as "duration_minutes?",
                     wd.heart_rate_zones as "heart_rate_zones?",
                     p.media_urls as "media_urls?",
-                    p.content as "post_content?"
+                    p.content as "post_content?",
+                    wsf.effort_rating as "effort_rating?"
                 FROM live_score_events lse
                 LEFT JOIN users u ON u.id = lse.user_id
                 LEFT JOIN workout_data wd ON wd.id = lse.workout_data_id
                 LEFT JOIN posts p ON p.workout_id = wd.id
+                LEFT JOIN workout_scoring_feedback wsf ON wsf.workout_data_id = wd.id AND wsf.user_id = lse.user_id
                 WHERE lse.game_id = $1
                 ORDER BY lse.occurred_at DESC
                 LIMIT $2 OFFSET $3
@@ -193,7 +195,9 @@ pub async fn get_game_live_score(
                             "duration_minutes": event.duration_minutes,
                             "heart_rate_zones": event.heart_rate_zones,
                             "media_urls": event.media_urls,
-                            "post_content": event.post_content
+                            "post_content": event.post_content,
+                            "effort_rating": event.effort_rating,
+                            "needs_effort_rating": event.effort_rating.is_none()
                         });
                     }
                     
