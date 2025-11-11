@@ -337,40 +337,137 @@ pub async fn update_team(
     body: web::Json<CreateTeamRequest>,
 ) -> Result<HttpResponse> {
     let team_id = path.into_inner();
+    let now = chrono::Utc::now();
 
+    // Start a transaction to handle owner change
+    let mut tx = match pool.begin().await {
+        Ok(tx) => tx,
+        Err(e) => {
+            eprintln!("Failed to start transaction: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to start database transaction"
+            })));
+        }
+    };
+
+    // Get current team owner
+    let current_team = sqlx::query!(
+        "SELECT user_id FROM teams WHERE id = $1",
+        team_id
+    )
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|e| {
+        eprintln!("Database error fetching team: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    let old_owner_id = match current_team {
+        Some(team) => team.user_id,
+        None => {
+            let _ = tx.rollback().await;
+            return Ok(HttpResponse::NotFound().json(serde_json::json!({
+                "error": "Team not found"
+            })));
+        }
+    };
+
+    // If owner is changing, validate that new owner is a team member
+    if old_owner_id != body.owner_id {
+        let new_owner_member = sqlx::query!(
+            "SELECT id FROM team_members WHERE team_id = $1 AND user_id = $2 AND status = 'active'",
+            team_id,
+            body.owner_id
+        )
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| {
+            eprintln!("Database error checking new owner membership: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?;
+
+        if new_owner_member.is_none() {
+            let _ = tx.rollback().await;
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "error": "New owner must be an active team member"
+            })));
+        }
+    }
+
+    // Update team details including owner
     let result = sqlx::query!(
         r#"
-        UPDATE teams 
-        SET team_name = $1, team_color = $2, updated_at = $3
-        WHERE id = $4
+        UPDATE teams
+        SET team_name = $1, team_color = $2, user_id = $3, updated_at = $4
+        WHERE id = $5
         "#,
         body.name,
         body.color,
-        chrono::Utc::now(),
+        body.owner_id,
+        now,
         team_id
     )
-    .execute(pool.get_ref())
+    .execute(&mut *tx)
     .await;
 
-    match result {
-        Ok(result) => {
-            if result.rows_affected() > 0 {
-                // Fetch updated team
-                let team = get_team_by_id(pool, web::Path::from(team_id)).await?;
-                Ok(team)
-            } else {
-                Ok(HttpResponse::NotFound().json(serde_json::json!({
-                    "error": "Team not found"
-                })))
-            }
-        }
-        Err(e) => {
-            eprintln!("Database error updating team: {}", e);
-            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": "Failed to update team"
-            })))
+    if let Err(e) = result {
+        eprintln!("Database error updating team: {}", e);
+        let _ = tx.rollback().await;
+        return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": "Failed to update team"
+        })));
+    }
+
+    // If owner changed, update team_members roles
+    if old_owner_id != body.owner_id {
+        // Update old owner's role from 'owner' to 'admin'
+        let _ = sqlx::query!(
+            r#"
+            UPDATE team_members
+            SET role = 'admin', updated_at = $1
+            WHERE team_id = $2 AND user_id = $3 AND role = 'owner'
+            "#,
+            now,
+            team_id,
+            old_owner_id
+        )
+        .execute(&mut *tx)
+        .await;
+
+        // Update new owner's role to 'owner'
+        let update_result = sqlx::query!(
+            r#"
+            UPDATE team_members
+            SET role = 'owner', updated_at = $1
+            WHERE team_id = $2 AND user_id = $3
+            "#,
+            now,
+            team_id,
+            body.owner_id
+        )
+        .execute(&mut *tx)
+        .await;
+
+        if let Err(e) = update_result {
+            eprintln!("Database error updating new owner role: {}", e);
+            let _ = tx.rollback().await;
+            return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to update owner role"
+            })));
         }
     }
+
+    // Commit the transaction
+    if let Err(e) = tx.commit().await {
+        eprintln!("Failed to commit transaction: {}", e);
+        return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": "Failed to commit team update"
+        })));
+    }
+
+    // Fetch updated team
+    let team = get_team_by_id(pool, web::Path::from(team_id)).await?;
+    Ok(team)
 }
 
 // DELETE /admin/teams/{id} - Delete team

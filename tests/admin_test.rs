@@ -348,6 +348,148 @@ async fn admin_update_team_modifies_team_data() {
 }
 
 #[tokio::test]
+async fn admin_update_team_owner_changes_ownership() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+    let admin = create_admin_user_and_login(&test_app.address).await;
+
+    // Create a second user to be the new owner
+    let new_owner = create_test_user_and_login(&test_app.address).await;
+
+    // Create a team with admin as owner
+    let team_request = json!({
+        "name": format!("Ownership Test Team {}", &Uuid::new_v4().to_string()[..8]),
+        "color": "#FF5733",
+        "owner_id": admin.user_id
+    });
+
+    let create_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/teams", test_app.address),
+        &admin.token,
+        Some(team_request),
+    ).await;
+
+    let create_body: serde_json::Value = create_response.json().await.expect("Failed to parse create response");
+    let team_id = create_body["data"]["id"].as_str().unwrap();
+
+    // Add new owner as a team member first
+    let add_member_request = json!({
+        "user_id": new_owner.user_id,
+        "role": "member"
+    });
+
+    let add_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/teams/{}/members", test_app.address, team_id),
+        &admin.token,
+        Some(add_member_request),
+    ).await;
+
+    assert_eq!(201, add_response.status().as_u16());
+
+    // Update team to change owner
+    let update_request = json!({
+        "name": format!("Updated Owner Team {}", &Uuid::new_v4().to_string()[..8]),
+        "color": "#FF5733",
+        "owner_id": new_owner.user_id
+    });
+
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::PATCH,
+        &format!("{}/admin/teams/{}", test_app.address, team_id),
+        &admin.token,
+        Some(update_request),
+    ).await;
+
+    assert_eq!(200, response.status().as_u16());
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse response");
+    assert_eq!(new_owner.user_id.to_string(), body["data"]["owner_id"].as_str().unwrap());
+
+    // Verify team members have correct roles
+    let members_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/admin/teams/{}/members", test_app.address, team_id),
+        &admin.token,
+        None,
+    ).await;
+
+    assert_eq!(200, members_response.status().as_u16());
+
+    let members_body: serde_json::Value = members_response.json().await.expect("Failed to parse members response");
+    let members = members_body["data"].as_array().unwrap();
+
+    // Find old and new owner in members list
+    let new_owner_member = members.iter().find(|m| m["user_id"].as_str().unwrap() == new_owner.user_id.to_string());
+    let old_owner_member = members.iter().find(|m| m["user_id"].as_str().unwrap() == admin.user_id.to_string());
+
+    assert!(new_owner_member.is_some());
+    assert_eq!("owner", new_owner_member.unwrap()["role"].as_str().unwrap());
+
+    assert!(old_owner_member.is_some());
+    assert_eq!("admin", old_owner_member.unwrap()["role"].as_str().unwrap());
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin.token, new_owner.user_id).await;
+}
+
+#[tokio::test]
+async fn admin_update_team_owner_fails_if_new_owner_not_member() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+    let admin = create_admin_user_and_login(&test_app.address).await;
+
+    // Create a second user who is NOT a team member
+    let non_member = create_test_user_and_login(&test_app.address).await;
+
+    // Create a team with admin as owner
+    let team_request = json!({
+        "name": format!("Test Team {}", &Uuid::new_v4().to_string()[..8]),
+        "color": "#0099FF",
+        "owner_id": admin.user_id
+    });
+
+    let create_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/teams", test_app.address),
+        &admin.token,
+        Some(team_request),
+    ).await;
+
+    let create_body: serde_json::Value = create_response.json().await.expect("Failed to parse create response");
+    let team_id = create_body["data"]["id"].as_str().unwrap();
+
+    // Try to update team owner to someone who is not a member
+    let update_request = json!({
+        "name": "Updated Team",
+        "color": "#0099FF",
+        "owner_id": non_member.user_id
+    });
+
+    let response = make_authenticated_request(
+        &client,
+        reqwest::Method::PATCH,
+        &format!("{}/admin/teams/{}", test_app.address, team_id),
+        &admin.token,
+        Some(update_request),
+    ).await;
+
+    assert_eq!(400, response.status().as_u16());
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse response");
+    assert!(body["error"].as_str().unwrap().contains("active team member"));
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin.token, non_member.user_id).await;
+}
+
+#[tokio::test]
 async fn admin_delete_team_removes_team() {
     let test_app = spawn_app().await;
     let client = Client::new();
