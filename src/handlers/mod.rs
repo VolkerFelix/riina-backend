@@ -9,3 +9,4 @@ pub mod social;
 pub mod feed;
 pub mod posts;
 pub mod media;
+pub mod analytics_handler;
