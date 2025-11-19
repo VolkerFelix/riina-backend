@@ -33,6 +33,9 @@ pub struct AdminWorkoutDetail {
     pub workout_start: Option<DateTime<Utc>>,
     pub workout_end: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
+    pub stamina_gained: Option<f32>,
+    pub strength_gained: Option<f32>,
+    pub zone_breakdown: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -121,7 +124,7 @@ pub async fn get_workout_detail(
     workout_id: web::Path<Uuid>,
 ) -> Result<HttpResponse, actix_web::Error> {
     let workout_query = r#"
-        SELECT 
+        SELECT
             wd.id,
             wd.user_id,
             u.username,
@@ -131,7 +134,10 @@ pub async fn get_workout_detail(
             wd.workout_uuid,
             wd.workout_start,
             wd.workout_end,
-            wd.created_at
+            wd.created_at,
+            wd.stamina_gained,
+            wd.strength_gained,
+            wd.heart_rate_zones
         FROM workout_data wd
         JOIN users u ON u.id = wd.user_id
         WHERE wd.id = $1
@@ -193,6 +199,9 @@ pub async fn get_workout_detail(
         workout_start: row.get("workout_start"),
         workout_end: row.get("workout_end"),
         created_at: row.get("created_at"),
+        stamina_gained: row.get("stamina_gained"),
+        strength_gained: row.get("strength_gained"),
+        zone_breakdown: row.get("heart_rate_zones"),
     };
 
     Ok(HttpResponse::Ok().json(ApiResponse {
