@@ -31,10 +31,28 @@ async fn calculate_stats_universal_hr_based(user_health_profile: UserHealthProfi
 
 fn calculate_score_from_training_zones(training_zones: TrainingZones, hr_data: Vec<HeartRateData>) -> Result<WorkoutStats, Error> {
     let mut workout_stats = WorkoutStats::new();
+
+    // Initialize zone breakdowns with HR ranges
+    let rest_zone = training_zones.zones.get(&TrainingZoneName::REST).unwrap();
     let mut rest = ZoneBreakdown::new(TrainingZoneName::REST.to_string());
+    rest.hr_min = Some(rest_zone.zone.low);
+    rest.hr_max = Some(rest_zone.zone.high);
+
+    let easy_zone = training_zones.zones.get(&TrainingZoneName::EASY).unwrap();
     let mut easy = ZoneBreakdown::new(TrainingZoneName::EASY.to_string());
+    easy.hr_min = Some(easy_zone.zone.low);
+    easy.hr_max = Some(easy_zone.zone.high);
+
+    let moderate_zone = training_zones.zones.get(&TrainingZoneName::MODERATE).unwrap();
     let mut moderate = ZoneBreakdown::new(TrainingZoneName::MODERATE.to_string());
+    moderate.hr_min = Some(moderate_zone.zone.low);
+    moderate.hr_max = Some(moderate_zone.zone.high);
+
+    let hard_zone = training_zones.zones.get(&TrainingZoneName::HARD).unwrap();
     let mut hard = ZoneBreakdown::new(TrainingZoneName::HARD.to_string());
+    hard.hr_min = Some(hard_zone.zone.low);
+    hard.hr_max = Some(hard_zone.zone.high);
+
     let mut points = 0.0;
 
     tracing::info!("📊 Processing {} heart rate data points", hr_data.len());

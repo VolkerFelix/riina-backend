@@ -1,4 +1,3 @@
-use std::io::Error;
 use crate::models::workout_data::HeartRateData;
 
 pub fn filter_heart_rate_data(heart_rate_data: &mut Vec<HeartRateData>) -> usize {
@@ -6,13 +5,27 @@ pub fn filter_heart_rate_data(heart_rate_data: &mut Vec<HeartRateData>) -> usize
         return 0;
     }
     let original_len = heart_rate_data.len();
-    // Heart rate is already in ascending order
-    // Remove samples if timestamp goes back in time compared to previous sample
-    // Find the first point where this happens and truncate
-    if let Some(pos) = heart_rate_data.windows(2).position(|w| w[1].timestamp <= w[0].timestamp) {
-        // Truncate at that position, keeping only valid ascending data
-        heart_rate_data.truncate(pos + 1);
+
+    // Remove duplicate or out-of-order timestamps while preserving valid data
+    // Strategy: Keep samples where timestamp is strictly greater than previous
+    let mut filtered_data = Vec::with_capacity(heart_rate_data.len());
+
+    // Always keep the first sample
+    filtered_data.push(heart_rate_data[0].clone());
+
+    // For each subsequent sample, only keep if timestamp is strictly after the last kept sample
+    for sample in heart_rate_data.iter().skip(1) {
+        if sample.timestamp > filtered_data.last().unwrap().timestamp {
+            filtered_data.push(sample.clone());
+        } else {
+            tracing::debug!(
+                "Filtering out HR sample with non-increasing timestamp: {} <= {}",
+                sample.timestamp,
+                filtered_data.last().unwrap().timestamp
+            );
+        }
     }
 
+    *heart_rate_data = filtered_data;
     original_len - heart_rate_data.len()
 }

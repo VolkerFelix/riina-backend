@@ -3,6 +3,7 @@ use riina_backend::models::workout_data::HeartRateData;
 use riina_backend::models::health::{Gender, TrainingZones, UserHealthProfile};
 use riina_backend::workout::universal_hr_based_scoring::UniversalHRBasedScoring;
 use riina_backend::game::stats_calculator::ScoringMethod;
+use riina_backend::utils::heart_rate_filters::filter_heart_rate_data;
 
 #[tokio::test]
 async fn test_workout_zone_duration_bug() {
@@ -64,7 +65,7 @@ async fn test_workout_zone_duration_bug() {
     ];
 
     let date = NaiveDate::from_ymd_opt(2025, 11, 17).unwrap();
-    let hr_data: Vec<HeartRateData> = hr_samples
+    let mut hr_data: Vec<HeartRateData> = hr_samples
         .iter()
         .map(|(time_str, hr)| {
             let time = NaiveTime::parse_from_str(time_str, "%H:%M:%S").unwrap();
@@ -75,6 +76,10 @@ async fn test_workout_zone_duration_bug() {
             }
         })
         .collect();
+
+    // Apply the same filter that the backend applies during workout upload
+    let removed_samples = filter_heart_rate_data(&mut hr_data);
+    println!("\n⚠️ FILTER APPLIED: Removed {} HR samples due to duplicate/non-increasing timestamps", removed_samples);
 
     // Calculate expected workout duration
     let start_time = hr_data.first().unwrap().timestamp;
