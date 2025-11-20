@@ -159,3 +159,31 @@ pub async fn check_workout_exists_by_time(
     
     Ok(record.is_some())
 }
+
+pub async fn create_post_for_workout(
+    pool: &Pool<Postgres>,
+    user_id: Uuid,
+    workout_id: Uuid,
+    image_urls: &Option<Vec<String>>,
+    video_urls: &Option<Vec<String>>,
+    workout_start: DateTime<Utc>,
+) -> Result<Uuid, sqlx::Error> {
+
+    // Create a post for this workout with media files (mandatory)
+    let record = sqlx::query!(
+        r#"
+        INSERT INTO posts (id, user_id, post_type, workout_id, image_urls, video_urls, visibility, is_editable, created_at, updated_at)
+        VALUES (gen_random_uuid(), $1, 'workout'::post_type, $2, $3, $4, 'public'::post_visibility, true, $5, $5)
+        RETURNING id
+        "#,
+        user_id,
+        workout_id,
+        image_urls,
+        video_urls,
+        workout_start
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(record.id)
+}

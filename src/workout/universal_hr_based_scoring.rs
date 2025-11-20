@@ -21,8 +21,8 @@ async fn calculate_stats_universal_hr_based(user_health_profile: UserHealthProfi
         return Ok(WorkoutStats::new());
     }
     // Calculate training zones
-    let hr_max = user_health_profile.max_heart_rate.unwrap_or(300);
-    let hr_rest = user_health_profile.resting_heart_rate.unwrap_or(60);
+    let hr_max = user_health_profile.max_heart_rate;
+    let hr_rest = user_health_profile.resting_heart_rate;
     let hr_reserve = hr_max - hr_rest;
     let training_zones = TrainingZones::new(hr_rest, hr_reserve, P_VT0, P_VT1, P_VT2);
 

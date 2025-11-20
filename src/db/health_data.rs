@@ -25,18 +25,16 @@ pub async fn get_user_health_profile_details(pool: &Pool<Postgres>, user_id: Uui
                 _ => Gender::Other,
             };
 
-            let resting_heart_rate = row.resting_heart_rate.unwrap_or(60);
-
             let profile = UserHealthProfile {
                 age: row.age.unwrap_or(30), // Default age if not provided
                 gender,
-                resting_heart_rate: Some(resting_heart_rate),
+                resting_heart_rate: row.resting_heart_rate,
                 max_heart_rate: row.max_heart_rate,
             };
-            
-            tracing::info!("✅ Found health profile: age={}, gender={:?}, resting_hr={:?}", 
-                profile.age, profile.gender, profile.resting_heart_rate);
-            
+
+            tracing::info!("✅ Found health profile: age={}, gender={:?}, resting_hr={}, max_hr={}",
+                profile.age, profile.gender, profile.resting_heart_rate, profile.max_heart_rate);
+
             Ok(profile)
         }
         None => {
@@ -45,8 +43,8 @@ pub async fn get_user_health_profile_details(pool: &Pool<Postgres>, user_id: Uui
             Ok(UserHealthProfile {
                 age: 30,
                 gender: Gender::Other,
-                resting_heart_rate: Some(60),
-                max_heart_rate: None,
+                resting_heart_rate: 65,
+                max_heart_rate: 190,
             })
         }
     }

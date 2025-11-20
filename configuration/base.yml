@@ -17,3 +17,5 @@ minio:
   bucket_name: evolveme-media
   region: us-east-1
   testing: false
+ml:
+  service_url: http://ml-service:8081

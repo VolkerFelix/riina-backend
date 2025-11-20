@@ -7,6 +7,7 @@ use serde::Deserialize;
 use crate::config::jwt::JwtSettings;
 use crate::config::redis::RedisSettings;
 use crate::config::minio::MinIOSettings;
+use crate::config::ml::MLSettings;
 
 #[derive(Deserialize, Debug)]
 pub struct Settings{
@@ -15,6 +16,7 @@ pub struct Settings{
     pub jwt: JwtSettings,
     pub redis: RedisSettings,
     pub minio: MinIOSettings,
+    pub ml: MLSettings,
 }
 
 #[derive(Deserialize, Debug)]
@@ -110,6 +112,11 @@ pub fn get_config() -> Result<Settings, ConfigError> {
     // Allow JWT secret override from environment variable
     if let Ok(jwt_secret) = env::var("JWT_SECRET") {
         settings.jwt.secret = SecretString::new(jwt_secret.into_boxed_str());
+    }
+
+    // Allow ML_SERVICE_URL override from environment variable
+    if let Ok(ml_url) = env::var("ML_SERVICE_URL") {
+        settings.ml.service_url = ml_url;
     }
 
     Ok(settings)

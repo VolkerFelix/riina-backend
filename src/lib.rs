@@ -16,9 +16,11 @@ pub mod game;
 pub mod league;
 pub mod workout;
 pub mod services;
+pub mod ml_client;
 use crate::routes::init_routes;
 use crate::config::jwt::JwtSettings;
 use crate::services::{SchedulerService, MinIOService};
+use crate::ml_client::MLClient;
 use std::sync::Arc;
 
 pub fn run(
@@ -27,15 +29,18 @@ pub fn run(
     jwt_settings: JwtSettings,
     redis_client: Arc<redis::Client>,
     scheduler_service: Arc<SchedulerService>,
-    minio_service: MinIOService
+    minio_service: MinIOService,
+    ml_client: MLClient
 ) -> Result<Server, std::io::Error> {
     // Wrap using web::Data, which boils down to an Arc smart pointer
     let db_pool_data = web::Data::new(db_pool.clone());
     let jwt_settings = web::Data::new(jwt_settings);
     let scheduler_service = web::Data::new(scheduler_service);
     let redis_client_data = web::Data::new(redis_client.clone());
-    
-    
+
+    // Wrap ML Client (optional)
+    let ml_client_data = ml_client.map(|client| web::Data::new(client));
+
     // Wrap MinIOService
     let minio_service_data = web::Data::new(minio_service);
 
@@ -66,8 +71,9 @@ pub fn run(
             .app_data(db_pool_data.clone())
             .app_data(jwt_settings.clone())
             .app_data(scheduler_service.clone())
-            .app_data(minio_service_data.clone());
-        app = app.app_data(redis_client_data.clone());
+            .app_data(minio_service_data.clone())
+            .app_data(redis_client_data.clone())
+            .app_data(ml_client_data.clone());
 
         app.configure(init_routes)
     })

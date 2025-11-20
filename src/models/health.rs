@@ -129,8 +129,8 @@ pub enum Gender {
 pub struct UserHealthProfile {
     pub age: i32,
     pub gender: Gender,
-    pub resting_heart_rate: Option<i32>,
-    pub max_heart_rate: Option<i32>,
+    pub resting_heart_rate: i32,
+    pub max_heart_rate: i32,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
