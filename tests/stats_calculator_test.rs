@@ -29,12 +29,13 @@ async fn test_zone_1_active_recovery() {
     .unwrap();
     
     sqlx::query(
-        "INSERT INTO user_health_profiles (user_id, age, gender, resting_heart_rate) VALUES ($1, $2, $3, $4)"
+        "INSERT INTO user_health_profiles (user_id, age, gender, resting_heart_rate, max_heart_rate) VALUES ($1, $2, $3, $4, $5)"
     )
     .bind(user_id)
     .bind(25)
     .bind("male")
     .bind(60)
+    .bind(195) // Calculated max HR for 25-year-old male
     .execute(&test_app.db_pool)
     .await
     .unwrap();
@@ -46,11 +47,11 @@ async fn test_zone_1_active_recovery() {
     let workout_end = now;
     let base_time = workout_start;
     
-    // Generate 5 minutes of Zone 1 heart rate data
+    // Generate 5 minutes of Zone 1 (REST zone) heart rate data
     for i in 0..300 { // 300 seconds = 5 minutes
         heart_rate_data.push(HeartRateData {
             timestamp: base_time + Duration::seconds(i),
-            heart_rate: 130, // Zone 1 for 25-year-old male (resting 60, max ~190)
+            heart_rate: 100, // Zone 1 (REST) for 25-year-old male (resting 60, max 195, HRR 135 -> 0-35% = 60-107 bpm)
         });
     }
     
@@ -100,12 +101,13 @@ async fn test_zone_2_aerobic_base() {
     .unwrap();
     
     sqlx::query(
-        "INSERT INTO user_health_profiles (user_id, age, gender, resting_heart_rate) VALUES ($1, $2, $3, $4)"
+        "INSERT INTO user_health_profiles (user_id, age, gender, resting_heart_rate, max_heart_rate) VALUES ($1, $2, $3, $4, $5)"
     )
     .bind(user_id)
     .bind(25)
     .bind("male")
     .bind(60)
+    .bind(195) // Calculated max HR for 25-year-old male
     .execute(&test_app.db_pool)
     .await
     .unwrap();
@@ -172,12 +174,13 @@ async fn test_zone_4_lactate_threshold() {
     .unwrap();
     
     sqlx::query(
-        "INSERT INTO user_health_profiles (user_id, age, gender, resting_heart_rate) VALUES ($1, $2, $3, $4)"
+        "INSERT INTO user_health_profiles (user_id, age, gender, resting_heart_rate, max_heart_rate) VALUES ($1, $2, $3, $4, $5)"
     )
     .bind(user_id)
     .bind(25)
     .bind("male")
     .bind(60)
+    .bind(195) // Calculated max HR for 25-year-old male
     .execute(&test_app.db_pool)
     .await
     .unwrap();
@@ -244,12 +247,13 @@ async fn test_zone_5_neuromuscular_power() {
     .unwrap();
     
     sqlx::query(
-        "INSERT INTO user_health_profiles (user_id, age, gender, resting_heart_rate) VALUES ($1, $2, $3, $4)"
+        "INSERT INTO user_health_profiles (user_id, age, gender, resting_heart_rate, max_heart_rate) VALUES ($1, $2, $3, $4, $5)"
     )
     .bind(user_id)
     .bind(25)
     .bind("male")
     .bind(60)
+    .bind(195) // Calculated max HR for 25-year-old male
     .execute(&test_app.db_pool)
     .await
     .unwrap();
@@ -316,12 +320,13 @@ async fn test_no_heart_rate_no_gains() {
     .unwrap();
     
     sqlx::query(
-        "INSERT INTO user_health_profiles (user_id, age, gender, resting_heart_rate) VALUES ($1, $2, $3, $4)"
+        "INSERT INTO user_health_profiles (user_id, age, gender, resting_heart_rate, max_heart_rate) VALUES ($1, $2, $3, $4, $5)"
     )
     .bind(user_id)
     .bind(25)
     .bind("male")
     .bind(60)
+    .bind(195) // Calculated max HR for 25-year-old male
     .execute(&test_app.db_pool)
     .await
     .unwrap();

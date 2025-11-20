@@ -185,7 +185,7 @@ pub async fn update_health_profile(
             tracing::info!("Successfully updated health profile for user: {}", claims.username);
             
             // Calculate and store heart rate zones if we have age and resting heart rate
-            if let (Some(age), Some(resting_heart_rate)) = (profile_record.age, profile_record.resting_heart_rate) {
+            if let Some(age) = profile_record.age {
                 let gender = match profile_data.gender.as_deref() {
                     Some("male") | Some("m") => Gender::Male,
                     Some("female") | Some("f") => Gender::Female,
@@ -197,7 +197,7 @@ pub async fn update_health_profile(
                     &pool,
                     user_id,
                     max_heart_rate,
-                    resting_heart_rate,
+                    profile_record.resting_heart_rate,
                 ).await {
                     Ok(_) => {
                         tracing::info!("Successfully calculated and stored VT thresholds for user: {}", claims.username);

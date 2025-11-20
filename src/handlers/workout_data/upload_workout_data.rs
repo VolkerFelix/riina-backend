@@ -6,7 +6,7 @@ use redis::AsyncCommands;
 use std::sync::Arc;
 use crate::middleware::auth::Claims;
 use crate::db::{
-    workout_data::{insert_workout_data, create_post_for_workout},
+    workout_data::{insert_workout_data, create_post_for_workout, update_workout_data_with_classification_and_score},
     game_queries::GameQueries,
     health_data::{get_user_health_profile_details, update_max_heart_rate_and_vt_thresholds},
 };
@@ -24,7 +24,7 @@ use crate::utils::{
     heart_rate_filters::filter_heart_rate_data,
 };
 use crate::config::jwt::JwtSettings;
-use crate::ml_client::MLClient;
+use crate::services::ml_client::{ClassifyResponse, MLClient};
 
 #[tracing::instrument(
     name = "Upload workout data with game stats",
@@ -148,7 +148,7 @@ pub async fn upload_workout_data(
 
     // Create a post for this workout with media files (mandatory)
     match create_post_for_workout(&pool, user_id, sync_id, &data.image_urls, &data.video_urls, data.workout_start).await {
-        Ok(post_id) => tracing::info!("✅ Successfully created post for workout {} with media", sync_id),
+        Ok(_post_id) => tracing::info!("✅ Successfully created post for workout {} with media", sync_id),
         Err(e) => {
             tracing::error!("❌ Failed to create post for workout {}: {}", sync_id, e);
             return HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Failed to create post for workout")
@@ -163,7 +163,7 @@ pub async fn upload_workout_data(
     update_max_heart_rate_if_needed(&mut user_health_profile, &heart_rate_data, user_id, &pool).await;
 
     // 🤖 ML CLASSIFICATION
-    let (ml_prediction, ml_confidence) = match ml_client.classify_workout(
+    let ml_classification = match ml_client.classify_workout(
         &heart_rate_data,
         user_health_profile.resting_heart_rate,
         user_health_profile.max_heart_rate
@@ -171,11 +171,11 @@ pub async fn upload_workout_data(
         Ok(classification) => {
             tracing::info!("🤖 ML classified workout as '{}' with {:.1}% confidence",
                 classification.prediction, classification.confidence * 100.0);
-            (Some(classification.prediction), Some(classification.confidence))
+            classification
         }
         Err(e) => {
             tracing::warn!("⚠️ ML classification failed: {}. Continuing without classification.", e);
-            (None, None)
+            ClassifyResponse::default()
         }
     };
 
@@ -197,42 +197,14 @@ pub async fn upload_workout_data(
     // Heart rate zone breakdown - always use the scoring system's zone breakdown
     let zone_breakdown = workout_stats.zone_breakdown.clone().unwrap_or_default();
 
-    // Update the workout record with the calculated stats and ML classification
-    let ml_classified_at = if ml_prediction.is_some() { Some(Utc::now()) } else { None };
-
-    match sqlx::query!(
-        r#"
-        UPDATE workout_data
-        SET stamina_gained = $1,
-            strength_gained = $2,
-            total_points_gained = $3,
-            heart_rate_zones = $4,
-            ml_prediction = $5,
-            ml_confidence = $6,
-            ml_classified_at = $7
-        WHERE id = $8
-        "#,
-        workout_stats.changes.stamina_change,
-        workout_stats.changes.strength_change,
-        (workout_stats.changes.stamina_change + workout_stats.changes.strength_change) as i32,
-        serde_json::to_value(&zone_breakdown).unwrap_or(serde_json::Value::Null),
-        ml_prediction.as_deref(),
-        ml_confidence.map(|c| c as f64),
-        ml_classified_at,
-        sync_id
-    )
-    .execute(pool.get_ref())
-    .await {
-        Ok(_) => {
-            tracing::debug!("Successfully updated workout stats");
-        }
+    match update_workout_data_with_classification_and_score(&pool, sync_id, &workout_stats, &zone_breakdown, &ml_classification).await {
+        Ok(_) => tracing::debug!("Successfully updated workout stats"),
         Err(e) => {
             tracing::error!("Failed to update workout stats: {}", e);
-            return HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error("Failed to update workout stats")
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Failed to update workout stats")
             );
         }
-    }
+    };
 
     // Update user avatar stats
     let update_result = update_user_stats(user_id, &workout_stats.changes, &pool).await;

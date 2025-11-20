@@ -16,11 +16,9 @@ pub mod game;
 pub mod league;
 pub mod workout;
 pub mod services;
-pub mod ml_client;
 use crate::routes::init_routes;
 use crate::config::jwt::JwtSettings;
-use crate::services::{SchedulerService, MinIOService};
-use crate::ml_client::MLClient;
+use crate::services::{SchedulerService, MinIOService, MLClient};
 use std::sync::Arc;
 
 pub fn run(
@@ -38,8 +36,8 @@ pub fn run(
     let scheduler_service = web::Data::new(scheduler_service);
     let redis_client_data = web::Data::new(redis_client.clone());
 
-    // Wrap ML Client (optional)
-    let ml_client_data = ml_client.map(|client| web::Data::new(client));
+    // Wrap ML Client
+    let ml_client_data = web::Data::new(ml_client);
 
     // Wrap MinIOService
     let minio_service_data = web::Data::new(minio_service);

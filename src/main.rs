@@ -6,8 +6,12 @@ use std::time::Duration;
 
 use riina_backend::run;
 use riina_backend::config::settings::{get_config, get_jwt_settings};
-use riina_backend::services::{SchedulerService, MinIOService, telemetry::{get_subscriber, init_subscriber}, redis_service::RedisService};
-use riina_backend::ml_client::MLClient;
+use riina_backend::services::{
+    SchedulerService, MinIOService,
+    telemetry::{get_subscriber, init_subscriber},
+    redis_service::RedisService,
+    ml_client::MLClient
+};
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
@@ -62,17 +66,7 @@ async fn main() -> std::io::Result<()> {
     };
 
     // ML Client
-    let client = MLClient::new(config.ml.service_url.clone());
-    let ml_client = match client.health_check().await {
-        Ok(true) => {
-            tracing::info!("✅ ML service is healthy at {}", config.ml.service_url);
-            Some(client)
-        }
-        Ok(false) | Err(_) => {
-            tracing::warn!("⚠️ ML service unavailable. Continuing without ML classification.");
-            None
-        }
-    };
+    let ml_client = MLClient::new(config.ml.service_url.clone());
 
     run(
         listener,

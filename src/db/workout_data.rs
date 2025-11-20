@@ -2,7 +2,10 @@ use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 use chrono::{Duration, DateTime, Utc};
 
-use crate::models::workout_data::{WorkoutDataUploadRequest, HeartRateData, WorkoutStats};
+use crate::{
+    services::ml_client::ClassifyResponse,
+    models::workout_data::{HeartRateData, WorkoutDataUploadRequest, WorkoutStats, ZoneBreakdown}
+};
 
 /// Calculate duration in minutes from start/end times
 fn calculate_duration_minutes(data: &WorkoutDataUploadRequest) -> Option<i32> {
@@ -160,6 +163,17 @@ pub async fn check_workout_exists_by_time(
     Ok(record.is_some())
 }
 
+#[tracing::instrument(
+    name = "Create post for workout",
+    skip(pool, user_id, workout_id, image_urls, video_urls, workout_start),
+    fields(
+        user_id = %user_id,
+        workout_id = %workout_id,
+        image_urls = ?image_urls,
+        video_urls = ?video_urls,
+        workout_start = %workout_start
+    )
+)]
 pub async fn create_post_for_workout(
     pool: &Pool<Postgres>,
     user_id: Uuid,
@@ -168,6 +182,10 @@ pub async fn create_post_for_workout(
     video_urls: &Option<Vec<String>>,
     workout_start: DateTime<Utc>,
 ) -> Result<Uuid, sqlx::Error> {
+
+    // Convert Option<Vec<String>> to Option<&[String]> for SQLx
+    let image_urls_slice = image_urls.as_ref().map(|v| v.as_slice());
+    let video_urls_slice = video_urls.as_ref().map(|v| v.as_slice());
 
     // Create a post for this workout with media files (mandatory)
     let record = sqlx::query!(
@@ -178,12 +196,59 @@ pub async fn create_post_for_workout(
         "#,
         user_id,
         workout_id,
-        image_urls,
-        video_urls,
+        image_urls_slice as Option<&[String]>,
+        video_urls_slice as Option<&[String]>,
         workout_start
     )
     .fetch_one(pool)
     .await?;
 
     Ok(record.id)
+}
+
+#[tracing::instrument(
+    name = "Update workout data with classification and score",
+    skip(pool, workout_id, workout_stats, zone_breakdown, ml_classification),
+    fields(
+        workout_id = %workout_id,
+        workout_stats = ?workout_stats,
+        zone_breakdown = ?zone_breakdown,
+        ml_classification = ?ml_classification
+    )
+)]
+pub async fn update_workout_data_with_classification_and_score(
+    pool: &Pool<Postgres>,
+    workout_id: Uuid,
+    workout_stats: &WorkoutStats,
+    zone_breakdown: &Vec<ZoneBreakdown>,
+    ml_classification: &ClassifyResponse,
+) -> Result<(), sqlx::Error> {
+    let ml_prediction = &ml_classification.prediction;
+    let ml_confidence = ml_classification.confidence as f32;
+    let ml_classified_at = Utc::now();
+
+    sqlx::query!(
+            r#"
+            UPDATE workout_data
+            SET stamina_gained = $1,
+                strength_gained = $2,
+                total_points_gained = $3,
+                heart_rate_zones = $4,
+                ml_prediction = $5,
+                ml_confidence = $6,
+                ml_classified_at = $7
+            WHERE id = $8
+            "#,
+            workout_stats.changes.stamina_change,
+            workout_stats.changes.strength_change,
+            (workout_stats.changes.stamina_change + workout_stats.changes.strength_change) as i32,
+            serde_json::to_value(&zone_breakdown).unwrap_or(serde_json::Value::Null),
+            ml_prediction,
+            ml_confidence,
+            ml_classified_at,
+            workout_id
+        ).execute(pool)
+        .await?;
+
+    Ok(())
 }

@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use reqwest::Client;
 
 #[derive(Debug, Serialize)]
@@ -19,7 +18,15 @@ pub struct ClassifyRequest {
 pub struct ClassifyResponse {
     pub prediction: String,
     pub confidence: f64,
-    pub features: Option<HashMap<String, f64>>,
+}
+
+impl Default for ClassifyResponse {
+    fn default() -> Self {
+        Self {
+            prediction: "unknown".to_string(),
+            confidence: 0.0f64,
+        }
+    }
 }
 
 pub struct MLClient {
@@ -84,11 +91,5 @@ impl MLClient {
         );
 
         Ok(classification)
-    }
-
-    pub async fn health_check(&self) -> Result<bool, Box<dyn std::error::Error>> {
-        let url = format!("{}/health", self.base_url);
-        let response = self.client.get(&url).send().await?;
-        Ok(response.status().is_success())
     }
 }
