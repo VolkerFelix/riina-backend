@@ -100,6 +100,12 @@ pub fn get_config() -> Result<Settings, ConfigError> {
                 .prefix_separator("__")
                 .separator("__")
         )
+        .add_source(
+            config::Environment::default()
+                .prefix("ML")
+                .prefix_separator("__")
+                .separator("__")
+        )
         .build()?;
 
     let mut settings = config.try_deserialize::<Settings>()?;
@@ -112,11 +118,6 @@ pub fn get_config() -> Result<Settings, ConfigError> {
     // Allow JWT secret override from environment variable
     if let Ok(jwt_secret) = env::var("JWT_SECRET") {
         settings.jwt.secret = SecretString::new(jwt_secret.into_boxed_str());
-    }
-
-    // Allow ML_SERVICE_URL override from environment variable
-    if let Ok(ml_url) = env::var("ML_SERVICE_URL") {
-        settings.ml.service_url = ml_url;
     }
 
     Ok(settings)

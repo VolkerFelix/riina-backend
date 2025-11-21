@@ -66,7 +66,10 @@ async fn main() -> std::io::Result<()> {
     };
 
     // ML Client
-    let ml_client = MLClient::new(config.ml.service_url.clone());
+    let ml_client = MLClient::new(
+        config.ml.service_url.clone(),
+        config.ml.api_key.expose_secret().to_string()
+    );
 
     run(
         listener,

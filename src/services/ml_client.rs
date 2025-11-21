@@ -31,13 +31,15 @@ impl Default for ClassifyResponse {
 
 pub struct MLClient {
     base_url: String,
+    api_key: String,
     client: Client,
 }
 
 impl MLClient {
-    pub fn new(base_url: String) -> Self {
+    pub fn new(base_url: String, api_key: String) -> Self {
         Self {
             base_url,
+            api_key,
             client: Client::new(),
         }
     }
@@ -70,6 +72,7 @@ impl MLClient {
         let response = self
             .client
             .post(&url)
+            .header("X-API-Key", &self.api_key)
             .json(&request)
             .timeout(std::time::Duration::from_secs(10))
             .send()
