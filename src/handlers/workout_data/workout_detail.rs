@@ -68,17 +68,6 @@ pub async fn get_workout_detail(
     claims: web::ReqData<Claims>,
     workout_id: web::Path<Uuid>,
 ) -> HttpResponse {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::BadRequest().json(json!({
-                "success": false,
-                "error": "Invalid user ID"
-            }));
-        }
-    };
-
     let workout_id = workout_id.into_inner();
 
     // Fetch specific workout with all stats from workout_data and post info

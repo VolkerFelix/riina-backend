@@ -11,7 +11,7 @@ use reqwest::Response;
 
 use riina_backend::run;
 use riina_backend::config::settings::{get_config, DatabaseSettings, get_jwt_settings};
-use riina_backend::services::{SchedulerService, MinIOService, telemetry::{get_subscriber, init_subscriber}};
+use riina_backend::services::{SchedulerService, MinIOService, telemetry::{get_subscriber, init_subscriber}, MLClient};
 use riina_backend::config::redis::RedisSettings;
 use std::sync::Arc;
 
@@ -76,6 +76,9 @@ pub async fn spawn_app() -> TestApp {
     
     // Start the scheduler service for tests
     scheduler_service.start().await.expect("Failed to start scheduler service for tests");
+
+    // ML Client
+    let ml_client = MLClient::new(configuration.ml.service_url.clone());
     
     let server = run(
         listener, 
@@ -83,7 +86,8 @@ pub async fn spawn_app() -> TestApp {
         jwt_settings,
         redis_client_arc,
         scheduler_service,
-        minio_service
+        minio_service,
+        ml_client
     )
         .expect("Failed to bind address");
     // Launch the server as a background task

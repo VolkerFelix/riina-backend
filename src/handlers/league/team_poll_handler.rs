@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::middleware::auth::Claims;
 use crate::models::team::{
-    CreatePollRequest, CastVoteRequest, PollResponse, TeamPollInfo,
+    CreatePollRequest, CastVoteRequest, TeamPollInfo,
     TeamPoll, PollType, PollStatus, PollResult, MemberStatus, TeamRole
 };
 use crate::services::social_events::send_notification_to_user;

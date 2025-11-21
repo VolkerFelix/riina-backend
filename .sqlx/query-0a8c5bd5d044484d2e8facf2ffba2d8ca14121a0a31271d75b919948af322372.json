@@ -32,8 +32,8 @@
     "nullable": [
       true,
       true,
-      true,
-      true
+      false,
+      false
     ]
   },
   "hash": "0a8c5bd5d044484d2e8facf2ffba2d8ca14121a0a31271d75b919948af322372"

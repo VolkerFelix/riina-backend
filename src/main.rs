@@ -6,7 +6,12 @@ use std::time::Duration;
 
 use riina_backend::run;
 use riina_backend::config::settings::{get_config, get_jwt_settings};
-use riina_backend::services::{SchedulerService, MinIOService, telemetry::{get_subscriber, init_subscriber}, redis_service::RedisService};
+use riina_backend::services::{
+    SchedulerService, MinIOService,
+    telemetry::{get_subscriber, init_subscriber},
+    redis_service::RedisService,
+    ml_client::MLClient
+};
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
@@ -59,13 +64,20 @@ async fn main() -> std::io::Result<()> {
             std::process::exit(1);
         }
     };
-    
+
+    // ML Client
+    let ml_client = MLClient::new(
+        config.ml.service_url.clone(),
+        config.ml.api_key.expose_secret().to_string()
+    );
+
     run(
         listener,
         conection_pool,
         jwt_settings,
         redis_service.client,
         scheduler_service,
-        minio_service
+        minio_service,
+        ml_client
     )?.await
 }

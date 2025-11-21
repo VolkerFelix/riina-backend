@@ -36,6 +36,9 @@ pub struct AdminWorkoutDetail {
     pub stamina_gained: Option<f32>,
     pub strength_gained: Option<f32>,
     pub zone_breakdown: Option<serde_json::Value>,
+    pub ml_prediction: Option<String>,
+    pub ml_confidence: Option<f32>,
+    pub ml_classified_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -137,7 +140,10 @@ pub async fn get_workout_detail(
             wd.created_at,
             wd.stamina_gained,
             wd.strength_gained,
-            wd.heart_rate_zones
+            wd.heart_rate_zones,
+            wd.ml_prediction,
+            wd.ml_confidence,
+            wd.ml_classified_at
         FROM workout_data wd
         JOIN users u ON u.id = wd.user_id
         WHERE wd.id = $1
@@ -202,6 +208,9 @@ pub async fn get_workout_detail(
         stamina_gained: row.get("stamina_gained"),
         strength_gained: row.get("strength_gained"),
         zone_breakdown: row.get("heart_rate_zones"),
+        ml_prediction: row.get("ml_prediction"),
+        ml_confidence: row.get("ml_confidence"),
+        ml_classified_at: row.get("ml_classified_at"),
     };
 
     Ok(HttpResponse::Ok().json(ApiResponse {

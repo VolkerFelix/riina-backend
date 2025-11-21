@@ -94,8 +94,8 @@ async fn test_workout_zone_duration_bug() {
     let user_health_profile = UserHealthProfile {
         age: 30,
         gender: Gender::Male,
-        resting_heart_rate: Some(hr_rest),
-        max_heart_rate: Some(hr_max)
+        resting_heart_rate: hr_rest,
+        max_heart_rate: hr_max
     };
 
     println!("=== WORKOUT INFO ===");
