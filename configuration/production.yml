@@ -1,3 +1,5 @@
 application:
   host: 0.0.0.0
   log_level: debug
+ml-service:
+  service_url: http://riina-ai-dev.internal:8080
