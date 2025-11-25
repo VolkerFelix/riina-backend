@@ -7,6 +7,7 @@ use serde::Deserialize;
 use crate::config::jwt::JwtSettings;
 use crate::config::redis::RedisSettings;
 use crate::config::minio::MinIOSettings;
+use crate::config::ml::MLSettings;
 
 #[derive(Deserialize, Debug)]
 pub struct Settings{
@@ -15,6 +16,7 @@ pub struct Settings{
     pub jwt: JwtSettings,
     pub redis: RedisSettings,
     pub minio: MinIOSettings,
+    pub ml: MLSettings,
 }
 
 #[derive(Deserialize, Debug)]
@@ -95,6 +97,12 @@ pub fn get_config() -> Result<Settings, ConfigError> {
         .add_source(
             config::Environment::default()
                 .prefix("MINIO")
+                .prefix_separator("__")
+                .separator("__")
+        )
+        .add_source(
+            config::Environment::default()
+                .prefix("ML")
                 .prefix_separator("__")
                 .separator("__")
         )

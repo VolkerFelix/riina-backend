@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::models::workout_data::{HeartRateData, ZoneBreakdown};
+use crate::models::workout_data::HeartRateData;
 use crate::models::health::{HeartRateZones, HeartRateZoneName};
 
 pub struct WorkoutAnalyzer {

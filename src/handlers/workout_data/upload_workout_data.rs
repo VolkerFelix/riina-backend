@@ -6,7 +6,7 @@ use redis::AsyncCommands;
 use std::sync::Arc;
 use crate::middleware::auth::Claims;
 use crate::db::{
-    workout_data::insert_workout_data,
+    workout_data::{insert_workout_data, create_post_for_workout, update_workout_data_with_classification_and_score},
     game_queries::GameQueries,
     health_data::{get_user_health_profile_details, update_max_heart_rate_and_vt_thresholds},
 };
@@ -24,10 +24,11 @@ use crate::utils::{
     heart_rate_filters::filter_heart_rate_data,
 };
 use crate::config::jwt::JwtSettings;
+use crate::services::ml_client::{ClassifyResponse, MLClient};
 
 #[tracing::instrument(
     name = "Upload workout data with game stats",
-    skip(data, pool, redis, claims),
+    skip(data, pool, redis, claims, jwt_settings, ml_client),
     fields(
         username = %claims.username,
         data_type = %data.device_id
@@ -39,6 +40,7 @@ pub async fn upload_workout_data(
     redis: Option<web::Data<Arc<redis::Client>>>,
     claims: web::ReqData<Claims>,
     jwt_settings: web::Data<JwtSettings>,
+    ml_client: web::Data<MLClient>,
 ) -> HttpResponse {
     tracing::info!("🎮 Processing workout data with game mechanics for user: {}", claims.username);
     
@@ -145,35 +147,37 @@ pub async fn upload_workout_data(
     };
 
     // Create a post for this workout with media files (mandatory)
-    match sqlx::query!(
-        r#"
-        INSERT INTO posts (id, user_id, post_type, workout_id, image_urls, video_urls, visibility, is_editable, created_at, updated_at)
-        VALUES (gen_random_uuid(), $1, 'workout'::post_type, $2, $3, $4, 'public'::post_visibility, true, $5, $5)
-        "#,
-        user_id,
-        sync_id,
-        data.image_urls.as_deref(),
-        data.video_urls.as_deref(),
-        data.workout_start
-    )
-    .execute(pool.get_ref())
-    .await {
-        Ok(_) => {
-            tracing::info!("✅ Successfully created post for workout {} with media", sync_id);
-        }
+    match create_post_for_workout(&pool, user_id, sync_id, &data.image_urls, &data.video_urls, data.workout_start).await {
+        Ok(_post_id) => tracing::info!("✅ Successfully created post for workout {} with media", sync_id),
         Err(e) => {
             tracing::error!("❌ Failed to create post for workout {}: {}", sync_id, e);
-            return HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error("Failed to create post for workout")
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Failed to create post for workout")
             );
         }
-    }
+    };
 
     // Get user health profile
     let mut user_health_profile = get_user_health_profile_details(&pool, user_id).await.unwrap();
 
     // Check and update max heart rate if needed
     update_max_heart_rate_if_needed(&mut user_health_profile, &heart_rate_data, user_id, &pool).await;
+
+    // 🤖 ML CLASSIFICATION
+    let ml_classification = match ml_client.classify_workout(
+        &heart_rate_data,
+        user_health_profile.resting_heart_rate,
+        user_health_profile.max_heart_rate
+    ).await {
+        Ok(classification) => {
+            tracing::info!("🤖 ML classified workout as '{}' with {:.1}% confidence",
+                classification.prediction, classification.confidence * 100.0);
+            classification
+        }
+        Err(e) => {
+            tracing::warn!("⚠️ ML classification failed: {}. Continuing without classification.", e);
+            ClassifyResponse::default()
+        }
+    };
 
     // 🎲 NOW CALCULATE GAME STATS
     let calculator = WorkoutStatsCalculator::with_universal_hr_based();
@@ -193,34 +197,14 @@ pub async fn upload_workout_data(
     // Heart rate zone breakdown - always use the scoring system's zone breakdown
     let zone_breakdown = workout_stats.zone_breakdown.clone().unwrap_or_default();
 
-    // Update the workout record with the calculated stats
-    match sqlx::query!(
-        r#"
-        UPDATE workout_data
-        SET stamina_gained = $1,
-            strength_gained = $2,
-            total_points_gained = $3,
-            heart_rate_zones = $4
-        WHERE id = $5
-        "#,
-        workout_stats.changes.stamina_change,
-        workout_stats.changes.strength_change,
-        (workout_stats.changes.stamina_change + workout_stats.changes.strength_change) as i32,
-        serde_json::to_value(&zone_breakdown).unwrap_or(serde_json::Value::Null),
-        sync_id
-    )
-    .execute(pool.get_ref())
-    .await {
-        Ok(_) => {
-            tracing::debug!("Successfully updated workout stats");
-        }
+    match update_workout_data_with_classification_and_score(&pool, sync_id, &workout_stats, &zone_breakdown, &ml_classification).await {
+        Ok(_) => tracing::debug!("Successfully updated workout stats"),
         Err(e) => {
             tracing::error!("Failed to update workout stats: {}", e);
-            return HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error("Failed to update workout stats")
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Failed to update workout stats")
             );
         }
-    }
+    };
 
     // Update user avatar stats
     let update_result = update_user_stats(user_id, &workout_stats.changes, &pool).await;
@@ -613,31 +597,31 @@ async fn update_max_heart_rate_if_needed(
         .max()
         .unwrap_or(0);
 
-    if let Some(stored_max_hr) = user_health_profile.max_heart_rate {
-        if workout_max_hr > stored_max_hr {
-            tracing::info!("🔄 Workout max HR ({}) exceeds stored max HR ({}), updating max heart rate",
-                workout_max_hr, stored_max_hr);
+    let stored_max_hr = user_health_profile.max_heart_rate;
 
-            // Update max heart rate to measured max
-            let new_max_hr = workout_max_hr;
-            let resting_hr = user_health_profile.resting_heart_rate.unwrap_or(60);
+    if workout_max_hr > stored_max_hr {
+        tracing::info!("🔄 Workout max HR ({}) exceeds stored max HR ({}), updating max heart rate",
+            workout_max_hr, stored_max_hr);
 
-            // Use the centralized function to update max HR and VT thresholds
-            match update_max_heart_rate_and_vt_thresholds(
-                pool,
-                user_id,
-                new_max_hr,
-                resting_hr,
-            ).await {
-                Ok(_) => {
-                    tracing::info!("✅ Updated max heart rate from {} to {} and recalculated VT thresholds",
-                        stored_max_hr, new_max_hr);
-                    user_health_profile.max_heart_rate = Some(new_max_hr);
-                }
-                Err(e) => {
-                    tracing::error!("❌ Failed to update max heart rate: {}", e);
-                    // Continue with old thresholds - don't fail the workout upload
-                }
+        // Update max heart rate to measured max
+        let new_max_hr = workout_max_hr;
+        let resting_hr = user_health_profile.resting_heart_rate;
+
+        // Use the centralized function to update max HR and VT thresholds
+        match update_max_heart_rate_and_vt_thresholds(
+            pool,
+            user_id,
+            new_max_hr,
+            resting_hr,
+        ).await {
+            Ok(_) => {
+                tracing::info!("✅ Updated max heart rate from {} to {} and recalculated VT thresholds",
+                    stored_max_hr, new_max_hr);
+                user_health_profile.max_heart_rate = new_max_hr;
+            }
+            Err(e) => {
+                tracing::error!("❌ Failed to update max heart rate: {}", e);
+                // Continue with old thresholds - don't fail the workout upload
             }
         }
     }

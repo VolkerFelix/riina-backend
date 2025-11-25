@@ -7,6 +7,7 @@ pub mod redis_service;
 pub mod social_events;
 pub mod game_summary_service;
 pub mod player_pool_events;
+pub mod ml_client;
 
 pub use game_evaluation_service::GameEvaluationService;
 pub use scheduler::SchedulerService;
@@ -14,3 +15,4 @@ pub use manage_game_service::ManageGameService;
 pub use minio_service::MinIOService;
 pub use redis_service::RedisService;
 pub use game_summary_service::GameSummaryService;
+pub use ml_client::MLClient;
