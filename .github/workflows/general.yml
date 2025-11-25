@@ -62,6 +62,7 @@ jobs:
           MINIO__MINIO__ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
           MINIO__MINIO__SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          ML__ML__API_KEY: ${{ secrets.ML_API_KEY }}
 
         steps:
             - name: Check out repository code
