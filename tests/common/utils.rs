@@ -78,7 +78,7 @@ pub async fn spawn_app() -> TestApp {
     scheduler_service.start().await.expect("Failed to start scheduler service for tests");
 
     // ML Client
-    let ml_client = MLClient::new(configuration.ml.service_url.clone());
+    let ml_client = MLClient::new(configuration.ml.service_url.clone(), configuration.ml.api_key.expose_secret().to_string());
     
     let server = run(
         listener, 
