@@ -16,6 +16,10 @@ jobs:
         runs-on: ubuntu-latest
         timeout-minutes: 30
 
+        permissions:
+          contents: read
+          packages: read
+
         # Service containers to run alongside the `test` container job
         services:
           postgres:
