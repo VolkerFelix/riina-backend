@@ -46,13 +46,17 @@ async fn test_trailing_7_day_average_calculation() {
         let _ = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout_data).await;
     }
 
-    // Get the score for one workout (all workouts are the same, so trailing average should equal single workout score)
+    // Get the score for one workout (all workouts are the same)
     let workout_stats_calculator = WorkoutStatsCalculator::with_universal_hr_based();
     let workout_type = WorkoutType::Cardio;
     let workout_stats = workout_stats_calculator.calculate_stat_changes(user_health_profile, workout_data_vec[0].get_heart_rate_data(), workout_type).await.unwrap();
-    let score = &workout_stats.changes.stamina_change + &workout_stats.changes.strength_change;
-    
-    println!("Expected trailing average (single workout score): {}", score);
+    let single_workout_score = &workout_stats.changes.stamina_change + &workout_stats.changes.strength_change;
+
+    // With best 5 out of 7 days logic: (5 × single_workout_score) / 7
+    let expected_trailing_avg = (5.0 * single_workout_score) / 7.0;
+
+    println!("Single workout score: {}", single_workout_score);
+    println!("Expected trailing average (best 5 of 7 days): {}", expected_trailing_avg);
     println!("Stamina change: {}, Strength change: {}", workout_stats.changes.stamina_change, workout_stats.changes.strength_change);
     
     // Test the leaderboard endpoint to see if trailing average is calculated
@@ -97,12 +101,14 @@ async fn test_trailing_7_day_average_calculation() {
 
     // Debug: Print the actual trailing average from API
     println!("API returned trailing average: {}", trailing_avg);
-    println!("Expected score: {}", score);
-    
-    // Check it's exactly the same as the workout stats since all workouts are identical
-    assert_eq!(trailing_avg, score, 
-        "Trailing average {} should equal single workout score {} since all workouts are identical", 
-        trailing_avg, score);
+    println!("Expected trailing average: {}", expected_trailing_avg);
+
+    // Check it matches the expected value (allowing for small floating point differences)
+    let trailing_avg_f32 = trailing_avg.as_f64().unwrap() as f32;
+    let diff = (trailing_avg_f32 - expected_trailing_avg).abs();
+    assert!(diff < 0.01,
+        "Trailing average {} should be approximately {} (best 5 of 7 days), diff: {}",
+        trailing_avg_f32, expected_trailing_avg, diff);
     
     println!("✅ Trailing 7-day average calculation test passed: {}", trailing_avg);
     
