@@ -11,7 +11,7 @@ use crate::db::{
     health_data::{get_user_health_profile_details, update_max_heart_rate_and_vt_thresholds},
 };
 use crate::models::{
-    workout_data::{WorkoutDataUploadRequest, WorkoutUploadResponse, StatChanges, WorkoutStats, HeartRateData},
+    workout_data::{WorkoutDataUploadRequest, WorkoutUploadResponse, StatChanges, WorkoutStats, HeartRateData, WorkoutType},
     health::{UserHealthProfile},
     common::ApiResponse,
     league::{LeagueGame, LiveGameScoreUpdate},
@@ -180,8 +180,9 @@ pub async fn upload_workout_data(
     };
 
     // 🎲 NOW CALCULATE GAME STATS
+    let workout_type = WorkoutType::from_str(&ml_classification.prediction.to_lowercase());
     let calculator = WorkoutStatsCalculator::with_universal_hr_based();
-    let workout_stats = match calculator.calculate_stat_changes(user_health_profile, heart_rate_data.clone()).await {
+    let workout_stats = match calculator.calculate_stat_changes(user_health_profile, heart_rate_data.clone(), workout_type).await {
         Ok(stats) => stats,
         Err(e) => {
             tracing::error!("❌ Error calculating workout stats: {}", e);
@@ -190,6 +191,7 @@ pub async fn upload_workout_data(
             );
         }
     };
+
     tracing::info!("📊 Calculated stat changes for {}: +{} stamina, +{} strength",
         claims.username, workout_stats.changes.stamina_change, workout_stats.changes.strength_change,
     );

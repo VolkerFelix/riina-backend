@@ -1,22 +1,32 @@
 use std::io::{Error, ErrorKind};
 
-use crate::models::workout_data::{WorkoutStats, HeartRateData, ZoneBreakdown};
+use crate::models::workout_data::{WorkoutStats, HeartRateData, ZoneBreakdown, WorkoutType};
 use crate::models::health::{UserHealthProfile, TrainingZones, TrainingZoneName};
 use crate::game::stats_calculator::ScoringMethod;
 
 pub const P_VT0: f32 = 0.35;
 pub const P_VT1: f32 = 0.65;
 pub const P_VT2: f32 = 0.8;
+pub const STRENGTH_WORKOUT_MULTIPLIER: f32 = 1.5;
 
 pub struct UniversalHRBasedScoring;
 
 impl ScoringMethod for UniversalHRBasedScoring {
-    fn calculate_stats(&self, user_health_profile: UserHealthProfile, hr_data: Vec<HeartRateData>) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<WorkoutStats, Error>> + Send + 'static>> {
-        Box::pin(calculate_stats_universal_hr_based(user_health_profile, hr_data))
+    fn calculate_stats(
+        &self,
+        user_health_profile: UserHealthProfile,
+        hr_data: Vec<HeartRateData>,
+        workout_type: WorkoutType
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<WorkoutStats, Error>> + Send + 'static>> {
+        Box::pin(calculate_stats_universal_hr_based(user_health_profile, hr_data, workout_type))
     }
 }
 
-async fn calculate_stats_universal_hr_based(user_health_profile: UserHealthProfile, hr_data: Vec<HeartRateData>) -> Result<WorkoutStats, Error> {
+async fn calculate_stats_universal_hr_based(
+    user_health_profile: UserHealthProfile,
+    hr_data: Vec<HeartRateData>,
+    workout_type: WorkoutType
+) -> Result<WorkoutStats, Error> {
     if hr_data.is_empty() {
         return Ok(WorkoutStats::new());
     }
@@ -26,7 +36,14 @@ async fn calculate_stats_universal_hr_based(user_health_profile: UserHealthProfi
     let hr_reserve = hr_max - hr_rest;
     let training_zones = TrainingZones::new(hr_rest, hr_reserve, P_VT0, P_VT1, P_VT2);
 
-    calculate_score_from_training_zones(training_zones, hr_data)
+    let mut workout_stats = calculate_score_from_training_zones(training_zones, hr_data)?;
+
+    if workout_type == WorkoutType::Strength {
+        workout_stats.changes.stamina_change *= STRENGTH_WORKOUT_MULTIPLIER;
+        workout_stats.changes.strength_change *= STRENGTH_WORKOUT_MULTIPLIER;
+    }
+
+    Ok(workout_stats)
 }
 
 fn calculate_score_from_training_zones(training_zones: TrainingZones, hr_data: Vec<HeartRateData>) -> Result<WorkoutStats, Error> {

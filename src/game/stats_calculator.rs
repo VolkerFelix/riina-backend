@@ -3,7 +3,7 @@ use std::future::Future;
 use std::io::Error;
 
 use crate::models::{
-    workout_data::{WorkoutStats, HeartRateData},
+    workout_data::{WorkoutStats, HeartRateData, WorkoutType},
     health::UserHealthProfile,
 };
 use crate::workout::{
@@ -11,7 +11,12 @@ use crate::workout::{
 };  
 // Method trait for different scoring methods
 pub trait ScoringMethod {
-    fn calculate_stats(&self, user_health_profile: UserHealthProfile, hr_data: Vec<HeartRateData>) -> Pin<Box<dyn Future<Output = Result<WorkoutStats, Error>> + Send + 'static>>;
+    fn calculate_stats(
+        &self,
+        user_health_profile: UserHealthProfile,
+        hr_data: Vec<HeartRateData>,
+        workout_type: WorkoutType
+    ) -> Pin<Box<dyn Future<Output = Result<WorkoutStats, Error>> + Send + 'static>>;
 }
 
 pub struct WorkoutStatsCalculator {
@@ -27,7 +32,12 @@ impl WorkoutStatsCalculator {
         Self::new(Box::new(UniversalHRBasedScoring))
     }
     
-    pub async fn calculate_stat_changes(&self, user_health_profile: UserHealthProfile, hr_data: Vec<HeartRateData>) -> Result<WorkoutStats, std::io::Error> {
-        self.scoring_method.calculate_stats(user_health_profile, hr_data).await
+    pub async fn calculate_stat_changes(
+        &self,
+        user_health_profile: UserHealthProfile,
+        hr_data: Vec<HeartRateData>,
+        workout_type: WorkoutType
+    ) -> Result<WorkoutStats, std::io::Error> {
+        self.scoring_method.calculate_stats(user_health_profile, hr_data, workout_type).await
     }
 }
