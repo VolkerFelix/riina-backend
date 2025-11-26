@@ -15,7 +15,7 @@ use chrono::Utc;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, delete_test_user};
-use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user, create_health_profile_for_user};
+use common::workout_data_helpers::{WorkoutData, WorkoutIntensity, upload_workout_data_for_user, create_health_profile_for_user};
 use common::admin_helpers::create_admin_user_and_login;
 
 // ============================================================================
@@ -31,7 +31,7 @@ async fn upload_workout_data_working() {
     let admin_user = create_admin_user_and_login(&test_app.address).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
-    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
 
     let status = response.is_ok();
@@ -58,7 +58,7 @@ async fn upload_multiple_workout_data_sessions() {
     // Upload multiple workouts
     for i in 0..3 {
         let mut workout_data = WorkoutData::new(
-            if i % 2 == 0 { WorkoutType::Intense } else { WorkoutType::Moderate },
+            if i % 2 == 0 { WorkoutIntensity::Intense } else { WorkoutIntensity::Moderate },
             Utc::now(),
             30 + (i * 10)
         );
@@ -105,7 +105,7 @@ async fn upload_workout_data_with_hard_workout() {
     let test_user = create_test_user_and_login(&test_app.address).await;
     let admin_user = create_admin_user_and_login(&test_app.address).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
-    let mut workout_data = WorkoutData::new_with_hr_freq(WorkoutType::Hard, Utc::now(), 30, Some(2));
+    let mut workout_data = WorkoutData::new_with_hr_freq(WorkoutIntensity::Hard, Utc::now(), 30, Some(2));
     let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
     assert!(response.is_ok(), "Hard workout should upload successfully");
 }
@@ -156,7 +156,7 @@ async fn test_workout_history_with_data() {
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload a workout first
-    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 45);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 45);
     upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await
         .expect("Workout upload should succeed");
 
@@ -195,7 +195,7 @@ async fn test_workout_history_pagination() {
 
     // Upload multiple workouts
     for i in 0..5 {
-        let mut workout_data = WorkoutData::new(WorkoutType::Light, Utc::now(), 20 + i);
+        let mut workout_data = WorkoutData::new(WorkoutIntensity::Light, Utc::now(), 20 + i);
         upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await
             .expect("Workout upload should succeed");
     }
@@ -234,7 +234,7 @@ async fn test_workout_detail_endpoint() {
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload a workout with heart rate data
-    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 45);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 45);
     let workout_response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
     assert!(workout_response.is_ok(), "Workout upload should succeed");
 
@@ -367,7 +367,7 @@ async fn test_workout_detail_endpoint_unauthorized_access() {
     let mut user2 = create_test_user_and_login(&test_app.address).await;
 
     // User1 uploads a workout
-    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 30);
     let workout_response = upload_workout_data_for_user(&client, &test_app.address, &user1.token, &mut workout_data).await;
     assert!(workout_response.is_ok(), "Workout upload should succeed");
 
@@ -415,7 +415,7 @@ async fn test_admin_can_delete_workout() {
     create_health_profile_for_user(&client, &test_app.address, &user).await.unwrap();
 
     // Create a workout for the user
-    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 30);
     let workout_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout_data).await;
 
     let response_data = workout_response.unwrap();
@@ -451,7 +451,7 @@ async fn test_admin_can_view_all_workouts() {
     // Create a user and workout
     let user = create_test_user_and_login(&test_app.address).await;
     create_health_profile_for_user(&client, &test_app.address, &user).await.unwrap();
-    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 60);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 60);
     upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout_data).await
         .expect("Workout upload should succeed");
 
@@ -483,7 +483,7 @@ async fn test_admin_can_get_workout_by_id() {
     // Create a user and workout
     let user = create_test_user_and_login(&test_app.address).await;
     create_health_profile_for_user(&client, &test_app.address, &user).await.unwrap();
-    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 45);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 45);
     let workout_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout_data).await;
 
     let response_data = workout_response.unwrap();
@@ -557,7 +557,7 @@ async fn test_workout_with_media_urls() {
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload workout with media URLs
-    let mut workout_with_media = WorkoutData::new(WorkoutType::Light, Utc::now(), 30);
+    let mut workout_with_media = WorkoutData::new(WorkoutIntensity::Light, Utc::now(), 30);
     workout_with_media.image_url = Some("https://example.com/workout-image.jpg".to_string());
     workout_with_media.video_url = Some("https://example.com/workout-video.mp4".to_string());
     let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_with_media).await;
@@ -585,7 +585,7 @@ async fn test_workout_upload_notification_integration() {
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload a workout (this should trigger notifications)
-    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 45);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 45);
     let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
 
     assert!(response.is_ok(), "Workout upload should succeed and trigger notifications");
@@ -617,7 +617,7 @@ async fn test_edit_workout_post() {
     let admin_user = create_admin_user_and_login(&test_app.address).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
-    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 30);
     let upload_response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
     assert!(upload_response.is_ok());
 
@@ -704,7 +704,7 @@ async fn test_delete_workout_post() {
     let admin_user = create_admin_user_and_login(&test_app.address).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
-    let mut workout_data = WorkoutData::new(WorkoutType::Light, Utc::now(), 20);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Light, Utc::now(), 20);
     let upload_response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
     assert!(upload_response.is_ok());
 
@@ -782,7 +782,7 @@ async fn test_cannot_edit_another_users_post() {
     let user1 = create_test_user_and_login(&test_app.address).await;
     create_health_profile_for_user(&client, &test_app.address, &user1).await.unwrap();
 
-    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 30);
     let upload_response = upload_workout_data_for_user(&client, &test_app.address, &user1.token, &mut workout_data).await;
     assert!(upload_response.is_ok());
 
@@ -870,7 +870,7 @@ async fn test_max_heart_rate_updated_when_workout_exceeds_stored_value() {
     assert!(initial_max_hr > 0, "Initial max heart rate should be positive");
 
     // Upload a workout with heart rate exceeding the stored max heart rate
-    let mut workout_data = WorkoutData::new(WorkoutType::Hard, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Hard, Utc::now(), 30);
     let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
 
     assert!(response.is_ok(), "Workout upload should succeed");
@@ -1052,7 +1052,7 @@ async fn test_workout_detail_includes_user_id() {
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload a workout
-    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 30);
     let workout_response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
     assert!(workout_response.is_ok(), "Workout upload should succeed");
 
@@ -1133,7 +1133,7 @@ async fn test_submit_and_retrieve_scoring_feedback() {
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload a workout
-    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 45);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 45);
     let workout_response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
     assert!(workout_response.is_ok(), "Workout upload should succeed");
 
@@ -1197,7 +1197,7 @@ async fn test_update_scoring_feedback() {
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload a workout
-    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 30);
     upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await
         .expect("Workout upload should succeed");
 
@@ -1307,7 +1307,7 @@ async fn test_all_effort_ratings() {
     for (i, &effort_rating) in effort_ratings.iter().enumerate() {
         // Upload a workout for each effort rating with different start times to avoid duplicates
         let workout_start = Utc::now() - chrono::Duration::hours((i + 1) as i64);
-        let mut workout_data = WorkoutData::new(WorkoutType::Light, workout_start, 20);
+        let mut workout_data = WorkoutData::new(WorkoutIntensity::Light, workout_start, 20);
         upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await
             .expect("Workout upload should succeed");
 
@@ -1357,7 +1357,7 @@ async fn test_invalid_effort_rating() {
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload a workout
-    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 30);
     upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await
         .expect("Workout upload should succeed");
 
@@ -1418,7 +1418,7 @@ async fn test_get_feedback_without_submission() {
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload a workout
-    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 30);
     upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await
         .expect("Workout upload should succeed");
 

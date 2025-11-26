@@ -5,10 +5,11 @@ use serde_json::json;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, delete_test_user};
-use common::workout_data_helpers::{upload_workout_data_for_user, WorkoutData, WorkoutType, create_health_profile_for_user};
+use common::workout_data_helpers::{upload_workout_data_for_user, WorkoutData, WorkoutIntensity, create_health_profile_for_user};
 use common::admin_helpers::{create_admin_user_and_login, create_teams_for_test, add_user_to_team};
 use riina_backend::db::health_data::get_user_health_profile_details;
 use riina_backend::game::stats_calculator::WorkoutStatsCalculator;
+use riina_backend::models::workout_data::WorkoutType;
 
 
 #[tokio::test]
@@ -38,7 +39,7 @@ async fn test_trailing_7_day_average_calculation() {
     // Upload workout data for the user
     let mut workout_data_vec = Vec::new();
     for i in 0..7 {
-        workout_data_vec.push(WorkoutData::new(WorkoutType::Intense, chrono::Utc::now() - chrono::Duration::days(i), 30));
+        workout_data_vec.push(WorkoutData::new(WorkoutIntensity::Intense, chrono::Utc::now() - chrono::Duration::days(i), 30));
     }
 
     for mut workout_data in workout_data_vec.iter_mut() {
@@ -47,7 +48,8 @@ async fn test_trailing_7_day_average_calculation() {
 
     // Get the score for one workout (all workouts are the same, so trailing average should equal single workout score)
     let workout_stats_calculator = WorkoutStatsCalculator::with_universal_hr_based();
-    let workout_stats = workout_stats_calculator.calculate_stat_changes(user_health_profile, workout_data_vec[0].get_heart_rate_data()).await.unwrap();
+    let workout_type = WorkoutType::Cardio;
+    let workout_stats = workout_stats_calculator.calculate_stat_changes(user_health_profile, workout_data_vec[0].get_heart_rate_data(), workout_type).await.unwrap();
     let score = &workout_stats.changes.stamina_change + &workout_stats.changes.strength_change;
     
     println!("Expected trailing average (single workout score): {}", score);
@@ -137,13 +139,13 @@ async fn test_leaderboard_sort_by_trailing_average() {
     // User 1: High intensity workouts in the last 7 days (should have high trailing average)
     let mut user1_workouts = Vec::new();
     for i in 0..7 {
-        user1_workouts.push(WorkoutData::new(WorkoutType::Intense, chrono::Utc::now() - chrono::Duration::days(i), 45));
+        user1_workouts.push(WorkoutData::new(WorkoutIntensity::Intense, chrono::Utc::now() - chrono::Duration::days(i), 45));
     }
 
     // User 2: Low intensity workouts in the last 7 days (should have low trailing average)
     let mut user2_workouts = Vec::new();
     for i in 0..7 {
-        user2_workouts.push(WorkoutData::new(WorkoutType::Light, chrono::Utc::now() - chrono::Duration::days(i), 20));
+        user2_workouts.push(WorkoutData::new(WorkoutIntensity::Light, chrono::Utc::now() - chrono::Duration::days(i), 20));
     }
 
     // Upload workout data for both users
@@ -157,10 +159,11 @@ async fn test_leaderboard_sort_by_trailing_average() {
 
     // Calculate expected trailing averages
     let workout_stats_calculator = WorkoutStatsCalculator::with_universal_hr_based();
-    let user1_stats = workout_stats_calculator.calculate_stat_changes(user1_health_profile, user1_workouts[0].get_heart_rate_data()).await.unwrap();
+    let workout_type = WorkoutType::Cardio;
+    let user1_stats = workout_stats_calculator.calculate_stat_changes(user1_health_profile, user1_workouts[0].get_heart_rate_data(), workout_type.clone()).await.unwrap();
     let user1_expected_avg = user1_stats.changes.stamina_change + user1_stats.changes.strength_change;
     
-    let user2_stats = workout_stats_calculator.calculate_stat_changes(user2_health_profile, user2_workouts[0].get_heart_rate_data()).await.unwrap();
+    let user2_stats = workout_stats_calculator.calculate_stat_changes(user2_health_profile, user2_workouts[0].get_heart_rate_data(), workout_type).await.unwrap();
     let user2_expected_avg = user2_stats.changes.stamina_change + user2_stats.changes.strength_change;
     
     // Test leaderboard with sort_by=trailing_average

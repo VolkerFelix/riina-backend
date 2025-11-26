@@ -16,7 +16,7 @@ use url::form_urlencoded;
 
 use crate::common::utils::{spawn_app, create_test_user_and_login};
 use crate::common::social_helpers::create_user_with_workout;
-use crate::common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user};
+use crate::common::workout_data_helpers::{WorkoutData, WorkoutIntensity, upload_workout_data_for_user};
 
 #[tokio::test]
 async fn test_newsfeed_basic() {
@@ -85,7 +85,7 @@ async fn test_newsfeed_pagination() {
     // Upload more workouts
     for i in 0..3 {
         let mut workout_data = WorkoutData::new(
-            WorkoutType::Moderate,
+            WorkoutIntensity::Moderate,
             Utc::now() - chrono::Duration::hours(i),
             30
         );

@@ -101,7 +101,7 @@ impl WorkoutStats {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum WorkoutType {
     Strength,
     Cardio,

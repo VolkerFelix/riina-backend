@@ -7,7 +7,7 @@ use reqwest::{Client, Error};
 use crate::common::utils::{create_test_user_and_login, UserRegLoginResponse};
 use riina_backend::models::workout_data::HeartRateData;
 
-pub enum WorkoutType {
+pub enum WorkoutIntensity {
     Hard,
     Intense,
     Moderate,
@@ -29,12 +29,12 @@ pub struct WorkoutData {
     pub approval_token: Option<String>,
 }
 impl WorkoutData {
-    pub fn new(workout_type: WorkoutType, workout_start: DateTime<Utc>, duration_minutes: i64) -> Self {
+    pub fn new(workout_type: WorkoutIntensity, workout_start: DateTime<Utc>, duration_minutes: i64) -> Self {
         let (heart_rate_data, calories_burned) = match workout_type {
-            WorkoutType::Hard => generate_hard_workout_data(workout_start, duration_minutes, None),
-            WorkoutType::Intense => generate_intense_workout_data(workout_start, duration_minutes),
-            WorkoutType::Moderate => generate_moderate_workout_data(workout_start, duration_minutes),
-            WorkoutType::Light => generate_light_workout_data(workout_start, duration_minutes),
+            WorkoutIntensity::Hard => generate_hard_workout_data(workout_start, duration_minutes, None),
+            WorkoutIntensity::Intense => generate_intense_workout_data(workout_start, duration_minutes),
+            WorkoutIntensity::Moderate => generate_moderate_workout_data(workout_start, duration_minutes),
+            WorkoutIntensity::Light => generate_light_workout_data(workout_start, duration_minutes),
         };
         
         let workout_uuid = Uuid::new_v4().to_string();
@@ -54,12 +54,12 @@ impl WorkoutData {
         }
     }
 
-    pub fn new_with_hr_freq(workout_type: WorkoutType, workout_start: DateTime<Utc>, duration_minutes: i64, hr_freq_per_sec: Option<i32>) -> Self {
+    pub fn new_with_hr_freq(workout_type: WorkoutIntensity, workout_start: DateTime<Utc>, duration_minutes: i64, hr_freq_per_sec: Option<i32>) -> Self {
         let (heart_rate_data, calories_burned) = match workout_type {
-            WorkoutType::Hard => generate_hard_workout_data(workout_start, duration_minutes, hr_freq_per_sec),
-            WorkoutType::Intense => generate_intense_workout_data(workout_start, duration_minutes),
-            WorkoutType::Moderate => generate_moderate_workout_data(workout_start, duration_minutes),
-            WorkoutType::Light => generate_light_workout_data(workout_start, duration_minutes),
+            WorkoutIntensity::Hard => generate_hard_workout_data(workout_start, duration_minutes, hr_freq_per_sec),
+            WorkoutIntensity::Intense => generate_intense_workout_data(workout_start, duration_minutes),
+            WorkoutIntensity::Moderate => generate_moderate_workout_data(workout_start, duration_minutes),
+            WorkoutIntensity::Light => generate_light_workout_data(workout_start, duration_minutes),
         };
 
         let workout_uuid = Uuid::new_v4().to_string();
@@ -79,7 +79,7 @@ impl WorkoutData {
         }
     }
     
-    pub fn new_with_offset_hours(workout_type: WorkoutType, hours_ago: i64, duration_minutes: i64) -> Self {
+    pub fn new_with_offset_hours(workout_type: WorkoutIntensity, hours_ago: i64, duration_minutes: i64) -> Self {
         let workout_start = Utc::now() - Duration::hours(hours_ago);
         Self::new(workout_type, workout_start, duration_minutes)
     }

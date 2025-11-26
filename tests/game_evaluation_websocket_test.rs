@@ -17,7 +17,7 @@ use secrecy::ExposeSecret;
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, get_next_date, delete_test_user};
 use common::admin_helpers::{create_admin_user_and_login, create_league_season, create_league, create_team, TeamConfig, add_team_to_league, add_user_to_team};
-use common::workout_data_helpers::{upload_workout_data_for_user, WorkoutData, WorkoutType};
+use common::workout_data_helpers::{upload_workout_data_for_user, WorkoutData, WorkoutIntensity};
 
 #[tokio::test]
 async fn test_game_evaluation_websocket_notifications_comprehensive() {
@@ -35,10 +35,10 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     println!("✅ Created 4 users + 1 admin");
 
     // Step 2: Upload health data to create power differences
-    let mut workout1 = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
-    let mut workout2 = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
-    let mut workout3 = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
-    let mut workout4 = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut workout1 = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
+    let mut workout2 = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 30);
+    let mut workout3 = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
+    let mut workout4 = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 30);
     upload_workout_data_for_user(&client, &app.address, &user1.token, &mut workout1).await.unwrap();
     upload_workout_data_for_user(&client, &app.address, &user2.token, &mut workout2).await.unwrap();
     upload_workout_data_for_user(&client, &app.address, &user3.token, &mut workout3).await.unwrap();

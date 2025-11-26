@@ -6,7 +6,7 @@ use chrono::Utc;
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, delete_test_user};
 use common::admin_helpers::create_admin_user_and_login;
-use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user, WorkoutSyncRequest};
+use common::workout_data_helpers::{WorkoutData, WorkoutIntensity, upload_workout_data_for_user, WorkoutSyncRequest};
 
 #[tokio::test]
 async fn test_check_workout_sync_status() {
@@ -39,7 +39,7 @@ async fn test_check_workout_sync_status() {
 
     // Create a workout with a specific UUID
     let workout_uuid = &Uuid::new_v4().to_string()[..8];
-    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     workout_data.workout_uuid = workout_uuid.to_string();
 
     // Upload the workout

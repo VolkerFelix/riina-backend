@@ -1,5 +1,5 @@
 use riina_backend::game::stats_calculator::WorkoutStatsCalculator;
-use riina_backend::models::workout_data::{HeartRateData, WorkoutDataUploadRequest};
+use riina_backend::models::workout_data::{HeartRateData, WorkoutDataUploadRequest, WorkoutType};
 use riina_backend::db::health_data::get_user_health_profile_details;
 use chrono::{Duration, Utc};
 use uuid::Uuid;
@@ -71,8 +71,8 @@ async fn test_zone_1_active_recovery() {
 
     let user_health_profile = get_user_health_profile_details(&test_app.db_pool, user_id).await.unwrap();
     let heart_rate_data = workout_data.heart_rate.clone().unwrap_or_default();
-
-    let workout_stats = WorkoutStatsCalculator::with_universal_hr_based().calculate_stat_changes(user_health_profile, heart_rate_data).await;
+    let workout_type = WorkoutType::Cardio;
+    let workout_stats = WorkoutStatsCalculator::with_universal_hr_based().calculate_stat_changes(user_health_profile, heart_rate_data, workout_type).await;
     
     assert!(workout_stats.as_ref().unwrap().changes.stamina_change >= 0.0 && workout_stats.as_ref().unwrap().changes.stamina_change <= 10.0);
     if let Some(ref zones) = workout_stats.as_ref().unwrap().zone_breakdown {
@@ -144,7 +144,8 @@ async fn test_zone_2_aerobic_base() {
     let user_health_profile = get_user_health_profile_details(&test_app.db_pool, user_id).await.unwrap();
     let heart_rate_data = workout_data.heart_rate.clone().unwrap_or_default();
 
-    let workout_stats = WorkoutStatsCalculator::with_universal_hr_based().calculate_stat_changes(user_health_profile, heart_rate_data).await;
+    let workout_type = WorkoutType::Cardio;
+    let workout_stats = WorkoutStatsCalculator::with_universal_hr_based().calculate_stat_changes(user_health_profile, heart_rate_data, workout_type).await;
     
     assert!(workout_stats.as_ref().unwrap().changes.stamina_change >= 0.0 && workout_stats.as_ref().unwrap().changes.stamina_change <= 15.0);
     // Reasoning should contain zone info or heart rate stats if available
@@ -217,7 +218,8 @@ async fn test_zone_4_lactate_threshold() {
     let user_health_profile = get_user_health_profile_details(&test_app.db_pool, user_id).await.unwrap();
     let heart_rate_data = workout_data.heart_rate.clone().unwrap_or_default();
 
-    let workout_stats = WorkoutStatsCalculator::with_universal_hr_based().calculate_stat_changes(user_health_profile, heart_rate_data).await;
+    let workout_type = WorkoutType::Cardio;
+    let workout_stats = WorkoutStatsCalculator::with_universal_hr_based().calculate_stat_changes(user_health_profile, heart_rate_data, workout_type).await;
     
     assert!(workout_stats.as_ref().unwrap().changes.stamina_change >= 0.0 && workout_stats.as_ref().unwrap().changes.stamina_change <= 40.0);
     // Reasoning should contain zone info or heart rate stats if available
@@ -290,7 +292,8 @@ async fn test_zone_5_neuromuscular_power() {
     let user_health_profile = get_user_health_profile_details(&test_app.db_pool, user_id).await.unwrap();
     let heart_rate_data = workout_data.heart_rate.clone().unwrap_or_default();
 
-    let workout_stats = WorkoutStatsCalculator::with_universal_hr_based().calculate_stat_changes(user_health_profile, heart_rate_data).await;
+    let workout_type = WorkoutType::Cardio;
+    let workout_stats = WorkoutStatsCalculator::with_universal_hr_based().calculate_stat_changes(user_health_profile, heart_rate_data, workout_type).await;
     
     assert!(workout_stats.as_ref().unwrap().changes.stamina_change >= 0.0 && workout_stats.as_ref().unwrap().changes.stamina_change <= 100.0);
     // Reasoning should contain zone info or heart rate stats if available
@@ -352,7 +355,8 @@ async fn test_no_heart_rate_no_gains() {
     let user_health_profile = get_user_health_profile_details(&test_app.db_pool, user_id).await.unwrap();
     let heart_rate_data = workout_data.heart_rate.clone().unwrap_or(Vec::new());
 
-    let workout_stats = WorkoutStatsCalculator::with_universal_hr_based().calculate_stat_changes(user_health_profile, heart_rate_data).await;
+    let workout_type = WorkoutType::Cardio;
+    let workout_stats = WorkoutStatsCalculator::with_universal_hr_based().calculate_stat_changes(user_health_profile, heart_rate_data, workout_type).await;
     assert_eq!(workout_stats.as_ref().unwrap().changes.stamina_change, 0.0);
     assert_eq!(workout_stats.as_ref().unwrap().changes.strength_change, 0.0);
     assert_eq!(workout_stats.as_ref().unwrap().zone_breakdown.is_none(), true);

@@ -4,7 +4,7 @@ use uuid::Uuid;
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, TestApp, delete_test_user};
 use common::admin_helpers::create_admin_user_and_login;
-use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user};
+use common::workout_data_helpers::{WorkoutData, WorkoutIntensity, upload_workout_data_for_user};
 
 /// Helper function to create multiple overlapping workouts in a single batch
 
@@ -19,7 +19,7 @@ async fn create_overlapping_workouts_batch(
     // Create all workout data first
     for (start_time, end_time, calories) in workout_specs {
         let duration_minutes = (end_time - start_time).num_minutes() as i64;
-        let mut workout_data = WorkoutData::new(WorkoutType::Moderate, start_time, duration_minutes);
+        let mut workout_data = WorkoutData::new(WorkoutIntensity::Moderate, start_time, duration_minutes);
         workout_data.workout_end = end_time;
         workout_data.calories_burned = calories;
         
@@ -463,7 +463,7 @@ async fn test_duplicate_cleanup_preserves_stats_for_remaining_workout() {
     let baseline_start = start_time - Duration::hours(2); // 2 hours earlier
     let baseline_end = baseline_start + Duration::hours(1);
     
-    let mut baseline_workout = WorkoutData::new(WorkoutType::Moderate, baseline_start, 60);
+    let mut baseline_workout = WorkoutData::new(WorkoutIntensity::Moderate, baseline_start, 60);
     baseline_workout.workout_end = baseline_end;
     baseline_workout.calories_burned = 500; // Same calories as the workout that should remain
     

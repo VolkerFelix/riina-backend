@@ -4,7 +4,7 @@ use serde_json::json;
 use uuid::Uuid;
 use chrono::Utc;
 use crate::common::utils::{create_test_user_and_login, UserRegLoginResponse};
-use crate::common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user};
+use crate::common::workout_data_helpers::{WorkoutData, WorkoutIntensity, upload_workout_data_for_user};
 
 /// Helper function to create user with health profile and upload a workout
 pub async fn create_user_with_workout(app_address: &str) -> (UserRegLoginResponse, Uuid) {
@@ -29,7 +29,7 @@ pub async fn create_user_with_workout(app_address: &str) -> (UserRegLoginRespons
     assert!(profile_response.status().is_success(), "Health profile creation should succeed");
 
     // Upload a workout
-    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let workout_response = upload_workout_data_for_user(&client, app_address, &user.token, &mut workout_data).await;
     assert!(workout_response.is_ok(), "Workout upload should succeed");
 

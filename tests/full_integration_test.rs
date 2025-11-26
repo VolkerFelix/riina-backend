@@ -12,7 +12,7 @@ mod common;
 use common::utils::{spawn_app, create_test_user_and_login, TestApp, get_next_date, make_authenticated_request, UserRegLoginResponse, delete_test_user};
 use common::admin_helpers::{create_admin_user_and_login, create_league_season, create_teams_for_test, create_league, add_team_to_league, add_user_to_team};
 use common::live_game_helpers::*;
-use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user, create_health_profile_for_user};
+use common::workout_data_helpers::{WorkoutData, WorkoutIntensity, upload_workout_data_for_user, create_health_profile_for_user};
 
 #[tokio::test]
 async fn test_complete_live_game_workflow() {
@@ -55,7 +55,7 @@ async fn test_complete_live_game_workflow() {
     assert!(api_game["away_team_name"].is_string(), "Should have away team name");
 
     // Home team user uploads workout data
-    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut workout_data).await;
     assert!(response.is_ok(), "Workout upload should succeed");
     let response_data = response.unwrap();
@@ -75,8 +75,8 @@ async fn test_complete_live_game_workflow() {
     assert_eq!(updated_live_game.last_scorer_team, Some("home".to_string()));
 
     // Away team users upload workout data
-    let mut workout1 = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
-    let mut workout2 = WorkoutData::new(WorkoutType::Light, Utc::now(), 30);
+    let mut workout1 = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 30);
+    let mut workout2 = WorkoutData::new(WorkoutIntensity::Light, Utc::now(), 30);
     let response1 = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_1.token, &mut workout1).await;
     assert!(response1.is_ok(), "Workout upload should succeed");
     let response2 = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_2.token, &mut workout2).await;
@@ -127,7 +127,7 @@ async fn test_complete_live_game_workflow() {
     // Step 9: Test multiple uploads from same user (use different time to avoid duplicate detection)
     // Use a workout 30 minutes into the game (still within the 2-hour window)
     let second_workout_start = Utc::now() + Duration::minutes(30);
-    let mut second_workout = WorkoutData::new(WorkoutType::Intense, second_workout_start, 30);
+    let mut second_workout = WorkoutData::new(WorkoutIntensity::Intense, second_workout_start, 30);
     let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut second_workout).await;
     assert!(response.is_ok(), "Second workout upload should succeed");
     
@@ -164,7 +164,7 @@ async fn test_live_game_edge_cases() {
     let admin_user = create_admin_user_and_login(&test_app.address).await;
     
     // This should not crash or cause errors
-    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
     assert!(response.is_ok(), "Workout upload should succeed");
 
@@ -301,7 +301,7 @@ async fn test_live_game_finish_workflow() {
     let live_game = initialize_live_game(&test_app, live_game_environment.first_game_id, redis_client.clone()).await;
     
     // Upload some data while game is active
-    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut workout_data).await;
     assert!(response.is_ok(), "Workout upload should succeed");
     
@@ -338,7 +338,7 @@ async fn test_live_game_finish_workflow() {
     // Try to upload data after game ended - should not affect scores
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
     let final_score = finished_game.home_score;
-    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut workout_data).await;
     assert!(response.is_ok(), "Workout upload should succeed");
     
@@ -376,7 +376,7 @@ async fn test_workout_timing_validation_for_live_games() {
     // Test 1: Workout BEFORE game start - should NOT count
     println!("\n🔬 Test 1: Uploading workout from before game start...");
     let mut before_game_workout = WorkoutData::new(
-        WorkoutType::Intense, 
+        WorkoutIntensity::Intense, 
         game_start - Duration::hours(2),
         30
     );
@@ -392,7 +392,7 @@ async fn test_workout_timing_validation_for_live_games() {
     // Test 2: Workout DURING game - should count
     println!("\n🔬 Test 2: Uploading workout during game window...");
     let mut during_game_workout = WorkoutData::new(
-        WorkoutType::Intense, 
+        WorkoutIntensity::Intense, 
         Utc::now(), 
         30
     );
@@ -409,7 +409,7 @@ async fn test_workout_timing_validation_for_live_games() {
     // Test 3: Workout AFTER game end - should NOT count
     println!("\n🔬 Test 3: Uploading workout from after game end...");
     let mut after_game_workout = WorkoutData::new(
-        WorkoutType::Intense, 
+        WorkoutIntensity::Intense, 
         game_end + Duration::hours(1),
         30
     );
@@ -425,7 +425,7 @@ async fn test_workout_timing_validation_for_live_games() {
     // Test 4: Workout exactly at game start - should count
     println!("\n🔬 Test 4: Uploading workout exactly at game start...");
     let mut at_start_workout = WorkoutData::new(
-        WorkoutType::Intense, 
+        WorkoutIntensity::Intense, 
         game_start,
         30
     );
@@ -441,7 +441,7 @@ async fn test_workout_timing_validation_for_live_games() {
     // Test 5: Workout exactly at game end - should NOT count (starts at boundary, ends after)
     println!("\n🔬 Test 5: Uploading workout exactly at game end...");
     let mut at_end_workout = WorkoutData::new(
-        WorkoutType::Intense, 
+        WorkoutIntensity::Intense, 
         game_end,
         30
     );
@@ -972,7 +972,7 @@ async fn test_live_game_workout_deletion_score_update() {
     
     // Step 1: Upload workouts and track their IDs
     // Home team workout
-    let mut home_workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let mut home_workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let home_workout_response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut home_workout_data).await;
     assert!(home_workout_response.is_ok(), "Home workout upload should succeed");
     let home_workout_data: serde_json::Value = home_workout_response.unwrap();
@@ -997,7 +997,7 @@ async fn test_live_game_workout_deletion_score_update() {
              home_score_before_deletion, home_score_gained);
     
     // Away team workouts
-    let mut away1_workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut away1_workout_data = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 30);
     let away1_workout_response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_1.token, &mut away1_workout_data).await;
     assert!(away1_workout_response.is_ok(), "Away workout upload should succeed");
     let away1_workout_data: serde_json::Value = away1_workout_response.unwrap();
@@ -1009,7 +1009,7 @@ async fn test_live_game_workout_deletion_score_update() {
         0
     };
     
-    let mut away2_workout_data = WorkoutData::new(WorkoutType::Light, Utc::now(), 30);
+    let mut away2_workout_data = WorkoutData::new(WorkoutIntensity::Light, Utc::now(), 30);
     let away2_workout_response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_2.token, &mut away2_workout_data).await;
     assert!(away2_workout_response.is_ok(), "Away workout upload should succeed");
     let away2_workout_data: serde_json::Value = away2_workout_response.unwrap();
@@ -1087,7 +1087,7 @@ async fn test_live_game_workout_deletion_score_update() {
     println!("📊 After bulk deletion - Home: 0, Away: 0");
     
     // Step 6: Upload new workout to verify system still works
-    let mut workout_data = WorkoutData::new(WorkoutType::Light, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Light, Utc::now(), 30);
     let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut workout_data).await;
     assert!(response.is_ok(), "Workout upload should succeed");
     
@@ -1141,9 +1141,9 @@ async fn test_live_game_partial_workout_deletion() {
     
     for i in 0..3 {
         let workout_type = match i {
-            0 => WorkoutType::Intense,
-            1 => WorkoutType::Moderate,
-            _ => WorkoutType::Light,
+            0 => WorkoutIntensity::Intense,
+            1 => WorkoutIntensity::Moderate,
+            _ => WorkoutIntensity::Light,
         };
         
         // Use different times for each workout (20 minutes apart) to avoid duplicate detection
@@ -1261,7 +1261,7 @@ async fn test_user_joining_team_during_live_game() {
     let workout_start = live_game.game_start_time.unwrap() + Duration::minutes(10);
     println!("Using workout start time: {} (within game window)", workout_start);
     
-    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, workout_start, 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Moderate, workout_start, 30);
     let response = upload_workout_data_for_user(&client, &test_app.address, &new_user.token, &mut workout_data).await;
     
     assert!(response.is_ok(), "Workout upload should succeed");
@@ -1311,7 +1311,7 @@ async fn test_user_joining_team_during_live_game() {
     
     // Test that the new user can upload another workout and it continues to work
     let second_workout_start = live_game.game_start_time.unwrap() + Duration::minutes(45);
-    let mut second_workout = WorkoutData::new(WorkoutType::Light, second_workout_start, 20);
+    let mut second_workout = WorkoutData::new(WorkoutIntensity::Light, second_workout_start, 20);
     let response = upload_workout_data_for_user(&client, &test_app.address, &new_user.token, &mut second_workout).await;
     assert!(response.is_ok(), "Second workout should also succeed");
     
@@ -1353,7 +1353,7 @@ async fn test_admin_live_game_score_adjustment() {
     println!("📊 Initial scores - Home: 0, Away: 0");
 
     // Upload a workout to give the home team some initial score
-    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut workout_data).await;
     
     tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
@@ -1550,12 +1550,12 @@ async fn test_game_summary_creation_and_retrieval() {
 
     // Step 2: Upload workout data for players to generate scores
     // Home team: 1 player uploads intense workout
-    let mut home_workout = WorkoutData::new(WorkoutType::Intense, Utc::now(), 45);
+    let mut home_workout = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 45);
     upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut home_workout).await.unwrap();
 
     // Away team: 2 players upload workouts with different intensities
-    let mut away_workout1 = WorkoutData::new(WorkoutType::Intense, Utc::now(), 60);
-    let mut away_workout2 = WorkoutData::new(WorkoutType::Light, Utc::now(), 20);
+    let mut away_workout1 = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 60);
+    let mut away_workout2 = WorkoutData::new(WorkoutIntensity::Light, Utc::now(), 20);
     upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_1.token, &mut away_workout1).await.unwrap();
     // No workout for user 2 on away team
     //upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_2.token, &mut away_workout2).await.unwrap();
