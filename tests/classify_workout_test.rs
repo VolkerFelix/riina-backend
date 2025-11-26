@@ -1,4 +1,6 @@
-//! Test for strength workout classification and 1.5x multiplier
+//! Tests for ML workout classification and multipliers
+//! - Strength workouts: 1.5x multiplier
+//! - Cardio workouts: No multiplier (1.0x)
 
 use reqwest::Client;
 
@@ -343,6 +345,148 @@ async fn upload_strength_workout_with_1_5x_multiplier() {
     // The multiplier should have been applied to the stats
     // stamina_change should be 1.5x the base score
     println!("✅ Workout correctly classified as strength and 1.5x multiplier applied");
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
+}
+
+#[tokio::test]
+async fn upload_cardio_workout_without_multiplier() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+    let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
+
+    // Real cardio workout heart rate data - characteristic sustained elevated HR pattern
+    let hr_samples = vec![
+        ("16:51:52".to_string(), 101), ("16:51:57".to_string(), 104), ("16:51:59".to_string(), 104),
+        ("16:52:05".to_string(), 125), ("16:52:08".to_string(), 117), ("16:54:22".to_string(), 121),
+        ("16:54:24".to_string(), 120), ("16:54:32".to_string(), 112), ("16:54:33".to_string(), 112),
+        ("16:54:39".to_string(), 107), ("16:54:43".to_string(), 107), ("16:54:48".to_string(), 109),
+        ("16:54:54".to_string(), 112), ("16:54:58".to_string(), 114), ("16:55:22".to_string(), 125),
+        ("16:55:32".to_string(), 128), ("16:55:37".to_string(), 128), ("16:55:40".to_string(), 128),
+        ("16:55:45".to_string(), 129), ("16:56:12".to_string(), 131), ("16:56:16".to_string(), 132),
+        ("16:56:22".to_string(), 132), ("16:56:27".to_string(), 132), ("16:56:32".to_string(), 133),
+        ("16:56:36".to_string(), 133), ("16:56:42".to_string(), 133), ("16:56:43".to_string(), 133),
+        ("16:57:10".to_string(), 133), ("16:57:15".to_string(), 133), ("16:57:18".to_string(), 133),
+        ("16:57:27".to_string(), 134), ("16:57:32".to_string(), 134), ("16:57:37".to_string(), 135),
+        ("16:57:38".to_string(), 134), ("16:57:46".to_string(), 134), ("16:57:48".to_string(), 134),
+        ("16:57:53".to_string(), 133), ("16:57:58".to_string(), 134), ("16:58:03".to_string(), 133),
+        ("16:58:08".to_string(), 133), ("16:58:13".to_string(), 131), ("16:58:59".to_string(), 130),
+        ("16:59:03".to_string(), 129), ("16:59:10".to_string(), 130), ("16:59:14".to_string(), 130),
+        ("16:59:18".to_string(), 130), ("16:59:37".to_string(), 127), ("16:59:41".to_string(), 125),
+        ("16:59:43".to_string(), 124), ("16:59:52".to_string(), 113), ("16:59:54".to_string(), 112),
+        ("17:00:02".to_string(), 109), ("17:00:04".to_string(), 109), ("17:00:12".to_string(), 98),
+        ("17:00:17".to_string(), 102), ("17:00:18".to_string(), 102), ("17:00:23".to_string(), 100),
+        ("17:00:28".to_string(), 100), ("17:00:35".to_string(), 97), ("17:00:42".to_string(), 98),
+        ("17:00:44".to_string(), 98), ("17:00:48".to_string(), 99), ("17:00:55".to_string(), 96),
+        ("17:01:02".to_string(), 93), ("17:01:03".to_string(), 92), ("17:01:08".to_string(), 93),
+        ("17:10:02".to_string(), 113), ("17:10:05".to_string(), 113), ("17:10:11".to_string(), 118),
+        ("17:10:17".to_string(), 123), ("17:10:27".to_string(), 129), ("17:10:31".to_string(), 130),
+        ("17:10:35".to_string(), 132), ("17:10:39".to_string(), 132), ("17:10:44".to_string(), 133),
+        ("17:10:52".to_string(), 136), ("17:10:55".to_string(), 136), ("17:10:58".to_string(), 137),
+        ("17:11:06".to_string(), 138), ("17:11:10".to_string(), 139), ("17:11:17".to_string(), 138),
+        ("17:11:18".to_string(), 138), ("17:11:25".to_string(), 136), ("17:11:28".to_string(), 133),
+        ("17:11:33".to_string(), 132), ("17:11:38".to_string(), 131), ("17:11:44".to_string(), 131),
+        ("17:11:48".to_string(), 132), ("17:11:56".to_string(), 135), ("17:12:01".to_string(), 136),
+        ("17:12:06".to_string(), 139), ("17:12:09".to_string(), 138), ("17:12:16".to_string(), 138),
+        ("17:12:21".to_string(), 139), ("17:12:24".to_string(), 139), ("17:12:31".to_string(), 142),
+        ("17:12:34".to_string(), 143), ("17:12:39".to_string(), 144), ("17:12:47".to_string(), 145),
+        ("17:20:02".to_string(), 137), ("17:20:04".to_string(), 137), ("17:20:08".to_string(), 137),
+        ("17:20:16".to_string(), 138), ("17:20:21".to_string(), 138), ("17:20:27".to_string(), 138),
+        ("17:20:32".to_string(), 140), ("17:20:36".to_string(), 139), ("17:20:42".to_string(), 137),
+        ("17:20:44".to_string(), 136), ("17:20:48".to_string(), 134), ("17:20:57".to_string(), 123),
+        ("17:20:59".to_string(), 123), ("17:21:05".to_string(), 117), ("17:21:08".to_string(), 117),
+        ("17:21:14".to_string(), 111), ("17:21:22".to_string(), 107), ("17:21:25".to_string(), 107),
+        ("17:21:28".to_string(), 107), ("17:21:33".to_string(), 110), ("17:21:38".to_string(), 114),
+        ("17:21:43".to_string(), 117), ("17:21:48".to_string(), 122), ("17:21:57".to_string(), 131),
+        ("17:22:00".to_string(), 132), ("17:22:03".to_string(), 131), ("17:22:12".to_string(), 135),
+        ("17:22:17".to_string(), 137), ("17:22:18".to_string(), 137), ("17:22:27".to_string(), 139),
+        ("17:22:28".to_string(), 139), ("17:22:33".to_string(), 139), ("17:22:38".to_string(), 140),
+        ("17:22:47".to_string(), 141), ("17:22:48".to_string(), 142), ("17:22:57".to_string(), 142),
+        ("17:23:01".to_string(), 143), ("17:23:06".to_string(), 144), ("17:23:09".to_string(), 145),
+        ("17:23:13".to_string(), 145), ("17:23:21".to_string(), 146), ("17:23:23".to_string(), 144),
+        ("17:23:31".to_string(), 146), ("17:23:34".to_string(), 147), ("17:23:40".to_string(), 147),
+        ("17:23:47".to_string(), 148), ("17:23:50".to_string(), 148), ("17:23:56".to_string(), 150),
+        ("17:23:58".to_string(), 150), ("17:24:03".to_string(), 149), ("17:24:12".to_string(), 150),
+        ("17:24:13".to_string(), 150), ("17:24:22".to_string(), 149), ("17:24:23".to_string(), 148),
+        ("17:24:30".to_string(), 148), ("17:24:35".to_string(), 148), ("17:24:40".to_string(), 147),
+        ("17:24:43".to_string(), 147), ("17:24:51".to_string(), 147), ("17:24:54".to_string(), 147),
+        ("17:25:02".to_string(), 147), ("17:25:06".to_string(), 148), ("17:25:11".to_string(), 148),
+        ("17:25:17".to_string(), 148), ("17:25:18".to_string(), 148), ("17:25:27".to_string(), 150),
+        ("17:25:28".to_string(), 150), ("17:25:37".to_string(), 150), ("17:25:39".to_string(), 150),
+        ("17:25:46".to_string(), 150), ("17:25:51".to_string(), 150), ("17:25:53".to_string(), 150),
+        ("17:26:02".to_string(), 151), ("17:26:10".to_string(), 151), ("17:26:16".to_string(), 152),
+        ("17:26:22".to_string(), 152), ("17:26:26".to_string(), 152), ("17:26:28".to_string(), 151),
+        ("17:26:37".to_string(), 152), ("17:26:40".to_string(), 153), ("17:26:48".to_string(), 152),
+        ("17:26:53".to_string(), 152), ("17:27:02".to_string(), 151), ("17:27:06".to_string(), 152),
+        ("17:27:08".to_string(), 151), ("17:27:14".to_string(), 151), ("17:27:21".to_string(), 152),
+        ("17:27:27".to_string(), 152), ("17:27:28".to_string(), 151), ("17:27:35".to_string(), 151),
+        ("17:27:41".to_string(), 150), ("17:27:47".to_string(), 149), ("17:27:49".to_string(), 148),
+        ("17:27:57".to_string(), 145), ("17:28:01".to_string(), 144), ("17:28:07".to_string(), 136),
+        ("17:28:12".to_string(), 130), ("17:28:14".to_string(), 129), ("17:28:18".to_string(), 129),
+        ("17:40:52".to_string(), 136), ("17:40:57".to_string(), 132), ("17:41:00".to_string(), 132),
+        ("17:41:03".to_string(), 131), ("17:41:08".to_string(), 125), ("17:41:15".to_string(), 118),
+        ("17:41:21".to_string(), 115), ("17:41:27".to_string(), 110), ("17:41:30".to_string(), 109),
+        ("17:41:33".to_string(), 109), ("17:41:42".to_string(), 107), ("17:41:47".to_string(), 103),
+        ("17:41:50".to_string(), 104), ("17:41:53".to_string(), 102), ("17:41:58".to_string(), 101),
+        ("17:50:21".to_string(), 128), ("17:50:23".to_string(), 127), ("17:50:28".to_string(), 124),
+        ("17:50:36".to_string(), 123), ("17:50:41".to_string(), 119), ("17:50:42".to_string(), 119),
+        ("17:50:50".to_string(), 109), ("17:50:52".to_string(), 110), ("17:50:57".to_string(), 108),
+        ("17:51:06".to_string(), 102), ("17:51:09".to_string(), 103), ("17:51:14".to_string(), 104),
+        ("17:51:17".to_string(), 105), ("17:51:26".to_string(), 98), ("17:51:31".to_string(), 98),
+        ("17:51:36".to_string(), 95), ("17:51:37".to_string(), 96),
+    ];
+
+    let mut workout_data = create_workout_from_custom_hr_data(hr_samples);
+
+    let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
+    assert!(response.is_ok(), "Cardio workout should upload successfully: {:?}", response.err());
+
+    let response_data = response.unwrap();
+
+    // Extract the game stats from response
+    let stamina_change = response_data["data"]["game_stats"]["stamina_change"].as_f64().unwrap();
+    let strength_change = response_data["data"]["game_stats"]["strength_change"].as_f64().unwrap();
+    let sync_id = response_data["data"]["sync_id"].as_str().unwrap();
+
+    println!("🏃 Cardio workout stats: stamina={}, strength={}", stamina_change, strength_change);
+
+    // Verify the workout was processed
+    assert!(stamina_change > 0.0, "Stamina should increase from workout");
+
+    // Fetch workout details via admin API to verify ML classification
+    let workout_detail_response = client
+        .get(&format!("{}/admin/workouts/{}", &test_app.address, sync_id))
+        .header("Authorization", format!("Bearer {}", admin_user.token))
+        .send()
+        .await
+        .expect("Failed to fetch workout details");
+
+    assert!(workout_detail_response.status().is_success(), "Admin API should return workout details");
+
+    let workout_detail: serde_json::Value = workout_detail_response
+        .json()
+        .await
+        .expect("Failed to parse workout details");
+
+    // Verify ML classification
+    let ml_prediction = workout_detail["data"]["ml_prediction"].as_str();
+    let ml_confidence = workout_detail["data"]["ml_confidence"].as_f64();
+    println!("🤖 ML Classification: {:?} (confidence: {:?})", ml_prediction, ml_confidence);
+
+    // Cardio workouts should NOT get the 1.5x multiplier (only strength workouts do)
+    assert_eq!(
+        ml_prediction,
+        Some("cardio"),
+        "Workout should be classified as 'cardio' by ML service"
+    );
+
+    // The important thing is cardio workouts do NOT get multiplied
+    assert!(stamina_change > 0.0, "Workout should generate positive stamina");
+    println!("✅ Cardio workout correctly classified without multiplier");
 
     // Cleanup
     delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
