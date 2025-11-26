@@ -29,7 +29,7 @@ export REDIS__REDIS__PASSWORD=${REDIS__REDIS__PASSWORD:-redis}
 export MINIO__MINIO__ACCESS_KEY=${MINIO__MINIO__ACCESS_KEY:-minioadmin}
 export MINIO__MINIO__SECRET_KEY=${MINIO__MINIO__SECRET_KEY:-minioadmin}
 # ML Service Configuration
-export ML__ML__SERVICE_URL=${ML__ML__SERVICE_URL:-http://ml-service-test:8081}
+export ML__ML__SERVICE_URL=${ML__ML__SERVICE_URL:-http://localhost:8081}
 export ML__ML__API_KEY=${ML__ML__API_KEY}
 
 # Default configuration
@@ -122,7 +122,7 @@ spin_up_ml_service() {
     echo -e "${YELLOW}Spinning up ML Service container for tests...${NC}"
 
     # Authenticate with ghcr.io if GITHUB_TOKEN is set
-    if [ -n "$GITHUB_TOKEN" ]; then
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
         echo -e "${BLUE}Authenticating with ghcr.io...${NC}"
         echo $GITHUB_TOKEN | docker login ghcr.io -u volkerfelix --password-stdin > /dev/null 2>&1
     fi
