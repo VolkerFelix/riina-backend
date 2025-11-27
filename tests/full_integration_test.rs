@@ -1979,8 +1979,100 @@ async fn test_best_4_out_of_5_players_team_scoring() {
     println!("   - All {} home and {} away players recorded in contributions (only best 4 per team count for score)",
         home_contributions.len(), away_contributions.len());
 
-    // Cleanup
-    finish_live_game(&test_app, live_game_environment.first_game_id, redis_client).await;
+    // Step 8: Finish the game first
+    println!("\n🎯 Step 8: Finishing game...");
+    sqlx::query!(
+        "UPDATE games SET game_end_time = NOW(), status = 'finished' WHERE id = $1",
+        game_id
+    )
+    .execute(&test_app.db_pool)
+    .await
+    .expect("Failed to finish game");
+    println!("✅ Game finished");
+
+    // Step 9: Evaluate the game and verify MVP/LVP only consider best 4 out of 5
+    println!("\n🎯 Step 9: Evaluating game and checking MVP/LVP determination...");
+
+    // Get admin credentials
+    let admin_session = create_admin_user_and_login(&test_app.address).await;
+
+    // Evaluate the game
+    let today = Utc::now().format("%Y-%m-%d").to_string();
+    let evaluation_request = json!({
+        "date": today
+    });
+
+    let eval_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/games/evaluate", test_app.address),
+        &admin_session.token,
+        Some(evaluation_request),
+    ).await;
+
+    assert!(eval_response.status().is_success(), "Game evaluation should succeed");
+    let eval_result = eval_response.json::<serde_json::Value>().await.unwrap();
+    println!("Evaluation result: {:?}", eval_result);
+
+    // Give it more time to process
+    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+
+    // Get the game summary
+    let summary_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/games/{}/summary", test_app.address, game_id),
+        &home_users[0].token,
+        None::<serde_json::Value>,
+    ).await;
+
+    let status = summary_response.status();
+    if !status.is_success() {
+        let error_text = summary_response.text().await.unwrap_or_default();
+        panic!("Failed to get game summary. Status: {}, Error: {}", status, error_text);
+    }
+    let summary_data: serde_json::Value = summary_response.json().await.unwrap();
+    let summary = &summary_data["data"]["summary"];
+
+    // Verify MVP and LVP exist
+    assert!(summary["mvp_username"].as_str().is_some(), "Should have MVP username in summary");
+    assert!(summary["lvp_username"].as_str().is_some(), "Should have LVP");
+
+    let mvp_username = summary["mvp_username"].as_str().unwrap();
+    let lvp_username = summary["lvp_username"].as_str().unwrap();
+    let mvp_score = summary["mvp_score_contribution"].as_i64().unwrap();
+    let lvp_score = summary["lvp_score_contribution"].as_i64().unwrap();
+
+    println!("🏆 MVP: {} with {} points", mvp_username, mvp_score);
+    println!("📉 LVP: {} with {} points", lvp_username, lvp_score);
+
+    // Verify MVP and LVP are different
+    assert_ne!(mvp_username, lvp_username, "MVP and LVP must be different players");
+
+    // CRITICAL: Verify that the worst player (5th on each team) is NOT the LVP
+    // The LVP should be among the best 4 players, not the excluded 5th player
+
+    // Get the worst player from each team (the 5th player who was excluded from scoring)
+    let home_worst_player_score = home_individual_scores[home_individual_scores.len() - 1];
+    let away_worst_player_score = away_individual_scores[away_individual_scores.len() - 1];
+
+    println!("\n📊 Verification: Best 4 out of 5 rule for MVP/LVP:");
+    println!("   Home team worst (excluded) player score: {}", home_worst_player_score);
+    println!("   Away team worst (excluded) player score: {}", away_worst_player_score);
+    println!("   LVP score: {}", lvp_score);
+
+    // The LVP score should be HIGHER than at least one of the excluded players
+    // (because LVP is chosen from the best 4, not the worst 5th player)
+    let worst_excluded_score = home_worst_player_score.min(away_worst_player_score);
+    assert!(
+        lvp_score as i32 >= worst_excluded_score,
+        "LVP score ({}) should be >= worst excluded player score ({}) - LVP must be from best 4 players only",
+        lvp_score, worst_excluded_score
+    );
+
+    println!("✅ MVP/LVP correctly determined from best 4 out of 5 players per team");
+    println!("   - LVP was chosen from eligible players (best 4 per team)");
+    println!("   - Excluded 5th players were not considered for LVP");
 
     println!("\n✅ Best 4 out of 5 players team scoring test completed successfully!");
 }

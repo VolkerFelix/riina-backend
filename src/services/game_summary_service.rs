@@ -285,29 +285,59 @@ impl GameSummaryService {
             return (None, None);
         }
 
+        // Filter to only include best 4 out of 5 players per team
+        let eligible_players = self.get_top_4_players_per_team(contributions);
+
         // If only one player participated, they can only be MVP, not LVP
-        if contributions.len() == 1 {
-            let mvp = contributions[0].clone();
+        if eligible_players.len() == 1 {
+            let mvp = eligible_players[0].clone();
             return (Some(mvp), None);
         }
 
-        let mvp = contributions
+        // Find MVP among eligible players
+        let mvp = eligible_players
             .iter()
             .max_by_key(|p| p.total_score)
-            .map(|p| p.clone());
+            .map(|p| (*p).clone());
 
-        // Find LVP among players who are NOT the MVP
+        // Find LVP among eligible players who are NOT the MVP
         let lvp = if let Some(mvp_player) = &mvp {
-            contributions
+            eligible_players
                 .iter()
                 .filter(|p| p.user_id != mvp_player.user_id)
                 .min_by_key(|p| p.total_score)
-                .map(|p| p.clone())
+                .map(|p| (*p).clone())
         } else {
             None
         };
 
         (mvp, lvp)
+    }
+
+    /// Get the top 4 players from each team (best 4 out of 5)
+    /// This ensures MVP/LVP are only determined from players who contributed to the team score
+    fn get_top_4_players_per_team<'a>(&self, contributions: &'a [PlayerContribution]) -> Vec<&'a PlayerContribution> {
+        // Separate players by team
+        let mut home_players: Vec<&PlayerContribution> = contributions
+            .iter()
+            .filter(|p| p.team_side == "home")
+            .collect();
+
+        let mut away_players: Vec<&PlayerContribution> = contributions
+            .iter()
+            .filter(|p| p.team_side == "away")
+            .collect();
+
+        // Sort by score (descending)
+        home_players.sort_by(|a, b| b.total_score.cmp(&a.total_score));
+        away_players.sort_by(|a, b| b.total_score.cmp(&a.total_score));
+
+        // Take best 4 from each team
+        let mut eligible_players = Vec::new();
+        eligible_players.extend(home_players.iter().take(4).copied());
+        eligible_players.extend(away_players.iter().take(4).copied());
+
+        eligible_players
     }
 
     /// Get a game summary by game ID
