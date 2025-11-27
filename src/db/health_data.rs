@@ -2,7 +2,7 @@ use sqlx::{Pool, Postgres, Error};
 use uuid::Uuid;
 
 use crate::models::health::{UserHealthProfile, Gender};
-use crate::workout::universal_hr_based_scoring::{P_VT0, P_VT1, P_VT2};
+use crate::workout::universal_hr_based_scoring::{P_VT_OFF, P_VT0, P_VT1, P_VT2};
 
 pub async fn get_user_health_profile_details(pool: &Pool<Postgres>, user_id: Uuid) -> Result<UserHealthProfile, Error> {
     tracing::info!("🔍 Fetching health profile for user: {}", user_id);
@@ -61,6 +61,7 @@ pub async fn update_max_heart_rate_and_vt_thresholds(
     let hr_reserve = new_max_hr - resting_hr;
 
     // Calculate VT thresholds
+    let vt_off_threshold = resting_hr + (hr_reserve as f32 * P_VT_OFF) as i32;
     let vt0_threshold = resting_hr + (hr_reserve as f32 * P_VT0) as i32;
     let vt1_threshold = resting_hr + (hr_reserve as f32 * P_VT1) as i32;
     let vt2_threshold = resting_hr + (hr_reserve as f32 * P_VT2) as i32;
@@ -70,13 +71,15 @@ pub async fn update_max_heart_rate_and_vt_thresholds(
         r#"
         UPDATE user_health_profiles
         SET max_heart_rate = $1,
-            vt0_threshold = $2,
-            vt1_threshold = $3,
-            vt2_threshold = $4,
+            vt_off_threshold = $2,
+            vt0_threshold = $3,
+            vt1_threshold = $4,
+            vt2_threshold = $5,
             last_updated = NOW()
-        WHERE user_id = $5
+        WHERE user_id = $6
         "#,
         new_max_hr,
+        vt_off_threshold,
         vt0_threshold,
         vt1_threshold,
         vt2_threshold,

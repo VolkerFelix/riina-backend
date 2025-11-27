@@ -4,6 +4,7 @@ use crate::models::workout_data::{WorkoutStats, HeartRateData, ZoneBreakdown, Wo
 use crate::models::health::{UserHealthProfile, TrainingZones, TrainingZoneName};
 use crate::game::stats_calculator::ScoringMethod;
 
+pub const P_VT_OFF: f32 = 0.20; // Below this = no training effect (0 points)
 pub const P_VT0: f32 = 0.35;
 pub const P_VT1: f32 = 0.65;
 pub const P_VT2: f32 = 0.8;
@@ -34,7 +35,7 @@ async fn calculate_stats_universal_hr_based(
     let hr_max = user_health_profile.max_heart_rate;
     let hr_rest = user_health_profile.resting_heart_rate;
     let hr_reserve = hr_max - hr_rest;
-    let training_zones = TrainingZones::new(hr_rest, hr_reserve, P_VT0, P_VT1, P_VT2);
+    let training_zones = TrainingZones::new(hr_rest, hr_reserve, P_VT_OFF, P_VT0, P_VT1, P_VT2);
 
     let mut workout_stats = calculate_score_from_training_zones(training_zones, hr_data)?;
 
@@ -50,6 +51,11 @@ fn calculate_score_from_training_zones(training_zones: TrainingZones, hr_data: V
     let mut workout_stats = WorkoutStats::new();
 
     // Initialize zone breakdowns with HR ranges
+    let off_zone = training_zones.zones.get(&TrainingZoneName::OFF).unwrap();
+    let mut off = ZoneBreakdown::new(TrainingZoneName::OFF.to_string());
+    off.hr_min = Some(off_zone.zone.low);
+    off.hr_max = Some(off_zone.zone.high);
+
     let rest_zone = training_zones.zones.get(&TrainingZoneName::REST).unwrap();
     let mut rest = ZoneBreakdown::new(TrainingZoneName::REST.to_string());
     rest.hr_min = Some(rest_zone.zone.low);
@@ -99,6 +105,10 @@ fn calculate_score_from_training_zones(training_zones: TrainingZones, hr_data: V
         points += points_for_this_interval;
 
         match current_zone {
+            TrainingZoneName::OFF => {
+                off.minutes += duration_mins;
+                off.stamina_gained += points_for_this_interval
+            }
             TrainingZoneName::REST => {
                 rest.minutes += duration_mins;
                 rest.stamina_gained += points_for_this_interval
@@ -119,7 +129,7 @@ fn calculate_score_from_training_zones(training_zones: TrainingZones, hr_data: V
 
     }
 
-    let zone_breakdown = vec![rest, easy, moderate, hard];
+    let zone_breakdown = vec![off, rest, easy, moderate, hard];
 
     workout_stats.changes.stamina_change = points;
     workout_stats.changes.strength_change = 0.0;

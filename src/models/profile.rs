@@ -37,6 +37,7 @@ pub struct HealthProfileResponse {
     pub gender: Option<String>,
     pub resting_heart_rate: Option<i32>,
     pub max_heart_rate: Option<i32>,
+    pub vt_off_threshold: Option<i32>,
     pub vt0_threshold: Option<i32>,
     pub vt1_threshold: Option<i32>,
     pub vt2_threshold: Option<i32>,

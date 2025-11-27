@@ -37,6 +37,7 @@ static TRACING: Lazy<()> = Lazy::new(|| {
     }
 });
 
+#[derive(Clone)]
 pub struct UserRegLoginResponse {
     pub token: String,
     pub user_id: Uuid,

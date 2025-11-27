@@ -56,6 +56,20 @@ This 123 bpm range is what you have available for exercise intensity variation.
 
 Ventilatory thresholds are physiological markers where your breathing pattern and metabolism change during progressively harder exercise. They represent real shifts in how your body produces energy.
 
+### VT_OFF: No Training Effect (20% of HRR)
+
+**Calculation:** `VT_OFF = HR Rest + (HRR × 0.20)`
+
+**Physiological meaning:**
+- Heart rate only slightly elevated from resting
+- No significant cardiovascular training stimulus
+- Normal daily activities, light movement
+- Essentially resting metabolism
+
+**Training benefit:** None - below the threshold for cardiovascular adaptation
+
+**Feel:** Barely noticeable physical effort, normal daily activities
+
 ### VT0: Aerobic Threshold (35% of HRR)
 
 **Calculation:** `VT0 = HR Rest + (HRR × 0.35)`
@@ -125,6 +139,7 @@ HRR = 123 bpm
 
 **Step 3: Calculate Thresholds**
 ```
+VT_OFF = 60 + (123 × 0.20) = 60 + 24.60 = 85 bpm
 VT0 = 60 + (123 × 0.35) = 60 + 43.05 = 103 bpm
 VT1 = 60 + (123 × 0.65) = 60 + 79.95 = 140 bpm
 VT2 = 60 + (123 × 0.80) = 60 + 98.40 = 158 bpm
@@ -132,6 +147,7 @@ VT2 = 60 + (123 × 0.80) = 60 + 98.40 = 158 bpm
 
 **Summary:**
 - **HR Rest:** 60 bpm
+- **VT_OFF:** 85 bpm (no training effect threshold)
 - **VT0:** 103 bpm (aerobic threshold)
 - **VT1:** 140 bpm (lactate threshold)
 - **VT2:** 158 bpm (anaerobic threshold)
@@ -141,22 +157,30 @@ VT2 = 60 + (123 × 0.80) = 60 + 98.40 = 158 bpm
 
 ## Training Zones
 
-The three ventilatory thresholds divide your heart rate range into 4 distinct training zones:
+The four ventilatory thresholds divide your heart rate range into 5 distinct training zones:
 
 | Zone | Heart Rate Range | Intensity | Points/min | Purpose |
 |------|------------------|-----------|------------|---------|
-| **REST** | 0 → VT0 (0-103 bpm) | 1.0 | 1 | Active recovery, warm-up |
+| **OFF** | 0 → VT_OFF (0-84 bpm) | 0.0 | 0 | No training effect, daily activities |
+| **REST** | VT_OFF → VT0 (85-102 bpm) | 1.0 | 1 | Active recovery, warm-up |
 | **EASY** | VT0 → VT1 (103-139 bpm) | 4.0 | 4 | Aerobic base building |
 | **MODERATE** | VT1 → VT2 (140-157 bpm) | 6.0 | 6 | Lactate threshold training |
 | **HARD** | VT2 → Max (158-183 bpm) | 8.0 | 8 | VO2 max, anaerobic power |
 
 ### Zone Descriptions
 
-**REST Zone (0 - VT0)**
-- **Heart Rate:** Below aerobic threshold
+**OFF Zone (0 - VT_OFF)**
+- **Heart Rate:** Below training threshold
+- **Metabolism:** Resting/minimal activity
+- **Duration:** All day
+- **Examples:** Sitting, standing, slow walking, daily activities
+- **Points:** 0 per minute - no training effect
+
+**REST Zone (VT_OFF - VT0)**
+- **Heart Rate:** Below aerobic threshold but above resting
 - **Metabolism:** Primarily fat burning, minimal carbohydrate use
 - **Duration:** Can maintain indefinitely
-- **Examples:** Walking, very light cycling, active recovery
+- **Examples:** Brisk walking, very light cycling, active recovery
 - **Points:** 1 per minute
 
 **EASY Zone (VT0 - VT1)**
@@ -332,11 +356,13 @@ All constants used in the algorithm:
 
 ```rust
 // Ventilatory threshold percentages (% of Heart Rate Reserve)
-pub const P_VT0: f32 = 0.35;  // Aerobic threshold
-pub const P_VT1: f32 = 0.65;  // Lactate threshold
-pub const P_VT2: f32 = 0.80;  // Anaerobic threshold
+pub const P_VT_OFF: f32 = 0.20;  // No training effect threshold
+pub const P_VT0: f32 = 0.35;     // Aerobic threshold
+pub const P_VT1: f32 = 0.65;     // Lactate threshold
+pub const P_VT2: f32 = 0.80;     // Anaerobic threshold
 
 // Training zone intensity multipliers (points per minute)
+OFF_ZONE_INTENSITY       = 0.0
 REST_ZONE_INTENSITY      = 1.0
 EASY_ZONE_INTENSITY      = 4.0
 MODERATE_ZONE_INTENSITY  = 6.0
@@ -526,7 +552,7 @@ A: Currently the percentages (35%, 65%, 80%) are fixed based on exercise science
 
 The Universal HR-Based Scoring algorithm:
 
-✅ Uses **three ventilatory thresholds** (VT0, VT1, VT2) to define **four training zones**
+✅ Uses **four ventilatory thresholds** (VT_OFF, VT0, VT1, VT2) to define **five training zones**
 
 ✅ Calculates zones based on **Heart Rate Reserve** (HR Max - HR Rest)
 

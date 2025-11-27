@@ -433,6 +433,83 @@ pub async fn remove_team_member(
     }
 }
 
+/// Update current user's status in their team (active/inactive)
+pub async fn update_my_team_status(
+    team_id: web::Path<Uuid>,
+    request: web::Json<serde_json::Value>,
+    pool: web::Data<PgPool>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    let team_id = team_id.into_inner();
+
+    // Parse the status from request
+    let status_str = match request.get("status").and_then(|v| v.as_str()) {
+        Some(s) => s,
+        None => {
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error("Missing 'status' field")));
+        }
+    };
+
+    // Validate status (only allow active/inactive)
+    let new_status = match status_str {
+        "active" => MemberStatus::Active,
+        "inactive" => MemberStatus::Inactive,
+        _ => {
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error("Status must be 'active' or 'inactive'")));
+        }
+    };
+
+    // Parse requester user ID from claims
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(e) => {
+            tracing::error!("Invalid user ID in claims: {}", e);
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID")));
+        }
+    };
+
+    // Check if user is a member of this team
+    match check_team_member_role(&team_id, &user_id, &pool).await {
+        Ok(Some(_)) => {
+            // User is a member, proceed
+        }
+        Ok(None) => {
+            return Ok(HttpResponse::Forbidden().json(ApiResponse::<()>::error("You are not a member of this team")));
+        }
+        Err(e) => {
+            tracing::error!("Failed to check membership: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Failed to verify membership")));
+        }
+    };
+
+    // Update status
+    match sqlx::query!(
+        r#"
+        UPDATE team_members
+        SET status = $1, updated_at = NOW()
+        WHERE team_id = $2 AND user_id = $3
+        "#,
+        new_status.to_string(),
+        team_id,
+        user_id
+    )
+    .execute(pool.get_ref())
+    .await
+    {
+        Ok(_) => {
+            tracing::info!("User {} updated status to {} in team {}", user_id, new_status, team_id);
+            Ok(HttpResponse::Ok().json(ApiResponse::success(
+                format!("Status updated to {}", new_status),
+                json!({"status": new_status})
+            )))
+        }
+        Err(e) => {
+            tracing::error!("Failed to update status: {}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Failed to update status")))
+        }
+    }
+}
+
 /// Update a team member's role or status
 pub async fn update_team_member(
     path: web::Path<(Uuid, Uuid)>, // (team_id, user_id)
