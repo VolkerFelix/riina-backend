@@ -1,7 +1,7 @@
 // Removed unused imports: use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
-use tracing::{info, debug};
+use tracing::info;
 
 use crate::models::league::{LeagueGame, GameStatus, LiveGameScoreUpdate};
 
@@ -35,23 +35,67 @@ impl GameQueries {
         Ok(())
     }
 
+    /// Calculate team scores from live_score_events using best 4 out of 5 players
+    /// This is a public method that can be called to recalculate scores for a game
+    pub async fn calculate_team_scores_best_4(&self, game_id: Uuid) -> Result<(i32, i32), sqlx::Error> {
+        // Get all player scores grouped by team and user
+        let player_scores = sqlx::query!(
+            r#"
+            SELECT
+                lse.team_side,
+                lse.user_id,
+                SUM(lse.score_points) as total_score
+            FROM live_score_events lse
+            WHERE lse.game_id = $1
+            GROUP BY lse.team_side, lse.user_id
+            ORDER BY lse.team_side, total_score DESC
+            "#,
+            game_id
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut home_scores: Vec<f64> = Vec::new();
+        let mut away_scores: Vec<f64> = Vec::new();
+
+        for player in player_scores {
+            let score = player.total_score.unwrap_or(0.0) as f64;
+            match player.team_side.as_str() {
+                "home" => home_scores.push(score),
+                "away" => away_scores.push(score),
+                _ => {}
+            }
+        }
+
+        // Sort in descending order and take best 4
+        home_scores.sort_by(|a, b| b.partial_cmp(a).unwrap());
+        away_scores.sort_by(|a, b| b.partial_cmp(a).unwrap());
+
+        let home_score: i32 = home_scores.iter().take(4).sum::<f64>() as i32;
+        let away_score: i32 = away_scores.iter().take(4).sum::<f64>() as i32;
+
+        info!("Calculated team scores for game {}: home={} (best {} of {}), away={} (best {} of {})",
+            game_id, home_score, home_scores.len().min(4), home_scores.len(),
+            away_score, away_scores.len().min(4), away_scores.len());
+
+        Ok((home_score, away_score))
+    }
+
     /// Update game score from a workout
     pub async fn update_game_score(
         &self,
         game_id: Uuid,
         update: &LiveGameScoreUpdate,
     ) -> Result<(), sqlx::Error> {
-        debug!("Updating score for game {} from user {}", game_id, update.username);
+        info!("Processing score update for game {} from user {}", game_id, update.username);
 
-        // Get current scores and determine which team this user is on
+        // Verify the user is part of one of the teams
         let game_info = sqlx::query!(
             r#"
-            SELECT 
+            SELECT
                 g.home_team_id,
                 g.away_team_id,
-                g.home_score,
-                g.away_score,
-                CASE 
+                CASE
                     WHEN tm.team_id = g.home_team_id THEN 'home'
                     WHEN tm.team_id = g.away_team_id THEN 'away'
                     ELSE 'unknown'
@@ -75,58 +119,36 @@ impl GameQueries {
             }
         };
 
-        // Update the appropriate score
-        match game_info.team_side.as_str() {
-            "home" => {
-                sqlx::query!(
-                    r#"
-                    UPDATE games 
-                    SET 
-                        home_score = home_score + $2,
-                        last_score_time = NOW(),
-                        last_scorer_id = $3,
-                        last_scorer_name = $4,
-                        last_scorer_team = 'home',
-                        updated_at = NOW()
-                    WHERE id = $1
-                    "#,
-                    game_id,
-                    update.score_increase as i32,
-                    update.user_id,
-                    update.username
-                )
-                .execute(&self.pool)
-                .await?;
-            }
-            "away" => {
-                sqlx::query!(
-                    r#"
-                    UPDATE games 
-                    SET 
-                        away_score = away_score + $2,
-                        last_score_time = NOW(),
-                        last_scorer_id = $3,
-                        last_scorer_name = $4,
-                        last_scorer_team = 'away',
-                        updated_at = NOW()
-                    WHERE id = $1
-                    "#,
-                    game_id,
-                    update.score_increase as i32,
-                    update.user_id,
-                    update.username
-                )
-                .execute(&self.pool)
-                .await?;
-            }
-            _ => {
-                info!("User {} team side unknown for game {}", update.user_id, game_id);
-                return Ok(());
-            }
-        }
+        // NOTE: Score is already recorded in live_score_events by the caller
+        // Now we recalculate team totals from live_score_events (best 4 out of 5)
+        let (home_score, away_score) = self.calculate_team_scores_best_4(game_id).await?;
 
-        info!("Score updated for game {}: +{} points by {} ({})", 
-            game_id, update.score_increase, update.username, game_info.team_side);
+        // Update game with new calculated scores
+        sqlx::query!(
+            r#"
+            UPDATE games
+            SET
+                home_score = $2,
+                away_score = $3,
+                last_score_time = NOW(),
+                last_scorer_id = $4,
+                last_scorer_name = $5,
+                last_scorer_team = $6,
+                updated_at = NOW()
+            WHERE id = $1
+            "#,
+            game_id,
+            home_score,
+            away_score,
+            update.user_id,
+            update.username,
+            game_info.team_side
+        )
+        .execute(&self.pool)
+        .await?;
+
+        info!("✅ Score updated for game {} by {} ({}): home={}, away={}",
+            game_id, update.username, game_info.team_side, home_score, away_score);
 
         Ok(())
     }

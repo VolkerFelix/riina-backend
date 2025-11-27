@@ -387,17 +387,6 @@ async fn update_game_score_from_workout(
     tracing::info!("📊 Score calculation for {}: stamina={}, strength={}, score_increase={}", 
         username, workout_stats.changes.stamina_change, workout_stats.changes.strength_change, score_increase);
 
-    // Create score update object
-    let score_update = LiveGameScoreUpdate {
-        user_id,
-        username: username.to_string(),
-        score_increase,
-    };
-
-    // Update the game score using GameQueries
-    let game_queries = GameQueries::new(pool.clone());
-    game_queries.update_game_score(game.id, &score_update).await?;
-
     // Determine which team side (home or away)
     let team_side = if user_team_id == game.home_team_id {
         "home"
@@ -405,19 +394,29 @@ async fn update_game_score_from_workout(
         "away"
     };
 
-    // Record the scoring event with all required fields
+    // IMPORTANT: Record the scoring event FIRST before updating game scores
+    // The game score calculation depends on reading from live_score_events
     record_score_event(
-        game.id, 
-        user_id, 
+        game.id,
+        user_id,
         username,
         user_team_id,
         team_side,
-        score_increase, 
+        score_increase,
         workout_stats.changes.stamina_change,
         workout_stats.changes.strength_change,
         workout_data_id,
         pool
     ).await?;
+
+    // Now update the game score using GameQueries (which reads from live_score_events)
+    let score_update = LiveGameScoreUpdate {
+        user_id,
+        username: username.to_string(),
+        score_increase,
+    };
+    let game_queries = GameQueries::new(pool.clone());
+    game_queries.update_game_score(game.id, &score_update).await?;
 
     // Broadcast score update via WebSocket
     broadcast_score_update(game.id, pool).await.unwrap_or_else(|e| {

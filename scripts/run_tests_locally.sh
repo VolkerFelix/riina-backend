@@ -123,7 +123,7 @@ spin_up_ml_service() {
 
     # Authenticate with ghcr.io if GITHUB_TOKEN is set
     if [ -n "${GITHUB_TOKEN:-}" ]; then
-        echo -e "${BLUE}Authenticating with ghcr.io...${NC}"
+        echo -e "${YELLOW}Authenticating with ghcr.io...${NC}"
         echo $GITHUB_TOKEN | docker login ghcr.io -u volkerfelix --password-stdin > /dev/null 2>&1
     fi
 

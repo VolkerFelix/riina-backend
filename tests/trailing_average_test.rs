@@ -37,27 +37,55 @@ async fn test_trailing_7_day_average_calculation() {
 
     
     // Upload workout data for the user
+    // Create 7 workouts with varying intensities to test "best 5 out of 7" logic
+    // Days 0-4: Intense workouts (should be counted)
+    // Days 5-6: Light workouts (should be discarded)
+
+    // Create sample workouts to calculate expected scores
+    let sample_intense = WorkoutData::new(WorkoutIntensity::Intense, chrono::Utc::now(), 30);
+    let sample_light = WorkoutData::new(WorkoutIntensity::Light, chrono::Utc::now(), 15);
+
+    // Calculate expected scores
+    let workout_stats_calculator = WorkoutStatsCalculator::with_universal_hr_based();
+    let workout_type = WorkoutType::Cardio;
+
+    // Get score for one intense workout (best 5 days)
+    let intense_stats = workout_stats_calculator.calculate_stat_changes(
+        user_health_profile.clone(),
+        sample_intense.get_heart_rate_data(),
+        workout_type.clone()
+    ).await.unwrap();
+    let intense_workout_score = intense_stats.changes.stamina_change + intense_stats.changes.strength_change;
+
+    // Get score for one light workout (worst 2 days - should be discarded)
+    let light_stats = workout_stats_calculator.calculate_stat_changes(
+        user_health_profile,
+        sample_light.get_heart_rate_data(),
+        workout_type
+    ).await.unwrap();
+    let light_workout_score = light_stats.changes.stamina_change + light_stats.changes.strength_change;
+
+    // Now upload the actual workouts
     let mut workout_data_vec = Vec::new();
-    for i in 0..7 {
+    for i in 0..5 {
         workout_data_vec.push(WorkoutData::new(WorkoutIntensity::Intense, chrono::Utc::now() - chrono::Duration::days(i), 30));
+    }
+    for i in 5..7 {
+        workout_data_vec.push(WorkoutData::new(WorkoutIntensity::Light, chrono::Utc::now() - chrono::Duration::days(i), 15));
     }
 
     for mut workout_data in workout_data_vec.iter_mut() {
         let _ = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout_data).await;
     }
 
-    // Get the score for one workout (all workouts are the same)
-    let workout_stats_calculator = WorkoutStatsCalculator::with_universal_hr_based();
-    let workout_type = WorkoutType::Cardio;
-    let workout_stats = workout_stats_calculator.calculate_stat_changes(user_health_profile, workout_data_vec[0].get_heart_rate_data(), workout_type).await.unwrap();
-    let single_workout_score = &workout_stats.changes.stamina_change + &workout_stats.changes.strength_change;
+    // With best 5 out of 7 days logic: (5 × intense_workout_score + 0 × light_workout_score) / 7
+    // Only the 5 intense workouts should count, the 2 light workouts should be discarded
+    let expected_trailing_avg = (5.0 * intense_workout_score) / 7.0;
 
-    // With best 5 out of 7 days logic: (5 × single_workout_score) / 7
-    let expected_trailing_avg = (5.0 * single_workout_score) / 7.0;
-
-    println!("Single workout score: {}", single_workout_score);
+    println!("Intense workout score: {}", intense_workout_score);
+    println!("Light workout score: {}", light_workout_score);
     println!("Expected trailing average (best 5 of 7 days): {}", expected_trailing_avg);
-    println!("Stamina change: {}, Strength change: {}", workout_stats.changes.stamina_change, workout_stats.changes.strength_change);
+    println!("Only the 5 intense workouts should count, the 2 light workouts should be discarded");
     
     // Test the leaderboard endpoint to see if trailing average is calculated
     // Use a large page size to get all users

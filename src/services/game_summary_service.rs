@@ -234,6 +234,7 @@ impl GameSummaryService {
     }
 
     /// Calculate statistics for a single team
+    /// Uses best 4 out of 5 players for team score calculation
     fn calculate_single_team_stats(&self, players: &[&PlayerContribution]) -> TeamStats {
         if players.is_empty() {
             return TeamStats {
@@ -244,23 +245,28 @@ impl GameSummaryService {
             };
         }
 
-        let total_score: i32 = players.iter().map(|p| p.total_score).sum();
-        let avg_score = total_score as f32 / players.len() as f32;
+        // Sort players by score (descending) to get best performers
+        let mut sorted_players = players.to_vec();
+        sorted_players.sort_by(|a, b| b.total_score.cmp(&a.total_score));
 
-        // Get total workouts (sum of all workout events from all players)
+        // Only count the best 4 players for team score
+        let best_4_players = sorted_players.iter().take(4);
+        let total_score: i32 = best_4_players.clone().map(|p| p.total_score).sum();
+        let contributing_count = sorted_players.len().min(4);
+        let avg_score = if contributing_count > 0 {
+            total_score as f32 / contributing_count as f32
+        } else {
+            0.0
+        };
+
+        // Get total workouts (sum of all workout events from all players, not just best 4)
         let total_workouts = players.iter().map(|p| p.workout_count).sum::<i32>();
 
-        // Find top scorer
-        let top_scorer = players
-            .iter()
-            .max_by_key(|p| p.total_score)
-            .map(|&p| p.clone());
+        // Find top scorer (across all players)
+        let top_scorer = sorted_players.first().map(|&p| p.clone());
 
-        // Find lowest performer
-        let lowest_performer = players
-            .iter()
-            .min_by_key(|p| p.total_score)
-            .map(|&p| p.clone());
+        // Find lowest performer (across all players)
+        let lowest_performer = sorted_players.last().map(|&p| p.clone());
 
         TeamStats {
             avg_score_per_player: Some(avg_score),
