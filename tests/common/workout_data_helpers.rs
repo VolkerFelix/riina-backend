@@ -7,6 +7,7 @@ use reqwest::{Client, Error};
 use crate::common::utils::{create_test_user_and_login, UserRegLoginResponse};
 use riina_backend::models::workout_data::HeartRateData;
 
+#[derive(Debug, Copy, Clone)]
 pub enum WorkoutIntensity {
     Hard,
     Intense,

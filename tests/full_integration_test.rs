@@ -1815,3 +1815,172 @@ async fn test_game_summary_creation_and_retrieval() {
 
     println!("✅ Game summary creation and retrieval test completed successfully!");
 }
+
+#[tokio::test]
+async fn test_best_4_out_of_5_players_team_scoring() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+    let configuration = get_config().expect("Failed to read configuration.");
+    let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
+
+    println!("🧪 Testing best 4 out of 5 players team scoring logic...");
+
+    // Step 1: Setup test environment using helper (creates 1 home + 2 away users)
+    let live_game_environment = setup_live_game_environment(&test_app).await;
+
+    // Step 2: Create additional users to have 5 players per team
+    // Add 4 more home players (environment already has 1)
+    let mut home_users = vec![];
+    for _ in 0..4 {
+        let user = create_test_user_and_login(&test_app.address).await;
+        create_health_profile_for_user(&client, &test_app.address, &user).await.unwrap();
+        add_user_to_team(&test_app.address, &live_game_environment.admin_session.token, &live_game_environment.home_team_id.to_string(), user.user_id).await;
+        home_users.push(user);
+    }
+    // Prepend the existing home user
+    home_users.insert(0, live_game_environment.home_user);
+
+    // Add 3 more away players (environment already has 2)
+    let mut away_users = vec![];
+    for _ in 0..3 {
+        let user = create_test_user_and_login(&test_app.address).await;
+        create_health_profile_for_user(&client, &test_app.address, &user).await.unwrap();
+        add_user_to_team(&test_app.address, &live_game_environment.admin_session.token, &live_game_environment.away_team_id.to_string(), user.user_id).await;
+        away_users.push(user);
+    }
+    // Prepend the existing away users
+    away_users.insert(0, live_game_environment.away_user_1);
+    away_users.insert(1, live_game_environment.away_user_2);
+
+    println!("✅ Created 2 teams with 5 players each");
+
+    // Step 3: Use the first game from the environment
+    let game_id = live_game_environment.first_game_id;
+
+    // Update game time to now and start it
+    update_game_times_to_now(&test_app, game_id).await;
+    start_test_game(&test_app, game_id).await;
+    let live_game = initialize_live_game(&test_app, game_id, redis_client.clone()).await;
+
+    println!("✅ Game started with ID: {}", game_id);
+
+    // Step 4: Home team - Upload workouts with varying intensities
+    // Players 0-3: Intense workouts (100 points each) - these should count
+    // Player 4: Light workout (30 points) - this should be discarded
+
+    let home_workout_scores = vec![
+        (WorkoutIntensity::Intense, 30),  // Player 0: High score
+        (WorkoutIntensity::Intense, 30),  // Player 1: High score
+        (WorkoutIntensity::Intense, 30),  // Player 2: High score
+        (WorkoutIntensity::Intense, 30),  // Player 3: High score
+        (WorkoutIntensity::Light, 15),    // Player 4: Low score (should be discarded)
+    ];
+
+    for (i, (intensity, duration)) in home_workout_scores.iter().enumerate() {
+        let mut workout = WorkoutData::new(*intensity, Utc::now(), *duration);
+        let response = upload_workout_data_for_user(&client, &test_app.address, &home_users[i].token, &mut workout).await;
+        assert!(response.is_ok(), "Home player {} workout upload should succeed", i);
+        println!("Home player {} uploaded workout: intensity={:?}", i, intensity);
+    }
+
+    // Step 5: Away team - Upload workouts with varying intensities
+    // All players: Moderate workouts for baseline comparison
+    let away_workout_scores = vec![
+        (WorkoutIntensity::Moderate, 25),
+        (WorkoutIntensity::Moderate, 25),
+        (WorkoutIntensity::Moderate, 25),
+        (WorkoutIntensity::Moderate, 25),
+        (WorkoutIntensity::Moderate, 25),
+    ];
+
+    for (i, (intensity, duration)) in away_workout_scores.iter().enumerate() {
+        let mut workout = WorkoutData::new(*intensity, Utc::now(), *duration);
+        let response = upload_workout_data_for_user(&client, &test_app.address, &away_users[i].token, &mut workout).await;
+        assert!(response.is_ok(), "Away player {} workout upload should succeed", i);
+        println!("Away player {} uploaded workout: intensity={:?}", i, intensity);
+    }
+
+    // Wait a bit for score processing
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    // Step 6: Get individual player scores from the database
+    let (home_contributions, away_contributions) = get_player_contributions(&test_app, game_id).await;
+
+    // Extract scores
+    let mut home_individual_scores: Vec<i32> = home_contributions.iter()
+        .map(|c| c.total_score_contribution)
+        .collect();
+    let mut away_individual_scores: Vec<i32> = away_contributions.iter()
+        .map(|c| c.total_score_contribution)
+        .collect();
+
+    // Sort to get best scores
+    home_individual_scores.sort_by(|a, b| b.cmp(a));
+    away_individual_scores.sort_by(|a, b| b.cmp(a));
+
+    // Calculate expected scores (best 4 out of 5)
+    let home_expected_score: i32 = home_individual_scores.iter().take(4).sum();
+    let away_expected_score: i32 = away_individual_scores.iter().take(4).sum();
+    let home_total_if_all_counted: i32 = home_individual_scores.iter().sum();
+    let away_total_if_all_counted: i32 = away_individual_scores.iter().sum();
+
+    // Get the game state
+    let game_state = get_live_game_state(&test_app, game_id).await;
+
+    println!("\n📊 Score Verification:");
+    println!("Home individual scores (sorted): {:?}", home_individual_scores);
+    println!("Home expected total (best 4 of 5): {}", home_expected_score);
+    println!("Home actual score: {}", game_state.home_score);
+    println!("Home total if all 5 counted: {} ❌", home_total_if_all_counted);
+    println!();
+    println!("Away individual scores (sorted): {:?}", away_individual_scores);
+    println!("Away expected total (best 4 of 5): {}", away_expected_score);
+    println!("Away actual score: {}", game_state.away_score);
+    println!("Away total if all 5 counted: {} ❌", away_total_if_all_counted);
+
+    // Verify that only best 4 are counted
+    assert_eq!(
+        game_state.home_score,
+        home_expected_score,
+        "Home team score should be sum of best 4 players (not all 5)"
+    );
+
+    assert_eq!(
+        game_state.away_score,
+        away_expected_score,
+        "Away team score should be sum of best 4 players (not all 5)"
+    );
+
+    // Verify the 5th (worst) player's score is NOT included
+    assert_ne!(
+        game_state.home_score,
+        home_total_if_all_counted,
+        "Home team score should NOT include all 5 players (worst should be excluded)"
+    );
+
+    assert_ne!(
+        game_state.away_score,
+        away_total_if_all_counted,
+        "Away team score should NOT include all 5 players (worst should be excluded)"
+    );
+
+    println!("\n✅ Verification successful:");
+    println!("   - Home team: {} (best 4 of 5, excluded worst player)",
+        game_state.home_score);
+    println!("   - Away team: {} (best 4 of 5, excluded worst player)",
+        game_state.away_score);
+    println!("   - Correctly excluded {} home points and {} away points from worst players",
+        home_total_if_all_counted - home_expected_score,
+        away_total_if_all_counted - away_expected_score);
+
+    // Verify all players were recorded (should be at least 5 per team)
+    assert!(home_contributions.len() >= 5, "Should have at least 5 home player contributions, got {}", home_contributions.len());
+    assert!(away_contributions.len() >= 5, "Should have at least 5 away player contributions, got {}", away_contributions.len());
+    println!("   - All {} home and {} away players recorded in contributions (only best 4 per team count for score)",
+        home_contributions.len(), away_contributions.len());
+
+    // Cleanup
+    finish_live_game(&test_app, live_game_environment.first_game_id, redis_client).await;
+
+    println!("\n✅ Best 4 out of 5 players team scoring test completed successfully!");
+}
