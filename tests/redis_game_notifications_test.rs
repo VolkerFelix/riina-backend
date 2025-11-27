@@ -13,7 +13,7 @@ use sqlx;
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, get_next_date, delete_test_user};
 use common::admin_helpers::{create_admin_user_and_login, create_league_season, create_league, create_team, TeamConfig, add_team_to_league};
-use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user};
+use common::workout_data_helpers::{WorkoutData, WorkoutIntensity, upload_workout_data_for_user};
 
 use riina_backend::config::settings::get_config;
 
@@ -47,8 +47,8 @@ async fn test_redis_game_evaluation_notifications() {
     let user2 = create_test_user_and_login(&app.address).await;
     
     // Upload health data
-    let mut workout1 = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
-    let mut workout2 = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut workout1 = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
+    let mut workout2 = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 30);
     upload_workout_data_for_user(&client, &app.address, &user1.token, &mut workout1).await.unwrap();
     upload_workout_data_for_user(&client, &app.address, &user2.token, &mut workout2).await.unwrap();
     

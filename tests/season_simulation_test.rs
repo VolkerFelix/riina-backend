@@ -17,7 +17,7 @@ use common::utils::{
 use common::admin_helpers::{create_admin_user_and_login, create_league_season, create_league, create_team, TeamConfig, add_team_to_league, add_user_to_team};
 use common::workout_data_helpers::{
     WorkoutData,
-    WorkoutType,
+    WorkoutIntensity,
     upload_workout_data_for_user
 };
 use serde_json::json;
@@ -104,7 +104,7 @@ async fn simulate_complete_season_with_4_players_2_teams() {
     println!("🏃 Uploading health data to build user stats...");
     
     // User1 (Team1 Owner): Elite athlete
-    let mut user1_health = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let mut user1_health = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let user1_upload = upload_workout_data_for_user(&client, &app.address, &user1.token, &mut user1_health).await;
     match user1_upload {
         Ok(response) => {
@@ -115,7 +115,7 @@ async fn simulate_complete_season_with_4_players_2_teams() {
     }
     
     // User2 (Team1 Member): Advanced athlete  
-    let mut user2_health = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut user2_health = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 30);
     let user2_upload = upload_workout_data_for_user(&client, &app.address, &user2.token, &mut user2_health).await;
     match user2_upload {
         Ok(response) => {
@@ -126,7 +126,7 @@ async fn simulate_complete_season_with_4_players_2_teams() {
     }
     
     // User3 (Team2 Owner): Intermediate athlete
-    let mut user3_health = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut user3_health = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 30);
     let user3_upload = upload_workout_data_for_user(&client, &app.address, &user3.token, &mut user3_health).await;
     if let Err(e) = user3_upload {
         panic!("Failed to upload health data for user3: {}", e);
@@ -134,7 +134,7 @@ async fn simulate_complete_season_with_4_players_2_teams() {
     println!("   ✅ User3 (Ice Warriors Owner): Intermediate fitness data uploaded");
     
     // User4 (Team2 Member): Beginner athlete
-    let mut user4_health = WorkoutData::new(WorkoutType::Light, Utc::now(), 30);
+    let mut user4_health = WorkoutData::new(WorkoutIntensity::Light, Utc::now(), 30);
     let user4_upload = upload_workout_data_for_user(&client, &app.address, &user4.token, &mut user4_health).await;
     if let Err(e) = user4_upload {
         panic!("Failed to upload health data for user4: {}", e);

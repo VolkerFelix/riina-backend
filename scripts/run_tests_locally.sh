@@ -28,6 +28,9 @@ export REDIS__REDIS__PASSWORD=${REDIS__REDIS__PASSWORD:-redis}
 # MinIO Configuration
 export MINIO__MINIO__ACCESS_KEY=${MINIO__MINIO__ACCESS_KEY:-minioadmin}
 export MINIO__MINIO__SECRET_KEY=${MINIO__MINIO__SECRET_KEY:-minioadmin}
+# ML Service Configuration
+export ML__ML__SERVICE_URL=${ML__ML__SERVICE_URL:-http://localhost:8081}
+export ML__ML__API_KEY=${ML__ML__API_KEY}
 
 # Default configuration
 DB_HOST="localhost"
@@ -60,13 +63,22 @@ check_redis() {
 }
 
 # Check if MinIO container is already running
-
 check_minio() {
     if [ "$(docker ps -q -f name=riina-minio-test)" ]; then
         echo -e "${GREEN}MinIO container is already running.${NC}"
     else
         echo -e "${RED}MinIO container is not running.${NC}"
         spin_up_minio
+    fi
+}
+
+# Check if ML Service container is already running
+check_ml_service() {
+    if [ "$(docker ps -q -f name=riina-ml-service-test)" ]; then
+        echo -e "${GREEN}ML Service container is already running.${NC}"
+    else
+        echo -e "${RED}ML Service container is not running.${NC}"
+        spin_up_ml_service
     fi
 }
 
@@ -95,7 +107,6 @@ spin_up_redis() {
 }
 
 # Spin up minio container
-
 spin_up_minio() {
     echo -e "${YELLOW}Spinning up MinIO container for tests...${NC}"
     docker run --name riina-minio-test \
@@ -104,6 +115,24 @@ spin_up_minio() {
         -v riina-minio-test-data:/data \
         -p 9000:9000 \
         -d ghcr.io/volkerfelix/minio_custom:latest server /data
+}
+
+# Spin up ml service container, might need to be pulled first from ghcr.io
+spin_up_ml_service() {
+    echo -e "${YELLOW}Spinning up ML Service container for tests...${NC}"
+
+    # Authenticate with ghcr.io if GITHUB_TOKEN is set
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
+        echo -e "${YELLOW}Authenticating with ghcr.io...${NC}"
+        echo $GITHUB_TOKEN | docker login ghcr.io -u volkerfelix --password-stdin > /dev/null 2>&1
+    fi
+
+    docker pull ghcr.io/volkerfelix/riina-ai:latest
+    docker run --name riina-ml-service-test \
+        -e ML_API_KEY=${ML__ML__API_KEY} \
+        -e ML_SERVICE_URL=${ML__ML__SERVICE_URL} \
+        -p 8081:8081 \
+        -d ghcr.io/volkerfelix/riina-ai:latest
 }
 
 # Clean up postgres, redis and minio containers
@@ -126,6 +155,11 @@ clean_up() {
         docker rm riina-minio-test 2>/dev/null || true
     fi
 
+    if [ "$(docker ps -aq -f name=riina-ml-service-test)" ]; then
+        docker stop riina-ml-service-test 2>/dev/null || true
+        docker rm riina-ml-service-test 2>/dev/null || true
+    fi
+
     # Remove volumes if they exist
     if [ "$(docker volume ls -q -f name=riina-postgres-test-data)" ]; then
         docker volume rm riina-postgres-test-data 2>/dev/null || true
@@ -137,6 +171,10 @@ clean_up() {
 
     if [ "$(docker volume ls -q -f name=riina-minio-test-data)" ]; then
         docker volume rm riina-minio-test-data 2>/dev/null || true
+    fi
+
+    if [ "$(docker volume ls -q -f name=riina-ml-service-test-data)" ]; then
+        docker volume rm riina-ml-service-test-data 2>/dev/null || true
     fi
 }
 
@@ -198,6 +236,7 @@ main() {
     check_postgres
     check_redis
     check_minio
+    check_ml_service
     run_migrations
     prepare_sqlx
     run_tests

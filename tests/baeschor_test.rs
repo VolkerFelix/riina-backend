@@ -5,12 +5,12 @@ use riina_backend::models::health::{HeartRateZones, HeartRateZoneName, Gender};
 use riina_backend::models::workout_data::HeartRateData;
 
 mod common;
-use common::workout_data_helpers::{WorkoutData, WorkoutType};
+use common::workout_data_helpers::{WorkoutData, WorkoutIntensity};
 
 #[test]
 fn test_millisecond_timestamps_produces_zone_time() {
 
-    let workout_data = WorkoutData::new_with_hr_freq(WorkoutType::Hard, Utc::now(), 110, Some(2));
+    let workout_data = WorkoutData::new_with_hr_freq(WorkoutIntensity::Hard, Utc::now(), 110, Some(2));
     let heart_rate_data: Vec<HeartRateData> = workout_data.heart_rate.iter().map(|v| serde_json::from_value(v.clone()).expect("Failed to parse heart rate data")).collect();
 
     // Create heart rate zones for testing

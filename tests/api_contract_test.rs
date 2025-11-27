@@ -4,7 +4,7 @@
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, delete_test_user};
 use common::admin_helpers::{create_admin_user_and_login, create_league_season, create_league};
-use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user};
+use common::workout_data_helpers::{WorkoutData, WorkoutIntensity, upload_workout_data_for_user};
 use serde_json::json;
 use uuid::Uuid;
 use chrono::{DateTime, NaiveTime, Utc, Weekday};
@@ -49,7 +49,7 @@ async fn test_game_countdown_api_contract() {
     let user2 = create_test_user_and_login(&app.address).await;
     
     // Upload health data so users can participate
-    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 30);
     upload_workout_data_for_user(
         &client, 
         &app.address, 
@@ -386,7 +386,7 @@ async fn test_standings_api_contract() {
     let user = create_test_user_and_login(&app.address).await;
     
     // Upload health data
-    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 30);
     upload_workout_data_for_user(
         &client, 
         &app.address, 
@@ -413,7 +413,7 @@ async fn test_standings_api_contract() {
     
     // Create another user for the second team
     let user2 = create_test_user_and_login(&app.address).await;
-    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 30);
     upload_workout_data_for_user(
         &client, 
         &app.address, 

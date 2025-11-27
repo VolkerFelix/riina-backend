@@ -15,7 +15,11 @@ jobs:
         name: Test with Database, Redis and MinIO
         runs-on: ubuntu-latest
         timeout-minutes: 30
-        
+
+        permissions:
+          contents: read
+          packages: read
+
         # Service containers to run alongside the `test` container job
         services:
           postgres:
@@ -50,6 +54,17 @@ jobs:
               --health-timeout 5s
               --health-retries 5
               --volume /tmp/minio-data:/data
+
+          ml-service:
+            image: ghcr.io/volkerfelix/riina-ai:latest
+            credentials:
+              username: ${{ github.actor }}
+              password: ${{ secrets.GITHUB_TOKEN }}
+            env:
+              ML_API_KEY: ${{ secrets.ML_API_KEY }}
+              ML_SERVICE_URL: http://localhost:8081
+            ports:
+              - 8081:8081
         
         env:
           POSTGRES__DATABASE__USER: ${{ secrets.POSTGRES_USER }}
@@ -63,6 +78,7 @@ jobs:
           MINIO__MINIO__SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           ML__ML__API_KEY: ${{ secrets.ML_API_KEY }}
+          ML__ML__SERVICE_URL: http://localhost:8081
 
         steps:
             - name: Check out repository code

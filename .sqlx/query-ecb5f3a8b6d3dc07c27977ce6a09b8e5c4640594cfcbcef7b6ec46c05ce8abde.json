@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT stamina_gained, strength_gained\n        FROM workout_data\n        WHERE user_id = $1 \n        AND workout_start >= $2\n        ",
+  "query": "\n        SELECT stamina_gained, strength_gained, DATE(workout_start) as workout_date\n        FROM workout_data\n        WHERE user_id = $1\n        AND workout_start >= $2\n        ",
   "describe": {
     "columns": [
       {
@@ -12,6 +12,11 @@
         "ordinal": 1,
         "name": "strength_gained",
         "type_info": "Float4"
+      },
+      {
+        "ordinal": 2,
+        "name": "workout_date",
+        "type_info": "Date"
       }
     ],
     "parameters": {
@@ -22,8 +27,9 @@
     },
     "nullable": [
       false,
-      false
+      false,
+      null
     ]
   },
-  "hash": "344574e2a7b0d7b932d744bfe69ef78cbd8fde3a1dbe91179815ffd4a8365935"
+  "hash": "ecb5f3a8b6d3dc07c27977ce6a09b8e5c4640594cfcbcef7b6ec46c05ce8abde"
 }

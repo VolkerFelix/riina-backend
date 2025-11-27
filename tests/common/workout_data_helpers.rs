@@ -7,7 +7,8 @@ use reqwest::{Client, Error};
 use crate::common::utils::{create_test_user_and_login, UserRegLoginResponse};
 use riina_backend::models::workout_data::HeartRateData;
 
-pub enum WorkoutType {
+#[derive(Debug, Copy, Clone)]
+pub enum WorkoutIntensity {
     Hard,
     Intense,
     Moderate,
@@ -29,12 +30,12 @@ pub struct WorkoutData {
     pub approval_token: Option<String>,
 }
 impl WorkoutData {
-    pub fn new(workout_type: WorkoutType, workout_start: DateTime<Utc>, duration_minutes: i64) -> Self {
+    pub fn new(workout_type: WorkoutIntensity, workout_start: DateTime<Utc>, duration_minutes: i64) -> Self {
         let (heart_rate_data, calories_burned) = match workout_type {
-            WorkoutType::Hard => generate_hard_workout_data(workout_start, duration_minutes, None),
-            WorkoutType::Intense => generate_intense_workout_data(workout_start, duration_minutes),
-            WorkoutType::Moderate => generate_moderate_workout_data(workout_start, duration_minutes),
-            WorkoutType::Light => generate_light_workout_data(workout_start, duration_minutes),
+            WorkoutIntensity::Hard => generate_hard_workout_data(workout_start, duration_minutes, None),
+            WorkoutIntensity::Intense => generate_intense_workout_data(workout_start, duration_minutes),
+            WorkoutIntensity::Moderate => generate_moderate_workout_data(workout_start, duration_minutes),
+            WorkoutIntensity::Light => generate_light_workout_data(workout_start, duration_minutes),
         };
         
         let workout_uuid = Uuid::new_v4().to_string();
@@ -54,12 +55,12 @@ impl WorkoutData {
         }
     }
 
-    pub fn new_with_hr_freq(workout_type: WorkoutType, workout_start: DateTime<Utc>, duration_minutes: i64, hr_freq_per_sec: Option<i32>) -> Self {
+    pub fn new_with_hr_freq(workout_type: WorkoutIntensity, workout_start: DateTime<Utc>, duration_minutes: i64, hr_freq_per_sec: Option<i32>) -> Self {
         let (heart_rate_data, calories_burned) = match workout_type {
-            WorkoutType::Hard => generate_hard_workout_data(workout_start, duration_minutes, hr_freq_per_sec),
-            WorkoutType::Intense => generate_intense_workout_data(workout_start, duration_minutes),
-            WorkoutType::Moderate => generate_moderate_workout_data(workout_start, duration_minutes),
-            WorkoutType::Light => generate_light_workout_data(workout_start, duration_minutes),
+            WorkoutIntensity::Hard => generate_hard_workout_data(workout_start, duration_minutes, hr_freq_per_sec),
+            WorkoutIntensity::Intense => generate_intense_workout_data(workout_start, duration_minutes),
+            WorkoutIntensity::Moderate => generate_moderate_workout_data(workout_start, duration_minutes),
+            WorkoutIntensity::Light => generate_light_workout_data(workout_start, duration_minutes),
         };
 
         let workout_uuid = Uuid::new_v4().to_string();
@@ -79,7 +80,7 @@ impl WorkoutData {
         }
     }
     
-    pub fn new_with_offset_hours(workout_type: WorkoutType, hours_ago: i64, duration_minutes: i64) -> Self {
+    pub fn new_with_offset_hours(workout_type: WorkoutIntensity, hours_ago: i64, duration_minutes: i64) -> Self {
         let workout_start = Utc::now() - Duration::hours(hours_ago);
         Self::new(workout_type, workout_start, duration_minutes)
     }
@@ -150,6 +151,66 @@ fn generate_light_workout_data(start_time: DateTime<Utc>, duration_minutes: i64)
     })).collect();
     let calories = 180; // Light intensity
     (heart_rate_data, calories)
+}
+
+/// Create workout data from custom heart rate samples (time, hr)
+pub fn create_workout_from_custom_hr_data(hr_samples: Vec<(String, i32)>) -> WorkoutData {
+    let workout_uuid = Uuid::new_v4().to_string();
+
+    // Parse the first timestamp to get the base date (today with that time)
+    let first_time = &hr_samples[0].0;
+    let (hours, minutes, seconds) = parse_time_string(first_time);
+
+    let today = Utc::now().date_naive();
+    let workout_start = today.and_hms_opt(hours, minutes, seconds)
+        .unwrap()
+        .and_local_timezone(Utc)
+        .unwrap();
+
+    // Parse the last timestamp to get workout end
+    let last_time = &hr_samples[hr_samples.len() - 1].0;
+    let (end_hours, end_minutes, end_seconds) = parse_time_string(last_time);
+    let workout_end = today.and_hms_opt(end_hours, end_minutes, end_seconds)
+        .unwrap()
+        .and_local_timezone(Utc)
+        .unwrap();
+
+    // Convert samples to heart rate data
+    let heart_rate_data: Vec<serde_json::Value> = hr_samples.iter().map(|(time_str, hr)| {
+        let (h, m, s) = parse_time_string(time_str);
+        let timestamp = today.and_hms_opt(h, m, s)
+            .unwrap()
+            .and_local_timezone(Utc)
+            .unwrap();
+
+        json!({
+            "timestamp": timestamp.to_rfc3339(),
+            "heart_rate": hr
+        })
+    }).collect();
+
+    WorkoutData {
+        workout_uuid,
+        workout_start,
+        workout_end,
+        calories_burned: 350,
+        activity_name: Some("Strength Training".to_string()),
+        heart_rate: heart_rate_data,
+        device_id: format!("test-device-{}", &Uuid::new_v4().to_string()[..8]),
+        timestamp: Utc::now(),
+        image_url: None,
+        video_url: None,
+        approval_token: None,
+    }
+}
+
+fn parse_time_string(time_str: &str) -> (u32, u32, u32) {
+    let parts: Vec<&str> = time_str.split(':').collect();
+    (
+        parts[0].parse().unwrap(),
+        parts[1].parse().unwrap(),
+        parts[2].parse().unwrap(),
+    )
 }
 
 #[derive(Debug, Serialize)]

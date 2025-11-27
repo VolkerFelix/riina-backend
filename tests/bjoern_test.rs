@@ -1,5 +1,5 @@
 use chrono::{NaiveDate, NaiveTime, Utc, TimeZone};
-use riina_backend::models::workout_data::HeartRateData;
+use riina_backend::models::workout_data::{HeartRateData, WorkoutType};
 use riina_backend::models::health::{Gender, TrainingZones, UserHealthProfile};
 use riina_backend::workout::universal_hr_based_scoring::UniversalHRBasedScoring;
 use riina_backend::game::stats_calculator::ScoringMethod;
@@ -104,7 +104,8 @@ async fn test_workout_zone_duration_bug() {
 
     // Use the actual backend logic to calculate workout stats
     let scoring_method = UniversalHRBasedScoring;
-    let workout_stats = scoring_method.calculate_stats(user_health_profile, hr_data.clone()).await
+    let workout_type = WorkoutType::Cardio;
+    let workout_stats = scoring_method.calculate_stats(user_health_profile, hr_data.clone(), workout_type).await
         .expect("Failed to calculate workout stats");
 
     let zone_breakdown = workout_stats.zone_breakdown.as_ref()

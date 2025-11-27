@@ -5,10 +5,11 @@ use serde_json::json;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, delete_test_user};
-use common::workout_data_helpers::{upload_workout_data_for_user, WorkoutData, WorkoutType, create_health_profile_for_user};
+use common::workout_data_helpers::{upload_workout_data_for_user, WorkoutData, WorkoutIntensity, create_health_profile_for_user};
 use common::admin_helpers::{create_admin_user_and_login, create_teams_for_test, add_user_to_team};
 use riina_backend::db::health_data::get_user_health_profile_details;
 use riina_backend::game::stats_calculator::WorkoutStatsCalculator;
+use riina_backend::models::workout_data::WorkoutType;
 
 
 #[tokio::test]
@@ -36,22 +37,55 @@ async fn test_trailing_7_day_average_calculation() {
 
     
     // Upload workout data for the user
+    // Create 7 workouts with varying intensities to test "best 5 out of 7" logic
+    // Days 0-4: Intense workouts (should be counted)
+    // Days 5-6: Light workouts (should be discarded)
+
+    // Create sample workouts to calculate expected scores
+    let sample_intense = WorkoutData::new(WorkoutIntensity::Intense, chrono::Utc::now(), 30);
+    let sample_light = WorkoutData::new(WorkoutIntensity::Light, chrono::Utc::now(), 15);
+
+    // Calculate expected scores
+    let workout_stats_calculator = WorkoutStatsCalculator::with_universal_hr_based();
+    let workout_type = WorkoutType::Cardio;
+
+    // Get score for one intense workout (best 5 days)
+    let intense_stats = workout_stats_calculator.calculate_stat_changes(
+        user_health_profile.clone(),
+        sample_intense.get_heart_rate_data(),
+        workout_type.clone()
+    ).await.unwrap();
+    let intense_workout_score = intense_stats.changes.stamina_change + intense_stats.changes.strength_change;
+
+    // Get score for one light workout (worst 2 days - should be discarded)
+    let light_stats = workout_stats_calculator.calculate_stat_changes(
+        user_health_profile,
+        sample_light.get_heart_rate_data(),
+        workout_type
+    ).await.unwrap();
+    let light_workout_score = light_stats.changes.stamina_change + light_stats.changes.strength_change;
+
+    // Now upload the actual workouts
     let mut workout_data_vec = Vec::new();
-    for i in 0..7 {
-        workout_data_vec.push(WorkoutData::new(WorkoutType::Intense, chrono::Utc::now() - chrono::Duration::days(i), 30));
+    for i in 0..5 {
+        workout_data_vec.push(WorkoutData::new(WorkoutIntensity::Intense, chrono::Utc::now() - chrono::Duration::days(i), 30));
+    }
+    for i in 5..7 {
+        workout_data_vec.push(WorkoutData::new(WorkoutIntensity::Light, chrono::Utc::now() - chrono::Duration::days(i), 15));
     }
 
     for mut workout_data in workout_data_vec.iter_mut() {
         let _ = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout_data).await;
     }
 
-    // Get the score for one workout (all workouts are the same, so trailing average should equal single workout score)
-    let workout_stats_calculator = WorkoutStatsCalculator::with_universal_hr_based();
-    let workout_stats = workout_stats_calculator.calculate_stat_changes(user_health_profile, workout_data_vec[0].get_heart_rate_data()).await.unwrap();
-    let score = &workout_stats.changes.stamina_change + &workout_stats.changes.strength_change;
-    
-    println!("Expected trailing average (single workout score): {}", score);
-    println!("Stamina change: {}, Strength change: {}", workout_stats.changes.stamina_change, workout_stats.changes.strength_change);
+    // With best 5 out of 7 days logic: (5 × intense_workout_score + 0 × light_workout_score) / 7
+    // Only the 5 intense workouts should count, the 2 light workouts should be discarded
+    let expected_trailing_avg = (5.0 * intense_workout_score) / 7.0;
+
+    println!("Intense workout score: {}", intense_workout_score);
+    println!("Light workout score: {}", light_workout_score);
+    println!("Expected trailing average (best 5 of 7 days): {}", expected_trailing_avg);
+    println!("Only the 5 intense workouts should count, the 2 light workouts should be discarded");
     
     // Test the leaderboard endpoint to see if trailing average is calculated
     // Use a large page size to get all users
@@ -95,12 +129,14 @@ async fn test_trailing_7_day_average_calculation() {
 
     // Debug: Print the actual trailing average from API
     println!("API returned trailing average: {}", trailing_avg);
-    println!("Expected score: {}", score);
-    
-    // Check it's exactly the same as the workout stats since all workouts are identical
-    assert_eq!(trailing_avg, score, 
-        "Trailing average {} should equal single workout score {} since all workouts are identical", 
-        trailing_avg, score);
+    println!("Expected trailing average: {}", expected_trailing_avg);
+
+    // Check it matches the expected value (allowing for small floating point differences)
+    let trailing_avg_f32 = trailing_avg.as_f64().unwrap() as f32;
+    let diff = (trailing_avg_f32 - expected_trailing_avg).abs();
+    assert!(diff < 0.01,
+        "Trailing average {} should be approximately {} (best 5 of 7 days), diff: {}",
+        trailing_avg_f32, expected_trailing_avg, diff);
     
     println!("✅ Trailing 7-day average calculation test passed: {}", trailing_avg);
     
@@ -137,13 +173,13 @@ async fn test_leaderboard_sort_by_trailing_average() {
     // User 1: High intensity workouts in the last 7 days (should have high trailing average)
     let mut user1_workouts = Vec::new();
     for i in 0..7 {
-        user1_workouts.push(WorkoutData::new(WorkoutType::Intense, chrono::Utc::now() - chrono::Duration::days(i), 45));
+        user1_workouts.push(WorkoutData::new(WorkoutIntensity::Intense, chrono::Utc::now() - chrono::Duration::days(i), 45));
     }
 
     // User 2: Low intensity workouts in the last 7 days (should have low trailing average)
     let mut user2_workouts = Vec::new();
     for i in 0..7 {
-        user2_workouts.push(WorkoutData::new(WorkoutType::Light, chrono::Utc::now() - chrono::Duration::days(i), 20));
+        user2_workouts.push(WorkoutData::new(WorkoutIntensity::Light, chrono::Utc::now() - chrono::Duration::days(i), 20));
     }
 
     // Upload workout data for both users
@@ -157,10 +193,11 @@ async fn test_leaderboard_sort_by_trailing_average() {
 
     // Calculate expected trailing averages
     let workout_stats_calculator = WorkoutStatsCalculator::with_universal_hr_based();
-    let user1_stats = workout_stats_calculator.calculate_stat_changes(user1_health_profile, user1_workouts[0].get_heart_rate_data()).await.unwrap();
+    let workout_type = WorkoutType::Cardio;
+    let user1_stats = workout_stats_calculator.calculate_stat_changes(user1_health_profile, user1_workouts[0].get_heart_rate_data(), workout_type.clone()).await.unwrap();
     let user1_expected_avg = user1_stats.changes.stamina_change + user1_stats.changes.strength_change;
     
-    let user2_stats = workout_stats_calculator.calculate_stat_changes(user2_health_profile, user2_workouts[0].get_heart_rate_data()).await.unwrap();
+    let user2_stats = workout_stats_calculator.calculate_stat_changes(user2_health_profile, user2_workouts[0].get_heart_rate_data(), workout_type).await.unwrap();
     let user2_expected_avg = user2_stats.changes.stamina_change + user2_stats.changes.strength_change;
     
     // Test leaderboard with sort_by=trailing_average

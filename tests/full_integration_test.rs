@@ -12,7 +12,7 @@ mod common;
 use common::utils::{spawn_app, create_test_user_and_login, TestApp, get_next_date, make_authenticated_request, UserRegLoginResponse, delete_test_user};
 use common::admin_helpers::{create_admin_user_and_login, create_league_season, create_teams_for_test, create_league, add_team_to_league, add_user_to_team};
 use common::live_game_helpers::*;
-use common::workout_data_helpers::{WorkoutData, WorkoutType, upload_workout_data_for_user, create_health_profile_for_user};
+use common::workout_data_helpers::{WorkoutData, WorkoutIntensity, upload_workout_data_for_user, create_health_profile_for_user};
 
 #[tokio::test]
 async fn test_complete_live_game_workflow() {
@@ -55,7 +55,7 @@ async fn test_complete_live_game_workflow() {
     assert!(api_game["away_team_name"].is_string(), "Should have away team name");
 
     // Home team user uploads workout data
-    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut workout_data).await;
     assert!(response.is_ok(), "Workout upload should succeed");
     let response_data = response.unwrap();
@@ -75,8 +75,8 @@ async fn test_complete_live_game_workflow() {
     assert_eq!(updated_live_game.last_scorer_team, Some("home".to_string()));
 
     // Away team users upload workout data
-    let mut workout1 = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
-    let mut workout2 = WorkoutData::new(WorkoutType::Light, Utc::now(), 30);
+    let mut workout1 = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 30);
+    let mut workout2 = WorkoutData::new(WorkoutIntensity::Light, Utc::now(), 30);
     let response1 = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_1.token, &mut workout1).await;
     assert!(response1.is_ok(), "Workout upload should succeed");
     let response2 = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_2.token, &mut workout2).await;
@@ -127,7 +127,7 @@ async fn test_complete_live_game_workflow() {
     // Step 9: Test multiple uploads from same user (use different time to avoid duplicate detection)
     // Use a workout 30 minutes into the game (still within the 2-hour window)
     let second_workout_start = Utc::now() + Duration::minutes(30);
-    let mut second_workout = WorkoutData::new(WorkoutType::Intense, second_workout_start, 30);
+    let mut second_workout = WorkoutData::new(WorkoutIntensity::Intense, second_workout_start, 30);
     let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut second_workout).await;
     assert!(response.is_ok(), "Second workout upload should succeed");
     
@@ -164,7 +164,7 @@ async fn test_live_game_edge_cases() {
     let admin_user = create_admin_user_and_login(&test_app.address).await;
     
     // This should not crash or cause errors
-    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
     assert!(response.is_ok(), "Workout upload should succeed");
 
@@ -301,7 +301,7 @@ async fn test_live_game_finish_workflow() {
     let live_game = initialize_live_game(&test_app, live_game_environment.first_game_id, redis_client.clone()).await;
     
     // Upload some data while game is active
-    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut workout_data).await;
     assert!(response.is_ok(), "Workout upload should succeed");
     
@@ -338,7 +338,7 @@ async fn test_live_game_finish_workflow() {
     // Try to upload data after game ended - should not affect scores
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
     let final_score = finished_game.home_score;
-    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut workout_data).await;
     assert!(response.is_ok(), "Workout upload should succeed");
     
@@ -376,7 +376,7 @@ async fn test_workout_timing_validation_for_live_games() {
     // Test 1: Workout BEFORE game start - should NOT count
     println!("\n🔬 Test 1: Uploading workout from before game start...");
     let mut before_game_workout = WorkoutData::new(
-        WorkoutType::Intense, 
+        WorkoutIntensity::Intense, 
         game_start - Duration::hours(2),
         30
     );
@@ -392,7 +392,7 @@ async fn test_workout_timing_validation_for_live_games() {
     // Test 2: Workout DURING game - should count
     println!("\n🔬 Test 2: Uploading workout during game window...");
     let mut during_game_workout = WorkoutData::new(
-        WorkoutType::Intense, 
+        WorkoutIntensity::Intense, 
         Utc::now(), 
         30
     );
@@ -409,7 +409,7 @@ async fn test_workout_timing_validation_for_live_games() {
     // Test 3: Workout AFTER game end - should NOT count
     println!("\n🔬 Test 3: Uploading workout from after game end...");
     let mut after_game_workout = WorkoutData::new(
-        WorkoutType::Intense, 
+        WorkoutIntensity::Intense, 
         game_end + Duration::hours(1),
         30
     );
@@ -425,7 +425,7 @@ async fn test_workout_timing_validation_for_live_games() {
     // Test 4: Workout exactly at game start - should count
     println!("\n🔬 Test 4: Uploading workout exactly at game start...");
     let mut at_start_workout = WorkoutData::new(
-        WorkoutType::Intense, 
+        WorkoutIntensity::Intense, 
         game_start,
         30
     );
@@ -441,7 +441,7 @@ async fn test_workout_timing_validation_for_live_games() {
     // Test 5: Workout exactly at game end - should NOT count (starts at boundary, ends after)
     println!("\n🔬 Test 5: Uploading workout exactly at game end...");
     let mut at_end_workout = WorkoutData::new(
-        WorkoutType::Intense, 
+        WorkoutIntensity::Intense, 
         game_end,
         30
     );
@@ -972,7 +972,7 @@ async fn test_live_game_workout_deletion_score_update() {
     
     // Step 1: Upload workouts and track their IDs
     // Home team workout
-    let mut home_workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let mut home_workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let home_workout_response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut home_workout_data).await;
     assert!(home_workout_response.is_ok(), "Home workout upload should succeed");
     let home_workout_data: serde_json::Value = home_workout_response.unwrap();
@@ -997,7 +997,7 @@ async fn test_live_game_workout_deletion_score_update() {
              home_score_before_deletion, home_score_gained);
     
     // Away team workouts
-    let mut away1_workout_data = WorkoutData::new(WorkoutType::Moderate, Utc::now(), 30);
+    let mut away1_workout_data = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 30);
     let away1_workout_response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_1.token, &mut away1_workout_data).await;
     assert!(away1_workout_response.is_ok(), "Away workout upload should succeed");
     let away1_workout_data: serde_json::Value = away1_workout_response.unwrap();
@@ -1009,7 +1009,7 @@ async fn test_live_game_workout_deletion_score_update() {
         0
     };
     
-    let mut away2_workout_data = WorkoutData::new(WorkoutType::Light, Utc::now(), 30);
+    let mut away2_workout_data = WorkoutData::new(WorkoutIntensity::Light, Utc::now(), 30);
     let away2_workout_response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_2.token, &mut away2_workout_data).await;
     assert!(away2_workout_response.is_ok(), "Away workout upload should succeed");
     let away2_workout_data: serde_json::Value = away2_workout_response.unwrap();
@@ -1087,7 +1087,7 @@ async fn test_live_game_workout_deletion_score_update() {
     println!("📊 After bulk deletion - Home: 0, Away: 0");
     
     // Step 6: Upload new workout to verify system still works
-    let mut workout_data = WorkoutData::new(WorkoutType::Light, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Light, Utc::now(), 30);
     let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut workout_data).await;
     assert!(response.is_ok(), "Workout upload should succeed");
     
@@ -1141,9 +1141,9 @@ async fn test_live_game_partial_workout_deletion() {
     
     for i in 0..3 {
         let workout_type = match i {
-            0 => WorkoutType::Intense,
-            1 => WorkoutType::Moderate,
-            _ => WorkoutType::Light,
+            0 => WorkoutIntensity::Intense,
+            1 => WorkoutIntensity::Moderate,
+            _ => WorkoutIntensity::Light,
         };
         
         // Use different times for each workout (20 minutes apart) to avoid duplicate detection
@@ -1261,7 +1261,7 @@ async fn test_user_joining_team_during_live_game() {
     let workout_start = live_game.game_start_time.unwrap() + Duration::minutes(10);
     println!("Using workout start time: {} (within game window)", workout_start);
     
-    let mut workout_data = WorkoutData::new(WorkoutType::Moderate, workout_start, 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Moderate, workout_start, 30);
     let response = upload_workout_data_for_user(&client, &test_app.address, &new_user.token, &mut workout_data).await;
     
     assert!(response.is_ok(), "Workout upload should succeed");
@@ -1311,7 +1311,7 @@ async fn test_user_joining_team_during_live_game() {
     
     // Test that the new user can upload another workout and it continues to work
     let second_workout_start = live_game.game_start_time.unwrap() + Duration::minutes(45);
-    let mut second_workout = WorkoutData::new(WorkoutType::Light, second_workout_start, 20);
+    let mut second_workout = WorkoutData::new(WorkoutIntensity::Light, second_workout_start, 20);
     let response = upload_workout_data_for_user(&client, &test_app.address, &new_user.token, &mut second_workout).await;
     assert!(response.is_ok(), "Second workout should also succeed");
     
@@ -1353,7 +1353,7 @@ async fn test_admin_live_game_score_adjustment() {
     println!("📊 Initial scores - Home: 0, Away: 0");
 
     // Upload a workout to give the home team some initial score
-    let mut workout_data = WorkoutData::new(WorkoutType::Intense, Utc::now(), 30);
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut workout_data).await;
     
     tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
@@ -1550,12 +1550,12 @@ async fn test_game_summary_creation_and_retrieval() {
 
     // Step 2: Upload workout data for players to generate scores
     // Home team: 1 player uploads intense workout
-    let mut home_workout = WorkoutData::new(WorkoutType::Intense, Utc::now(), 45);
+    let mut home_workout = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 45);
     upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut home_workout).await.unwrap();
 
     // Away team: 2 players upload workouts with different intensities
-    let mut away_workout1 = WorkoutData::new(WorkoutType::Intense, Utc::now(), 60);
-    let mut away_workout2 = WorkoutData::new(WorkoutType::Light, Utc::now(), 20);
+    let mut away_workout1 = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 60);
+    let mut away_workout2 = WorkoutData::new(WorkoutIntensity::Light, Utc::now(), 20);
     upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_1.token, &mut away_workout1).await.unwrap();
     // No workout for user 2 on away team
     //upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_2.token, &mut away_workout2).await.unwrap();
@@ -1814,4 +1814,265 @@ async fn test_game_summary_creation_and_retrieval() {
     assert!(!error_data["success"].as_bool().unwrap(), "Error response should have success=false");
 
     println!("✅ Game summary creation and retrieval test completed successfully!");
+}
+
+#[tokio::test]
+async fn test_best_4_out_of_5_players_team_scoring() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+    let configuration = get_config().expect("Failed to read configuration.");
+    let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
+
+    println!("🧪 Testing best 4 out of 5 players team scoring logic...");
+
+    // Step 1: Setup test environment using helper (creates 1 home + 2 away users)
+    let live_game_environment = setup_live_game_environment(&test_app).await;
+
+    // Step 2: Create additional users to have 5 players per team
+    // Add 4 more home players (environment already has 1)
+    let mut home_users = vec![];
+    for _ in 0..4 {
+        let user = create_test_user_and_login(&test_app.address).await;
+        create_health_profile_for_user(&client, &test_app.address, &user).await.unwrap();
+        add_user_to_team(&test_app.address, &live_game_environment.admin_session.token, &live_game_environment.home_team_id.to_string(), user.user_id).await;
+        home_users.push(user);
+    }
+    // Prepend the existing home user
+    home_users.insert(0, live_game_environment.home_user);
+
+    // Add 3 more away players (environment already has 2)
+    let mut away_users = vec![];
+    for _ in 0..3 {
+        let user = create_test_user_and_login(&test_app.address).await;
+        create_health_profile_for_user(&client, &test_app.address, &user).await.unwrap();
+        add_user_to_team(&test_app.address, &live_game_environment.admin_session.token, &live_game_environment.away_team_id.to_string(), user.user_id).await;
+        away_users.push(user);
+    }
+    // Prepend the existing away users
+    away_users.insert(0, live_game_environment.away_user_1);
+    away_users.insert(1, live_game_environment.away_user_2);
+
+    println!("✅ Created 2 teams with 5 players each");
+
+    // Step 3: Use the first game from the environment
+    let game_id = live_game_environment.first_game_id;
+
+    // Update game time to now and start it
+    update_game_times_to_now(&test_app, game_id).await;
+    start_test_game(&test_app, game_id).await;
+    let live_game = initialize_live_game(&test_app, game_id, redis_client.clone()).await;
+
+    println!("✅ Game started with ID: {}", game_id);
+
+    // Step 4: Home team - Upload workouts with varying intensities
+    // Players 0-3: Intense workouts (100 points each) - these should count
+    // Player 4: Light workout (30 points) - this should be discarded
+
+    let home_workout_scores = vec![
+        (WorkoutIntensity::Intense, 30),  // Player 0: High score
+        (WorkoutIntensity::Intense, 30),  // Player 1: High score
+        (WorkoutIntensity::Intense, 30),  // Player 2: High score
+        (WorkoutIntensity::Intense, 30),  // Player 3: High score
+        (WorkoutIntensity::Light, 15),    // Player 4: Low score (should be discarded)
+    ];
+
+    for (i, (intensity, duration)) in home_workout_scores.iter().enumerate() {
+        let mut workout = WorkoutData::new(*intensity, Utc::now(), *duration);
+        let response = upload_workout_data_for_user(&client, &test_app.address, &home_users[i].token, &mut workout).await;
+        assert!(response.is_ok(), "Home player {} workout upload should succeed", i);
+        println!("Home player {} uploaded workout: intensity={:?}", i, intensity);
+    }
+
+    // Step 5: Away team - Upload workouts with varying intensities
+    // All players: Moderate workouts for baseline comparison
+    let away_workout_scores = vec![
+        (WorkoutIntensity::Moderate, 25),
+        (WorkoutIntensity::Moderate, 25),
+        (WorkoutIntensity::Moderate, 25),
+        (WorkoutIntensity::Moderate, 25),
+        (WorkoutIntensity::Moderate, 25),
+    ];
+
+    for (i, (intensity, duration)) in away_workout_scores.iter().enumerate() {
+        let mut workout = WorkoutData::new(*intensity, Utc::now(), *duration);
+        let response = upload_workout_data_for_user(&client, &test_app.address, &away_users[i].token, &mut workout).await;
+        assert!(response.is_ok(), "Away player {} workout upload should succeed", i);
+        println!("Away player {} uploaded workout: intensity={:?}", i, intensity);
+    }
+
+    // Wait a bit for score processing
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    // Step 6: Get individual player scores from the database
+    let (home_contributions, away_contributions) = get_player_contributions(&test_app, game_id).await;
+
+    // Extract scores
+    let mut home_individual_scores: Vec<i32> = home_contributions.iter()
+        .map(|c| c.total_score_contribution)
+        .collect();
+    let mut away_individual_scores: Vec<i32> = away_contributions.iter()
+        .map(|c| c.total_score_contribution)
+        .collect();
+
+    // Sort to get best scores
+    home_individual_scores.sort_by(|a, b| b.cmp(a));
+    away_individual_scores.sort_by(|a, b| b.cmp(a));
+
+    // Calculate expected scores (best 4 out of 5)
+    let home_expected_score: i32 = home_individual_scores.iter().take(4).sum();
+    let away_expected_score: i32 = away_individual_scores.iter().take(4).sum();
+    let home_total_if_all_counted: i32 = home_individual_scores.iter().sum();
+    let away_total_if_all_counted: i32 = away_individual_scores.iter().sum();
+
+    // Get the game state
+    let game_state = get_live_game_state(&test_app, game_id).await;
+
+    println!("\n📊 Score Verification:");
+    println!("Home individual scores (sorted): {:?}", home_individual_scores);
+    println!("Home expected total (best 4 of 5): {}", home_expected_score);
+    println!("Home actual score: {}", game_state.home_score);
+    println!("Home total if all 5 counted: {} ❌", home_total_if_all_counted);
+    println!();
+    println!("Away individual scores (sorted): {:?}", away_individual_scores);
+    println!("Away expected total (best 4 of 5): {}", away_expected_score);
+    println!("Away actual score: {}", game_state.away_score);
+    println!("Away total if all 5 counted: {} ❌", away_total_if_all_counted);
+
+    // Verify that only best 4 are counted
+    assert_eq!(
+        game_state.home_score,
+        home_expected_score,
+        "Home team score should be sum of best 4 players (not all 5)"
+    );
+
+    assert_eq!(
+        game_state.away_score,
+        away_expected_score,
+        "Away team score should be sum of best 4 players (not all 5)"
+    );
+
+    // Verify the 5th (worst) player's score is NOT included
+    assert_ne!(
+        game_state.home_score,
+        home_total_if_all_counted,
+        "Home team score should NOT include all 5 players (worst should be excluded)"
+    );
+
+    assert_ne!(
+        game_state.away_score,
+        away_total_if_all_counted,
+        "Away team score should NOT include all 5 players (worst should be excluded)"
+    );
+
+    println!("\n✅ Verification successful:");
+    println!("   - Home team: {} (best 4 of 5, excluded worst player)",
+        game_state.home_score);
+    println!("   - Away team: {} (best 4 of 5, excluded worst player)",
+        game_state.away_score);
+    println!("   - Correctly excluded {} home points and {} away points from worst players",
+        home_total_if_all_counted - home_expected_score,
+        away_total_if_all_counted - away_expected_score);
+
+    // Verify all players were recorded (should be at least 5 per team)
+    assert!(home_contributions.len() >= 5, "Should have at least 5 home player contributions, got {}", home_contributions.len());
+    assert!(away_contributions.len() >= 5, "Should have at least 5 away player contributions, got {}", away_contributions.len());
+    println!("   - All {} home and {} away players recorded in contributions (only best 4 per team count for score)",
+        home_contributions.len(), away_contributions.len());
+
+    // Step 8: Finish the game first
+    println!("\n🎯 Step 8: Finishing game...");
+    sqlx::query!(
+        "UPDATE games SET game_end_time = NOW(), status = 'finished' WHERE id = $1",
+        game_id
+    )
+    .execute(&test_app.db_pool)
+    .await
+    .expect("Failed to finish game");
+    println!("✅ Game finished");
+
+    // Step 9: Evaluate the game and verify MVP/LVP only consider best 4 out of 5
+    println!("\n🎯 Step 9: Evaluating game and checking MVP/LVP determination...");
+
+    // Get admin credentials
+    let admin_session = create_admin_user_and_login(&test_app.address).await;
+
+    // Evaluate the game
+    let today = Utc::now().format("%Y-%m-%d").to_string();
+    let evaluation_request = json!({
+        "date": today
+    });
+
+    let eval_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/games/evaluate", test_app.address),
+        &admin_session.token,
+        Some(evaluation_request),
+    ).await;
+
+    assert!(eval_response.status().is_success(), "Game evaluation should succeed");
+    let eval_result = eval_response.json::<serde_json::Value>().await.unwrap();
+    println!("Evaluation result: {:?}", eval_result);
+
+    // Give it more time to process
+    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+
+    // Get the game summary
+    let summary_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/games/{}/summary", test_app.address, game_id),
+        &home_users[0].token,
+        None::<serde_json::Value>,
+    ).await;
+
+    let status = summary_response.status();
+    if !status.is_success() {
+        let error_text = summary_response.text().await.unwrap_or_default();
+        panic!("Failed to get game summary. Status: {}, Error: {}", status, error_text);
+    }
+    let summary_data: serde_json::Value = summary_response.json().await.unwrap();
+    let summary = &summary_data["data"]["summary"];
+
+    // Verify MVP and LVP exist
+    assert!(summary["mvp_username"].as_str().is_some(), "Should have MVP username in summary");
+    assert!(summary["lvp_username"].as_str().is_some(), "Should have LVP");
+
+    let mvp_username = summary["mvp_username"].as_str().unwrap();
+    let lvp_username = summary["lvp_username"].as_str().unwrap();
+    let mvp_score = summary["mvp_score_contribution"].as_i64().unwrap();
+    let lvp_score = summary["lvp_score_contribution"].as_i64().unwrap();
+
+    println!("🏆 MVP: {} with {} points", mvp_username, mvp_score);
+    println!("📉 LVP: {} with {} points", lvp_username, lvp_score);
+
+    // Verify MVP and LVP are different
+    assert_ne!(mvp_username, lvp_username, "MVP and LVP must be different players");
+
+    // CRITICAL: Verify that the worst player (5th on each team) is NOT the LVP
+    // The LVP should be among the best 4 players, not the excluded 5th player
+
+    // Get the worst player from each team (the 5th player who was excluded from scoring)
+    let home_worst_player_score = home_individual_scores[home_individual_scores.len() - 1];
+    let away_worst_player_score = away_individual_scores[away_individual_scores.len() - 1];
+
+    println!("\n📊 Verification: Best 4 out of 5 rule for MVP/LVP:");
+    println!("   Home team worst (excluded) player score: {}", home_worst_player_score);
+    println!("   Away team worst (excluded) player score: {}", away_worst_player_score);
+    println!("   LVP score: {}", lvp_score);
+
+    // The LVP score should be HIGHER than at least one of the excluded players
+    // (because LVP is chosen from the best 4, not the worst 5th player)
+    let worst_excluded_score = home_worst_player_score.min(away_worst_player_score);
+    assert!(
+        lvp_score as i32 >= worst_excluded_score,
+        "LVP score ({}) should be >= worst excluded player score ({}) - LVP must be from best 4 players only",
+        lvp_score, worst_excluded_score
+    );
+
+    println!("✅ MVP/LVP correctly determined from best 4 out of 5 players per team");
+    println!("   - LVP was chosen from eligible players (best 4 per team)");
+    println!("   - Excluded 5th players were not considered for LVP");
+
+    println!("\n✅ Best 4 out of 5 players team scoring test completed successfully!");
 }

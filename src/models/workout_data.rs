@@ -101,6 +101,33 @@ impl WorkoutStats {
     }
 }
 
+#[derive(PartialEq, Clone)]
+pub enum WorkoutType {
+    Strength,
+    Cardio,
+    Other
+}
+
+impl WorkoutType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            WorkoutType::Strength => "strength",
+            WorkoutType::Cardio => "cardio",
+            WorkoutType::Other => "other",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "strength" => WorkoutType::Strength,
+            "cardio" => WorkoutType::Cardio,
+            "other" => WorkoutType::Other,
+            _ => WorkoutType::Other,
+        }
+    }
+}
+
+
 #[derive(Debug, FromRow, Serialize)]
 pub struct WorkoutScoringFeedback {
     pub id: Uuid,

@@ -11,7 +11,7 @@ use crate::db::{
     health_data::{get_user_health_profile_details, update_max_heart_rate_and_vt_thresholds},
 };
 use crate::models::{
-    workout_data::{WorkoutDataUploadRequest, WorkoutUploadResponse, StatChanges, WorkoutStats, HeartRateData},
+    workout_data::{WorkoutDataUploadRequest, WorkoutUploadResponse, StatChanges, WorkoutStats, HeartRateData, WorkoutType},
     health::{UserHealthProfile},
     common::ApiResponse,
     league::{LeagueGame, LiveGameScoreUpdate},
@@ -180,8 +180,9 @@ pub async fn upload_workout_data(
     };
 
     // 🎲 NOW CALCULATE GAME STATS
+    let workout_type = WorkoutType::from_str(&ml_classification.prediction.to_lowercase());
     let calculator = WorkoutStatsCalculator::with_universal_hr_based();
-    let workout_stats = match calculator.calculate_stat_changes(user_health_profile, heart_rate_data.clone()).await {
+    let workout_stats = match calculator.calculate_stat_changes(user_health_profile, heart_rate_data.clone(), workout_type).await {
         Ok(stats) => stats,
         Err(e) => {
             tracing::error!("❌ Error calculating workout stats: {}", e);
@@ -190,6 +191,7 @@ pub async fn upload_workout_data(
             );
         }
     };
+
     tracing::info!("📊 Calculated stat changes for {}: +{} stamina, +{} strength",
         claims.username, workout_stats.changes.stamina_change, workout_stats.changes.strength_change,
     );
@@ -385,17 +387,6 @@ async fn update_game_score_from_workout(
     tracing::info!("📊 Score calculation for {}: stamina={}, strength={}, score_increase={}", 
         username, workout_stats.changes.stamina_change, workout_stats.changes.strength_change, score_increase);
 
-    // Create score update object
-    let score_update = LiveGameScoreUpdate {
-        user_id,
-        username: username.to_string(),
-        score_increase,
-    };
-
-    // Update the game score using GameQueries
-    let game_queries = GameQueries::new(pool.clone());
-    game_queries.update_game_score(game.id, &score_update).await?;
-
     // Determine which team side (home or away)
     let team_side = if user_team_id == game.home_team_id {
         "home"
@@ -403,19 +394,29 @@ async fn update_game_score_from_workout(
         "away"
     };
 
-    // Record the scoring event with all required fields
+    // IMPORTANT: Record the scoring event FIRST before updating game scores
+    // The game score calculation depends on reading from live_score_events
     record_score_event(
-        game.id, 
-        user_id, 
+        game.id,
+        user_id,
         username,
         user_team_id,
         team_side,
-        score_increase, 
+        score_increase,
         workout_stats.changes.stamina_change,
         workout_stats.changes.strength_change,
         workout_data_id,
         pool
     ).await?;
+
+    // Now update the game score using GameQueries (which reads from live_score_events)
+    let score_update = LiveGameScoreUpdate {
+        user_id,
+        username: username.to_string(),
+        score_increase,
+    };
+    let game_queries = GameQueries::new(pool.clone());
+    game_queries.update_game_score(game.id, &score_update).await?;
 
     // Broadcast score update via WebSocket
     broadcast_score_update(game.id, pool).await.unwrap_or_else(|e| {
