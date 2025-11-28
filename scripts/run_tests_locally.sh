@@ -29,7 +29,7 @@ export REDIS__REDIS__PASSWORD=${REDIS__REDIS__PASSWORD:-redis}
 export MINIO__MINIO__ACCESS_KEY=${MINIO__MINIO__ACCESS_KEY:-minioadmin}
 export MINIO__MINIO__SECRET_KEY=${MINIO__MINIO__SECRET_KEY:-minioadmin}
 # ML Service Configuration
-export ML__ML__SERVICE_URL=${ML__ML__SERVICE_URL:-http://localhost:8081}
+export ML__ML__SERVICE_URL=${ML__ML__SERVICE_URL:-http://localhost:8082}
 export ML__ML__API_KEY=${ML__ML__API_KEY}
 
 # Default configuration
@@ -131,7 +131,7 @@ spin_up_ml_service() {
     docker run --name riina-ml-service-test \
         -e ML_API_KEY=${ML__ML__API_KEY} \
         -e ML_SERVICE_URL=${ML__ML__SERVICE_URL} \
-        -p 8081:8081 \
+        -p 8082:8081 \
         -d ghcr.io/volkerfelix/riina-ai:latest
 }
 

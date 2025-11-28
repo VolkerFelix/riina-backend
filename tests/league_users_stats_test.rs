@@ -298,11 +298,11 @@ async fn test_league_users_stats_unauthorized() {
 }
 
 #[tokio::test]
-async fn test_league_users_stats_empty_response() {
+async fn test_league_users_stats_includes_player_pool() {
     let test_app = spawn_app().await;
     let client = Client::new();
 
-    // Create a user but don't add them to any team
+    // Create a user but don't add them to any team (they will be in player pool)
     let solo_user = create_test_user_and_login(&test_app.address).await;
 
     // Test the endpoint with a user who is not in any team
@@ -320,16 +320,23 @@ async fn test_league_users_stats_empty_response() {
 
     assert_eq!(stats_json["success"], true, "Response should indicate success");
     assert!(stats_json["data"].is_array(), "Data should be an array");
-    
-    // The response may contain users from other tests, but our solo user should not be included
-    // since they are not part of any team
+
+    // Player pool users (not part of any team) should now be included in league stats
     let league_users = stats_json["data"].as_array().unwrap();
     let solo_user_found = league_users.iter()
         .any(|user| user["username"].as_str() == Some(&solo_user.username));
-    
-    assert!(!solo_user_found, "Solo user (not in any team) should not appear in league users stats");
 
-    println!("✅ Solo user correctly excluded from league stats");
+    assert!(solo_user_found, "Solo user (player pool) should appear in league users stats");
+
+    // Verify that the solo user has no team info
+    let solo_user_data = league_users.iter()
+        .find(|user| user["username"].as_str() == Some(&solo_user.username))
+        .expect("Solo user should be found");
+
+    assert!(solo_user_data["team_id"].is_null(), "Solo user should have no team_id");
+    assert!(solo_user_data["team_name"].is_null(), "Solo user should have no team_name");
+
+    println!("✅ Solo user correctly included in league stats as player pool member");
 
 }
 
