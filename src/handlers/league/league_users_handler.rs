@@ -81,9 +81,9 @@ pub async fn get_league_users_with_stats(
     // First, check if the requester is part of a team
     let _requester_team = match sqlx::query!(
         r#"
-        SELECT team_id 
-        FROM team_members 
-        WHERE user_id = $1 AND status = 'active'
+        SELECT team_id
+        FROM team_members
+        WHERE user_id = $1
         "#,
         requester_id
     )
@@ -111,7 +111,7 @@ pub async fn get_league_users_with_stats(
         r#"
         SELECT COUNT(*) as count
         FROM users u
-        INNER JOIN team_members tm ON u.id = tm.user_id AND tm.status = 'active'
+        INNER JOIN team_members tm ON u.id = tm.user_id
         INNER JOIN teams t ON tm.team_id = t.id
         "#
     )
@@ -150,7 +150,7 @@ pub async fn get_league_users_with_stats(
                 COALESCE(ua.avatar_style, 'warrior') as avatar_style,
                 false as is_online
             FROM users u
-            INNER JOIN team_members tm ON u.id = tm.user_id AND tm.status = 'active'
+            INNER JOIN team_members tm ON u.id = tm.user_id
             INNER JOIN teams t ON tm.team_id = t.id
             LEFT JOIN user_avatars ua ON u.id = ua.user_id
             ORDER BY
@@ -245,7 +245,7 @@ pub async fn get_league_users_with_stats(
                     COALESCE(ua.stamina + ua.strength, 0.0) as total_stats,
                     ROW_NUMBER() OVER (ORDER BY COALESCE(ua.stamina + ua.strength, 0.0) DESC) as rank
                 FROM users u
-                INNER JOIN team_members tm ON u.id = tm.user_id AND tm.status = 'active'
+                INNER JOIN team_members tm ON u.id = tm.user_id
                 LEFT JOIN user_avatars ua ON u.id = ua.user_id
             )
             SELECT
@@ -265,7 +265,7 @@ pub async fn get_league_users_with_stats(
                 COALESCE(ua.avatar_style, 'warrior') as avatar_style,
                 false as is_online -- TODO: Implement real online status from websocket connections
             FROM users u
-            INNER JOIN team_members tm ON u.id = tm.user_id AND tm.status = 'active'
+            INNER JOIN team_members tm ON u.id = tm.user_id
             INNER JOIN teams t ON tm.team_id = t.id
             LEFT JOIN user_avatars ua ON u.id = ua.user_id
             LEFT JOIN user_rankings ur ON u.id = ur.user_id

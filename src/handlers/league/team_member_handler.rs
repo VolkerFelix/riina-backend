@@ -168,21 +168,32 @@ pub async fn get_team_members(
         }
     };
 
-    // Check if requester is a member of the team or an admin
+    // Check if requester is a member of the team or an admin (regardless of status)
     let is_admin = matches!(claims.role, UserRole::Admin);
 
     if !is_admin {
-        match check_team_member_role(&team_id, &requester_id, &pool).await {
-            Ok(Some(_)) => {
-                // User is a member, proceed
-            }
-            Ok(None) => {
-                return Ok(HttpResponse::Forbidden().json(ApiResponse::<()>::error("You must be a team member to view the member list")));
-            }
+        // Check membership without status filter so inactive members can still view the team
+        let is_member = match sqlx::query!(
+            r#"
+            SELECT id FROM team_members
+            WHERE team_id = $1 AND user_id = $2
+            "#,
+            team_id,
+            requester_id
+        )
+        .fetch_optional(pool.get_ref())
+        .await
+        {
+            Ok(Some(_)) => true,
+            Ok(None) => false,
             Err(e) => {
                 tracing::error!("Failed to check requester membership: {}", e);
                 return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Failed to verify membership")));
             }
+        };
+
+        if !is_member {
+            return Ok(HttpResponse::Forbidden().json(ApiResponse::<()>::error("You must be a team member to view the member list")));
         }
     }
 
@@ -468,19 +479,29 @@ pub async fn update_my_team_status(
         }
     };
 
-    // Check if user is a member of this team
-    match check_team_member_role(&team_id, &user_id, &pool).await {
-        Ok(Some(_)) => {
-            // User is a member, proceed
-        }
-        Ok(None) => {
-            return Ok(HttpResponse::Forbidden().json(ApiResponse::<()>::error("You are not a member of this team")));
-        }
+    // Check if user is a member of this team (regardless of status, since they need to be able to reactivate)
+    let is_member = match sqlx::query!(
+        r#"
+        SELECT id FROM team_members
+        WHERE team_id = $1 AND user_id = $2
+        "#,
+        team_id,
+        user_id
+    )
+    .fetch_optional(pool.get_ref())
+    .await
+    {
+        Ok(Some(_)) => true,
+        Ok(None) => false,
         Err(e) => {
             tracing::error!("Failed to check membership: {}", e);
             return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Failed to verify membership")));
         }
     };
+
+    if !is_member {
+        return Ok(HttpResponse::Forbidden().json(ApiResponse::<()>::error("You are not a member of this team")));
+    }
 
     // Update status
     match sqlx::query!(

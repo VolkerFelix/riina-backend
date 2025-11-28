@@ -270,12 +270,12 @@ async fn create_default_avatar(pool: &PgPool, user_id: Uuid) -> Result<GameStats
 }
 
 async fn get_user_rank(pool: &PgPool, user_id: Uuid) -> Result<i32, sqlx::Error> {
-    // Get all active users (both in teams and in player pool)
+    // Get all users in teams (regardless of status) and in player pool
     let team_users = sqlx::query!(
         r#"
         SELECT u.id as user_id
         FROM users u
-        INNER JOIN team_members tm ON u.id = tm.user_id AND tm.status = 'active'
+        INNER JOIN team_members tm ON u.id = tm.user_id
         "#
     )
     .fetch_all(pool)
