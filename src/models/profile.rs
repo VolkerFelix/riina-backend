@@ -23,6 +23,8 @@ pub struct UserProfileResponse {
     pub team_id: Option<Uuid>,
     #[sqlx(skip)]
     pub team_status: Option<String>,
+    #[sqlx(skip)]
+    pub team_role: Option<String>,
 }
 
 #[derive(serde::Serialize)]

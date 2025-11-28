@@ -206,10 +206,10 @@ pub async fn get_user_profile(
         }
     };
 
-    // Get user's team_id and status if they're in a team
-    let (team_id, team_status) = match sqlx::query!(
+    // Get user's team_id, status, and role if they're in a team
+    let (team_id, team_status, team_role) = match sqlx::query!(
         r#"
-        SELECT team_id, status
+        SELECT team_id, status, role
         FROM team_members
         WHERE user_id = $1
         "#,
@@ -218,11 +218,11 @@ pub async fn get_user_profile(
     .fetch_optional(&**pool)
     .await
     {
-        Ok(Some(row)) => (Some(row.team_id), Some(row.status)),
-        Ok(None) => (None, None),
+        Ok(Some(row)) => (Some(row.team_id), Some(row.status), Some(row.role)),
+        Ok(None) => (None, None, None),
         Err(e) => {
             tracing::warn!("Failed to fetch team info for user {}: {}", user_id, e);
-            (None, None)
+            (None, None, None)
         }
     };
 
@@ -242,6 +242,7 @@ pub async fn get_user_profile(
         avg_exercise_minutes_per_day: avg_exercise_minutes,
         team_id,
         team_status,
+        team_role,
     };
 
     tracing::info!("Successfully retrieved profile for user: {}", claims.username);
