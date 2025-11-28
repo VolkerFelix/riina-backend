@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT team_id \n        FROM team_members \n        WHERE user_id = $1 AND status = 'active'\n        ",
+  "query": "\n        SELECT team_id\n        FROM team_members\n        WHERE user_id = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -18,5 +18,5 @@
       false
     ]
   },
-  "hash": "03a08802b5ae4c64ccb26f637835890bedc1c23cc4d7a10ea38bd0c860812588"
+  "hash": "31a0a2a4b2a66e8c320f1d8a02e986c30e41068216c59d04d4cd04a91cdf7305"
 }

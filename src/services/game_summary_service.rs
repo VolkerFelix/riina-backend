@@ -234,7 +234,7 @@ impl GameSummaryService {
     }
 
     /// Calculate statistics for a single team
-    /// Uses best 4 out of 5 players for team score calculation
+    /// Uses all players for team score calculation
     fn calculate_single_team_stats(&self, players: &[&PlayerContribution]) -> TeamStats {
         if players.is_empty() {
             return TeamStats {
@@ -249,17 +249,16 @@ impl GameSummaryService {
         let mut sorted_players = players.to_vec();
         sorted_players.sort_by(|a, b| b.total_score.cmp(&a.total_score));
 
-        // Only count the best 4 players for team score
-        let best_4_players = sorted_players.iter().take(4);
-        let total_score: i32 = best_4_players.clone().map(|p| p.total_score).sum();
-        let contributing_count = sorted_players.len().min(4);
+        // Count all players for team score
+        let total_score: i32 = sorted_players.iter().map(|p| p.total_score).sum();
+        let contributing_count = sorted_players.len();
         let avg_score = if contributing_count > 0 {
             total_score as f32 / contributing_count as f32
         } else {
             0.0
         };
 
-        // Get total workouts (sum of all workout events from all players, not just best 4)
+        // Get total workouts (sum of all workout events from all players)
         let total_workouts = players.iter().map(|p| p.workout_count).sum::<i32>();
 
         // Find top scorer (across all players)
@@ -285,8 +284,8 @@ impl GameSummaryService {
             return (None, None);
         }
 
-        // Filter to only include best 4 out of 5 players per team
-        let eligible_players = self.get_top_4_players_per_team(contributions);
+        // Use all players for MVP/LVP calculation
+        let eligible_players = contributions;
 
         // If only one player participated, they can only be MVP, not LVP
         if eligible_players.len() == 1 {
@@ -294,50 +293,24 @@ impl GameSummaryService {
             return (Some(mvp), None);
         }
 
-        // Find MVP among eligible players
+        // Find MVP among all players
         let mvp = eligible_players
             .iter()
             .max_by_key(|p| p.total_score)
-            .map(|p| (*p).clone());
+            .cloned();
 
-        // Find LVP among eligible players who are NOT the MVP
+        // Find LVP among all players who are NOT the MVP
         let lvp = if let Some(mvp_player) = &mvp {
             eligible_players
                 .iter()
                 .filter(|p| p.user_id != mvp_player.user_id)
                 .min_by_key(|p| p.total_score)
-                .map(|p| (*p).clone())
+                .cloned()
         } else {
             None
         };
 
         (mvp, lvp)
-    }
-
-    /// Get the top 4 players from each team (best 4 out of 5)
-    /// This ensures MVP/LVP are only determined from players who contributed to the team score
-    fn get_top_4_players_per_team<'a>(&self, contributions: &'a [PlayerContribution]) -> Vec<&'a PlayerContribution> {
-        // Separate players by team
-        let mut home_players: Vec<&PlayerContribution> = contributions
-            .iter()
-            .filter(|p| p.team_side == "home")
-            .collect();
-
-        let mut away_players: Vec<&PlayerContribution> = contributions
-            .iter()
-            .filter(|p| p.team_side == "away")
-            .collect();
-
-        // Sort by score (descending)
-        home_players.sort_by(|a, b| b.total_score.cmp(&a.total_score));
-        away_players.sort_by(|a, b| b.total_score.cmp(&a.total_score));
-
-        // Take best 4 from each team
-        let mut eligible_players = Vec::new();
-        eligible_players.extend(home_players.iter().take(4).copied());
-        eligible_players.extend(away_players.iter().take(4).copied());
-
-        eligible_players
     }
 
     /// Get a game summary by game ID

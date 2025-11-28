@@ -529,12 +529,12 @@ pub async fn get_user_team(
         }
     };
 
-    // Get the team the user belongs to
+    // Get the team the user belongs to (regardless of status so inactive users can see their team)
     let team_member = sqlx::query!(
         r#"
         SELECT team_id
         FROM team_members
-        WHERE user_id = $1 AND status = 'active'
+        WHERE user_id = $1
         "#,
         user_id
     )

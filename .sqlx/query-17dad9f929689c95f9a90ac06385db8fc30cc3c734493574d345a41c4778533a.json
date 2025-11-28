@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                u.id as user_id,\n                u.username,\n                u.email,\n                u.profile_picture_url,\n                tm.team_id as team_id,\n                t.team_name as team_name,\n                tm.role as team_role,\n                tm.status as team_status,\n                tm.joined_at as joined_at,\n                COALESCE(ua.stamina, 0.0) as stamina,\n                COALESCE(ua.strength, 0.0) as strength,\n                COALESCE(ua.stamina + ua.strength, 0.0) as total_stats,\n                COALESCE(ua.avatar_style, 'warrior') as avatar_style,\n                false as is_online\n            FROM users u\n            INNER JOIN team_members tm ON u.id = tm.user_id AND tm.status = 'active'\n            INNER JOIN teams t ON tm.team_id = t.id\n            LEFT JOIN user_avatars ua ON u.id = ua.user_id\n            ORDER BY\n                t.team_name ASC,\n                CASE tm.role\n                    WHEN 'owner' THEN 1\n                    WHEN 'admin' THEN 2\n                    WHEN 'member' THEN 3\n                END,\n                tm.joined_at ASC\n            LIMIT $1 OFFSET $2\n            ",
+  "query": "\n            SELECT\n                u.id as user_id,\n                u.username,\n                u.email,\n                u.profile_picture_url,\n                tm.team_id as team_id,\n                t.team_name as team_name,\n                tm.role as team_role,\n                tm.status as team_status,\n                tm.joined_at as joined_at,\n                COALESCE(ua.stamina, 0.0) as stamina,\n                COALESCE(ua.strength, 0.0) as strength,\n                COALESCE(ua.stamina + ua.strength, 0.0) as total_stats,\n                COALESCE(ua.avatar_style, 'warrior') as avatar_style,\n                false as is_online\n            FROM users u\n            INNER JOIN team_members tm ON u.id = tm.user_id\n            INNER JOIN teams t ON tm.team_id = t.id\n            LEFT JOIN user_avatars ua ON u.id = ua.user_id\n            ORDER BY\n                t.team_name ASC,\n                CASE tm.role\n                    WHEN 'owner' THEN 1\n                    WHEN 'admin' THEN 2\n                    WHEN 'member' THEN 3\n                END,\n                tm.joined_at ASC\n            LIMIT $1 OFFSET $2\n            ",
   "describe": {
     "columns": [
       {
@@ -97,5 +97,5 @@
       null
     ]
   },
-  "hash": "c504e8efbff84941c7bc7d646432a4205e5bfe688eae6d0da95d1f8100d62cfb"
+  "hash": "17dad9f929689c95f9a90ac06385db8fc30cc3c734493574d345a41c4778533a"
 }

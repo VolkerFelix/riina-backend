@@ -135,6 +135,7 @@ pub struct UserHealthProfile {
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum TrainingZoneName {
+    OFF,
     REST,
     EASY,
     MODERATE,
@@ -144,6 +145,7 @@ pub enum TrainingZoneName {
 impl std::fmt::Display for TrainingZoneName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            TrainingZoneName::OFF => write!(f, "Off"),
             TrainingZoneName::REST => write!(f, "Rest"),
             TrainingZoneName::EASY => write!(f, "Easy"),
             TrainingZoneName::MODERATE => write!(f, "Moderate"),
@@ -183,9 +185,13 @@ pub struct TrainingZones {
 }
 
 impl TrainingZones {
-    pub fn new(hr_rest: i32, hr_reserve: i32, p_vt0: f32, p_vt1: f32, p_vt2: f32) -> Self {
-        let rest_zone = ZoneRange {
+    pub fn new(hr_rest: i32, hr_reserve: i32, p_vt_off: f32, p_vt0: f32, p_vt1: f32, p_vt2: f32) -> Self {
+        let off_zone = ZoneRange {
             low: 0,
+            high: hr_rest + (hr_reserve as f32 * p_vt_off) as i32 - 1,
+        };
+        let rest_zone = ZoneRange {
+            low: hr_rest + (hr_reserve as f32 * p_vt_off) as i32,
             high: hr_rest + (hr_reserve as f32 * p_vt0) as i32 - 1,
         };
         let easy_zone = ZoneRange {
@@ -201,6 +207,11 @@ impl TrainingZones {
             high: 300,
         };
         Self { zones: HashMap::from([
+            (TrainingZoneName::OFF, TrainingZone {
+                zone: off_zone,
+                intensity_multiplier: 0.0,
+                intensity_type: IntensityType::Linear,
+            }),
             (TrainingZoneName::REST, TrainingZone {
                 zone: rest_zone,
                 intensity_multiplier: 1.0,

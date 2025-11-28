@@ -35,7 +35,7 @@ impl GameQueries {
         Ok(())
     }
 
-    /// Calculate team scores from live_score_events using best 4 out of 5 players
+    /// Calculate team scores from live_score_events using all players
     /// This is a public method that can be called to recalculate scores for a game
     pub async fn calculate_team_scores_best_4(&self, game_id: Uuid) -> Result<(i32, i32), sqlx::Error> {
         // Get all player scores grouped by team and user
@@ -67,16 +67,13 @@ impl GameQueries {
             }
         }
 
-        // Sort in descending order and take best 4
-        home_scores.sort_by(|a, b| b.partial_cmp(a).unwrap());
-        away_scores.sort_by(|a, b| b.partial_cmp(a).unwrap());
+        // Sum all player scores (no filtering)
+        let home_score: i32 = home_scores.iter().sum::<f64>() as i32;
+        let away_score: i32 = away_scores.iter().sum::<f64>() as i32;
 
-        let home_score: i32 = home_scores.iter().take(4).sum::<f64>() as i32;
-        let away_score: i32 = away_scores.iter().take(4).sum::<f64>() as i32;
-
-        info!("Calculated team scores for game {}: home={} (best {} of {}), away={} (best {} of {})",
-            game_id, home_score, home_scores.len().min(4), home_scores.len(),
-            away_score, away_scores.len().min(4), away_scores.len());
+        info!("Calculated team scores for game {}: home={} ({} players), away={} ({} players)",
+            game_id, home_score, home_scores.len(),
+            away_score, away_scores.len());
 
         Ok((home_score, away_score))
     }
@@ -120,7 +117,7 @@ impl GameQueries {
         };
 
         // NOTE: Score is already recorded in live_score_events by the caller
-        // Now we recalculate team totals from live_score_events (best 4 out of 5)
+        // Now we recalculate team totals from live_score_events (all players)
         let (home_score, away_score) = self.calculate_team_scores_best_4(game_id).await?;
 
         // Update game with new calculated scores

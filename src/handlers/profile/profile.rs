@@ -206,23 +206,23 @@ pub async fn get_user_profile(
         }
     };
 
-    // Get user's team_id if they're in a team
-    let team_id = match sqlx::query!(
+    // Get user's team_id, status, and role if they're in a team
+    let (team_id, team_status, team_role) = match sqlx::query!(
         r#"
-        SELECT team_id
+        SELECT team_id, status, role
         FROM team_members
-        WHERE user_id = $1 AND status = 'active'
+        WHERE user_id = $1
         "#,
         user_id
     )
     .fetch_optional(&**pool)
     .await
     {
-        Ok(Some(row)) => Some(row.team_id),
-        Ok(None) => None,
+        Ok(Some(row)) => (Some(row.team_id), Some(row.status), Some(row.role)),
+        Ok(None) => (None, None, None),
         Err(e) => {
-            tracing::warn!("Failed to fetch team_id for user {}: {}", user_id, e);
-            None
+            tracing::warn!("Failed to fetch team info for user {}: {}", user_id, e);
+            (None, None, None)
         }
     };
 
@@ -241,6 +241,8 @@ pub async fn get_user_profile(
         lvp_count,
         avg_exercise_minutes_per_day: avg_exercise_minutes,
         team_id,
+        team_status,
+        team_role,
     };
 
     tracing::info!("Successfully retrieved profile for user: {}", claims.username);
@@ -269,12 +271,12 @@ async fn create_default_avatar(pool: &PgPool, user_id: Uuid) -> Result<GameStats
 }
 
 async fn get_user_rank(pool: &PgPool, user_id: Uuid) -> Result<i32, sqlx::Error> {
-    // Get all active users (both in teams and in player pool)
+    // Get all users in teams (regardless of status) and in player pool
     let team_users = sqlx::query!(
         r#"
         SELECT u.id as user_id
         FROM users u
-        INNER JOIN team_members tm ON u.id = tm.user_id AND tm.status = 'active'
+        INNER JOIN team_members tm ON u.id = tm.user_id
         "#
     )
     .fetch_all(pool)

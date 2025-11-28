@@ -220,6 +220,17 @@ async fn remove_team_member(
     team_member_handler::remove_team_member(path, pool, redis_client, claims).await
 }
 
+/// Update current user's team status (active/inactive)
+#[actix_web::patch("/teams/{team_id}/my-status")]
+pub async fn update_my_team_status(
+    team_id: web::Path<Uuid>,
+    request: web::Json<serde_json::Value>,
+    pool: web::Data<PgPool>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    team_member_handler::update_my_team_status(team_id, request, pool, claims).await
+}
+
 /// Update a team member's role or status
 #[put("/teams/{team_id}/members/{user_id}")]
 async fn update_team_member(

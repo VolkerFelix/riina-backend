@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT u.id as user_id\n        FROM users u\n        INNER JOIN team_members tm ON u.id = tm.user_id AND tm.status = 'active'\n        ",
+  "query": "\n        SELECT u.id as user_id\n        FROM users u\n        INNER JOIN team_members tm ON u.id = tm.user_id\n        ",
   "describe": {
     "columns": [
       {
@@ -16,5 +16,5 @@
       false
     ]
   },
-  "hash": "e5703525a5d71492fb34847835de99084a0a66d15dc25059d04ac53649cee885"
+  "hash": "8428845b24b4f22cbad2f40f74d6fb06b475c269756ca119da8104420c9ba532"
 }

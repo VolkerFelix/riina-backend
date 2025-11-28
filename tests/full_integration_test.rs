@@ -609,7 +609,7 @@ async fn test_live_scoring_history_api(
                     // Verify zone has reasonable values
                     let zone_name = zone_obj["zone"].as_str().expect("zone should be a string");
                     assert!(
-                        ["Zone1", "Zone2", "Zone3", "Zone4", "Zone5"].contains(&zone_name) || ["Rest", "Easy", "Moderate", "Hard"].contains(&zone_name),
+                        ["Zone1", "Zone2", "Zone3", "Zone4", "Zone5"].contains(&zone_name) || ["Off", "Rest", "Easy", "Moderate", "Hard"].contains(&zone_name),
                         "Zone name should be valid, got: {}", zone_name
                     );
                     
@@ -1817,13 +1817,13 @@ async fn test_game_summary_creation_and_retrieval() {
 }
 
 #[tokio::test]
-async fn test_best_4_out_of_5_players_team_scoring() {
+async fn test_all_players_contribute_to_team_scoring() {
     let test_app = spawn_app().await;
     let client = Client::new();
     let configuration = get_config().expect("Failed to read configuration.");
     let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
 
-    println!("🧪 Testing best 4 out of 5 players team scoring logic...");
+    println!("🧪 Testing all players contribute to team scoring...");
 
     // Step 1: Setup test environment using helper (creates 1 home + 2 away users)
     let live_game_environment = setup_live_game_environment(&test_app).await;
@@ -1918,65 +1918,45 @@ async fn test_best_4_out_of_5_players_team_scoring() {
     home_individual_scores.sort_by(|a, b| b.cmp(a));
     away_individual_scores.sort_by(|a, b| b.cmp(a));
 
-    // Calculate expected scores (best 4 out of 5)
-    let home_expected_score: i32 = home_individual_scores.iter().take(4).sum();
-    let away_expected_score: i32 = away_individual_scores.iter().take(4).sum();
-    let home_total_if_all_counted: i32 = home_individual_scores.iter().sum();
-    let away_total_if_all_counted: i32 = away_individual_scores.iter().sum();
+    // Calculate expected scores (all 5 players)
+    let home_expected_score: i32 = home_individual_scores.iter().sum();
+    let away_expected_score: i32 = away_individual_scores.iter().sum();
 
     // Get the game state
     let game_state = get_live_game_state(&test_app, game_id).await;
 
     println!("\n📊 Score Verification:");
     println!("Home individual scores (sorted): {:?}", home_individual_scores);
-    println!("Home expected total (best 4 of 5): {}", home_expected_score);
+    println!("Home expected total (all 5 players): {}", home_expected_score);
     println!("Home actual score: {}", game_state.home_score);
-    println!("Home total if all 5 counted: {} ❌", home_total_if_all_counted);
     println!();
     println!("Away individual scores (sorted): {:?}", away_individual_scores);
-    println!("Away expected total (best 4 of 5): {}", away_expected_score);
+    println!("Away expected total (all 5 players): {}", away_expected_score);
     println!("Away actual score: {}", game_state.away_score);
-    println!("Away total if all 5 counted: {} ❌", away_total_if_all_counted);
 
-    // Verify that only best 4 are counted
+    // Verify that all 5 players are counted
     assert_eq!(
         game_state.home_score,
         home_expected_score,
-        "Home team score should be sum of best 4 players (not all 5)"
+        "Home team score should be sum of all 5 players"
     );
 
     assert_eq!(
         game_state.away_score,
         away_expected_score,
-        "Away team score should be sum of best 4 players (not all 5)"
-    );
-
-    // Verify the 5th (worst) player's score is NOT included
-    assert_ne!(
-        game_state.home_score,
-        home_total_if_all_counted,
-        "Home team score should NOT include all 5 players (worst should be excluded)"
-    );
-
-    assert_ne!(
-        game_state.away_score,
-        away_total_if_all_counted,
-        "Away team score should NOT include all 5 players (worst should be excluded)"
+        "Away team score should be sum of all 5 players"
     );
 
     println!("\n✅ Verification successful:");
-    println!("   - Home team: {} (best 4 of 5, excluded worst player)",
+    println!("   - Home team: {} (all 5 players)",
         game_state.home_score);
-    println!("   - Away team: {} (best 4 of 5, excluded worst player)",
+    println!("   - Away team: {} (all 5 players)",
         game_state.away_score);
-    println!("   - Correctly excluded {} home points and {} away points from worst players",
-        home_total_if_all_counted - home_expected_score,
-        away_total_if_all_counted - away_expected_score);
 
     // Verify all players were recorded (should be at least 5 per team)
     assert!(home_contributions.len() >= 5, "Should have at least 5 home player contributions, got {}", home_contributions.len());
     assert!(away_contributions.len() >= 5, "Should have at least 5 away player contributions, got {}", away_contributions.len());
-    println!("   - All {} home and {} away players recorded in contributions (only best 4 per team count for score)",
+    println!("   - All {} home and {} away players recorded in contributions (all players count for score)",
         home_contributions.len(), away_contributions.len());
 
     // Step 8: Finish the game first
@@ -1990,7 +1970,7 @@ async fn test_best_4_out_of_5_players_team_scoring() {
     .expect("Failed to finish game");
     println!("✅ Game finished");
 
-    // Step 9: Evaluate the game and verify MVP/LVP only consider best 4 out of 5
+    // Step 9: Evaluate the game and verify MVP/LVP consider all players
     println!("\n🎯 Step 9: Evaluating game and checking MVP/LVP determination...");
 
     // Get admin credentials
@@ -2049,30 +2029,189 @@ async fn test_best_4_out_of_5_players_team_scoring() {
     // Verify MVP and LVP are different
     assert_ne!(mvp_username, lvp_username, "MVP and LVP must be different players");
 
-    // CRITICAL: Verify that the worst player (5th on each team) is NOT the LVP
-    // The LVP should be among the best 4 players, not the excluded 5th player
+    // Verify MVP has the highest score
+    let all_scores: Vec<i32> = home_individual_scores.iter().chain(away_individual_scores.iter()).copied().collect();
+    let max_score = all_scores.iter().max().unwrap();
+    let min_score = all_scores.iter().min().unwrap();
 
-    // Get the worst player from each team (the 5th player who was excluded from scoring)
-    let home_worst_player_score = home_individual_scores[home_individual_scores.len() - 1];
-    let away_worst_player_score = away_individual_scores[away_individual_scores.len() - 1];
-
-    println!("\n📊 Verification: Best 4 out of 5 rule for MVP/LVP:");
-    println!("   Home team worst (excluded) player score: {}", home_worst_player_score);
-    println!("   Away team worst (excluded) player score: {}", away_worst_player_score);
+    println!("\n📊 Verification: All players considered for MVP/LVP:");
+    println!("   Maximum score across all players: {}", max_score);
+    println!("   Minimum score across all players: {}", min_score);
+    println!("   MVP score: {}", mvp_score);
     println!("   LVP score: {}", lvp_score);
 
-    // The LVP score should be HIGHER than at least one of the excluded players
-    // (because LVP is chosen from the best 4, not the worst 5th player)
-    let worst_excluded_score = home_worst_player_score.min(away_worst_player_score);
-    assert!(
-        lvp_score as i32 >= worst_excluded_score,
-        "LVP score ({}) should be >= worst excluded player score ({}) - LVP must be from best 4 players only",
-        lvp_score, worst_excluded_score
+    // MVP should have the highest score
+    assert_eq!(
+        mvp_score as i32, *max_score,
+        "MVP should have the highest score among all players"
     );
 
-    println!("✅ MVP/LVP correctly determined from best 4 out of 5 players per team");
-    println!("   - LVP was chosen from eligible players (best 4 per team)");
-    println!("   - Excluded 5th players were not considered for LVP");
+    // LVP should have the lowest score (excluding MVP)
+    let non_mvp_scores: Vec<i32> = all_scores.iter().filter(|&&s| s != *max_score).copied().collect();
+    let min_non_mvp_score = non_mvp_scores.iter().min().unwrap();
+    assert_eq!(
+        lvp_score as i32, *min_non_mvp_score,
+        "LVP should have the lowest score among non-MVP players"
+    );
 
-    println!("\n✅ Best 4 out of 5 players team scoring test completed successfully!");
+    println!("✅ MVP/LVP correctly determined from all players");
+    println!("   - MVP has the highest score across all players");
+    println!("   - LVP has the lowest score (excluding MVP)");
+
+    println!("\n✅ All players contribute to team scoring test completed successfully!");
+}
+
+#[tokio::test]
+async fn test_inactive_players_excluded_from_mvp_lvp() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+    let configuration = get_config().expect("Failed to read configuration.");
+    let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
+
+    println!("🧪 Testing inactive players excluded from MVP/LVP...");
+
+    // Step 1: Setup test environment
+    let live_game_environment = setup_live_game_environment(&test_app).await;
+
+    // Step 2: Create additional users for a 5-player scenario
+    let mut home_users = vec![live_game_environment.home_user.clone()];
+    for _ in 0..4 {
+        let user = create_test_user_and_login(&test_app.address).await;
+        create_health_profile_for_user(&client, &test_app.address, &user).await.unwrap();
+        add_user_to_team(&test_app.address, &live_game_environment.admin_session.token, &live_game_environment.home_team_id.to_string(), user.user_id).await;
+        home_users.push(user);
+    }
+
+    let mut away_users = vec![live_game_environment.away_user_1.clone(), live_game_environment.away_user_2.clone()];
+    for _ in 0..3 {
+        let user = create_test_user_and_login(&test_app.address).await;
+        create_health_profile_for_user(&client, &test_app.address, &user).await.unwrap();
+        add_user_to_team(&test_app.address, &live_game_environment.admin_session.token, &live_game_environment.away_team_id.to_string(), user.user_id).await;
+        away_users.push(user);
+    }
+
+    println!("✅ Created teams with 5 players each");
+
+    // Step 3: Start the game
+    let game_id = live_game_environment.first_game_id;
+    update_game_times_to_now(&test_app, game_id).await;
+    start_test_game(&test_app, game_id).await;
+    let _live_game = initialize_live_game(&test_app, game_id, redis_client.clone()).await;
+
+    println!("✅ Game started with ID: {}", game_id);
+
+    // Step 4: Upload workouts for all players
+    // Home team: Player 0 gets highest score, Player 4 gets lowest score
+    let home_workout_configs = vec![
+        (WorkoutIntensity::Intense, 30),   // Player 0: 100 points - should be MVP
+        (WorkoutIntensity::Moderate, 25),  // Player 1: 75 points
+        (WorkoutIntensity::Moderate, 25),  // Player 2: 75 points
+        (WorkoutIntensity::Moderate, 25),  // Player 3: 75 points
+        (WorkoutIntensity::Light, 10),     // Player 4: 30 points - lowest score
+    ];
+
+    for (i, (intensity, duration)) in home_workout_configs.iter().enumerate() {
+        let mut workout = WorkoutData::new(*intensity, Utc::now(), *duration);
+        upload_workout_data_for_user(&client, &test_app.address, &home_users[i].token, &mut workout).await.unwrap();
+        println!("Home player {} uploaded workout: intensity={:?}, duration={}", i, intensity, duration);
+    }
+
+    // Away team: All moderate workouts
+    for (i, user) in away_users.iter().enumerate() {
+        let mut workout = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 25);
+        upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout).await.unwrap();
+        println!("Away player {} uploaded workout", i);
+    }
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    println!("\n🔧 Step 5: Setting home player 4 (lowest scorer) to inactive...");
+
+    // Set the lowest scoring player to inactive
+    let set_inactive_request = json!({
+        "status": "inactive"
+    });
+
+    let inactive_response = client
+        .patch(&format!("{}/league/teams/{}/my-status", test_app.address, live_game_environment.home_team_id))
+        .header("Authorization", format!("Bearer {}", home_users[4].token))
+        .json(&set_inactive_request)
+        .send()
+        .await
+        .expect("Failed to set player inactive");
+
+    assert!(inactive_response.status().is_success(), "Setting player inactive should succeed");
+    println!("✅ Home player 4 set to inactive");
+
+    // Step 6: Finish the game
+    println!("\n🎯 Step 6: Finishing game...");
+    sqlx::query!(
+        "UPDATE games SET game_end_time = NOW(), status = 'finished' WHERE id = $1",
+        game_id
+    )
+    .execute(&test_app.db_pool)
+    .await
+    .expect("Failed to finish game");
+    println!("✅ Game finished");
+
+    // Step 7: Evaluate the game
+    println!("\n🎯 Step 7: Evaluating game...");
+    let admin_session = create_admin_user_and_login(&test_app.address).await;
+    let today = Utc::now().format("%Y-%m-%d").to_string();
+    let evaluation_request = json!({
+        "date": today
+    });
+
+    let eval_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/admin/games/evaluate", test_app.address),
+        &admin_session.token,
+        Some(evaluation_request),
+    ).await;
+
+    assert!(eval_response.status().is_success(), "Game evaluation should succeed");
+    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+
+    // Step 8: Get game summary and verify MVP/LVP
+    println!("\n🎯 Step 8: Verifying MVP/LVP exclusion...");
+    let summary_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/games/{}/summary", test_app.address, game_id),
+        &home_users[0].token,
+        None::<serde_json::Value>,
+    ).await;
+
+    assert!(summary_response.status().is_success(), "Getting game summary should succeed");
+    let summary_data: serde_json::Value = summary_response.json().await.unwrap();
+    let summary = &summary_data["data"]["summary"];
+
+    // Get MVP and LVP
+    let mvp_username = summary["mvp_username"].as_str().expect("Should have MVP");
+    let lvp_username = summary["lvp_username"].as_str().expect("Should have LVP");
+
+    println!("🏆 MVP: {}", mvp_username);
+    println!("📉 LVP: {}", lvp_username);
+    println!("🚫 Inactive player: {}", home_users[4].username);
+
+    // Verify MVP is the highest scorer (home player 0)
+    assert_eq!(
+        mvp_username, home_users[0].username,
+        "MVP should be the highest scoring player"
+    );
+
+    // CRITICAL: Verify that the inactive player (home player 4) is NOT the LVP
+    // even though they have the lowest score
+    assert_ne!(
+        lvp_username, home_users[4].username,
+        "Inactive player should NOT be LVP even with lowest score"
+    );
+
+    println!("\n✅ Verification successful:");
+    println!("   - MVP correctly assigned to highest scoring active player");
+    println!("   - LVP did NOT go to inactive player despite having lowest score");
+    println!("   - Inactive players are properly excluded from MVP/LVP awards");
+
+    println!("\n✅ Inactive player MVP/LVP exclusion test completed successfully!");
 }

@@ -63,7 +63,7 @@ pub async fn get_health_profile(
         HealthProfileResponse,
         r#"
         SELECT id, user_id, age, gender, resting_heart_rate, max_heart_rate,
-               vt0_threshold, vt1_threshold, vt2_threshold, weight, height, last_updated
+               vt_off_threshold, vt0_threshold, vt1_threshold, vt2_threshold, weight, height, last_updated
         FROM user_health_profiles
         WHERE user_id = $1
         "#,
@@ -214,7 +214,7 @@ pub async fn update_health_profile(
                 HealthProfileResponse,
                 r#"
                 SELECT id, user_id, age, gender, resting_heart_rate, max_heart_rate,
-                       vt0_threshold, vt1_threshold, vt2_threshold, weight, height, last_updated
+                       vt_off_threshold, vt0_threshold, vt1_threshold, vt2_threshold, weight, height, last_updated
                 FROM user_health_profiles
                 WHERE user_id = $1
                 "#,
