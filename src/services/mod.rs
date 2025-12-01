@@ -8,6 +8,7 @@ pub mod social_events;
 pub mod game_summary_service;
 pub mod player_pool_events;
 pub mod ml_client;
+pub mod chat_events;
 
 pub use game_evaluation_service::GameEvaluationService;
 pub use scheduler::SchedulerService;

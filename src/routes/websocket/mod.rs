@@ -9,6 +9,7 @@ use crate::config::jwt::JwtSettings;
 use uuid::Uuid;
 use tracing;
 use std::sync::Arc;
+use sqlx::PgPool;
 
 pub use connection::GameConnection;
 pub use messages::TokenQuery;
@@ -21,6 +22,7 @@ pub async fn game_ws_route(
     query: Option<web::Query<TokenQuery>>,
     claims: Option<web::ReqData<Claims>>,
     redis: Option<web::Data<Arc<redis::Client>>>,
+    db_pool: Option<web::Data<PgPool>>,
     jwt_settings: web::Data<JwtSettings>,
 ) -> Result<HttpResponse, Error> {
     tracing::info!("🔗 New game WebSocket connection request");
@@ -60,11 +62,11 @@ pub async fn game_ws_route(
     
     // Start game WebSocket connection - the registry will handle duplicates
     let resp = ws::start(
-        GameConnection::new(user_uuid, username.clone(), redis),
+        GameConnection::new(user_uuid, username.clone(), redis, db_pool),
         &req,
         stream,
     )?;
-    
+
     tracing::info!("✅ Game WebSocket connection initiated for user: {} ({})", user_uuid, username);
     Ok(resp)
 }

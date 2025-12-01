@@ -213,6 +213,35 @@ pub enum GameEvent {
         final_away_score: i32,
         created_at: DateTime<Utc>,
     },
+
+    // Team Chat Events
+    #[serde(rename = "team_chat_message")]
+    TeamChatMessage {
+        message_id: Uuid,
+        team_id: Uuid,
+        user_id: Uuid,
+        username: String,
+        message: String,
+        timestamp: DateTime<Utc>,
+    },
+
+    #[serde(rename = "team_chat_message_edited")]
+    TeamChatMessageEdited {
+        message_id: Uuid,
+        team_id: Uuid,
+        user_id: Uuid,
+        username: String,
+        message: String,
+        edited_at: DateTime<Utc>,
+    },
+
+    #[serde(rename = "team_chat_message_deleted")]
+    TeamChatMessageDeleted {
+        message_id: Uuid,
+        team_id: Uuid,
+        user_id: Uuid,
+        timestamp: DateTime<Utc>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
