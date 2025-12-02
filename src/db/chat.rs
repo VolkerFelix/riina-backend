@@ -59,13 +59,18 @@ pub async fn get_chat_message_with_user(
             tcm.team_id,
             tcm.user_id,
             u.username,
+            u.profile_picture_url,
             tcm.message,
             tcm.reply_to_message_id,
+            reply_msg.message as reply_to_message,
+            reply_user.username as reply_to_username,
             tcm.created_at,
             tcm.edited_at,
             tcm.deleted_at
         FROM team_chat_messages tcm
         INNER JOIN users u ON u.id = tcm.user_id
+        LEFT JOIN team_chat_messages reply_msg ON reply_msg.id = tcm.reply_to_message_id
+        LEFT JOIN users reply_user ON reply_user.id = reply_msg.user_id
         WHERE tcm.id = $1
         "#,
     )
@@ -78,8 +83,11 @@ pub async fn get_chat_message_with_user(
         team_id: row.get("team_id"),
         user_id: row.get("user_id"),
         username: row.get("username"),
+        profile_picture_url: row.get("profile_picture_url"),
         message: row.get("message"),
         reply_to_message_id: row.get("reply_to_message_id"),
+        reply_to_message: row.get("reply_to_message"),
+        reply_to_username: row.get("reply_to_username"),
         created_at: row.get("created_at"),
         edited_at: row.get("edited_at"),
         deleted_at: row.get("deleted_at"),
@@ -102,13 +110,18 @@ pub async fn get_team_chat_history(
                 tcm.team_id,
                 tcm.user_id,
                 u.username,
+                u.profile_picture_url,
                 tcm.message,
                 tcm.reply_to_message_id,
+                reply_msg.message as reply_to_message,
+                reply_user.username as reply_to_username,
                 tcm.created_at,
                 tcm.edited_at,
                 tcm.deleted_at
             FROM team_chat_messages tcm
             INNER JOIN users u ON u.id = tcm.user_id
+            LEFT JOIN team_chat_messages reply_msg ON reply_msg.id = tcm.reply_to_message_id
+            LEFT JOIN users reply_user ON reply_user.id = reply_msg.user_id
             WHERE tcm.team_id = $1
                 AND tcm.deleted_at IS NULL
                 AND tcm.created_at < (SELECT created_at FROM team_chat_messages WHERE id = $2)
@@ -128,13 +141,18 @@ pub async fn get_team_chat_history(
                 tcm.team_id,
                 tcm.user_id,
                 u.username,
+                u.profile_picture_url,
                 tcm.message,
                 tcm.reply_to_message_id,
+                reply_msg.message as reply_to_message,
+                reply_user.username as reply_to_username,
                 tcm.created_at,
                 tcm.edited_at,
                 tcm.deleted_at
             FROM team_chat_messages tcm
             INNER JOIN users u ON u.id = tcm.user_id
+            LEFT JOIN team_chat_messages reply_msg ON reply_msg.id = tcm.reply_to_message_id
+            LEFT JOIN users reply_user ON reply_user.id = reply_msg.user_id
             WHERE tcm.team_id = $1 AND tcm.deleted_at IS NULL
             ORDER BY tcm.created_at DESC
             LIMIT $2
@@ -153,8 +171,11 @@ pub async fn get_team_chat_history(
             team_id: row.get("team_id"),
             user_id: row.get("user_id"),
             username: row.get("username"),
+            profile_picture_url: row.get("profile_picture_url"),
             message: row.get("message"),
             reply_to_message_id: row.get("reply_to_message_id"),
+            reply_to_message: row.get("reply_to_message"),
+            reply_to_username: row.get("reply_to_username"),
             created_at: row.get("created_at"),
             edited_at: row.get("edited_at"),
             deleted_at: row.get("deleted_at"),
