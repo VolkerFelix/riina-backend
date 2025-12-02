@@ -11,18 +11,20 @@ pub async fn create_chat_message(
     team_id: Uuid,
     user_id: Uuid,
     message: &str,
+    gif_url: Option<String>,
     reply_to_message_id: Option<Uuid>,
 ) -> Result<TeamChatMessage, sqlx::Error> {
     let chat_message = sqlx::query_as::<_, TeamChatMessage>(
         r#"
-        INSERT INTO team_chat_messages (team_id, user_id, message, reply_to_message_id)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id, team_id, user_id, message, reply_to_message_id, created_at, edited_at, deleted_at
+        INSERT INTO team_chat_messages (team_id, user_id, message, gif_url, reply_to_message_id)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id, team_id, user_id, message, gif_url, reply_to_message_id, created_at, edited_at, deleted_at
         "#,
     )
     .bind(team_id)
     .bind(user_id)
     .bind(message)
+    .bind(gif_url)
     .bind(reply_to_message_id)
     .fetch_one(pool)
     .await?;
@@ -37,7 +39,7 @@ pub async fn get_chat_message(
 ) -> Result<TeamChatMessage, sqlx::Error> {
     sqlx::query_as::<_, TeamChatMessage>(
         r#"
-        SELECT id, team_id, user_id, message, reply_to_message_id, created_at, edited_at, deleted_at
+        SELECT id, team_id, user_id, message, gif_url, reply_to_message_id, created_at, edited_at, deleted_at
         FROM team_chat_messages
         WHERE id = $1
         "#,
@@ -61,6 +63,7 @@ pub async fn get_chat_message_with_user(
             u.username,
             u.profile_picture_url,
             tcm.message,
+            tcm.gif_url,
             tcm.reply_to_message_id,
             reply_msg.message as reply_to_message,
             reply_user.username as reply_to_username,
@@ -85,6 +88,7 @@ pub async fn get_chat_message_with_user(
         username: row.get("username"),
         profile_picture_url: row.get("profile_picture_url"),
         message: row.get("message"),
+        gif_url: row.get("gif_url"),
         reply_to_message_id: row.get("reply_to_message_id"),
         reply_to_message: row.get("reply_to_message"),
         reply_to_username: row.get("reply_to_username"),
@@ -112,6 +116,7 @@ pub async fn get_team_chat_history(
                 u.username,
                 u.profile_picture_url,
                 tcm.message,
+                tcm.gif_url,
                 tcm.reply_to_message_id,
                 reply_msg.message as reply_to_message,
                 reply_user.username as reply_to_username,
@@ -143,6 +148,7 @@ pub async fn get_team_chat_history(
                 u.username,
                 u.profile_picture_url,
                 tcm.message,
+                tcm.gif_url,
                 tcm.reply_to_message_id,
                 reply_msg.message as reply_to_message,
                 reply_user.username as reply_to_username,
@@ -173,6 +179,7 @@ pub async fn get_team_chat_history(
             username: row.get("username"),
             profile_picture_url: row.get("profile_picture_url"),
             message: row.get("message"),
+            gif_url: row.get("gif_url"),
             reply_to_message_id: row.get("reply_to_message_id"),
             reply_to_message: row.get("reply_to_message"),
             reply_to_username: row.get("reply_to_username"),
@@ -219,7 +226,7 @@ pub async fn edit_chat_message(
         UPDATE team_chat_messages
         SET message = $1, edited_at = $2
         WHERE id = $3 AND user_id = $4 AND deleted_at IS NULL
-        RETURNING id, team_id, user_id, message, reply_to_message_id, created_at, edited_at, deleted_at
+        RETURNING id, team_id, user_id, message, gif_url, reply_to_message_id, created_at, edited_at, deleted_at
         "#,
     )
     .bind(new_message)

@@ -11,6 +11,7 @@ pub struct TeamChatMessage {
     pub team_id: Uuid,
     pub user_id: Uuid,
     pub message: String,
+    pub gif_url: Option<String>,
     pub reply_to_message_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub edited_at: Option<DateTime<Utc>>,
@@ -26,6 +27,7 @@ pub struct TeamChatMessageInfo {
     pub username: String,
     pub profile_picture_url: Option<String>,
     pub message: String,
+    pub gif_url: Option<String>,
     pub reply_to_message_id: Option<Uuid>,
     pub reply_to_message: Option<String>,
     pub reply_to_username: Option<String>,
@@ -38,6 +40,7 @@ pub struct TeamChatMessageInfo {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SendChatMessageRequest {
     pub message: String,
+    pub gif_url: Option<String>,
     pub reply_to_message_id: Option<Uuid>,
 }
 
@@ -68,12 +71,16 @@ impl SendChatMessageRequest {
     /// Validate send chat message request
     pub fn validate(&self) -> Result<(), String> {
         let trimmed = self.message.trim();
+        let has_text = !trimmed.is_empty();
+        let has_gif = self.gif_url.is_some();
 
-        if trimmed.is_empty() {
-            return Err("Message cannot be empty".to_string());
+        // Must have either text or GIF
+        if !has_text && !has_gif {
+            return Err("Message or GIF must be provided".to_string());
         }
 
-        if trimmed.len() > 5000 {
+        // Validate text if present
+        if has_text && trimmed.len() > 5000 {
             return Err("Message cannot exceed 5000 characters".to_string());
         }
 

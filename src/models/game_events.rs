@@ -223,6 +223,7 @@ pub enum GameEvent {
         username: String,
         profile_picture_url: Option<String>,
         message: String,
+        gif_url: Option<String>,
         timestamp: DateTime<Utc>,
     },
 
