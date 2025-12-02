@@ -11,17 +11,19 @@ pub async fn create_chat_message(
     team_id: Uuid,
     user_id: Uuid,
     message: &str,
+    reply_to_message_id: Option<Uuid>,
 ) -> Result<TeamChatMessage, sqlx::Error> {
     let chat_message = sqlx::query_as::<_, TeamChatMessage>(
         r#"
-        INSERT INTO team_chat_messages (team_id, user_id, message)
-        VALUES ($1, $2, $3)
-        RETURNING id, team_id, user_id, message, created_at, edited_at, deleted_at
+        INSERT INTO team_chat_messages (team_id, user_id, message, reply_to_message_id)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id, team_id, user_id, message, reply_to_message_id, created_at, edited_at, deleted_at
         "#,
     )
     .bind(team_id)
     .bind(user_id)
     .bind(message)
+    .bind(reply_to_message_id)
     .fetch_one(pool)
     .await?;
 
@@ -35,7 +37,7 @@ pub async fn get_chat_message(
 ) -> Result<TeamChatMessage, sqlx::Error> {
     sqlx::query_as::<_, TeamChatMessage>(
         r#"
-        SELECT id, team_id, user_id, message, created_at, edited_at, deleted_at
+        SELECT id, team_id, user_id, message, reply_to_message_id, created_at, edited_at, deleted_at
         FROM team_chat_messages
         WHERE id = $1
         "#,
@@ -58,6 +60,7 @@ pub async fn get_chat_message_with_user(
             tcm.user_id,
             u.username,
             tcm.message,
+            tcm.reply_to_message_id,
             tcm.created_at,
             tcm.edited_at,
             tcm.deleted_at
@@ -76,6 +79,7 @@ pub async fn get_chat_message_with_user(
         user_id: row.get("user_id"),
         username: row.get("username"),
         message: row.get("message"),
+        reply_to_message_id: row.get("reply_to_message_id"),
         created_at: row.get("created_at"),
         edited_at: row.get("edited_at"),
         deleted_at: row.get("deleted_at"),
@@ -99,6 +103,7 @@ pub async fn get_team_chat_history(
                 tcm.user_id,
                 u.username,
                 tcm.message,
+                tcm.reply_to_message_id,
                 tcm.created_at,
                 tcm.edited_at,
                 tcm.deleted_at
@@ -124,6 +129,7 @@ pub async fn get_team_chat_history(
                 tcm.user_id,
                 u.username,
                 tcm.message,
+                tcm.reply_to_message_id,
                 tcm.created_at,
                 tcm.edited_at,
                 tcm.deleted_at
@@ -148,6 +154,7 @@ pub async fn get_team_chat_history(
             user_id: row.get("user_id"),
             username: row.get("username"),
             message: row.get("message"),
+            reply_to_message_id: row.get("reply_to_message_id"),
             created_at: row.get("created_at"),
             edited_at: row.get("edited_at"),
             deleted_at: row.get("deleted_at"),
@@ -191,7 +198,7 @@ pub async fn edit_chat_message(
         UPDATE team_chat_messages
         SET message = $1, edited_at = $2
         WHERE id = $3 AND user_id = $4 AND deleted_at IS NULL
-        RETURNING id, team_id, user_id, message, created_at, edited_at, deleted_at
+        RETURNING id, team_id, user_id, message, reply_to_message_id, created_at, edited_at, deleted_at
         "#,
     )
     .bind(new_message)

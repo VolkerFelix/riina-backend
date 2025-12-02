@@ -11,6 +11,7 @@ pub struct TeamChatMessage {
     pub team_id: Uuid,
     pub user_id: Uuid,
     pub message: String,
+    pub reply_to_message_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub edited_at: Option<DateTime<Utc>>,
     pub deleted_at: Option<DateTime<Utc>>,
@@ -24,6 +25,7 @@ pub struct TeamChatMessageInfo {
     pub user_id: Uuid,
     pub username: String,
     pub message: String,
+    pub reply_to_message_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub edited_at: Option<DateTime<Utc>>,
     pub deleted_at: Option<DateTime<Utc>>,
@@ -33,6 +35,7 @@ pub struct TeamChatMessageInfo {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SendChatMessageRequest {
     pub message: String,
+    pub reply_to_message_id: Option<Uuid>,
 }
 
 /// Request to edit a chat message

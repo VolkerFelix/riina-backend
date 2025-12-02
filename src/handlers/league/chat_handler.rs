@@ -75,7 +75,7 @@ pub async fn send_team_chat_message(
     let sanitized_message = body.get_sanitized_message();
 
     // Create the message
-    match create_chat_message(&pool, team_id, user_id, &sanitized_message).await {
+    match create_chat_message(&pool, team_id, user_id, &sanitized_message, body.reply_to_message_id).await {
         Ok(chat_message) => {
             // Broadcast the message via WebSocket
             if let Err(e) = chat_events::publish_chat_message(
