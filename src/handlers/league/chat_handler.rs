@@ -77,21 +77,22 @@ pub async fn send_team_chat_message(
     // Create the message
     match create_chat_message(&pool, team_id, user_id, &sanitized_message, body.reply_to_message_id).await {
         Ok(chat_message) => {
-            // Broadcast the message via WebSocket
-            if let Err(e) = chat_events::publish_chat_message(
-                &redis_client,
-                team_id,
-                chat_message.id,
-                user_id,
-                claims.username.clone(),
-                sanitized_message,
-            ).await {
-                tracing::warn!("Failed to broadcast chat message: {}", e);
-            }
-
-            // Get the full message info with username
+            // Get the full message info with username and profile picture
             match get_chat_message_with_user(&pool, chat_message.id).await {
                 Ok(message_info) => {
+                    // Broadcast the message via WebSocket with profile picture
+                    if let Err(e) = chat_events::publish_chat_message(
+                        &redis_client,
+                        team_id,
+                        chat_message.id,
+                        user_id,
+                        claims.username.clone(),
+                        message_info.profile_picture_url.clone(),
+                        sanitized_message,
+                    ).await {
+                        tracing::warn!("Failed to broadcast chat message: {}", e);
+                    }
+
                     HttpResponse::Ok().json(
                         ChatMessageResponse {
                             success: true,

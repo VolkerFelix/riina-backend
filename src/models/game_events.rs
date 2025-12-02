@@ -221,6 +221,7 @@ pub enum GameEvent {
         team_id: Uuid,
         user_id: Uuid,
         username: String,
+        profile_picture_url: Option<String>,
         message: String,
         timestamp: DateTime<Utc>,
     },

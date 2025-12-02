@@ -13,6 +13,7 @@ pub async fn publish_chat_message(
     message_id: Uuid,
     user_id: Uuid,
     username: String,
+    profile_picture_url: Option<String>,
     message: String,
 ) -> Result<(), String> {
     let event = GameEvent::TeamChatMessage {
@@ -20,6 +21,7 @@ pub async fn publish_chat_message(
         team_id,
         user_id,
         username,
+        profile_picture_url,
         message,
         timestamp: Utc::now(),
     };
