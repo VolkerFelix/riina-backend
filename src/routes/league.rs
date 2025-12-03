@@ -399,3 +399,53 @@ async fn delete_poll(
     Ok(team_poll_handler::delete_poll(pool, path, claims).await)
 }
 
+/// Send a chat message to a team
+#[post("/teams/{team_id}/chat")]
+async fn send_team_chat(
+    pool: web::Data<PgPool>,
+    redis_client: web::Data<Arc<RedisClient>>,
+    team_id: web::Path<Uuid>,
+    request: web::Json<crate::models::chat::SendChatMessageRequest>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    use crate::handlers::league::chat_handler;
+    Ok(chat_handler::send_team_chat_message(pool, team_id, request, claims, redis_client).await)
+}
+
+/// Get chat history for a team
+#[get("/teams/{team_id}/chat")]
+async fn get_team_chat(
+    pool: web::Data<PgPool>,
+    team_id: web::Path<Uuid>,
+    query: web::Query<crate::handlers::league::chat_handler::ChatHistoryQuery>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    use crate::handlers::league::chat_handler;
+    Ok(chat_handler::get_team_chat(pool, team_id, query, claims).await)
+}
+
+/// Edit a chat message
+#[put("/teams/{team_id}/chat/{message_id}")]
+async fn edit_team_chat(
+    pool: web::Data<PgPool>,
+    redis_client: web::Data<Arc<RedisClient>>,
+    path: web::Path<(Uuid, Uuid)>,
+    request: web::Json<crate::models::chat::EditChatMessageRequest>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    use crate::handlers::league::chat_handler;
+    Ok(chat_handler::edit_team_chat_message(pool, path, request, claims, redis_client).await)
+}
+
+/// Delete a chat message
+#[delete("/teams/{team_id}/chat/{message_id}")]
+async fn delete_team_chat(
+    pool: web::Data<PgPool>,
+    redis_client: web::Data<Arc<RedisClient>>,
+    path: web::Path<(Uuid, Uuid)>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    use crate::handlers::league::chat_handler;
+    Ok(chat_handler::delete_team_chat_message(pool, path, claims, redis_client).await)
+}
+

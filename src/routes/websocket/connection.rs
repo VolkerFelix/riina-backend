@@ -9,6 +9,7 @@ use uuid::Uuid;
 use chrono::Utc;
 use tracing;
 use std::sync::Arc;
+use sqlx::PgPool;
 
 use crate::models::game_events::GameEvent;
 
@@ -23,6 +24,7 @@ pub struct GameConnection {
     user_id: Uuid,
     username: String,
     redis: Option<web::Data<Arc<redis::Client>>>,
+    db_pool: Option<web::Data<PgPool>>,
     session_id: Uuid,
 }
 
@@ -44,16 +46,22 @@ impl Actor for GameConnection {
 }
 
 impl GameConnection {
-    pub fn new(user_id: Uuid, username: String, redis: Option<web::Data<Arc<redis::Client>>>) -> Self {
+    pub fn new(
+        user_id: Uuid,
+        username: String,
+        redis: Option<web::Data<Arc<redis::Client>>>,
+        db_pool: Option<web::Data<PgPool>>,
+    ) -> Self {
         let session_id = Uuid::new_v4();
-        tracing::info!("🆕 Creating new GameConnection for user {} ({}) - session: {}", 
+        tracing::info!("🆕 Creating new GameConnection for user {} ({}) - session: {}",
             user_id, username, session_id);
-        
+
         Self {
             heartbeat: Instant::now(),
             user_id,
             username,
             redis,
+            db_pool,
             session_id,
         }
     }
@@ -78,24 +86,41 @@ impl GameConnection {
         let session_id = self.session_id;
         let username = self.username.clone();
         let addr = ctx.address();
+        let db_pool = self.db_pool.clone();
 
-        if let Some(redis_client) = self.redis.clone() {            
+        if let Some(redis_client) = self.redis.clone() {
             tokio::spawn(async move {
-                tracing::info!("🔗 Starting Redis subscription setup for user {} ({}) session: {}", 
+                tracing::info!("🔗 Starting Redis subscription setup for user {} ({}) session: {}",
                     user_id, username, session_id);
-                
+
                 match redis_client.get_async_connection().await {
-                    Ok(conn) => {                        
+                    Ok(conn) => {
                         let mut pubsub = conn.into_pubsub();
-                        
+
                         // Subscribe to multiple channels for different event types
-                        let channels = vec![
+                        let mut channels = vec![
                             format!("game:events:user:{}", user_id),           // User-specific events
                             "game:events:global".to_string(),                  // Global events (leaderboards, etc.)
                             "game:events:battles".to_string(),                 // Battle events
                             "game:events:territories".to_string(),             // Territory events
                             "player_pool_events".to_string(),                  // Player pool events (join/leave/team assignment)
                         ];
+
+                        // Get user's teams and subscribe to team channels
+                        if let Some(pool) = db_pool {
+                            match crate::db::chat::get_user_team_ids(&pool, user_id).await {
+                                Ok(team_ids) => {
+                                    let team_count = team_ids.len();
+                                    for team_id in team_ids {
+                                        channels.push(format!("game:events:team:{}", team_id));
+                                    }
+                                    tracing::info!("Added {} team channels for user {}", team_count, user_id);
+                                },
+                                Err(e) => {
+                                    tracing::warn!("Failed to get team IDs for user {}: {}", user_id, e);
+                                }
+                            }
+                        }
                         
                         let mut successful_subscriptions = 0;
                         for channel in &channels {
