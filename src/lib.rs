@@ -51,7 +51,7 @@ pub fn run(
             .allowed_origin("https://evolveme-admin.fly.dev")
             .allowed_origin("https://riina-dev.fly.dev")
             .allowed_origin("https://evolveme-admin-dev.fly.dev")
-            .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "PATCH"])
+            .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
             .allowed_headers(vec![
                 http::header::AUTHORIZATION,
                 http::header::ACCEPT,
