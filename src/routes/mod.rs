@@ -14,6 +14,7 @@ pub mod feed;
 pub mod posts;
 pub mod media;
 pub mod analytics;
+pub mod notifications;
 
 use crate::middleware::auth::AuthMiddleware;
 
@@ -136,5 +137,12 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
         web::scope("/analytics")
             .wrap(AuthMiddleware)
             .configure(analytics::init_analytics_routes)
+    );
+
+    // Notification routes (require authentication)
+    cfg.service(
+        web::scope("/notifications")
+            .wrap(AuthMiddleware)
+            .configure(notifications::init_notification_routes)
     );
 }

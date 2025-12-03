@@ -13,3 +13,4 @@ pub mod player_pool;
 pub mod team_invitation;
 pub mod analytics;
 pub mod chat;
+pub mod notification;

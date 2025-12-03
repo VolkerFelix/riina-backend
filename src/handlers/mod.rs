@@ -10,3 +10,4 @@ pub mod feed;
 pub mod posts;
 pub mod media;
 pub mod analytics_handler;
+pub mod notification_handler;
