@@ -158,7 +158,8 @@ pub async fn broadcast_comment_reaction_removed(
 }
 
 /// Send notification event via Redis to a specific user's channel
-pub async fn send_notification_to_user(
+/// Send WebSocket notification event to a specific user
+pub async fn send_websocket_notification_to_user(
     redis_client: &web::Data<Arc<redis::Client>>,
     recipient_id: Uuid,
     notification_id: Uuid,

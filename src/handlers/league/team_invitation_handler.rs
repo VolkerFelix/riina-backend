@@ -11,7 +11,7 @@ use crate::models::team_invitation::{
 };
 use crate::models::team::TeamRole;
 use crate::league::constants::MAX_TEAM_SIZE;
-use crate::services::social_events::send_notification_to_user;
+use crate::services::social_events::send_websocket_notification_to_user;
 
 /// Send a team invitation to a free agent
 #[tracing::instrument(
@@ -230,7 +230,7 @@ pub async fn send_invitation(
                         tracing::info!("Created notification {} for team invitation", notification_id);
 
                         // Send notification to user via WebSocket
-                        if let Err(e) = send_notification_to_user(
+                        if let Err(e) = send_websocket_notification_to_user(
                             &redis_client,
                             request.invitee_id,
                             notification_id,
@@ -533,7 +533,7 @@ pub async fn respond_to_invitation(
                             tracing::info!("Created notification {} for team member {}", notification_id, member.member_id);
 
                             // Send notification via WebSocket
-                            if let Err(e) = send_notification_to_user(
+                            if let Err(e) = send_websocket_notification_to_user(
                                 &redis_client,
                                 member.member_id,
                                 notification_id,

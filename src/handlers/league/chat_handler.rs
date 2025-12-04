@@ -17,6 +17,7 @@ use crate::{
     },
     models::common::ApiResponse,
     services::chat_events,
+    handlers::notification_handler::send_notification_to_user,
 };
 
 /// Send a chat message to a team
@@ -132,13 +133,13 @@ pub async fn send_team_chat_message(
                                 "message_id": chat_message.id.to_string(),
                             });
 
-                            if let Err(e) = crate::handlers::notification_handler::send_notification_to_user(
+                            if let Err(e) = send_notification_to_user(
                                 &pool,
                                 member_user_id,
                                 format!("{} in {}", claims.username, team_name),
                                 notification_body,
                                 Some(notification_data),
-                                Some("team_message".to_string()),
+                                Some("team_message".to_string())
                             ).await {
                                 tracing::warn!("Failed to send push notification to user {}: {}", member_user_id, e);
                             }

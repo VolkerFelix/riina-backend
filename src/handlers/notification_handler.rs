@@ -231,8 +231,6 @@ pub async fn send_notification(
         };
 
         let badge_count = (notification_count + message_count) as i32;
-        info!("Setting badge count for user {}: {} (notifications: {}, messages: {})",
-              token.user_id, badge_count, notification_count, message_count);
         message = message.with_badge(badge_count);
 
         messages.push(message);
@@ -342,8 +340,6 @@ pub async fn send_notification_to_user(
         });
 
     let badge_count = (notification_count + message_count) as i32;
-    info!("Setting badge count for user {}: {} (notifications: {}, messages: {})",
-          user_id, badge_count, notification_count, message_count);
 
     // Build messages
     let mut messages: Vec<ExpoPushMessage> = Vec::new();

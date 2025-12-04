@@ -12,6 +12,7 @@ use crate::{
     models::social::{CommentQueryParams, CreateCommentRequest, UpdateCommentRequest, NotificationType},
     models::common::ApiResponse,
     services::social_events,
+    handlers::notification_handler::send_notification_to_user
 };
 
 pub async fn add_comment(
@@ -62,15 +63,40 @@ pub async fn add_comment(
                     ).await {
                         Ok(Some(notification_id)) => {
                             // Broadcast notification via WebSocket
-                            if let Err(e) = social_events::send_notification_to_user(
+                            if let Err(e) = social_events::send_websocket_notification_to_user(
                                 &redis_client,
                                 parent_comment.user_id,
                                 notification_id,
                                 claims.username.clone(),
                                 NotificationType::Reply.as_str().to_string(),
-                                message,
+                                message.clone(),
                             ).await {
                                 tracing::warn!("Failed to broadcast notification: {}", e);
+                            }
+
+                            // Send push notification
+                            let notification_data = serde_json::json!({
+                                "type": "reply",
+                                "comment_id": comment.id.to_string(),
+                                "parent_id": parent_id.to_string(),
+                                "workout_id": workout_id.to_string(),
+                            });
+
+                            let comment_preview = if body.content.len() > 50 {
+                                format!("{}...", &body.content[..50])
+                            } else {
+                                body.content.clone()
+                            };
+
+                            if let Err(e) = send_notification_to_user(
+                                &pool,
+                                parent_comment.user_id,
+                                format!("{} replied to your comment", claims.username),
+                                comment_preview,
+                                Some(notification_data),
+                                Some("reply".to_string())
+                            ).await {
+                                tracing::warn!("Failed to send push notification: {}", e);
                             }
                         }
                         Ok(None) => {}
@@ -94,15 +120,39 @@ pub async fn add_comment(
                     ).await {
                         Ok(Some(notification_id)) => {
                             // Broadcast notification via WebSocket
-                            if let Err(e) = social_events::send_notification_to_user(
+                            if let Err(e) = social_events::send_websocket_notification_to_user(
                                 &redis_client,
                                 workout_owner_id,
                                 notification_id,
                                 claims.username.clone(),
                                 NotificationType::Comment.as_str().to_string(),
-                                message,
+                                message.clone(),
                             ).await {
                                 tracing::warn!("Failed to broadcast notification: {}", e);
+                            }
+
+                            // Send push notification
+                            let notification_data = serde_json::json!({
+                                "type": "comment",
+                                "comment_id": comment.id.to_string(),
+                                "workout_id": workout_id.to_string(),
+                            });
+
+                            let comment_preview = if body.content.len() > 50 {
+                                format!("{}...", &body.content[..50])
+                            } else {
+                                body.content.clone()
+                            };
+
+                            if let Err(e) = send_notification_to_user(
+                                &pool,
+                                workout_owner_id,
+                                format!("{} commented on your workout", claims.username),
+                                comment_preview,
+                                Some(notification_data),
+                                Some("comment".to_string())
+                            ).await {
+                                tracing::warn!("Failed to send push notification: {}", e);
                             }
                         }
                         Ok(None) => {}

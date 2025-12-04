@@ -401,7 +401,7 @@ pub async fn delete_comment_reaction(
 ) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
         r#"
-        DELETE FROM comment_reactions
+        DELETE FROM post_comment_reactions
         WHERE user_id = $1 AND comment_id = $2
         "#,
     )
