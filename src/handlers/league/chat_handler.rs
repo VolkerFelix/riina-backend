@@ -8,6 +8,7 @@ use crate::{
         create_chat_message, get_team_chat_history, get_team_message_count,
         is_active_team_member, edit_chat_message, delete_chat_message,
         admin_delete_chat_message, is_team_admin_or_owner, get_chat_message_with_user,
+        get_active_team_member_ids,
     },
     middleware::auth::Claims,
     models::chat::{
@@ -88,10 +89,60 @@ pub async fn send_team_chat_message(
                         user_id,
                         claims.username.clone(),
                         message_info.profile_picture_url.clone(),
-                        sanitized_message,
+                        sanitized_message.clone(),
                         message_info.gif_url.clone(),
                     ).await {
                         tracing::warn!("Failed to broadcast chat message: {}", e);
+                    }
+
+                    // Send push notifications to other team members
+                    let team_members = match get_active_team_member_ids(&pool, team_id).await {
+                        Ok(members) => members,
+                        Err(e) => {
+                            tracing::warn!("Failed to get team members for notifications: {}", e);
+                            Vec::new()
+                        }
+                    };
+
+                    // Get team name for the notification
+                    let team_name = match sqlx::query_scalar::<_, String>(
+                        "SELECT name FROM teams WHERE id = $1"
+                    )
+                    .bind(team_id)
+                    .fetch_optional(pool.as_ref())
+                    .await {
+                        Ok(Some(name)) => name,
+                        _ => "Team".to_string(),
+                    };
+
+                    // Send notifications to all team members except the sender
+                    for member_user_id in team_members {
+                        if member_user_id != user_id {
+                            let notification_body = if sanitized_message.is_empty() {
+                                "Sent a GIF".to_string()
+                            } else if sanitized_message.len() > 100 {
+                                format!("{}...", &sanitized_message[..100])
+                            } else {
+                                sanitized_message.clone()
+                            };
+
+                            let notification_data = serde_json::json!({
+                                "type": "team_message",
+                                "team_id": team_id.to_string(),
+                                "message_id": chat_message.id.to_string(),
+                            });
+
+                            if let Err(e) = crate::handlers::notification_handler::send_notification_to_user(
+                                &pool,
+                                member_user_id,
+                                format!("{} in {}", claims.username, team_name),
+                                notification_body,
+                                Some(notification_data),
+                                Some("team_message".to_string()),
+                            ).await {
+                                tracing::warn!("Failed to send push notification to user {}: {}", member_user_id, e);
+                            }
+                        }
                     }
 
                     HttpResponse::Ok().json(

@@ -188,12 +188,12 @@ pub async fn send_notification(
 
     info!("Found {} active tokens for notification", tokens.len());
 
-    // Build notification messages
+    // Build notification messages with badge counts
     let mut messages: Vec<ExpoPushMessage> = Vec::new();
 
     for token in tokens {
         let mut message = ExpoPushMessage::new(
-            token.token,
+            token.token.clone(),
             req.title.clone(),
             req.body.clone(),
         );
@@ -207,10 +207,31 @@ pub async fn send_notification(
                 "league_update" => "league_updates",
                 "game_event" => "game_events",
                 "health_reminder" => "health_reminders",
+                "team_message" => "team_messages",
                 _ => "default",
             };
             message = message.with_channel(channel.to_string());
         }
+
+        // Calculate badge count for this user
+        let notification_count = match crate::db::social::get_unread_count(&pool, token.user_id).await {
+            Ok(count) => count,
+            Err(e) => {
+                error!("Failed to get unread notification count for user {}: {}", token.user_id, e);
+                0
+            }
+        };
+
+        let message_count = match crate::db::chat::get_unread_message_count(&pool, token.user_id).await {
+            Ok(count) => count,
+            Err(e) => {
+                error!("Failed to get unread message count for user {}: {}", token.user_id, e);
+                0
+            }
+        };
+
+        let badge_count = (notification_count + message_count) as i32;
+        message = message.with_badge(badge_count);
 
         messages.push(message);
     }
@@ -303,6 +324,23 @@ pub async fn send_notification_to_user(
 
     info!("Found {} tokens for user {}", tokens.len(), user_id);
 
+    // Calculate badge count for this user
+    let notification_count = crate::db::social::get_unread_count(pool, user_id)
+        .await
+        .unwrap_or_else(|e| {
+            error!("Failed to get unread notification count for user {}: {}", user_id, e);
+            0
+        });
+
+    let message_count = crate::db::chat::get_unread_message_count(pool, user_id)
+        .await
+        .unwrap_or_else(|e| {
+            error!("Failed to get unread message count for user {}: {}", user_id, e);
+            0
+        });
+
+    let badge_count = (notification_count + message_count) as i32;
+
     // Build messages
     let mut messages: Vec<ExpoPushMessage> = Vec::new();
 
@@ -322,10 +360,13 @@ pub async fn send_notification_to_user(
                 "league_update" => "league_updates",
                 "game_event" => "game_events",
                 "health_reminder" => "health_reminders",
+                "team_message" => "team_messages",
                 _ => "default",
             };
             message = message.with_channel(channel.to_string());
         }
+
+        message = message.with_badge(badge_count);
 
         messages.push(message);
     }

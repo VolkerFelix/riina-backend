@@ -100,4 +100,9 @@ impl ExpoPushMessage {
         self.channel_id = Some(channel_id);
         self
     }
+
+    pub fn with_badge(mut self, badge: i32) -> Self {
+        self.badge = Some(badge);
+        self
+    }
 }
