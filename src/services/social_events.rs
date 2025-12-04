@@ -194,19 +194,6 @@ pub async fn send_notification_to_user(
     }
 }
 
-/// Legacy alias for backward compatibility
-#[deprecated(since = "0.2.0", note = "Use send_notification_to_user instead")]
-pub async fn broadcast_notification(
-    redis_client: &web::Data<Arc<redis::Client>>,
-    recipient_id: Uuid,
-    notification_id: Uuid,
-    actor_username: String,
-    notification_type: String,
-    message: String,
-) -> Result<(), Box<dyn std::error::Error>> {
-    send_notification_to_user(redis_client, recipient_id, notification_id, actor_username, notification_type, message).await
-}
-
 /// Helper function to broadcast any GameEvent to the global channel
 async fn broadcast_event(
     redis_client: &web::Data<Arc<redis::Client>>,

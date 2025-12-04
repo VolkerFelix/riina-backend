@@ -368,7 +368,7 @@ pub async fn get_post(
     claims: web::ReqData<Claims>,
     post_id: web::Path<Uuid>,
 ) -> HttpResponse {
-    let current_user_id = match Uuid::parse_str(&claims.sub) {
+    let _current_user_id = match Uuid::parse_str(&claims.sub) {
         Ok(id) => id,
         Err(e) => {
             tracing::error!("Failed to parse user ID: {}", e);

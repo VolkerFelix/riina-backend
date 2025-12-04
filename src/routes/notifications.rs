@@ -18,5 +18,9 @@ pub fn init_notification_routes(cfg: &mut web::ServiceConfig) {
     .service(
         web::resource("/send")
             .route(web::post().to(notification_handler::send_notification))
+    )
+    .service(
+        web::resource("/badge-count")
+            .route(web::get().to(notification_handler::get_badge_count))
     );
 }

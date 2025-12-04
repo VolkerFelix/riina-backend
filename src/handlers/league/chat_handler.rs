@@ -439,6 +439,54 @@ pub async fn delete_team_chat_message(
     }
 }
 
+/// Mark all messages in a team as read
+pub async fn mark_team_messages_as_read(
+    pool: web::Data<PgPool>,
+    team_id: web::Path<Uuid>,
+    claims: web::ReqData<Claims>,
+) -> HttpResponse {
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(e) => {
+            tracing::error!("Failed to parse user ID: {}", e);
+            return HttpResponse::InternalServerError().json(
+                ApiResponse::<()>::error("Invalid user ID")
+            );
+        }
+    };
+    let team_id = team_id.into_inner();
+
+    // Check if user is an active team member
+    match is_active_team_member(&pool, user_id, team_id).await {
+        Ok(is_member) => {
+            if !is_member {
+                return HttpResponse::Forbidden().json(
+                    ApiResponse::<()>::error("You are not a member of this team")
+                );
+            }
+        },
+        Err(e) => {
+            tracing::error!("Failed to check team membership: {}", e);
+            return HttpResponse::InternalServerError().json(
+                ApiResponse::<()>::error("Failed to verify team membership")
+            );
+        }
+    }
+
+    match crate::db::chat::mark_team_messages_read(&pool, team_id, user_id).await {
+        Ok(count) => HttpResponse::Ok().json(serde_json::json!({
+            "success": true,
+            "marked_read": count
+        })),
+        Err(e) => {
+            tracing::error!("Failed to mark messages as read: {}", e);
+            HttpResponse::InternalServerError().json(
+                ApiResponse::<()>::error("Failed to mark messages as read")
+            )
+        }
+    }
+}
+
 #[derive(serde::Deserialize)]
 pub struct ChatHistoryQuery {
     pub limit: Option<i64>,

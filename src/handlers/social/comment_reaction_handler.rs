@@ -54,7 +54,7 @@ pub async fn add_comment_reaction(
                 ).await {
                     Ok(Some(notification_id)) => {
                         // Broadcast notification via WebSocket
-                        if let Err(e) = social_events::broadcast_notification(
+                        if let Err(e) = social_events::send_notification_to_user(
                             &redis_client,
                             comment.user_id,
                             notification_id,

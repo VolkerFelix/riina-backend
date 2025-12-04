@@ -106,7 +106,6 @@ pub struct LeagueUsersResponse {
 pub struct PaginationParams {
     pub page: Option<usize>,
     pub page_size: Option<usize>,
-    pub sort_by: Option<String>,
 }
 
 /// Get all users in the same league with their stats
@@ -162,7 +161,6 @@ pub async fn get_league_users_with_stats(
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(20).min(200).max(1); // Default 20, max 200
     let offset = (page - 1) * page_size;
-    let sort_by = query.sort_by.as_deref().unwrap_or("total_stats");
 
     // First, get the total count of league users
     let total_count = match sqlx::query!(

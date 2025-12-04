@@ -353,3 +353,41 @@ pub async fn send_notification_to_user(
     info!("Successfully sent notification to user {}", user_id);
     Ok(())
 }
+
+/// Get combined badge count (unread notifications + unread messages)
+pub async fn get_badge_count(
+    pool: web::Data<PgPool>,
+    claims: web::ReqData<Claims>,
+) -> actix_web::Result<HttpResponse> {
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|e| {
+        error!("Failed to parse user_id from claims: {}", e);
+        actix_web::error::ErrorInternalServerError("Invalid user ID")
+    })?;
+
+    // Get unread notification count
+    let notification_count = crate::db::social::get_unread_count(&pool, user_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get unread notification count: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to get notification count")
+        })?;
+
+    // Get unread message count
+    let message_count = crate::db::chat::get_unread_message_count(&pool, user_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get unread message count: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to get message count")
+        })?;
+
+    let total_count = notification_count + message_count;
+
+    info!("Badge count for user {}: {} notifications, {} messages, {} total",
+          user_id, notification_count, message_count, total_count);
+
+    Ok(HttpResponse::Ok().json(json!({
+        "badge_count": total_count,
+        "notification_count": notification_count,
+        "message_count": message_count,
+    })))
+}

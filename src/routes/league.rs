@@ -5,11 +5,22 @@ use uuid::Uuid;
 use std::sync::Arc;
 use redis::Client as RedisClient;
 
-use crate::handlers::league::{team_handler, team_member_handler, game_handler, league_handler, season_handler, league_users_handler};
+use crate::handlers::league::{
+    team_handler,
+    team_member_handler,
+    game_handler,
+    league_handler,
+    season_handler,
+    league_users_handler,
+    chat_handler,
+    team_poll_handler,
+    team_invitation_handler,
+    player_pool_handler,
+    live_game_handler
+};
 use crate::handlers::league::league_users_handler::PaginationParams;
 use crate::middleware::auth::Claims;
-use crate::models::league::*;
-use crate::models::team::{TeamRegistrationRequest, TeamUpdateRequest, AddTeamMemberRequest, UpdateTeamMemberRequest, CreatePollRequest, CastVoteRequest};
+use crate::models::{league::*, team_invitation::*, team::*, chat::*};
 
 /// Create a new league season
 #[post("/season_create")]
@@ -259,7 +270,6 @@ async fn get_live_scores(
     redis_client: web::Data<Arc<redis::Client>>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
-    use crate::handlers::league::live_game_handler;
     live_game_handler::get_live_scores(pool, redis_client, claims).await
 }
 
@@ -267,11 +277,10 @@ async fn get_live_scores(
 #[get("/games/{game_id}/live")]
 async fn get_game_live_score(
     path: web::Path<Uuid>,
-    query: web::Query<crate::models::league::PaginationQuery>,
+    query: web::Query<PaginationQuery>,
     pool: web::Data<PgPool>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
-    use crate::handlers::league::live_game_handler;
     live_game_handler::get_game_live_score(pool, path, query, claims).await
 }
 
@@ -282,7 +291,6 @@ async fn get_active_games(
     redis_client: web::Data<Arc<redis::Client>>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
-    use crate::handlers::league::live_game_handler;
     live_game_handler::get_active_games(pool, redis_client, claims).await
 }
 
@@ -292,7 +300,6 @@ async fn manage_games(
     pool: web::Data<PgPool>,
     redis_client: web::Data<Arc<redis::Client>>,
 ) -> Result<HttpResponse> {
-    use crate::handlers::league::live_game_handler;
     live_game_handler::manage_games(pool, redis_client).await
 }
 
@@ -311,7 +318,6 @@ async fn get_player_pool(
     pool: web::Data<PgPool>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
-    use crate::handlers::league::player_pool_handler;
     Ok(player_pool_handler::get_player_pool(pool, claims).await)
 }
 
@@ -322,9 +328,8 @@ async fn send_team_invitation(
     redis_client: web::Data<Arc<RedisClient>>,
     claims: web::ReqData<Claims>,
     team_id: web::Path<Uuid>,
-    request: web::Json<crate::models::team_invitation::SendInvitationRequest>,
+    request: web::Json<SendInvitationRequest>,
 ) -> Result<HttpResponse> {
-    use crate::handlers::league::team_invitation_handler;
     Ok(team_invitation_handler::send_invitation(pool, redis_client, claims, team_id, request).await)
 }
 
@@ -334,7 +339,6 @@ async fn get_user_invitations(
     pool: web::Data<PgPool>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
-    use crate::handlers::league::team_invitation_handler;
     Ok(team_invitation_handler::get_user_invitations(pool, claims).await)
 }
 
@@ -345,9 +349,8 @@ async fn respond_to_invitation(
     redis_client: web::Data<Arc<RedisClient>>,
     claims: web::ReqData<Claims>,
     invitation_id: web::Path<Uuid>,
-    request: web::Json<crate::models::team_invitation::RespondToInvitationRequest>,
+    request: web::Json<RespondToInvitationRequest>,
 ) -> Result<HttpResponse> {
-    use crate::handlers::league::team_invitation_handler;
     Ok(team_invitation_handler::respond_to_invitation(pool, redis_client, claims, invitation_id, request).await)
 }
 
@@ -360,7 +363,6 @@ async fn create_team_poll(
     request: web::Json<CreatePollRequest>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
-    use crate::handlers::league::team_poll_handler;
     Ok(team_poll_handler::create_poll(request, pool, redis_client, team_id, claims).await)
 }
 
@@ -371,7 +373,6 @@ async fn get_team_polls(
     team_id: web::Path<Uuid>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
-    use crate::handlers::league::team_poll_handler;
     Ok(team_poll_handler::get_team_polls(pool, team_id, claims).await)
 }
 
@@ -395,7 +396,6 @@ async fn delete_poll(
     path: web::Path<(Uuid, Uuid)>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
-    use crate::handlers::league::team_poll_handler;
     Ok(team_poll_handler::delete_poll(pool, path, claims).await)
 }
 
@@ -405,10 +405,9 @@ async fn send_team_chat(
     pool: web::Data<PgPool>,
     redis_client: web::Data<Arc<RedisClient>>,
     team_id: web::Path<Uuid>,
-    request: web::Json<crate::models::chat::SendChatMessageRequest>,
+    request: web::Json<SendChatMessageRequest>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
-    use crate::handlers::league::chat_handler;
     Ok(chat_handler::send_team_chat_message(pool, team_id, request, claims, redis_client).await)
 }
 
@@ -420,7 +419,6 @@ async fn get_team_chat(
     query: web::Query<crate::handlers::league::chat_handler::ChatHistoryQuery>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
-    use crate::handlers::league::chat_handler;
     Ok(chat_handler::get_team_chat(pool, team_id, query, claims).await)
 }
 
@@ -433,7 +431,6 @@ async fn edit_team_chat(
     request: web::Json<crate::models::chat::EditChatMessageRequest>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
-    use crate::handlers::league::chat_handler;
     Ok(chat_handler::edit_team_chat_message(pool, path, request, claims, redis_client).await)
 }
 
@@ -445,7 +442,16 @@ async fn delete_team_chat(
     path: web::Path<(Uuid, Uuid)>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
-    use crate::handlers::league::chat_handler;
     Ok(chat_handler::delete_team_chat_message(pool, path, claims, redis_client).await)
+}
+
+/// Mark all messages in a team as read
+#[put("/teams/{team_id}/chat/mark-read")]
+async fn mark_team_chat_read(
+    pool: web::Data<PgPool>,
+    team_id: web::Path<Uuid>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    Ok(chat_handler::mark_team_messages_as_read(pool, team_id, claims).await)
 }
 
