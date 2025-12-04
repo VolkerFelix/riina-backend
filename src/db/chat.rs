@@ -401,6 +401,8 @@ pub async fn mark_team_messages_read(
     team_id: Uuid,
     user_id: Uuid,
 ) -> Result<i64, sqlx::Error> {
+    tracing::info!("Marking messages as read for user {} in team {}", user_id, team_id);
+
     // Insert read status for all unread messages in the team
     let result = sqlx::query(
         r#"
@@ -420,5 +422,8 @@ pub async fn mark_team_messages_read(
     .execute(pool)
     .await?;
 
-    Ok(result.rows_affected() as i64)
+    let rows_affected = result.rows_affected() as i64;
+    tracing::info!("Marked {} messages as read for user {} in team {}", rows_affected, user_id, team_id);
+
+    Ok(rows_affected)
 }
