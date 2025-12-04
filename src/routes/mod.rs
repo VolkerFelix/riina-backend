@@ -92,6 +92,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .service(league::delete_poll)
             .service(league::send_team_chat)
             .service(league::get_team_chat)
+            .service(league::mark_team_chat_read)  // Must come before edit/delete to avoid UUID parsing conflict
             .service(league::edit_team_chat)
             .service(league::delete_team_chat)
     );
