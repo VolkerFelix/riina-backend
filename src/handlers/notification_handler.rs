@@ -231,6 +231,24 @@ pub async fn send_notification(
         })?;
 
     if response.status().is_success() {
+        // Parse and log Expo's response to check for errors in tickets
+        let response_text = response.text().await.unwrap_or_else(|_| "{}".to_string());
+
+        // Try to parse the response to check for errors
+        if let Ok(expo_response) = serde_json::from_str::<serde_json::Value>(&response_text) {
+            if let Some(data) = expo_response.get("data").and_then(|d| d.as_array()) {
+                for (idx, ticket) in data.iter().enumerate() {
+                    if let Some(status) = ticket.get("status").and_then(|s| s.as_str()) {
+                        if status == "error" {
+                            let message = ticket.get("message").and_then(|m| m.as_str()).unwrap_or("unknown");
+                            let details = ticket.get("details").and_then(|d| d.as_str()).unwrap_or("");
+                            error!("Expo push ticket {} error: {} - {}", idx, message, details);
+                        }
+                    }
+                }
+            }
+        }
+
         info!("Successfully sent {} push notifications", messages.len());
         Ok(HttpResponse::Ok().json(SendNotificationResponse {
             success: true,
