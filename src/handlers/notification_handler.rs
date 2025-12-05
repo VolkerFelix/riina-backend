@@ -372,6 +372,7 @@ pub async fn send_notification_to_user(
     }
 
     // Send to Expo
+    info!("📤 Sending {} push messages to Expo for user {}", messages.len(), user_id);
     let client = reqwest::Client::new();
     let response = client
         .post("https://exp.host/--/api/v2/push/send")
@@ -381,17 +382,40 @@ pub async fn send_notification_to_user(
         .send()
         .await
         .map_err(|e| {
-            error!("HTTP error sending notification for user {}: {}", user_id, e);
+            error!("❌ HTTP error sending notification for user {}: {}", user_id, e);
             format!("HTTP error: {}", e)
         })?;
 
-    if !response.status().is_success() {
+    let status = response.status();
+    info!("📥 Expo response status for user {}: {}", user_id, status);
+
+    if !status.is_success() {
         let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-        error!("Expo error for user {}: {}", user_id, error_text);
+        error!("❌ Expo error for user {}: {}", user_id, error_text);
         return Err(format!("Expo error: {}", error_text));
     }
 
-    info!("Successfully sent notification to user {}", user_id);
+    // Parse response to check for ticket errors
+    let response_text = response.text().await.unwrap_or_else(|_| "{}".to_string());
+    info!("📋 Expo response for user {}: {}", user_id, response_text);
+
+    if let Ok(expo_response) = serde_json::from_str::<serde_json::Value>(&response_text) {
+        if let Some(data) = expo_response.get("data").and_then(|d| d.as_array()) {
+            for (idx, ticket) in data.iter().enumerate() {
+                if let Some(status) = ticket.get("status").and_then(|s| s.as_str()) {
+                    if status == "error" {
+                        let message = ticket.get("message").and_then(|m| m.as_str()).unwrap_or("unknown");
+                        let details = ticket.get("details").and_then(|d| d.as_str()).unwrap_or("");
+                        error!("❌ Expo ticket {} error for user {}: {} - {}", idx, user_id, message, details);
+                    } else {
+                        info!("✅ Expo ticket {} success for user {}", idx, user_id);
+                    }
+                }
+            }
+        }
+    }
+
+    info!("✅ Successfully sent notification to user {}", user_id);
     Ok(())
 }
 
