@@ -69,6 +69,48 @@ pub async fn publish_chat_message_deleted(
     publish_team_event(redis_client, team_id, event).await
 }
 
+/// Send chat message received notification to a specific user
+pub async fn send_chat_message_received_to_user(
+    redis_client: &Arc<RedisClient>,
+    recipient_id: Uuid,
+    team_id: Uuid,
+    message_id: Uuid,
+    sender_username: String,
+    team_name: String,
+) -> Result<(), String> {
+    let event = GameEvent::ChatMessageReceived {
+        recipient_id,
+        team_id,
+        message_id,
+        sender_username: sender_username.clone(),
+        team_name: team_name.clone(),
+        timestamp: Utc::now(),
+    };
+
+    let mut conn = redis_client
+        .get_multiplexed_async_connection()
+        .await
+        .map_err(|e| format!("Failed to get Redis connection: {}", e))?;
+
+    // Send to user-specific channel only
+    let user_channel = format!("game:events:user:{}", recipient_id);
+    let event_message = serde_json::to_string(&event)
+        .map_err(|e| format!("Failed to serialize chat message received event: {}", e))?;
+
+    conn.publish::<_, _, ()>(&user_channel, event_message)
+        .await
+        .map_err(|e| format!("Failed to publish chat message received event to Redis: {}", e))?;
+
+    tracing::info!(
+        "📬 Sent chat_message_received to user {} from {} in team {}",
+        recipient_id,
+        sender_username,
+        team_name
+    );
+
+    Ok(())
+}
+
 /// Generic function to publish a team event to Redis
 async fn publish_team_event(
     redis_client: &Arc<RedisClient>,

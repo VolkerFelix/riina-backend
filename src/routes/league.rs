@@ -455,3 +455,11 @@ async fn mark_team_chat_read(
     Ok(chat_handler::mark_team_messages_as_read(pool, team_id, claims).await)
 }
 
+#[get("/chat/unread-count")]
+async fn get_unread_chat_count(
+    pool: web::Data<PgPool>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    Ok(chat_handler::get_unread_chat_count(pool, claims).await)
+}
+

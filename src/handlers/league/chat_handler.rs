@@ -76,6 +76,14 @@ pub async fn send_team_chat_message(
 
     let sanitized_message = body.get_sanitized_message();
 
+    // Get team name for notifications
+    let team_name: String = sqlx::query_scalar("SELECT name FROM teams WHERE id = $1")
+        .bind(team_id)
+        .fetch_optional(pool.as_ref())
+        .await
+        .unwrap_or(None)
+        .unwrap_or_else(|| "your team".to_string());
+
     // Create the message
     match create_chat_message(&pool, team_id, user_id, &sanitized_message, body.gif_url.clone(), body.reply_to_message_id).await {
         Ok(chat_message) => {
@@ -105,17 +113,6 @@ pub async fn send_team_chat_message(
                         }
                     };
 
-                    // Get team name for the notification
-                    let team_name = match sqlx::query_scalar::<_, String>(
-                        "SELECT name FROM teams WHERE id = $1"
-                    )
-                    .bind(team_id)
-                    .fetch_optional(pool.as_ref())
-                    .await {
-                        Ok(Some(name)) => name,
-                        _ => "Team".to_string(),
-                    };
-
                     // Send notifications to all team members except the sender
                     for member_user_id in team_members {
                         if member_user_id != user_id {
@@ -127,6 +124,19 @@ pub async fn send_team_chat_message(
                                 sanitized_message.clone()
                             };
 
+                            // Send WebSocket chat_message_received event (for envelope icon unread count)
+                            if let Err(e) = chat_events::send_chat_message_received_to_user(
+                                &redis_client,
+                                member_user_id,
+                                team_id,
+                                chat_message.id,
+                                claims.username.clone(),
+                                team_name.clone(),
+                            ).await {
+                                tracing::warn!("Failed to send chat_message_received to user {}: {}", member_user_id, e);
+                            }
+
+                            // Send push notification
                             let notification_data = serde_json::json!({
                                 "type": "team_message",
                                 "team_id": team_id.to_string(),
@@ -534,6 +544,35 @@ pub async fn mark_team_messages_as_read(
             tracing::error!("Failed to mark messages as read: {}", e);
             HttpResponse::InternalServerError().json(
                 ApiResponse::<()>::error("Failed to mark messages as read")
+            )
+        }
+    }
+}
+
+/// Get unread chat message count for the current user
+pub async fn get_unread_chat_count(
+    pool: web::Data<PgPool>,
+    claims: web::ReqData<Claims>,
+) -> HttpResponse {
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(e) => {
+            tracing::error!("Failed to parse user ID: {}", e);
+            return HttpResponse::InternalServerError().json(
+                ApiResponse::<()>::error("Invalid user ID")
+            );
+        }
+    };
+
+    match crate::db::chat::get_unread_message_count(&pool, user_id).await {
+        Ok(count) => HttpResponse::Ok().json(serde_json::json!({
+            "success": true,
+            "unread_count": count
+        })),
+        Err(e) => {
+            tracing::error!("Failed to get unread message count: {}", e);
+            HttpResponse::InternalServerError().json(
+                ApiResponse::<()>::error("Failed to get unread message count")
             )
         }
     }
