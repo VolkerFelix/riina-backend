@@ -9,7 +9,7 @@ use crate::models::team::{
     CreatePollRequest, CastVoteRequest, TeamPollInfo,
     TeamPoll, PollType, PollStatus, PollResult, MemberStatus, TeamRole
 };
-use crate::services::social_events::send_notification_to_user;
+use crate::services::social_events::send_websocket_notification_to_user;
 
 /// Create a new poll to remove a team member
 pub async fn create_poll(
@@ -207,7 +207,7 @@ pub async fn create_poll(
 
         if let Ok(notification_row) = notification_result {
             // Send WebSocket notification
-            match send_notification_to_user(
+            match send_websocket_notification_to_user(
                 &redis_client,
                 member.user_id,
                 notification_row.id,
@@ -747,7 +747,7 @@ async fn check_and_complete_poll(
             .await;
 
             if let Ok(notification_row) = notification_result {
-                let _ = send_notification_to_user(
+                let _ = send_websocket_notification_to_user(
                     redis_client,
                     poll_info.target_user_id,
                     notification_row.id,
@@ -771,7 +771,7 @@ async fn check_and_complete_poll(
             .fetch_one(pool)
             .await {
                 Ok(notif_row) => {
-                    let _ = send_notification_to_user(
+                    let _ = send_websocket_notification_to_user(
                         redis_client,
                         poll_info.target_user_id,
                         notif_row.id,
@@ -821,7 +821,7 @@ async fn check_and_complete_poll(
         .await;
 
         if let Ok(notification_row) = notification_result {
-            let _ = send_notification_to_user(
+            let _ = send_websocket_notification_to_user(
                 redis_client,
                 member.user_id,
                 notification_row.id,

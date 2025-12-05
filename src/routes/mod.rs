@@ -14,6 +14,7 @@ pub mod feed;
 pub mod posts;
 pub mod media;
 pub mod analytics;
+pub mod notifications;
 
 use crate::middleware::auth::AuthMiddleware;
 
@@ -91,6 +92,8 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .service(league::delete_poll)
             .service(league::send_team_chat)
             .service(league::get_team_chat)
+            .service(league::get_unread_chat_count)
+            .service(league::mark_team_chat_read)  // Must come before edit/delete to avoid UUID parsing conflict
             .service(league::edit_team_chat)
             .service(league::delete_team_chat)
     );
@@ -136,5 +139,12 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
         web::scope("/analytics")
             .wrap(AuthMiddleware)
             .configure(analytics::init_analytics_routes)
+    );
+
+    // Notification routes (require authentication)
+    cfg.service(
+        web::scope("/notifications")
+            .wrap(AuthMiddleware)
+            .configure(notifications::init_notification_routes)
     );
 }

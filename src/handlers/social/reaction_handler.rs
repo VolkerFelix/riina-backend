@@ -40,34 +40,59 @@ pub async fn add_reaction(
         Ok(reaction) => {
             // Get workout owner to send notification
             if let Ok(Some(workout_owner_id)) = get_workout_owner(&pool, workout_id).await {
-                let message = format!("{} reacted to your workout", claims.username);
-                match create_notification(
-                    &pool,
-                    workout_owner_id,
-                    user_id,
-                    NotificationType::Reaction.as_str(),
-                    "workout",
-                    workout_id,
-                    &message,
-                ).await {
-                    Ok(Some(notification_id)) => {
-                        // Broadcast notification via WebSocket
-                        if let Err(e) = social_events::broadcast_notification(
-                            &redis_client,
-                            workout_owner_id,
-                            notification_id,
-                            claims.username.clone(),
-                            NotificationType::Reaction.as_str().to_string(),
-                            message,
-                        ).await {
-                            tracing::warn!("Failed to broadcast notification: {}", e);
+                // Don't send notification if user reacted to their own workout
+                if workout_owner_id == user_id {
+                    // User reacted to their own workout, skip notification
+                } else {
+                    let message = format!("{} reacted to your workout", claims.username);
+
+                    // Create in-app notification FIRST
+                    match create_notification(
+                        &pool,
+                        workout_owner_id,
+                        user_id,
+                        NotificationType::Reaction.as_str(),
+                        "workout",
+                        workout_id,
+                        &message,
+                    ).await {
+                        Ok(Some(notification_id)) => {
+                            // Broadcast notification via WebSocket
+                            if let Err(e) = social_events::send_websocket_notification_to_user(
+                                &redis_client,
+                                workout_owner_id,
+                                notification_id,
+                                claims.username.clone(),
+                                NotificationType::Reaction.as_str().to_string(),
+                                message.clone(),
+                            ).await {
+                                tracing::warn!("Failed to broadcast notification: {}", e);
+                            }
+
+                            // Now send push notification with accurate badge count
+                            let notification_data = serde_json::json!({
+                                "type": "reaction",
+                                "workout_id": workout_id.to_string(),
+                                "notification_id": notification_id.to_string(),
+                            });
+
+                            if let Err(e) = crate::handlers::notification_handler::send_notification_to_user(
+                                &pool,
+                                workout_owner_id,
+                                format!("{} reacted to your workout", claims.username),
+                                format!("🔥"),
+                                Some(notification_data),
+                                Some("reaction".to_string())
+                            ).await {
+                                tracing::warn!("Failed to send push notification: {}", e);
+                            }
                         }
-                    }
-                    Ok(None) => {
-                        // Notification not created (user reacted to their own workout)
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to create notification: {}", e);
+                        Ok(None) => {
+                            // User reacted to their own workout, no notification needed
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to create notification: {}", e);
+                        }
                     }
                 }
             }

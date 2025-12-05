@@ -368,3 +368,62 @@ pub async fn get_user_team_ids(
 
     Ok(rows.iter().map(|row| row.get("team_id")).collect())
 }
+
+/// Get unread message count for a user across all their teams
+pub async fn get_unread_message_count(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<i64, sqlx::Error> {
+    let row = sqlx::query(
+        r#"
+        SELECT COUNT(DISTINCT tcm.id) as count
+        FROM team_chat_messages tcm
+        INNER JOIN team_members tm ON tm.team_id = tcm.team_id
+        LEFT JOIN message_read_status mrs ON mrs.message_id = tcm.id AND mrs.user_id = $1
+        WHERE tm.user_id = $1
+          AND tm.status = $2
+          AND tcm.user_id != $1
+          AND tcm.deleted_at IS NULL
+          AND mrs.id IS NULL
+        "#,
+    )
+    .bind(user_id)
+    .bind(MemberStatus::Active.to_string())
+    .fetch_one(pool)
+    .await?;
+
+    Ok(row.get("count"))
+}
+
+/// Mark all messages in a team as read for a user
+pub async fn mark_team_messages_read(
+    pool: &PgPool,
+    team_id: Uuid,
+    user_id: Uuid,
+) -> Result<i64, sqlx::Error> {
+    tracing::info!("Marking messages as read for user {} in team {}", user_id, team_id);
+
+    // Insert read status for all unread messages in the team
+    let result = sqlx::query(
+        r#"
+        INSERT INTO message_read_status (user_id, message_id, read_at)
+        SELECT $1, tcm.id, NOW()
+        FROM team_chat_messages tcm
+        LEFT JOIN message_read_status mrs ON mrs.message_id = tcm.id AND mrs.user_id = $1
+        WHERE tcm.team_id = $2
+          AND tcm.user_id != $1
+          AND tcm.deleted_at IS NULL
+          AND mrs.id IS NULL
+        ON CONFLICT (user_id, message_id) DO NOTHING
+        "#,
+    )
+    .bind(user_id)
+    .bind(team_id)
+    .execute(pool)
+    .await?;
+
+    let rows_affected = result.rows_affected() as i64;
+    tracing::info!("Marked {} messages as read for user {} in team {}", rows_affected, user_id, team_id);
+
+    Ok(rows_affected)
+}

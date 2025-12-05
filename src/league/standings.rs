@@ -68,7 +68,7 @@ impl StandingsService {
             game.home_team_id, home_points, game.away_team_id, away_points);
 
         // Update home team standings - use UPSERT to handle missing records
-        let home_result = sqlx::query!(
+        let _home_result = sqlx::query!(
             r#"
             INSERT INTO league_standings (season_id, team_id, games_played, wins, draws, losses, position, last_updated)
             VALUES ($2, $3, 1, 
@@ -92,7 +92,7 @@ impl StandingsService {
 
 
         // Update away team standings - use UPSERT to handle missing records
-        let away_result = sqlx::query!(
+        let _away_result = sqlx::query!(
             r#"
             INSERT INTO league_standings (season_id, team_id, games_played, wins, draws, losses, position, last_updated)
             VALUES ($2, $3, 1, 

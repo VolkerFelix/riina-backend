@@ -244,6 +244,17 @@ pub enum GameEvent {
         user_id: Uuid,
         timestamp: DateTime<Utc>,
     },
+
+    // Chat Message Received (for unread count notification)
+    #[serde(rename = "chat_message_received")]
+    ChatMessageReceived {
+        recipient_id: Uuid,
+        team_id: Uuid,
+        message_id: Uuid,
+        sender_username: String,
+        team_name: String,
+        timestamp: DateTime<Utc>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

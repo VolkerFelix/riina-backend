@@ -54,15 +54,33 @@ pub async fn add_comment_reaction(
                 ).await {
                     Ok(Some(notification_id)) => {
                         // Broadcast notification via WebSocket
-                        if let Err(e) = social_events::broadcast_notification(
+                        if let Err(e) = social_events::send_websocket_notification_to_user(
                             &redis_client,
                             comment.user_id,
                             notification_id,
                             claims.username.clone(),
                             NotificationType::Reaction.as_str().to_string(),
-                            message,
+                            message.clone(),
                         ).await {
                             tracing::warn!("Failed to broadcast notification: {}", e);
+                        }
+
+                        // Send push notification
+                        let notification_data = serde_json::json!({
+                            "type": "comment_reaction",
+                            "comment_id": comment_id.to_string(),
+                            "notification_id": notification_id.to_string(),
+                        });
+
+                        if let Err(e) = crate::handlers::notification_handler::send_notification_to_user(
+                            &pool,
+                            comment.user_id,
+                            format!("{} reacted to your comment", claims.username),
+                            format!("🔥"),
+                            Some(notification_data),
+                            Some("comment_reaction".to_string()),
+                        ).await {
+                            tracing::warn!("Failed to send push notification: {}", e);
                         }
                     }
                     Ok(None) => {

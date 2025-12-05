@@ -7,6 +7,7 @@ use crate::handlers::admin::{
     game_management_handler,
     workout_handler,
 };
+use crate::handlers::notification_handler;
 use crate::middleware::admin::AdminMiddleware;
 
 pub fn init_admin_routes(cfg: &mut web::ServiceConfig) {
@@ -127,6 +128,12 @@ pub fn init_admin_routes(cfg: &mut web::ServiceConfig) {
                 web::resource("/workouts/{id}")
                     .route(web::get().to(workout_handler::get_workout_detail))
                     .route(web::delete().to(workout_handler::delete_workout))
+            )
+
+            // Push notification management (admin only)
+            .service(
+                web::resource("/notifications/send")
+                    .route(web::post().to(notification_handler::send_notification))
             )
     );
 }
