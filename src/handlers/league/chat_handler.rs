@@ -146,7 +146,7 @@ pub async fn send_team_chat_message(
                             if let Err(e) = send_notification_to_user(
                                 &pool,
                                 member_user_id,
-                                format!("{} in {}", claims.username, team_name),
+                                format!("{}", claims.username),
                                 notification_body,
                                 Some(notification_data),
                                 Some("team_message".to_string())
