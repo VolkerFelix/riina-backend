@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            pp.user_id,\n            u.username,\n            u.email,\n            u.profile_picture_url,\n            COALESCE(ua.stamina, 0) as stamina,\n            COALESCE(ua.strength, 0) as strength,\n            COALESCE(ua.avatar_style, 'warrior') as avatar_style\n        FROM player_pool pp\n        INNER JOIN users u ON pp.user_id = u.id\n        LEFT JOIN user_avatars ua ON pp.user_id = ua.user_id\n        WHERE u.status = 'active'\n        ",
+  "query": "\n        SELECT\n            pp.user_id,\n            u.username,\n            u.email,\n            u.profile_picture_url,\n            COALESCE(ua.stamina, 0) as stamina,\n            COALESCE(ua.strength, 0) as strength,\n            COALESCE(ua.avatar_style, 'warrior') as avatar_style\n        FROM player_pool pp\n        INNER JOIN users u ON pp.user_id = u.id\n        LEFT JOIN user_avatars ua ON pp.user_id = ua.user_id\n        WHERE u.status = 'active'\n        AND NOT EXISTS (\n            SELECT 1 FROM team_members tm WHERE tm.user_id = u.id\n        )\n        ",
   "describe": {
     "columns": [
       {
@@ -52,5 +52,5 @@
       null
     ]
   },
-  "hash": "152be2d5edd6e54a833634c47ed23775b90da559d9385553d1c336325bd67ea5"
+  "hash": "548023d0308d7b3597c4cef2a216e0b67bc3b8c1a85d400064551f2a7519088d"
 }

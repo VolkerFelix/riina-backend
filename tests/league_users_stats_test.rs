@@ -307,7 +307,7 @@ async fn test_league_users_stats_includes_player_pool() {
 
     // Test the endpoint with a user who is not in any team
     let stats_response = client
-        .get(&format!("{}/league/users/stats", &test_app.address))
+        .get(&format!("{}/league/users/stats?page_size=200", &test_app.address))
         .header("Authorization", format!("Bearer {}", solo_user.token))
         .send()
         .await
