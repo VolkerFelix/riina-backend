@@ -225,6 +225,7 @@ pub struct LeagueUsersResponse {
 pub struct PaginationParams {
     pub page: Option<usize>,
     pub page_size: Option<usize>,
+    pub sort_by: Option<String>, // Accepted but currently ignored (always sorts by trailing_average)
 }
 
 /// Get all users in the same league with their stats
