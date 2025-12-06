@@ -10,7 +10,123 @@ use crate::models::team::TeamRole;
 use crate::models::common::PlayerStats;
 use crate::utils::trailing_average;
 
-/// Fetch player pool users with their stats
+/// Fetch ALL eligible users for the leaderboard (team members + free agents)
+/// This function ensures mutual exclusivity: users in teams are NOT included as free agents
+pub async fn fetch_all_leaderboard_users(pool: &PgPool) -> Result<Vec<LeagueUserWithStats>, sqlx::Error> {
+    // Use a UNION query to get both team members and free agents
+    // Free agents are excluded if they have ANY team membership (to prevent duplicates)
+    let all_users = sqlx::query!(
+        r#"
+        -- Team members
+        SELECT
+            u.id as user_id,
+            u.username,
+            u.email,
+            u.profile_picture_url,
+            tm.team_id as team_id,
+            t.team_name as team_name,
+            tm.role as team_role,
+            tm.status as team_status,
+            tm.joined_at as joined_at,
+            COALESCE(ua.stamina, 0.0) as stamina,
+            COALESCE(ua.strength, 0.0) as strength,
+            COALESCE(ua.avatar_style, 'warrior') as avatar_style
+        FROM users u
+        INNER JOIN team_members tm ON u.id = tm.user_id
+        INNER JOIN teams t ON tm.team_id = t.id
+        LEFT JOIN user_avatars ua ON u.id = ua.user_id
+
+        UNION
+
+        -- Free agents (only those NOT in any team)
+        SELECT
+            u.id as user_id,
+            u.username,
+            u.email,
+            u.profile_picture_url,
+            NULL as team_id,
+            NULL as team_name,
+            'member' as team_role,
+            NULL as team_status,
+            NULL as joined_at,
+            COALESCE(ua.stamina, 0.0) as stamina,
+            COALESCE(ua.strength, 0.0) as strength,
+            COALESCE(ua.avatar_style, 'warrior') as avatar_style
+        FROM player_pool pp
+        INNER JOIN users u ON pp.user_id = u.id
+        LEFT JOIN user_avatars ua ON pp.user_id = ua.user_id
+        WHERE u.status = 'active'
+        AND NOT EXISTS (
+            SELECT 1 FROM team_members tm WHERE tm.user_id = u.id
+        )
+        "#
+    )
+    .fetch_all(pool)
+    .await?;
+
+    // Extract user IDs for batch trailing average calculation
+    let user_ids: Vec<Uuid> = all_users.iter().filter_map(|row| row.user_id).collect();
+
+    // Calculate trailing averages for all users in batch
+    let trailing_averages = match trailing_average::calculate_trailing_averages_batch(pool, &user_ids).await {
+        Ok(averages) => averages,
+        Err(_) => std::collections::HashMap::new(),
+    };
+
+    // Transform to LeagueUserWithStats
+    // UNION makes all fields nullable, so we need to handle Option types
+    let mut users_with_stats: Vec<LeagueUserWithStats> = all_users.into_iter().filter_map(|row| {
+        // Skip rows with null user_id (shouldn't happen but UNION can make fields nullable)
+        let user_id = row.user_id?;
+        let username = row.username?;
+        let email = row.email?;
+
+        let trailing_avg = trailing_averages.get(&user_id).copied().unwrap_or(0.0);
+
+        Some(LeagueUserWithStats {
+            user_id,
+            username,
+            email,
+            team_id: row.team_id,
+            team_name: row.team_name,
+            team_role: match row.team_role.as_deref() {
+                Some("owner") => TeamRole::Owner,
+                Some("admin") => TeamRole::Admin,
+                _ => TeamRole::Member,
+            },
+            team_status: row.team_status,
+            joined_at: row.joined_at,
+            stats: PlayerStats {
+                stamina: row.stamina.unwrap_or(0.0) as f32,
+                strength: row.strength.unwrap_or(0.0) as f32,
+            },
+            total_stats: (row.stamina.unwrap_or(0.0) + row.strength.unwrap_or(0.0)) as f32,
+            trailing_average: trailing_avg,
+            rank: 0, // Will be assigned after sorting
+            avatar_style: row.avatar_style.unwrap_or_else(|| "warrior".to_string()),
+            is_online: false,
+            profile_picture_url: row.profile_picture_url,
+        })
+    }).collect();
+
+    // Sort by trailing average (descending), then by user_id for stable ordering
+    users_with_stats.sort_by(|a, b| {
+        match b.trailing_average.partial_cmp(&a.trailing_average).unwrap_or(std::cmp::Ordering::Equal) {
+            std::cmp::Ordering::Equal => a.user_id.cmp(&b.user_id),
+            other => other,
+        }
+    });
+
+    // Assign ranks
+    for (index, user) in users_with_stats.iter_mut().enumerate() {
+        user.rank = (index + 1) as i32;
+    }
+
+    Ok(users_with_stats)
+}
+
+/// Fetch player pool users with their stats (for backwards compatibility - deprecated)
+/// USE fetch_all_leaderboard_users instead to prevent duplicates
 async fn fetch_player_pool_users(pool: &PgPool) -> Vec<LeagueUserWithStats> {
     let pool_result = sqlx::query!(
         r#"
@@ -26,6 +142,9 @@ async fn fetch_player_pool_users(pool: &PgPool) -> Vec<LeagueUserWithStats> {
         INNER JOIN users u ON pp.user_id = u.id
         LEFT JOIN user_avatars ua ON pp.user_id = ua.user_id
         WHERE u.status = 'active'
+        AND NOT EXISTS (
+            SELECT 1 FROM team_members tm WHERE tm.user_id = u.id
+        )
         "#
     )
     .fetch_all(pool)
@@ -160,149 +279,10 @@ pub async fn get_league_users_with_stats(
     // Set pagination defaults
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(20).min(200).max(1); // Default 20, max 200
-    let offset = (page - 1) * page_size;
 
-    // First, get the total count of league users
-    let total_count = match sqlx::query!(
-        r#"
-        SELECT COUNT(*) as count
-        FROM users u
-        INNER JOIN team_members tm ON u.id = tm.user_id
-        INNER JOIN teams t ON tm.team_id = t.id
-        "#
-    )
-    .fetch_one(pool.get_ref())
-    .await
-    {
-        Ok(result) => result.count.unwrap_or(0) as usize,
-        Err(e) => {
-            tracing::error!("Failed to count league users: {}", e);
-            return Ok(HttpResponse::InternalServerError().json(json!({
-                "success": false,
-                "message": "Failed to count league users"
-            })));
-        }
-    };
-
-    // Get all team users with their basic stats (always sort by trailing_average)
-    let league_users: Vec<LeagueUserWithStats> = match sqlx::query!(
-        r#"
-        SELECT
-            u.id as user_id,
-            u.username,
-            u.email,
-            u.profile_picture_url,
-            tm.team_id as team_id,
-            t.team_name as team_name,
-            tm.role as team_role,
-            tm.status as team_status,
-            tm.joined_at as joined_at,
-            COALESCE(ua.stamina, 0.0) as stamina,
-            COALESCE(ua.strength, 0.0) as strength,
-            COALESCE(ua.stamina + ua.strength, 0.0) as total_stats,
-            COALESCE(ua.avatar_style, 'warrior') as avatar_style,
-            false as is_online
-        FROM users u
-        INNER JOIN team_members tm ON u.id = tm.user_id
-        INNER JOIN teams t ON tm.team_id = t.id
-        LEFT JOIN user_avatars ua ON u.id = ua.user_id
-        ORDER BY
-            t.team_name ASC,
-            CASE tm.role
-                WHEN 'owner' THEN 1
-                WHEN 'admin' THEN 2
-                WHEN 'member' THEN 3
-            END,
-            tm.joined_at ASC
-        LIMIT $1 OFFSET $2
-        "#,
-        page_size as i64,
-        offset as i64
-    )
-    .fetch_all(pool.get_ref())
-    .await
-    {
-        Ok(users) => {
-            // Extract user IDs for batch trailing average calculation
-            let user_ids: Vec<Uuid> = users.iter().map(|row| row.user_id).collect();
-
-            // Calculate trailing averages for all users in batch
-            let trailing_averages = match trailing_average::calculate_trailing_averages_batch(
-                pool.get_ref(),
-                &user_ids
-            ).await {
-                Ok(averages) => averages,
-                Err(e) => {
-                    tracing::error!("Failed to calculate trailing averages: {}", e);
-                    std::collections::HashMap::new()
-                }
-            };
-
-            // Create a list of users with their trailing averages for sorting
-            let mut users_with_trailing: Vec<(LeagueUserWithStats, f32)> = users.into_iter().map(|row| {
-                let trailing_avg = trailing_averages.get(&row.user_id).copied().unwrap_or(0.0);
-
-                let user_stats = LeagueUserWithStats {
-                    user_id: row.user_id,
-                    username: row.username,
-                    email: row.email,
-                    team_id: Some(row.team_id),
-                    team_name: Some(row.team_name),
-                    team_role: match row.team_role.as_str() {
-                        "owner" => TeamRole::Owner,
-                        "admin" => TeamRole::Admin,
-                        "member" => TeamRole::Member,
-                        _ => TeamRole::Member,
-                    },
-                    team_status: Some(row.team_status),
-                    joined_at: Some(row.joined_at),
-                    stats: PlayerStats {
-                        stamina: row.stamina.unwrap_or(50.0),
-                        strength: row.strength.unwrap_or(50.0),
-                    },
-                    total_stats: row.total_stats.unwrap_or(100.0),
-                    trailing_average: trailing_avg,
-                    rank: 0, // Will be set after sorting
-                    avatar_style: row.avatar_style.unwrap_or_else(|| "warrior".to_string()),
-                    is_online: row.is_online.unwrap_or(false),
-                    profile_picture_url: row.profile_picture_url,
-                };
-
-                (user_stats, trailing_avg)
-            }).collect();
-
-            // Sort by trailing average (descending), then by user_id for stable ordering
-            users_with_trailing.sort_by(|a, b| {
-                match b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal) {
-                    std::cmp::Ordering::Equal => a.0.user_id.cmp(&b.0.user_id),
-                    other => other,
-                }
-            });
-
-            // Assign ranks and extract final results
-            let mut team_users: Vec<LeagueUserWithStats> = users_with_trailing.into_iter().enumerate().map(|(index, (mut user_stats, _))| {
-                user_stats.rank = (index + 1) as i32;
-                user_stats
-            }).collect();
-
-            // Fetch player pool users and add them
-            let pool_users = fetch_player_pool_users(pool.get_ref()).await;
-            team_users.extend(pool_users);
-
-            // Re-sort all users (team + pool) by trailing average
-            team_users.sort_by(|a, b| {
-                match b.trailing_average.partial_cmp(&a.trailing_average).unwrap_or(std::cmp::Ordering::Equal) {
-                    std::cmp::Ordering::Equal => a.user_id.cmp(&b.user_id),
-                    other => other,
-                }
-            });
-
-            // Re-assign ranks after merging
-            team_users.into_iter().enumerate().map(|(index, mut user_stats)| {
-                user_stats.rank = (index + 1) as i32;
-                user_stats
-            }).collect()
-        }
+    // Fetch ALL leaderboard users (team members + free agents, ensuring no duplicates)
+    let all_users = match fetch_all_leaderboard_users(pool.get_ref()).await {
+        Ok(users) => users,
         Err(e) => {
             tracing::error!("Failed to fetch league users with stats: {}", e);
             return Ok(HttpResponse::InternalServerError().json(json!({
@@ -311,6 +291,16 @@ pub async fn get_league_users_with_stats(
             })));
         }
     };
+
+    let total_count = all_users.len();
+
+    // Apply pagination
+    let offset = (page - 1) * page_size;
+    let league_users: Vec<LeagueUserWithStats> = all_users
+        .into_iter()
+        .skip(offset)
+        .take(page_size)
+        .collect();
 
     let total_pages = total_count.div_ceil(page_size);
 
