@@ -131,7 +131,7 @@ async fn fetch_player_pool_users(pool: &PgPool) -> Vec<LeagueUserWithStats> {
     let pool_result = sqlx::query!(
         r#"
         SELECT
-            pp.user_id,
+            pp.user_id as "user_id!",
             u.username,
             u.email,
             u.profile_picture_url,

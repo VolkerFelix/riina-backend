@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE games \n        SET \n            home_score = $1,\n            away_score = $2,\n            updated_at = NOW()\n        WHERE id = $3\n        RETURNING home_score, away_score\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "home_score",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "away_score",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Int4",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "2b61cf7adc9b5f75c7b1824771a36fe91ad4a09b4949188f8e80943f1cc4dac6"
+}

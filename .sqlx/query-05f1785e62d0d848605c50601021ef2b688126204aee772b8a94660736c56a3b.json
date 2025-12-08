@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT stamina, strength\n            FROM user_avatars\n            WHERE user_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "stamina",
+        "type_info": "Float4"
+      },
+      {
+        "ordinal": 1,
+        "name": "strength",
+        "type_info": "Float4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "05f1785e62d0d848605c50601021ef2b688126204aee772b8a94660736c56a3b"
+}

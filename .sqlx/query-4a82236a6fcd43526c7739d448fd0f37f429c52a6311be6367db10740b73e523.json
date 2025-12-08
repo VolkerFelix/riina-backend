@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE workout_data\n            SET stamina_gained = $1,\n                strength_gained = $2,\n                total_points_gained = $3,\n                heart_rate_zones = $4,\n                ml_prediction = $5,\n                ml_confidence = $6,\n                ml_classified_at = $7\n            WHERE id = $8\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Float4",
+        "Float4",
+        "Int4",
+        "Jsonb",
+        "Varchar",
+        "Float4",
+        "Timestamptz",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4a82236a6fcd43526c7739d448fd0f37f429c52a6311be6367db10740b73e523"
+}

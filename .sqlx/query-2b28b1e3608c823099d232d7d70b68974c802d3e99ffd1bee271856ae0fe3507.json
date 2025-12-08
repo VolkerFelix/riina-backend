@@ -1,0 +1,38 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO workout_data (\n            user_id,\n            device_id,\n            heart_rate_data,\n            calories_burned,\n            workout_uuid,\n            workout_start,\n            workout_end,\n            duration_minutes,\n            avg_heart_rate,\n            max_heart_rate,\n            min_heart_rate,\n            heart_rate_zones,\n            stamina_gained,\n            strength_gained,\n            total_points_gained,\n            activity_name,\n            visibility\n        )\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)\n        RETURNING id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Varchar",
+        "Jsonb",
+        "Int4",
+        "Varchar",
+        "Timestamptz",
+        "Timestamptz",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Jsonb",
+        "Float4",
+        "Float4",
+        "Int4",
+        "Varchar",
+        "Varchar"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2b28b1e3608c823099d232d7d70b68974c802d3e99ffd1bee271856ae0fe3507"
+}

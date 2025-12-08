@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT role as \"role: TeamRole\", status as \"status: MemberStatus\"\n        FROM team_members\n        WHERE team_id = $1 AND user_id = $2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "role: TeamRole",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 1,
+        "name": "status: MemberStatus",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "7aae68c6d03283afe0cad75926c5bf8077f7cb77a7973cdd25fc5163d8ae0859"
+}

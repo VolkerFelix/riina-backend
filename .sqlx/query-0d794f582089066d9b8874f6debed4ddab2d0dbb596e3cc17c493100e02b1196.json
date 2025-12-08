@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO player_pool (user_id, last_active_at)\n            VALUES ($1, NOW())\n            ON CONFLICT (user_id)\n            DO UPDATE SET\n                last_active_at = NOW(),\n                updated_at = NOW()\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0d794f582089066d9b8874f6debed4ddab2d0dbb596e3cc17c493100e02b1196"
+}

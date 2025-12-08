@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    SELECT id\n                    FROM team_polls\n                    WHERE status = 'active' AND expires_at < NOW()\n                    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "782b157365c022deea0cd78b62ed8f55dd3f78b96e26dc8c3ce83d5bd32f7d3e"
+}

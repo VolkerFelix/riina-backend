@@ -1,0 +1,250 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        WITH reaction_counts AS (\n            SELECT workout_id, COUNT(*) as count\n            FROM post_reactions\n            WHERE workout_id IS NOT NULL\n            GROUP BY workout_id\n        ),\n        comment_counts AS (\n            SELECT workout_id, COUNT(*) as count\n            FROM post_comments\n            WHERE workout_id IS NOT NULL\n            GROUP BY workout_id\n        ),\n        user_reactions AS (\n            SELECT workout_id\n            FROM post_reactions\n            WHERE user_id = $1 AND workout_id IS NOT NULL\n        ),\n        effort_ratings AS (\n            SELECT workout_data_id, effort_rating\n            FROM workout_scoring_feedback\n            WHERE user_id = $1\n        )\n        SELECT\n            p.id, p.user_id, p.post_type as \"post_type: String\",\n            p.content, p.workout_id, p.media_urls,\n            p.ad_metadata, p.visibility as \"visibility: String\",\n            p.is_editable, p.created_at, p.updated_at, p.edited_at,\n            u.username, u.profile_picture_url,\n\n            -- Workout data (if post is workout type)\n            wd.workout_start, wd.workout_end,\n            wd.duration_minutes, wd.calories_burned, wd.activity_name, wd.user_activity,\n            wd.avg_heart_rate, wd.max_heart_rate, wd.heart_rate_zones,\n            wd.stamina_gained, wd.strength_gained,\n            wd.image_url as workout_image, wd.video_url as workout_video,\n\n            -- Live game info (if workout was part of a live game)\n            lse.game_id as live_game_id,\n            CASE \n                WHEN lse.team_side = 'home' THEN ht.team_name\n                WHEN lse.team_side = 'away' THEN at.team_name\n                ELSE NULL\n            END as user_team_name,\n            CASE \n                WHEN lse.team_side = 'home' THEN at.team_name\n                WHEN lse.team_side = 'away' THEN ht.team_name\n                ELSE NULL\n            END as opponent_team_name,\n\n            -- Social counts (from CTEs - much faster than subqueries)\n            COALESCE(rc.count, 0) as reaction_count,\n            COALESCE(cc.count, 0) as comment_count,\n            (CASE WHEN ur.workout_id IS NOT NULL THEN true ELSE false END)::boolean as \"user_has_reacted!\",\n\n            -- Effort rating info\n            er.effort_rating as \"effort_rating?\",\n            (CASE WHEN p.workout_id IS NOT NULL AND p.user_id = $1 AND er.effort_rating IS NULL THEN true ELSE false END)::boolean as \"needs_effort_rating!\"\n\n        FROM posts p\n        JOIN users u ON u.id = p.user_id\n        LEFT JOIN workout_data wd ON wd.id = p.workout_id\n        LEFT JOIN live_score_events lse ON lse.workout_data_id = wd.id\n        LEFT JOIN games g ON g.id = lse.game_id\n        LEFT JOIN teams ht ON g.home_team_id = ht.id\n        LEFT JOIN teams at ON g.away_team_id = at.id\n        LEFT JOIN reaction_counts rc ON rc.workout_id = p.workout_id\n        LEFT JOIN comment_counts cc ON cc.workout_id = p.workout_id\n        LEFT JOIN user_reactions ur ON ur.workout_id = p.workout_id\n        LEFT JOIN effort_ratings er ON er.workout_data_id = p.workout_id\n        WHERE\n            p.visibility = 'public'\n            AND ($2::timestamptz IS NULL OR p.created_at < $2)\n        ORDER BY p.created_at DESC\n        LIMIT $3\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "post_type: String",
+        "type_info": {
+          "Custom": {
+            "name": "post_type",
+            "kind": {
+              "Enum": [
+                "workout",
+                "ad",
+                "universal"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "content",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "workout_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "media_urls",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 6,
+        "name": "ad_metadata",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 7,
+        "name": "visibility: String",
+        "type_info": {
+          "Custom": {
+            "name": "post_visibility",
+            "kind": {
+              "Enum": [
+                "public",
+                "friends",
+                "private"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "is_editable",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "edited_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "username",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 13,
+        "name": "profile_picture_url",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 14,
+        "name": "workout_start",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 15,
+        "name": "workout_end",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 16,
+        "name": "duration_minutes",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 17,
+        "name": "calories_burned",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 18,
+        "name": "activity_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 19,
+        "name": "user_activity",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 20,
+        "name": "avg_heart_rate",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 21,
+        "name": "max_heart_rate",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 22,
+        "name": "heart_rate_zones",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 23,
+        "name": "stamina_gained",
+        "type_info": "Float4"
+      },
+      {
+        "ordinal": 24,
+        "name": "strength_gained",
+        "type_info": "Float4"
+      },
+      {
+        "ordinal": 25,
+        "name": "workout_image",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 26,
+        "name": "workout_video",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 27,
+        "name": "live_game_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 28,
+        "name": "user_team_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 29,
+        "name": "opponent_team_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 30,
+        "name": "reaction_count",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 31,
+        "name": "comment_count",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 32,
+        "name": "user_has_reacted!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 33,
+        "name": "effort_rating?",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 34,
+        "name": "needs_effort_rating!",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      null,
+      null,
+      null,
+      null,
+      null,
+      false,
+      null
+    ]
+  },
+  "hash": "b402b53e336588f8dae43e19bcc42018c244f09161e38d0abda83344d8460d08"
+}

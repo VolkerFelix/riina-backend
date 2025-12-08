@@ -1,0 +1,77 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT * FROM league_standings WHERE season_id = $1 AND team_id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "season_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "games_played",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 4,
+        "name": "wins",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "draws",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "losses",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "points",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "position",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 9,
+        "name": "last_updated",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "9425290e8056cac2b7a94d75997dd910ec621d92d0671656393b84332e34734c"
+}

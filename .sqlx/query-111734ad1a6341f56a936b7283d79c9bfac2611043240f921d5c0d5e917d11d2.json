@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO league_standings (season_id, team_id, games_played, wins, draws, losses, position, last_updated)\n            VALUES ($2, $3, 1, \n                CASE WHEN $1 = 3 THEN 1 ELSE 0 END,\n                CASE WHEN $1 = 1 THEN 1 ELSE 0 END,\n                CASE WHEN $1 = 0 THEN 1 ELSE 0 END,\n                1, NOW())\n            ON CONFLICT (season_id, team_id) DO UPDATE SET\n                games_played = league_standings.games_played + 1,\n                wins = league_standings.wins + CASE WHEN $1 = 3 THEN 1 ELSE 0 END,\n                draws = league_standings.draws + CASE WHEN $1 = 1 THEN 1 ELSE 0 END,\n                losses = league_standings.losses + CASE WHEN $1 = 0 THEN 1 ELSE 0 END,\n                last_updated = NOW()\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "111734ad1a6341f56a936b7283d79c9bfac2611043240f921d5c0d5e917d11d2"
+}
