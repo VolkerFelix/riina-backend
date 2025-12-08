@@ -131,9 +131,9 @@ async fn fetch_player_pool_users(pool: &PgPool) -> Vec<LeagueUserWithStats> {
     let pool_result = sqlx::query!(
         r#"
         SELECT
-            pp.user_id,
-            u.username,
-            u.email,
+            pp.user_id as "user_id?",
+            u.username as "username?",
+            u.email as "email?",
             u.profile_picture_url,
             COALESCE(ua.stamina, 0) as stamina,
             COALESCE(ua.strength, 0) as strength,
@@ -152,8 +152,9 @@ async fn fetch_player_pool_users(pool: &PgPool) -> Vec<LeagueUserWithStats> {
 
     match pool_result {
         Ok(entries) => {
+            // SQLx infers these as Option types in CI, so we handle them as Options
             let user_ids: Vec<Uuid> = entries.iter()
-                .map(|e| e.user_id)
+                .filter_map(|e| e.user_id)
                 .collect();
 
             let trailing_averages = match trailing_average::calculate_trailing_averages_batch(pool, &user_ids).await {
@@ -161,17 +162,17 @@ async fn fetch_player_pool_users(pool: &PgPool) -> Vec<LeagueUserWithStats> {
                 Err(_) => std::collections::HashMap::new(),
             };
 
-            entries.into_iter().map(|entry| {
-                // These fields should always be present due to INNER JOIN
-                let user_id = entry.user_id;
-                let username = entry.username;
-                let email = entry.email;
+            entries.into_iter().filter_map(|entry| {
+                // These fields should always be present due to INNER JOIN, but SQLx infers them as Option
+                let user_id = entry.user_id?;
+                let username = entry.username?;
+                let email = entry.email?;
 
                 let trailing_avg = trailing_averages.get(&user_id).copied().unwrap_or(0.0);
                 let stamina = entry.stamina.unwrap_or(0.0);
                 let strength = entry.strength.unwrap_or(0.0);
 
-                LeagueUserWithStats {
+                Some(LeagueUserWithStats {
                     user_id,
                     username,
                     email,
@@ -190,7 +191,7 @@ async fn fetch_player_pool_users(pool: &PgPool) -> Vec<LeagueUserWithStats> {
                     avatar_style: entry.avatar_style.unwrap_or_else(|| "warrior".to_string()),
                     is_online: false,
                     profile_picture_url: entry.profile_picture_url,
-                }
+                })
             }).collect()
         }
         Err(_) => Vec::new(),
