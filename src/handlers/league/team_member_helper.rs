@@ -206,3 +206,90 @@ pub async fn count_team_owners(team_id: &Uuid, pool: &PgPool) -> Result<i64, sql
 
     Ok(result.count.unwrap_or(0))
 }
+
+/// Remove a user from a team and add them back to player pool if they're active
+pub async fn remove_member_and_return_to_pool(
+    team_id: &Uuid,
+    user_id: &Uuid,
+    pool: &PgPool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Get user status before removal
+    let user_info = sqlx::query!(
+        r#"
+        SELECT status as "status: crate::models::user::UserStatus"
+        FROM users
+        WHERE id = $1
+        "#,
+        user_id
+    )
+    .fetch_one(pool)
+    .await?;
+
+    // Remove the member
+    let result = sqlx::query!(
+        "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2",
+        team_id,
+        user_id
+    )
+    .execute(pool)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        return Err("User not found in team".into());
+    }
+
+    tracing::info!("Successfully removed user {} from team {}", user_id, team_id);
+
+    // If user is still active, add them back to player pool
+    if user_info.status == crate::models::user::UserStatus::Active {
+        let add_result = sqlx::query!(
+            r#"
+            INSERT INTO player_pool (user_id, last_active_at)
+            VALUES ($1, NOW())
+            ON CONFLICT (user_id)
+            DO UPDATE SET
+                last_active_at = NOW(),
+                updated_at = NOW()
+            "#,
+            user_id
+        )
+        .execute(pool)
+        .await;
+
+        match add_result {
+            Ok(_) => {
+                tracing::info!("Added user {} back to player pool after team removal", user_id);
+            }
+            Err(e) => {
+                tracing::warn!("Failed to add user back to player pool: {}", e);
+                // Don't fail the removal operation
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Remove a user from player pool after joining a team
+pub async fn remove_from_player_pool(
+    user_id: &Uuid,
+    pool: &PgPool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match sqlx::query!(
+        "DELETE FROM player_pool WHERE user_id = $1",
+        user_id
+    )
+    .execute(pool)
+    .await
+    {
+        Ok(_) => {
+            tracing::info!("Removed user {} from player pool after joining team", user_id);
+            Ok(())
+        }
+        Err(e) => {
+            tracing::warn!("Failed to remove user from player pool: {}", e);
+            // Don't fail the operation if pool removal fails
+            Ok(())
+        }
+    }
+}

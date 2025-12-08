@@ -1,0 +1,56 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            pp.user_id as \"user_id!\",\n            u.username as \"username!\",\n            u.email as \"email!\",\n            u.profile_picture_url,\n            COALESCE(ua.stamina, 0) as \"stamina!\",\n            COALESCE(ua.strength, 0) as \"strength!\",\n            COALESCE(ua.avatar_style, 'warrior') as \"avatar_style!\"\n        FROM player_pool pp\n        INNER JOIN users u ON pp.user_id = u.id\n        LEFT JOIN user_avatars ua ON pp.user_id = ua.user_id\n        WHERE u.status = 'active'\n        AND NOT EXISTS (\n            SELECT 1 FROM team_members tm WHERE tm.user_id = u.id\n        )\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id!",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "username!",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "email!",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "profile_picture_url",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "stamina!",
+        "type_info": "Float4"
+      },
+      {
+        "ordinal": 5,
+        "name": "strength!",
+        "type_info": "Float4"
+      },
+      {
+        "ordinal": 6,
+        "name": "avatar_style!",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "e59a322e2f93ac90ae5f20178f1a4cf6cd78fc58b577a889b606951f8f4b35c4"
+}

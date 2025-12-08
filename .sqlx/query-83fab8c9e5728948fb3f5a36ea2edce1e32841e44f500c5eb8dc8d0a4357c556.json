@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT username, status as \"status: crate::models::user::UserStatus\"\n        FROM users\n        WHERE id = $1\n        ",
+  "query": "SELECT username, email FROM users WHERE username = $1",
   "describe": {
     "columns": [
       {
@@ -10,13 +10,13 @@
       },
       {
         "ordinal": 1,
-        "name": "status: crate::models::user::UserStatus",
+        "name": "email",
         "type_info": "Varchar"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid"
+        "Text"
       ]
     },
     "nullable": [
@@ -24,5 +24,5 @@
       false
     ]
   },
-  "hash": "884f06a82b6fcdc30989531ab73253aefbe6f4177ca183cd716cece77239d3be"
+  "hash": "83fab8c9e5728948fb3f5a36ea2edce1e32841e44f500c5eb8dc8d0a4357c556"
 }

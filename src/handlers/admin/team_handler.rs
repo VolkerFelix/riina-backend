@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 
 use crate::handlers::admin::user_handler::{PaginatedResponse, PaginationInfo, ApiResponse};
+use crate::handlers::league::team_member_helper::{remove_member_and_return_to_pool, remove_from_player_pool};
 
 #[derive(Serialize)]
 pub struct AdminTeamResponse {
@@ -615,6 +616,9 @@ pub async fn add_team_member(
 
     match result {
         Ok(_) => {
+            // Remove user from player pool now that they're on a team
+            let _ = remove_from_player_pool(&body.user_id, pool.get_ref()).await;
+
             // Fetch the created member
             let row = sqlx::query(r#"
                 SELECT 
@@ -764,33 +768,43 @@ pub async fn remove_team_member(
 ) -> Result<HttpResponse> {
     let (team_id, member_id) = path.into_inner();
 
-    let result = sqlx::query!(
-        "DELETE FROM team_members WHERE id = $1 AND team_id = $2",
+    // Get user_id from member_id
+    let user_id = match sqlx::query!(
+        "SELECT user_id FROM team_members WHERE id = $1 AND team_id = $2",
         member_id,
         team_id
     )
-    .execute(pool.get_ref())
-    .await;
-
-    match result {
-        Ok(result) => {
-            if result.rows_affected() > 0 {
-                let response = ApiResponse {
-                    data: serde_json::json!({}),
-                    success: true,
-                    message: Some("Team member removed successfully".to_string()),
-                };
-                Ok(HttpResponse::Ok().json(response))
-            } else {
-                Ok(HttpResponse::NotFound().json(serde_json::json!({
-                    "error": "Team member not found"
-                })))
-            }
+    .fetch_optional(pool.get_ref())
+    .await
+    {
+        Ok(Some(row)) => row.user_id,
+        Ok(None) => {
+            return Ok(HttpResponse::NotFound().json(serde_json::json!({
+                "error": "Team member not found"
+            })));
         }
         Err(e) => {
-            eprintln!("Database error removing team member: {}", e);
+            eprintln!("Database error fetching member: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to fetch team member"
+            })));
+        }
+    };
+
+    // Use common function to remove member and return to pool
+    match remove_member_and_return_to_pool(&team_id, &user_id, pool.get_ref()).await {
+        Ok(_) => {
+            let response = ApiResponse {
+                data: serde_json::json!({}),
+                success: true,
+                message: Some("Team member removed successfully".to_string()),
+            };
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            eprintln!("Error removing team member: {}", e);
             Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": "Failed to remove team member"
+                "error": format!("Failed to remove team member: {}", e)
             })))
         }
     }

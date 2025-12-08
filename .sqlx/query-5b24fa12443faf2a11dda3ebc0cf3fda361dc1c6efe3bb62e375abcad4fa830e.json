@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT u.id as user_id\n        FROM users u\n        INNER JOIN team_members tm ON u.id = tm.user_id\n        ",
+  "query": "SELECT user_id FROM team_members WHERE id = $1 AND team_id = $2",
   "describe": {
     "columns": [
       {
@@ -10,11 +10,14 @@
       }
     ],
     "parameters": {
-      "Left": []
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
     },
     "nullable": [
       false
     ]
   },
-  "hash": "8428845b24b4f22cbad2f40f74d6fb06b475c269756ca119da8104420c9ba532"
+  "hash": "5b24fa12443faf2a11dda3ebc0cf3fda361dc1c6efe3bb62e375abcad4fa830e"
 }

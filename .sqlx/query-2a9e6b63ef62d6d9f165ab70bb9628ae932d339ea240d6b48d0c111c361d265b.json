@@ -1,20 +1,22 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT user_id\n        FROM player_pool\n        ",
+  "query": "SELECT season_id FROM games WHERE id = $1",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "user_id",
+        "name": "season_id",
         "type_info": "Uuid"
       }
     ],
     "parameters": {
-      "Left": []
+      "Left": [
+        "Uuid"
+      ]
     },
     "nullable": [
       false
     ]
   },
-  "hash": "6744b8c469af1816deb2132a97520df31359956d89ed3a6e2a9d79b0c77b247c"
+  "hash": "2a9e6b63ef62d6d9f165ab70bb9628ae932d339ea240d6b48d0c111c361d265b"
 }
