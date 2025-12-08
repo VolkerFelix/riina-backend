@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT id, home_team_id, away_team_id, home_score, away_score\n            FROM games \n            WHERE id = ANY($1) and status = 'finished'\n            ",
+  "query": "\n            SELECT id, home_team_id, away_team_id, home_score, away_score\n            FROM games\n            WHERE id = ANY($1) and status = 'finished'\n            ",
   "describe": {
     "columns": [
       {
@@ -42,5 +42,5 @@
       false
     ]
   },
-  "hash": "6b902b7946fb31ad466e8d2f47af6e6bd1f263cb03f80a4f202b5b865ca00f17"
+  "hash": "a56576d1235f53f2920f8a3cf89b2511e6f1e01aed561bb245ac27fa7552a81a"
 }

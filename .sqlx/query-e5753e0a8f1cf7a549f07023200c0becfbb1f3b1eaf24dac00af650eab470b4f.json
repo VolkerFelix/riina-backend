@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT \n                id, season_id, home_team_id, away_team_id,\n                week_number, is_first_leg, status as \"status: GameStatus\",\nwinner_team_id,\n                created_at, updated_at,\n                home_score, away_score, game_start_time, game_end_time,\n                last_score_time, last_scorer_id, last_scorer_name, last_scorer_team\n            FROM games\n            WHERE status = 'in_progress' \n            AND game_end_time <= CURRENT_TIMESTAMP\n            ORDER BY game_start_time ASC\n            ",
+  "query": "\n            SELECT\n                id, season_id, home_team_id, away_team_id,\n                week_number, is_first_leg, status as \"status: GameStatus\",\nwinner_team_id,\n                created_at, updated_at,\n                home_score, away_score, game_start_time, game_end_time,\n                last_score_time, last_scorer_id, last_scorer_name, last_scorer_team\n            FROM games\n            WHERE status = 'scheduled'\n            AND game_start_time <= CURRENT_TIMESTAMP\n            ORDER BY game_start_time ASC\n            ",
   "describe": {
     "columns": [
       {
@@ -118,5 +118,5 @@
       true
     ]
   },
-  "hash": "09be8f513c81e6ef3fa2af28a5f101791399b4d39f996d075b26d95df1edadc8"
+  "hash": "e5753e0a8f1cf7a549f07023200c0becfbb1f3b1eaf24dac00af650eab470b4f"
 }

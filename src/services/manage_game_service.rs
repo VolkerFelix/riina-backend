@@ -92,8 +92,8 @@ impl ManageGameService {
     pub async fn run_game_cycle(&self) -> Result<(Vec<Uuid>, Vec<Uuid>, Vec<Uuid>, Vec<Uuid>), sqlx::Error> {
         tracing::info!("🔄 [GAME_SERVICE] Starting game cycle run");
 
-        let games_ready_to_start = self.get_games_ready_to_start().await?.iter().map(|game| game.id).collect();
-        let live_games = self.get_active_games().await?.iter().map(|game| game.id).collect();
+        let games_ready_to_start: Vec<Uuid> = self.get_games_ready_to_start().await?.iter().map(|game| game.id).collect();
+        let live_games: Vec<Uuid> = self.get_active_games().await?.iter().map(|game| game.id).collect();
 
         tracing::info!("🔄 [GAME_SERVICE] Current state: {} games ready to start, {} games live",
             games_ready_to_start.len(), live_games.len());
