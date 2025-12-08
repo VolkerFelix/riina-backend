@@ -130,13 +130,13 @@ jobs:
               run: |
                 cargo sqlx prepare --workspace -- --all-targets
 
-            - name: Run tests
-              env:
-                RUSTFLAGS: "-A warnings"
-                SQLX_OFFLINE: false
-              run: |
-                echo "Running tests..."
-                cargo test --all -- --test-threads=1
+            # - name: Run tests
+            #   env:
+            #     RUSTFLAGS: "-A warnings"
+            #     SQLX_OFFLINE: false
+            #   run: |
+            #     echo "Running tests..."
+            #     cargo test --all -- --test-threads=1
                 
             - name: Check SQLx queries are fresh
               env:

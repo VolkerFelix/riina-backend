@@ -152,7 +152,9 @@ async fn fetch_player_pool_users(pool: &PgPool) -> Vec<LeagueUserWithStats> {
 
     match pool_result {
         Ok(entries) => {
-            let user_ids: Vec<Uuid> = entries.iter().map(|e| e.user_id).collect();
+            let user_ids: Vec<Uuid> = entries.iter()
+                .map(|e| e.user_id)
+                .collect();
 
             let trailing_averages = match trailing_average::calculate_trailing_averages_batch(pool, &user_ids).await {
                 Ok(averages) => averages,
@@ -160,13 +162,19 @@ async fn fetch_player_pool_users(pool: &PgPool) -> Vec<LeagueUserWithStats> {
             };
 
             entries.into_iter().map(|entry| {
-                let trailing_avg = trailing_averages.get(&entry.user_id).copied().unwrap_or(0.0);
+                // These fields should always be present due to INNER JOIN
+                let user_id = entry.user_id;
+                let username = entry.username;
+                let email = entry.email;
+
+                let trailing_avg = trailing_averages.get(&user_id).copied().unwrap_or(0.0);
                 let stamina = entry.stamina.unwrap_or(0.0);
                 let strength = entry.strength.unwrap_or(0.0);
+
                 LeagueUserWithStats {
-                    user_id: entry.user_id,
-                    username: entry.username,
-                    email: entry.email,
+                    user_id,
+                    username,
+                    email,
                     team_id: None,
                     team_name: None,
                     team_role: TeamRole::Member,

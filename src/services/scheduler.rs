@@ -29,7 +29,7 @@ impl SchedulerService {
     }
 
     pub async fn start(&self) -> Result<(), Box<dyn Error>> {
-        let mut scheduler = self.scheduler.lock().await;
+        let scheduler = self.scheduler.lock().await;
 
         // Schedule poll expiration job
         let poll_job = self.create_poll_expiration_job()?;
