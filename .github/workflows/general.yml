@@ -123,26 +123,19 @@ jobs:
                 ' || echo "⚠️ Redis pub/sub test completed"
                 echo "✅ Redis pub/sub verification done"
 
-            - name: Generate SQLx prepare files
-              env:
-                RUSTFLAGS: "-A warnings"
-                SQLX_OFFLINE: false
-              run: |
-                cargo sqlx prepare --workspace -- --all-targets
-
-            - name: Run tests
-              env:
-                RUSTFLAGS: "-A warnings"
-                SQLX_OFFLINE: false
-              run: |
-                echo "Running tests..."
-                cargo test --all -- --test-threads=1
-                
             - name: Check SQLx queries are fresh
               env:
                 RUSTFLAGS: "-A warnings"
               run: |
                 cargo sqlx prepare --workspace --check -- --all-targets
+
+            - name: Run tests
+              env:
+                RUSTFLAGS: "-A warnings"
+                SQLX_OFFLINE: true
+              run: |
+                echo "Running tests..."
+                cargo test --all -- --test-threads=1
 
     build_and_push:
       name: Build and Push Multi-Architecture Docker image

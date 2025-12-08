@@ -131,13 +131,13 @@ async fn fetch_player_pool_users(pool: &PgPool) -> Vec<LeagueUserWithStats> {
     let pool_result = sqlx::query!(
         r#"
         SELECT
-            pp.user_id as "user_id?",
-            u.username as "username?",
-            u.email as "email?",
+            pp.user_id as "user_id!",
+            u.username as "username!",
+            u.email as "email!",
             u.profile_picture_url,
-            COALESCE(ua.stamina, 0) as stamina,
-            COALESCE(ua.strength, 0) as strength,
-            COALESCE(ua.avatar_style, 'warrior') as avatar_style
+            COALESCE(ua.stamina, 0) as "stamina!",
+            COALESCE(ua.strength, 0) as "strength!",
+            COALESCE(ua.avatar_style, 'warrior') as "avatar_style!"
         FROM player_pool pp
         INNER JOIN users u ON pp.user_id = u.id
         LEFT JOIN user_avatars ua ON pp.user_id = ua.user_id
@@ -152,46 +152,36 @@ async fn fetch_player_pool_users(pool: &PgPool) -> Vec<LeagueUserWithStats> {
 
     match pool_result {
         Ok(entries) => {
-            // SQLx infers these as Option types in CI, so we handle them as Options
-            let user_ids: Vec<Uuid> = entries.iter()
-                .filter_map(|e| e.user_id)
-                .collect();
+            let user_ids: Vec<Uuid> = entries.iter().map(|e| e.user_id).collect();
 
             let trailing_averages = match trailing_average::calculate_trailing_averages_batch(pool, &user_ids).await {
                 Ok(averages) => averages,
                 Err(_) => std::collections::HashMap::new(),
             };
 
-            entries.into_iter().filter_map(|entry| {
-                // These fields should always be present due to INNER JOIN, but SQLx infers them as Option
-                let user_id = entry.user_id?;
-                let username = entry.username?;
-                let email = entry.email?;
+            entries.into_iter().map(|entry| {
+                let trailing_avg = trailing_averages.get(&entry.user_id).copied().unwrap_or(0.0);
 
-                let trailing_avg = trailing_averages.get(&user_id).copied().unwrap_or(0.0);
-                let stamina = entry.stamina.unwrap_or(0.0);
-                let strength = entry.strength.unwrap_or(0.0);
-
-                Some(LeagueUserWithStats {
-                    user_id,
-                    username,
-                    email,
+                LeagueUserWithStats {
+                    user_id: entry.user_id,
+                    username: entry.username,
+                    email: entry.email,
                     team_id: None,
                     team_name: None,
                     team_role: TeamRole::Member,
                     team_status: None,
                     joined_at: None,
                     stats: PlayerStats {
-                        stamina: stamina as f32,
-                        strength: strength as f32,
+                        stamina: entry.stamina,
+                        strength: entry.strength,
                     },
-                    total_stats: (stamina + strength) as f32,
+                    total_stats: entry.stamina + entry.strength,
                     trailing_average: trailing_avg,
                     rank: 0,
-                    avatar_style: entry.avatar_style.unwrap_or_else(|| "warrior".to_string()),
+                    avatar_style: entry.avatar_style,
                     is_online: false,
                     profile_picture_url: entry.profile_picture_url,
-                })
+                }
             }).collect()
         }
         Err(_) => Vec::new(),
