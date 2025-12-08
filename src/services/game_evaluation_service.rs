@@ -148,22 +148,29 @@ winner_team_id,
     /// Evaluate and update finished live games
     pub async fn evaluate_finished_live_games(&self, game_ids: &Vec<Uuid>) -> Result<Vec<GameStats>, sqlx::Error> {
         if game_ids.is_empty() {
-            tracing::info!("🎯 No games to evaluate");
+            tracing::info!("🎯 [EVALUATOR] No games to evaluate");
             return Ok(Vec::new());
         }
-        tracing::info!("🎯 Evaluating finished live games: {:?}", game_ids);
+        tracing::info!("🎯 [EVALUATOR] Starting evaluation of {} finished live games: {:?}", game_ids.len(), game_ids);
 
         // Get the game details
+        tracing::info!("🔍 [EVALUATOR] Fetching game data from database for {} games", game_ids.len());
         let games = sqlx::query!(
             r#"
             SELECT id, home_team_id, away_team_id, home_score, away_score
-            FROM games 
+            FROM games
             WHERE id = ANY($1) and status = 'finished'
             "#,
             game_ids
         )
         .fetch_all(&self.pool)
         .await?;
+
+        tracing::info!("🔍 [EVALUATOR] Found {} games with status='finished' to evaluate", games.len());
+        if games.len() != game_ids.len() {
+            tracing::warn!("⚠️  [EVALUATOR] Expected {} games but found only {} with status='finished'",
+                game_ids.len(), games.len());
+        }
 
         let mut results = Vec::new();
 
@@ -209,23 +216,26 @@ winner_team_id,
             };
 
             // Update the game result in the database
-            tracing::info!("🎯 Processing finished game {}: {} - {}", 
+            tracing::info!("🎯 [EVALUATOR] Processing finished game {}: home={} - away={}",
                 game_id, game_stats.home_team_score, game_stats.away_team_score);
-                
+
             match self.update_game_result(game_id, &game_stats).await {
                 Ok(_) => {
-                    tracing::info!("✅ Finished live game {} evaluated and updated: {} - {}", 
+                    tracing::info!("✅ [EVALUATOR] Game {} evaluated and updated: {} - {}",
                         game_id, game_stats.home_team_score, game_stats.away_team_score);
                     results.push(game_stats);
                 }
                 Err(e) => {
-                    tracing::error!("❌ Failed to update game {}: {}", game_id, e);
+                    tracing::error!("❌ [EVALUATOR] Failed to update game {}: {}", game_id, e);
                 }
             }
         }
 
+        tracing::info!("✅ [EVALUATOR] Completed evaluation of {} games", results.len());
+
         // Send WebSocket notifications if we have results
         if !results.is_empty() {
+            tracing::info!("📡 [EVALUATOR] Broadcasting results for {} evaluated games", results.len());
             let game_results_map: HashMap<Uuid, GameStats> = results.iter()
                 .map(|stats| (stats.game_id, stats.clone()))
                 .collect();
