@@ -132,12 +132,12 @@ async fn fetch_player_pool_users(pool: &PgPool) -> Vec<LeagueUserWithStats> {
         r#"
         SELECT
             pp.user_id as "user_id!",
-            u.username,
-            u.email,
+            u.username as "username!",
+            u.email as "email!",
             u.profile_picture_url,
-            COALESCE(ua.stamina, 0) as stamina,
-            COALESCE(ua.strength, 0) as strength,
-            COALESCE(ua.avatar_style, 'warrior') as avatar_style
+            COALESCE(ua.stamina, 0) as "stamina!",
+            COALESCE(ua.strength, 0) as "strength!",
+            COALESCE(ua.avatar_style, 'warrior') as "avatar_style!"
         FROM player_pool pp
         INNER JOIN users u ON pp.user_id = u.id
         LEFT JOIN user_avatars ua ON pp.user_id = ua.user_id
@@ -171,13 +171,13 @@ async fn fetch_player_pool_users(pool: &PgPool) -> Vec<LeagueUserWithStats> {
                     team_status: None,
                     joined_at: None,
                     stats: PlayerStats {
-                        stamina: entry.stamina.unwrap_or(0.0) as f32,
-                        strength: entry.strength.unwrap_or(0.0) as f32,
+                        stamina: entry.stamina as f32,
+                        strength: entry.strength as f32,
                     },
-                    total_stats: (entry.stamina.unwrap_or(0.0) + entry.strength.unwrap_or(0.0)) as f32,
+                    total_stats: (entry.stamina + entry.strength) as f32,
                     trailing_average: trailing_avg,
                     rank: 0,
-                    avatar_style: entry.avatar_style.unwrap_or_else(|| "warrior".to_string()),
+                    avatar_style: entry.avatar_style,
                     is_online: false,
                     profile_picture_url: entry.profile_picture_url,
                 }
