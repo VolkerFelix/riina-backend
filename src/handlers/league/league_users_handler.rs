@@ -131,13 +131,13 @@ async fn fetch_player_pool_users(pool: &PgPool) -> Vec<LeagueUserWithStats> {
     let pool_result = sqlx::query!(
         r#"
         SELECT
-            pp.user_id as "user_id!",
-            u.username as "username!",
-            u.email as "email!",
+            pp.user_id,
+            u.username,
+            u.email,
             u.profile_picture_url,
-            COALESCE(ua.stamina, 0) as "stamina!",
-            COALESCE(ua.strength, 0) as "strength!",
-            COALESCE(ua.avatar_style, 'warrior') as "avatar_style!"
+            COALESCE(ua.stamina, 0) as stamina,
+            COALESCE(ua.strength, 0) as strength,
+            COALESCE(ua.avatar_style, 'warrior') as avatar_style
         FROM player_pool pp
         INNER JOIN users u ON pp.user_id = u.id
         LEFT JOIN user_avatars ua ON pp.user_id = ua.user_id
@@ -161,6 +161,8 @@ async fn fetch_player_pool_users(pool: &PgPool) -> Vec<LeagueUserWithStats> {
 
             entries.into_iter().map(|entry| {
                 let trailing_avg = trailing_averages.get(&entry.user_id).copied().unwrap_or(0.0);
+                let stamina = entry.stamina.unwrap_or(0.0);
+                let strength = entry.strength.unwrap_or(0.0);
                 LeagueUserWithStats {
                     user_id: entry.user_id,
                     username: entry.username,
@@ -171,13 +173,13 @@ async fn fetch_player_pool_users(pool: &PgPool) -> Vec<LeagueUserWithStats> {
                     team_status: None,
                     joined_at: None,
                     stats: PlayerStats {
-                        stamina: entry.stamina as f32,
-                        strength: entry.strength as f32,
+                        stamina: stamina as f32,
+                        strength: strength as f32,
                     },
-                    total_stats: (entry.stamina + entry.strength) as f32,
+                    total_stats: (stamina + strength) as f32,
                     trailing_average: trailing_avg,
                     rank: 0,
-                    avatar_style: entry.avatar_style,
+                    avatar_style: entry.avatar_style.unwrap_or_else(|| "warrior".to_string()),
                     is_online: false,
                     profile_picture_url: entry.profile_picture_url,
                 }
