@@ -324,7 +324,9 @@ async fn test_scheduler_loads_active_seasons_from_database() {
 
     println!("✅ Scheduler started");
 
-    // Verify that the active seasons query would return exactly 2 seasons
+    // Verify that our test seasons are correctly identified as active or not
+    // Note: We query ALL active seasons but only verify OUR test seasons are in the correct state
+    // This allows the test to work even when other tests are running in parallel
     let active_seasons = sqlx::query!(
         r#"
         SELECT id, name, game_duration_seconds, auto_evaluation_enabled
@@ -338,14 +340,21 @@ async fn test_scheduler_loads_active_seasons_from_database() {
     .await
     .expect("Failed to query active seasons");
 
-    assert_eq!(active_seasons.len(), 2, "Should have exactly 2 active seasons with auto_evaluation enabled");
-
     let active_season_ids: Vec<Uuid> = active_seasons.iter().map(|s| s.id).collect();
+
+    // Verify our specific test seasons are in the correct state
     assert!(active_season_ids.contains(&season1_id), "Season 1 should be active");
     assert!(active_season_ids.contains(&season2_id), "Season 2 should be active");
     assert!(!active_season_ids.contains(&season3_id), "Season 3 should not be active (ended)");
     assert!(!active_season_ids.contains(&season4_id), "Season 4 should not be active (future)");
     assert!(!active_season_ids.contains(&season5_id), "Season 5 should not be active (auto_evaluation disabled)");
+
+    // Count how many of OUR seasons are active (should be exactly 2)
+    let our_season_ids = vec![season1_id, season2_id, season3_id, season4_id, season5_id];
+    let our_active_count = active_season_ids.iter()
+        .filter(|id| our_season_ids.contains(id))
+        .count();
+    assert_eq!(our_active_count, 2, "Should have exactly 2 of our test seasons active");
 
     println!("✅ Verified correct seasons were identified as active:");
     for season in &active_seasons {
