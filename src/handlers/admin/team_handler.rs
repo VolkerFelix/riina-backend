@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 
 use crate::handlers::admin::user_handler::{PaginatedResponse, PaginationInfo, ApiResponse};
-use crate::handlers::league::team_member_helper::remove_member_and_return_to_pool;
+use crate::handlers::league::team_member_helper::{remove_member_and_return_to_pool, remove_from_player_pool};
 
 #[derive(Serialize)]
 pub struct AdminTeamResponse {
@@ -616,6 +616,9 @@ pub async fn add_team_member(
 
     match result {
         Ok(_) => {
+            // Remove user from player pool now that they're on a team
+            let _ = remove_from_player_pool(&body.user_id, pool.get_ref()).await;
+
             // Fetch the created member
             let row = sqlx::query(r#"
                 SELECT 

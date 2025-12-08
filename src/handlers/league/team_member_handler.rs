@@ -80,32 +80,18 @@ pub async fn add_team_member(
     for member in &request.member_request {
         match add_member(team_id, member, &pool, &requester_role).await {
             Ok(member_info) => {
-                // Remove member from player pool
-                match sqlx::query!(
-                    "DELETE FROM player_pool WHERE user_id = $1",
-                    member_info.user_id
-                )
-                .execute(pool.get_ref())
-                .await
-                {
-                    Ok(_) => {
-                        tracing::info!("Removed user {} from player pool after joining team", member_info.user_id);
+                // Remove member from player pool using common helper
+                let _ = remove_from_player_pool(&member_info.user_id, pool.get_ref()).await;
 
-                        // Publish player_left event (left the pool)
-                        if let Err(e) = player_pool_events::publish_player_left(
-                            &redis_client,
-                            &pool,
-                            member_info.user_id,
-                            member_info.username.clone(),
-                            None, // league_id
-                        ).await {
-                            tracing::warn!("Failed to publish player_left event: {}", e);
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to remove user from player pool: {}", e);
-                        // Don't fail the operation if pool removal fails
-                    }
+                // Publish player_left event (left the pool)
+                if let Err(e) = player_pool_events::publish_player_left(
+                    &redis_client,
+                    &pool,
+                    member_info.user_id,
+                    member_info.username.clone(),
+                    None, // league_id
+                ).await {
+                    tracing::warn!("Failed to publish player_left event: {}", e);
                 }
 
                 // Publish player_assigned event

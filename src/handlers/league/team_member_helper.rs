@@ -269,3 +269,27 @@ pub async fn remove_member_and_return_to_pool(
 
     Ok(())
 }
+
+/// Remove a user from player pool after joining a team
+pub async fn remove_from_player_pool(
+    user_id: &Uuid,
+    pool: &PgPool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match sqlx::query!(
+        "DELETE FROM player_pool WHERE user_id = $1",
+        user_id
+    )
+    .execute(pool)
+    .await
+    {
+        Ok(_) => {
+            tracing::info!("Removed user {} from player pool after joining team", user_id);
+            Ok(())
+        }
+        Err(e) => {
+            tracing::warn!("Failed to remove user from player pool: {}", e);
+            // Don't fail the operation if pool removal fails
+            Ok(())
+        }
+    }
+}
