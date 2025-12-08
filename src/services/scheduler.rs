@@ -35,12 +35,63 @@ impl SchedulerService {
         let poll_job = self.create_poll_expiration_job()?;
         scheduler.add(poll_job).await?;
 
-        // For now, just start the scheduler without loading from DB
-        // Seasons will be scheduled when created via the API
         scheduler.start().await?;
 
-        tracing::info!("✅ Scheduler service started successfully (dynamic scheduling mode)");
+        tracing::info!("✅ [SCHEDULER] Service started successfully");
+
+        // Release the lock before scheduling seasons
+        drop(scheduler);
+
+        // Load and schedule all active seasons from the database
+        tracing::info!("🔍 [SCHEDULER] Loading active seasons from database...");
+        match self.load_active_seasons().await {
+            Ok(count) => {
+                tracing::info!("✅ [SCHEDULER] Loaded and scheduled {} active seasons", count);
+            }
+            Err(e) => {
+                tracing::error!("❌ [SCHEDULER] Failed to load active seasons: {}", e);
+                // Don't fail startup if season loading fails
+            }
+        }
+
         Ok(())
+    }
+
+    /// Load all active seasons from the database and schedule them
+    async fn load_active_seasons(&self) -> Result<usize, Box<dyn Error>> {
+        // Query for all active seasons that have auto evaluation enabled
+        let active_seasons = sqlx::query!(
+            r#"
+            SELECT id, name, game_duration_seconds, auto_evaluation_enabled
+            FROM league_seasons
+            WHERE auto_evaluation_enabled = true
+            AND start_date <= NOW()
+            AND end_date >= NOW()
+            "#
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        tracing::info!("🔍 [SCHEDULER] Found {} active seasons with auto-evaluation enabled", active_seasons.len());
+
+        for season in &active_seasons {
+            tracing::info!("📅 [SCHEDULER] Scheduling season '{}' (id: {}, duration: {}s)",
+                season.name, season.id, season.game_duration_seconds);
+
+            // Calculate cron expression based on game duration (default to every minute)
+            let cron_expr = "0 * * * * *"; // Run every minute
+
+            match self.schedule_season_with_frequency(season.id, season.name.clone(), cron_expr).await {
+                Ok(_) => {
+                    tracing::info!("✅ [SCHEDULER] Scheduled season '{}'", season.name);
+                }
+                Err(e) => {
+                    tracing::error!("❌ [SCHEDULER] Failed to schedule season '{}': {}", season.name, e);
+                }
+            }
+        }
+
+        Ok(active_seasons.len())
     }
 
     /// Create poll expiration job that runs every 5 minutes
@@ -53,7 +104,7 @@ impl SchedulerService {
             let redis_client = redis_client.clone();
 
             Box::pin(async move {
-                tracing::info!("🗳️ Running scheduled poll expiration check");
+                tracing::info!("🗳️ [SCHEDULER] Running scheduled poll expiration check");
 
                 // Find all active polls that have expired
                 let expired_polls = match sqlx::query!(
@@ -68,17 +119,17 @@ impl SchedulerService {
                 {
                     Ok(polls) => polls,
                     Err(e) => {
-                        tracing::error!("❌ Failed to fetch expired polls: {}", e);
+                        tracing::error!("❌ [SCHEDULER] Failed to fetch expired polls: {}", e);
                         return;
                     }
                 };
 
                 if expired_polls.is_empty() {
-                    tracing::debug!("No expired polls found");
+                    tracing::debug!("[SCHEDULER] No expired polls found");
                     return;
                 }
 
-                tracing::info!("Found {} expired polls to process", expired_polls.len());
+                tracing::info!("[SCHEDULER] Found {} expired polls to process", expired_polls.len());
 
                 for poll in expired_polls {
                     if let Err(e) = Self::process_expired_poll(&pool, &redis_client, poll.id).await {
@@ -112,7 +163,7 @@ impl SchedulerService {
         let mut scheduler = self.scheduler.lock().await;
         scheduler.shutdown().await?;
         
-        tracing::info!("🛑 Scheduler service stopped");
+        tracing::info!("🛑 [SCHEDULER] Service stopped");
         Ok(())
     }
 
