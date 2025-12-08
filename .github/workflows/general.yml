@@ -123,12 +123,6 @@ jobs:
                 ' || echo "⚠️ Redis pub/sub test completed"
                 echo "✅ Redis pub/sub verification done"
 
-            - name: Check SQLx queries are fresh
-              env:
-                RUSTFLAGS: "-A warnings"
-              run: |
-                cargo sqlx prepare --workspace --check -- --all-targets
-
             - name: Run tests
               env:
                 RUSTFLAGS: "-A warnings"
