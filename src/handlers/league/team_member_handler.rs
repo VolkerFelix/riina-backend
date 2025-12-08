@@ -332,7 +332,7 @@ pub async fn remove_team_member(
     // Get user info before removal for notifications
     let user_info = match sqlx::query!(
         r#"
-        SELECT username, status as "status: crate::models::user::UserStatus"
+        SELECT username
         FROM users
         WHERE id = $1
         "#,
@@ -367,79 +367,38 @@ pub async fn remove_team_member(
         }
     };
 
-    // Remove the member
-    match sqlx::query!(
-        "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2",
-        team_id,
-        target_user_id
-    )
-    .execute(pool.get_ref())
-    .await
-    {
-        Ok(result) => {
-            if result.rows_affected() > 0 {
-                tracing::info!("Successfully removed user {} from team {}", target_user_id, team_id);
-
-                // If user is still active, add them back to player pool
-                if user_info.status == crate::models::user::UserStatus::Active {
-                    // Add to player pool
-                    let add_result = sqlx::query!(
-                        r#"
-                        INSERT INTO player_pool (user_id, last_active_at)
-                        VALUES ($1, NOW())
-                        ON CONFLICT (user_id)
-                        DO UPDATE SET
-                            last_active_at = NOW(),
-                            updated_at = NOW()
-                        "#,
-                        target_user_id
-                    )
-                    .execute(pool.get_ref())
-                    .await;
-
-                    match add_result {
-                        Ok(_) => {
-                            tracing::info!("Added user {} back to player pool after team removal", target_user_id);
-
-                            // Publish player_left_team event (left the team)
-                            if let Err(e) = player_pool_events::publish_player_left_team(
-                                &redis_client,
-                                &pool,
-                                target_user_id,
-                                user_info.username.clone(),
-                                None, // league_id
-                                team_id,
-                                team_info.team_name.clone(),
-                            ).await {
-                                tracing::warn!("Failed to publish player_left_team event: {}", e);
-                            }
-
-                            // Publish player_joined event (joined the pool)
-                            if let Err(e) = player_pool_events::publish_player_joined(
-                                &redis_client,
-                                &pool,
-                                target_user_id,
-                                user_info.username.clone(),
-                                None, // league_id
-                            ).await {
-                                tracing::warn!("Failed to publish player_joined event: {}", e);
-                            }
-                        }
-                        Err(e) => {
-                            tracing::warn!("Failed to add user back to player pool: {}", e);
-                            // Don't fail the removal operation
-                        }
-                    }
-                }
-
-                Ok(HttpResponse::Ok().json(ApiResponse::<()>::success_message("User removed from team successfully")))
-            } else {
-                Ok(HttpResponse::NotFound().json(ApiResponse::<()>::error("User not found in team")))
+    // Use common function to remove member and return to pool
+    match remove_member_and_return_to_pool(&team_id, &target_user_id, pool.get_ref()).await {
+        Ok(_) => {
+            // Publish player_left_team event (left the team)
+            if let Err(e) = player_pool_events::publish_player_left_team(
+                &redis_client,
+                &pool,
+                target_user_id,
+                user_info.username.clone(),
+                None, // league_id
+                team_id,
+                team_info.team_name.clone(),
+            ).await {
+                tracing::warn!("Failed to publish player_left_team event: {}", e);
             }
+
+            // Publish player_joined event (joined the pool)
+            if let Err(e) = player_pool_events::publish_player_joined(
+                &redis_client,
+                &pool,
+                target_user_id,
+                user_info.username.clone(),
+                None, // league_id
+            ).await {
+                tracing::warn!("Failed to publish player_joined event: {}", e);
+            }
+
+            Ok(HttpResponse::Ok().json(ApiResponse::<()>::success_message("User removed from team successfully")))
         }
         Err(e) => {
             tracing::error!("Failed to remove user {} from team {}: {}", target_user_id, team_id, e);
-            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error("Failed to remove user from team")))
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error(&format!("Failed to remove user from team: {}", e))))
         }
     }
 }
