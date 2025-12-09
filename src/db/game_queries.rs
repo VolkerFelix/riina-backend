@@ -195,10 +195,12 @@ winner_team_id,
 
     /// Get games that need to be started
     pub async fn get_games_ready_to_start(&self) -> Result<Vec<LeagueGame>, sqlx::Error> {
+        info!("🔍 [DB] Querying for games ready to start (status='scheduled', start_time <= now)");
+
         let games = sqlx::query_as!(
             LeagueGame,
             r#"
-            SELECT 
+            SELECT
                 id, season_id, home_team_id, away_team_id,
                 week_number, is_first_leg, status as "status: GameStatus",
 winner_team_id,
@@ -206,7 +208,7 @@ winner_team_id,
                 home_score, away_score, game_start_time, game_end_time,
                 last_score_time, last_scorer_id, last_scorer_name, last_scorer_team
             FROM games
-            WHERE status = 'scheduled' 
+            WHERE status = 'scheduled'
             AND game_start_time <= CURRENT_TIMESTAMP
             ORDER BY game_start_time ASC
             "#
@@ -214,33 +216,43 @@ winner_team_id,
         .fetch_all(&self.pool)
         .await?;
 
+        info!("🔍 [DB] Found {} games ready to start", games.len());
+        for game in &games {
+            info!("   📌 Game {}: start={:?}, now >= start: {:?}",
+                game.id, game.game_start_time,
+                game.game_start_time.map(|t| t <= chrono::Utc::now()));
+        }
+
         Ok(games)
     }
 
     /// Get games that need to be finished
     pub async fn get_completed_games(&self) -> Result<Vec<LeagueGame>, sqlx::Error> {
+        info!("🔍 [DB] Querying for games that need to be finished (status='in_progress', end_time <= now)");
+
         // First, let's see what games are in_progress and their times
         let in_progress_games = sqlx::query!(
             r#"
-            SELECT id, game_start_time, game_end_time, 
+            SELECT id, game_start_time, game_end_time,
                    CURRENT_TIMESTAMP as now,
                    (game_end_time <= CURRENT_TIMESTAMP) as should_finish
-            FROM games 
+            FROM games
             WHERE status = 'in_progress'
             "#
         )
         .fetch_all(&self.pool)
         .await?;
 
+        info!("🔍 [DB] Found {} in-progress games to check", in_progress_games.len());
         for game in &in_progress_games {
-            info!("🔍 In-progress game {}: start={:?}, end={:?}, now={:?}, should_finish={:?}", 
+            info!("   📌 In-progress game {}: start={:?}, end={:?}, now={:?}, should_finish={:?}",
                 game.id, game.game_start_time, game.game_end_time, game.now, game.should_finish);
         }
 
         let games = sqlx::query_as!(
             LeagueGame,
             r#"
-            SELECT 
+            SELECT
                 id, season_id, home_team_id, away_team_id,
                 week_number, is_first_leg, status as "status: GameStatus",
 winner_team_id,
@@ -248,7 +260,7 @@ winner_team_id,
                 home_score, away_score, game_start_time, game_end_time,
                 last_score_time, last_scorer_id, last_scorer_name, last_scorer_team
             FROM games
-            WHERE status = 'in_progress' 
+            WHERE status = 'in_progress'
             AND game_end_time <= CURRENT_TIMESTAMP
             ORDER BY game_start_time ASC
             "#
@@ -256,8 +268,12 @@ winner_team_id,
         .fetch_all(&self.pool)
         .await?;
 
-        info!("🔍 Found {} games ready to finish out of {} in-progress games", 
+        info!("🔍 [DB] Found {} games ready to finish out of {} in-progress games",
             games.len(), in_progress_games.len());
+
+        if games.is_empty() && !in_progress_games.is_empty() {
+            info!("ℹ️  [DB] All in-progress games still have time remaining");
+        }
 
         Ok(games)
     }

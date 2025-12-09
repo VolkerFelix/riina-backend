@@ -29,18 +29,69 @@ impl SchedulerService {
     }
 
     pub async fn start(&self) -> Result<(), Box<dyn Error>> {
-        let mut scheduler = self.scheduler.lock().await;
+        let scheduler = self.scheduler.lock().await;
 
         // Schedule poll expiration job
         let poll_job = self.create_poll_expiration_job()?;
         scheduler.add(poll_job).await?;
 
-        // For now, just start the scheduler without loading from DB
-        // Seasons will be scheduled when created via the API
         scheduler.start().await?;
 
-        tracing::info!("✅ Scheduler service started successfully (dynamic scheduling mode)");
+        tracing::info!("✅ [SCHEDULER] Service started successfully");
+
+        // Release the lock before scheduling seasons
+        drop(scheduler);
+
+        // Load and schedule all active seasons from the database
+        tracing::info!("🔍 [SCHEDULER] Loading active seasons from database...");
+        match self.load_active_seasons().await {
+            Ok(count) => {
+                tracing::info!("✅ [SCHEDULER] Loaded and scheduled {} active seasons", count);
+            }
+            Err(e) => {
+                tracing::error!("❌ [SCHEDULER] Failed to load active seasons: {}", e);
+                // Don't fail startup if season loading fails
+            }
+        }
+
         Ok(())
+    }
+
+    /// Load all active seasons from the database and schedule them
+    async fn load_active_seasons(&self) -> Result<usize, Box<dyn Error>> {
+        // Query for all active seasons that have auto evaluation enabled
+        let active_seasons = sqlx::query!(
+            r#"
+            SELECT id, name, game_duration_seconds, auto_evaluation_enabled
+            FROM league_seasons
+            WHERE auto_evaluation_enabled = true
+            AND start_date <= NOW()
+            AND end_date >= NOW()
+            "#
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        tracing::info!("🔍 [SCHEDULER] Found {} active seasons with auto-evaluation enabled", active_seasons.len());
+
+        for season in &active_seasons {
+            tracing::info!("📅 [SCHEDULER] Scheduling season '{}' (id: {}, duration: {}s)",
+                season.name, season.id, season.game_duration_seconds);
+
+            // Calculate cron expression based on game duration (default to every minute)
+            let cron_expr = "0 * * * * *"; // Run every minute
+
+            match self.schedule_season_with_frequency(season.id, season.name.clone(), cron_expr).await {
+                Ok(_) => {
+                    tracing::info!("✅ [SCHEDULER] Scheduled season '{}'", season.name);
+                }
+                Err(e) => {
+                    tracing::error!("❌ [SCHEDULER] Failed to schedule season '{}': {}", season.name, e);
+                }
+            }
+        }
+
+        Ok(active_seasons.len())
     }
 
     /// Create poll expiration job that runs every 5 minutes
@@ -53,7 +104,7 @@ impl SchedulerService {
             let redis_client = redis_client.clone();
 
             Box::pin(async move {
-                tracing::info!("🗳️ Running scheduled poll expiration check");
+                tracing::info!("🗳️ [SCHEDULER] Running scheduled poll expiration check");
 
                 // Find all active polls that have expired
                 let expired_polls = match sqlx::query!(
@@ -68,17 +119,17 @@ impl SchedulerService {
                 {
                     Ok(polls) => polls,
                     Err(e) => {
-                        tracing::error!("❌ Failed to fetch expired polls: {}", e);
+                        tracing::error!("❌ [SCHEDULER] Failed to fetch expired polls: {}", e);
                         return;
                     }
                 };
 
                 if expired_polls.is_empty() {
-                    tracing::debug!("No expired polls found");
+                    tracing::debug!("[SCHEDULER] No expired polls found");
                     return;
                 }
 
-                tracing::info!("Found {} expired polls to process", expired_polls.len());
+                tracing::info!("[SCHEDULER] Found {} expired polls to process", expired_polls.len());
 
                 for poll in expired_polls {
                     if let Err(e) = Self::process_expired_poll(&pool, &redis_client, poll.id).await {
@@ -112,7 +163,7 @@ impl SchedulerService {
         let mut scheduler = self.scheduler.lock().await;
         scheduler.shutdown().await?;
         
-        tracing::info!("🛑 Scheduler service stopped");
+        tracing::info!("🛑 [SCHEDULER] Service stopped");
         Ok(())
     }
 
@@ -141,35 +192,49 @@ impl SchedulerService {
             
             Box::pin(async move {
                 let now = chrono::Utc::now();
-                tracing::info!("🎮 Running scheduled game management cycle for season '{}' at {}", season_name, now.to_rfc3339());
-                
+                tracing::info!("🎮 [SCHEDULER] Running scheduled game management cycle for season '{}' at {}", season_name, now.to_rfc3339());
+                tracing::info!("🔍 [SCHEDULER] Checking for games to start and finish for season '{}'", season_name);
+
                 let manage_games = ManageGameService::new(pool.clone());
                 let evaluate_games = GameEvaluationService::new(pool, redis_client);
-                
+
                 // Step 1: Run complete game cycle (start due games, finish ended games)
+                tracing::info!("⏰ [SCHEDULER] Step 1: Running game cycle (checking scheduled and in-progress games)");
                 match manage_games.run_game_cycle().await {
                     Ok((games_ready_to_start, live_games, started_games, finished_games)) => {
-                        tracing::info!("✅ [{}] Season '{}' game cycle: {} ready to start, {} live, {} started, {} finished", 
-                            now.to_rfc3339(), season_name, games_ready_to_start.len(), live_games.len(), started_games.len(), finished_games.len());
+                        tracing::info!("✅ [SCHEDULER] Season '{}' game cycle results:", season_name);
+                        tracing::info!("   📋 Games ready to start (scheduled, start time reached): {:?}", games_ready_to_start);
+                        tracing::info!("   🎮 Games currently live (in_progress): {:?}", live_games);
+                        tracing::info!("   ▶️  Games just started: {:?}", started_games);
+                        tracing::info!("   🏁 Games just finished: {:?}", finished_games);
 
                         if finished_games.len() > 0 {
                             // Step 2: Evaluate any finished games
+                            tracing::info!("⏰ [SCHEDULER] Step 2: Evaluating {} finished games", finished_games.len());
                             match evaluate_games.evaluate_finished_live_games(&finished_games).await {
                                 Ok(result) => {
-                                    tracing::info!("✅ Game day completed. Calculated final scores for {} games", result.len());
+                                    tracing::info!("✅ [SCHEDULER] Game evaluation completed. Calculated final scores for {} games", result.len());
                                 }
                                 Err(e) => {
                                     let error_msg = e.to_string();
-                                    tracing::error!("❌ Game day evaluation failed for games: {:?} - {}", finished_games, error_msg);
+                                    tracing::error!("❌ [SCHEDULER] Game evaluation failed for games: {:?} - {}", finished_games, error_msg);
                                 }
                             }
+                        } else {
+                            tracing::info!("ℹ️  [SCHEDULER] No finished games to evaluate");
+                        }
+
+                        if started_games.is_empty() && finished_games.is_empty() {
+                            tracing::info!("ℹ️  [SCHEDULER] No state changes this cycle (no games started or finished)");
                         }
                     }
                     Err(e) => {
                         let error_msg = e.to_string();
-                        tracing::error!("❌ Season '{}' game cycle failed: {}", season_name, error_msg);
+                        tracing::error!("❌ [SCHEDULER] Season '{}' game cycle failed: {}", season_name, error_msg);
                     }
                 }
+
+                tracing::info!("🏁 [SCHEDULER] Completed cycle for season '{}' at {}", season_name, chrono::Utc::now().to_rfc3339());
             })
         })?;
         
@@ -181,8 +246,10 @@ impl SchedulerService {
         active_jobs.insert(season_id, job_id);
         
         let now = chrono::Utc::now();
-        tracing::info!("✅ [{}] Scheduled complete game management cycle for season '{}' with cron: {}", 
-            now.to_rfc3339(), season_name_for_logging, cron_expr);
+        tracing::info!("✅ [SCHEDULER] Scheduled complete game management cycle for season '{}' (job_id: {})",
+            season_name_for_logging, job_id);
+        tracing::info!("   📅 Cron expression: {} (runs every minute)", cron_expr);
+        tracing::info!("   ⏰ Next run: within 1 minute from {}", now.to_rfc3339());
         
         Ok(())
     }

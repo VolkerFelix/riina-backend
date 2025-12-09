@@ -62,7 +62,7 @@ pub fn run(
             .supports_credentials()
             .max_age(3600);
 
-        let mut app = App::new()
+        let app = App::new()
             .wrap(TracingLogger::default())
             .wrap(cors)
             // Get a pointer copy and attach it to the application state

@@ -161,6 +161,7 @@ async fn fetch_player_pool_users(pool: &PgPool) -> Vec<LeagueUserWithStats> {
 
             entries.into_iter().map(|entry| {
                 let trailing_avg = trailing_averages.get(&entry.user_id).copied().unwrap_or(0.0);
+
                 LeagueUserWithStats {
                     user_id: entry.user_id,
                     username: entry.username,
@@ -171,10 +172,10 @@ async fn fetch_player_pool_users(pool: &PgPool) -> Vec<LeagueUserWithStats> {
                     team_status: None,
                     joined_at: None,
                     stats: PlayerStats {
-                        stamina: entry.stamina as f32,
-                        strength: entry.strength as f32,
+                        stamina: entry.stamina,
+                        strength: entry.strength,
                     },
-                    total_stats: (entry.stamina + entry.strength) as f32,
+                    total_stats: entry.stamina + entry.strength,
                     trailing_average: trailing_avg,
                     rank: 0,
                     avatar_style: entry.avatar_style,

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT id, game_start_time, game_end_time, \n                   CURRENT_TIMESTAMP as now,\n                   (game_end_time <= CURRENT_TIMESTAMP) as should_finish\n            FROM games \n            WHERE status = 'in_progress'\n            ",
+  "query": "\n            SELECT id, game_start_time, game_end_time,\n                   CURRENT_TIMESTAMP as now,\n                   (game_end_time <= CURRENT_TIMESTAMP) as should_finish\n            FROM games\n            WHERE status = 'in_progress'\n            ",
   "describe": {
     "columns": [
       {
@@ -40,5 +40,5 @@
       null
     ]
   },
-  "hash": "6c9c83b727b37263f17153574369672ebd9f21c900c6fb9f48bd920a44efbe08"
+  "hash": "ad20ef4c2ed97bc26ae7e72a85c075d08e6ee6f402b4ab01fe5e813111b95464"
 }

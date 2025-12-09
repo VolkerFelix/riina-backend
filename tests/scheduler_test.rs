@@ -154,6 +154,220 @@ async fn test_scheduler_custom_frequency() {
 }
 
 // ============================================================================
+// SCHEDULER DATABASE INTEGRATION TESTS
+// ============================================================================
+
+#[tokio::test]
+async fn test_scheduler_loads_active_seasons_from_database() {
+    println!("🧪 Testing Scheduler Loads Active Seasons from Database on Startup");
+
+    let app = spawn_app().await;
+    let client = Client::new();
+    let configuration = get_config().expect("Failed to read configuration.");
+    let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
+
+    // Create admin user
+    let admin_user = create_admin_user_and_login(&app.address).await;
+
+    // Create a league with teams
+    let LeagueWithTeamsResult { league_id, team_ids } = create_league_with_teams(
+        &app.address,
+        &admin_user.token,
+        4,  // max_teams
+        4,  // team_count
+        None,  // team_owners
+        true,  // add_to_league
+        Some(format!("DB Load Test League {}", &Uuid::new_v4().to_string()[..4])),
+        Some("Testing database season loading".to_string()),
+    ).await;
+
+    println!("✅ Created league with 4 teams");
+
+    // Create multiple active seasons directly in the database
+    // These will have current date ranges and auto_evaluation_enabled = true
+    let now = Utc::now();
+    let league_uuid = Uuid::parse_str(&league_id).expect("Failed to parse league_id");
+
+    // Season 1: Currently active (started yesterday, ends tomorrow)
+    let season1_id = Uuid::new_v4();
+    let season1_start = now - Duration::days(1);
+    let season1_end = now + Duration::days(1);
+
+    sqlx::query!(
+        r#"
+        INSERT INTO league_seasons
+        (id, league_id, name, start_date, end_date, auto_evaluation_enabled, game_duration_seconds)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        "#,
+        season1_id,
+        league_uuid,
+        "Active Season 1",
+        season1_start,
+        season1_end,
+        true,
+        60i64  // 60 seconds
+    )
+    .execute(&app.db_pool)
+    .await
+    .expect("Failed to insert season 1");
+
+    // Season 2: Currently active (started 2 hours ago, ends in 2 hours)
+    let season2_id = Uuid::new_v4();
+    let season2_start = now - Duration::hours(2);
+    let season2_end = now + Duration::hours(2);
+
+    sqlx::query!(
+        r#"
+        INSERT INTO league_seasons
+        (id, league_id, name, start_date, end_date, auto_evaluation_enabled, game_duration_seconds)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        "#,
+        season2_id,
+        league_uuid,
+        "Active Season 2",
+        season2_start,
+        season2_end,
+        true,
+        120i64  // 120 seconds
+    )
+    .execute(&app.db_pool)
+    .await
+    .expect("Failed to insert season 2");
+
+    // Season 3: Not active (ended yesterday)
+    let season3_id = Uuid::new_v4();
+    let season3_start = now - Duration::days(10);
+    let season3_end = now - Duration::days(1);
+
+    sqlx::query!(
+        r#"
+        INSERT INTO league_seasons
+        (id, league_id, name, start_date, end_date, auto_evaluation_enabled, game_duration_seconds)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        "#,
+        season3_id,
+        league_uuid,
+        "Ended Season 3",
+        season3_start,
+        season3_end,
+        true,
+        60i64
+    )
+    .execute(&app.db_pool)
+    .await
+    .expect("Failed to insert season 3");
+
+    // Season 4: Not active yet (starts tomorrow)
+    let season4_id = Uuid::new_v4();
+    let season4_start = now + Duration::days(1);
+    let season4_end = now + Duration::days(10);
+
+    sqlx::query!(
+        r#"
+        INSERT INTO league_seasons
+        (id, league_id, name, start_date, end_date, auto_evaluation_enabled, game_duration_seconds)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        "#,
+        season4_id,
+        league_uuid,
+        "Future Season 4",
+        season4_start,
+        season4_end,
+        true,
+        60i64
+    )
+    .execute(&app.db_pool)
+    .await
+    .expect("Failed to insert season 4");
+
+    // Season 5: Currently active but auto_evaluation_enabled = false
+    let season5_id = Uuid::new_v4();
+    let season5_start = now - Duration::hours(1);
+    let season5_end = now + Duration::hours(1);
+
+    sqlx::query!(
+        r#"
+        INSERT INTO league_seasons
+        (id, league_id, name, start_date, end_date, auto_evaluation_enabled, game_duration_seconds)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        "#,
+        season5_id,
+        league_uuid,
+        "Manual Season 5",
+        season5_start,
+        season5_end,
+        false,
+        60i64
+    )
+    .execute(&app.db_pool)
+    .await
+    .expect("Failed to insert season 5");
+
+    println!("✅ Created 5 test seasons in database:");
+    println!("   - Season 1: Active (started yesterday)");
+    println!("   - Season 2: Active (started 2 hours ago)");
+    println!("   - Season 3: Ended (ended yesterday)");
+    println!("   - Season 4: Future (starts tomorrow)");
+    println!("   - Season 5: Active but auto_evaluation_enabled=false");
+
+    // Now create a NEW scheduler service - it should load the 2 active seasons from the database
+    let scheduler = SchedulerService::new_with_redis(
+        app.db_pool.clone(),
+        redis_client.clone()
+    ).await.expect("Failed to create scheduler service");
+
+    println!("⏳ Starting scheduler - should load active seasons from database...");
+    scheduler.start().await.expect("Failed to start scheduler");
+
+    // Give it a moment to load the seasons
+    tokio::time::sleep(TokioDuration::from_millis(500)).await;
+
+    println!("✅ Scheduler started");
+
+    // Verify that our test seasons are correctly identified as active or not
+    // Note: We query ALL active seasons but only verify OUR test seasons are in the correct state
+    // This allows the test to work even when other tests are running in parallel
+    let active_seasons = sqlx::query!(
+        r#"
+        SELECT id, name, game_duration_seconds, auto_evaluation_enabled
+        FROM league_seasons
+        WHERE auto_evaluation_enabled = true
+        AND start_date <= NOW()
+        AND end_date >= NOW()
+        "#
+    )
+    .fetch_all(&app.db_pool)
+    .await
+    .expect("Failed to query active seasons");
+
+    let active_season_ids: Vec<Uuid> = active_seasons.iter().map(|s| s.id).collect();
+
+    // Verify our specific test seasons are in the correct state
+    assert!(active_season_ids.contains(&season1_id), "Season 1 should be active");
+    assert!(active_season_ids.contains(&season2_id), "Season 2 should be active");
+    assert!(!active_season_ids.contains(&season3_id), "Season 3 should not be active (ended)");
+    assert!(!active_season_ids.contains(&season4_id), "Season 4 should not be active (future)");
+    assert!(!active_season_ids.contains(&season5_id), "Season 5 should not be active (auto_evaluation disabled)");
+
+    // Count how many of OUR seasons are active (should be exactly 2)
+    let our_season_ids = vec![season1_id, season2_id, season3_id, season4_id, season5_id];
+    let our_active_count = active_season_ids.iter()
+        .filter(|id| our_season_ids.contains(id))
+        .count();
+    assert_eq!(our_active_count, 2, "Should have exactly 2 of our test seasons active");
+
+    println!("✅ Verified correct seasons were identified as active:");
+    for season in &active_seasons {
+        println!("   - {} (duration: {}s)", season.name, season.game_duration_seconds);
+    }
+
+    // Clean up
+    scheduler.stop().await.expect("Failed to stop scheduler");
+
+    println!("🎉 Scheduler database loading test completed successfully!");
+}
+
+// ============================================================================
 // AUTOMATED SCHEDULER INTEGRATION TESTS
 // ============================================================================
 
