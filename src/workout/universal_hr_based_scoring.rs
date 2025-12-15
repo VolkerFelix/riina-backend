@@ -8,7 +8,7 @@ pub const P_VT_OFF: f32 = 0.20; // Below this = no training effect (0 points)
 pub const P_VT0: f32 = 0.35;
 pub const P_VT1: f32 = 0.65;
 pub const P_VT2: f32 = 0.8;
-pub const STRENGTH_WORKOUT_MULTIPLIER: f32 = 1.5;
+pub const INTENSITY_WORKOUT_MULTIPLIER: f32 = 1.5; // Applied to Strength and HIIT workouts
 
 pub struct UniversalHRBasedScoring;
 
@@ -39,9 +39,10 @@ async fn calculate_stats_universal_hr_based(
 
     let mut workout_stats = calculate_score_from_training_zones(training_zones, hr_data)?;
 
-    if workout_type == WorkoutType::Strength {
-        workout_stats.changes.stamina_change *= STRENGTH_WORKOUT_MULTIPLIER;
-        workout_stats.changes.strength_change *= STRENGTH_WORKOUT_MULTIPLIER;
+    // Apply multiplier bonus to Strength and HIIT workouts
+    if workout_type == WorkoutType::Strength || workout_type == WorkoutType::Hiit {
+        workout_stats.changes.stamina_change *= INTENSITY_WORKOUT_MULTIPLIER;
+        workout_stats.changes.strength_change *= INTENSITY_WORKOUT_MULTIPLIER;
     }
 
     Ok(workout_stats)
