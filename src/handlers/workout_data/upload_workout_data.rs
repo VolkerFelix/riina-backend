@@ -121,8 +121,8 @@ pub async fn upload_workout_data(
     // Convert to owned value to release the mutable borrow
     let mut heart_rate_data = heart_rate_data.clone();
 
-    // Filter heart rate data
-    let removed_heart_rate_samples = filter_heart_rate_data(&mut heart_rate_data);
+    // Filter heart rate data (removes samples outside workout time range, duplicates, and out-of-order timestamps)
+    let removed_heart_rate_samples = filter_heart_rate_data(&mut heart_rate_data, &data.workout_start, &data.workout_end);
     if removed_heart_rate_samples > 0 {
         tracing::info!("✅ Heart rate data filtered successfully - removed {} samples", removed_heart_rate_samples);
     }
