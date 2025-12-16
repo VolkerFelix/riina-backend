@@ -105,6 +105,7 @@ impl WorkoutStats {
 pub enum WorkoutType {
     Strength,
     Cardio,
+    Hiit,
     Other
 }
 
@@ -113,6 +114,7 @@ impl WorkoutType {
         match self {
             WorkoutType::Strength => "strength",
             WorkoutType::Cardio => "cardio",
+            WorkoutType::Hiit => "hiit",
             WorkoutType::Other => "other",
         }
     }
@@ -121,6 +123,7 @@ impl WorkoutType {
         match s {
             "strength" => WorkoutType::Strength,
             "cardio" => WorkoutType::Cardio,
+            "hiit" => WorkoutType::Hiit,
             "other" => WorkoutType::Other,
             _ => WorkoutType::Other,
         }

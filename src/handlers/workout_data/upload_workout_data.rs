@@ -166,7 +166,8 @@ pub async fn upload_workout_data(
     let ml_classification = match ml_client.classify_workout(
         &heart_rate_data,
         user_health_profile.resting_heart_rate,
-        user_health_profile.max_heart_rate
+        user_health_profile.max_heart_rate,
+        data.activity_name.clone()
     ).await {
         Ok(classification) => {
             tracing::info!("🤖 ML classified workout as '{}' with {:.1}% confidence",

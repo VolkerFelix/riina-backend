@@ -12,6 +12,8 @@ pub struct ClassifyRequest {
     pub heart_rate_data: Vec<HeartRateSample>,
     pub user_resting_hr: i32,
     pub user_max_hr: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub activity_type: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -49,6 +51,7 @@ impl MLClient {
         heart_rate_data: &[crate::models::workout_data::HeartRateData],
         user_resting_hr: i32,
         user_max_hr: i32,
+        activity_type: Option<String>,
     ) -> Result<ClassifyResponse, Box<dyn std::error::Error>> {
         // Convert heart rate data to the format expected by ML service
         let hr_samples: Vec<HeartRateSample> = heart_rate_data
@@ -63,6 +66,7 @@ impl MLClient {
             heart_rate_data: hr_samples,
             user_resting_hr,
             user_max_hr,
+            activity_type,
         };
 
         let url = format!("{}/classify", self.base_url);
