@@ -153,3 +153,54 @@ impl SubmitScoringFeedbackRequest {
         Ok(())
     }
 }
+
+#[derive(Debug, FromRow, Serialize)]
+pub struct WorkoutReport {
+    pub id: Uuid,
+    pub workout_data_id: Uuid,
+    pub reported_by_user_id: Uuid,
+    pub workout_owner_id: Uuid,
+    pub reason: String,
+    pub status: String,
+    pub admin_notes: Option<String>,
+    pub reviewed_by_user_id: Option<Uuid>,
+    pub reviewed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SubmitWorkoutReportRequest {
+    pub reason: String,
+}
+
+impl SubmitWorkoutReportRequest {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.reason.trim().is_empty() {
+            return Err("Reason cannot be empty".to_string());
+        }
+        if self.reason.len() > 1000 {
+            return Err("Reason must be 1000 characters or less".to_string());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateWorkoutReportRequest {
+    pub status: String,
+    pub admin_notes: Option<String>,
+}
+
+impl UpdateWorkoutReportRequest {
+    pub fn validate(&self) -> Result<(), String> {
+        if !["pending", "reviewed", "dismissed", "confirmed"].contains(&self.status.as_str()) {
+            return Err("Invalid status".to_string());
+        }
+        if let Some(notes) = &self.admin_notes {
+            if notes.len() > 2000 {
+                return Err("Admin notes must be 2000 characters or less".to_string());
+            }
+        }
+        Ok(())
+    }
+}
