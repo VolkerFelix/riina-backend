@@ -36,7 +36,7 @@ async fn test_submit_workout_report() {
     let upload_response = upload_workout_data_for_user(&client, &test_app.address, &workout_owner.token, &mut workout_data).await;
     assert!(upload_response.is_ok(), "Workout upload should succeed");
     let upload_result = upload_response.unwrap();
-    let workout_id = upload_result["sync_id"].as_str().unwrap();
+    let workout_id = upload_result["data"]["sync_id"].as_str().unwrap();
 
     // Reporter submits a report for the workout
     let report_data = json!({
@@ -79,7 +79,7 @@ async fn test_submit_report_with_empty_reason_fails() {
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let upload_response = upload_workout_data_for_user(&client, &test_app.address, &workout_owner.token, &mut workout_data).await;
     let upload_result = upload_response.unwrap();
-    let workout_id = upload_result["sync_id"].as_str().unwrap();
+    let workout_id = upload_result["data"]["sync_id"].as_str().unwrap();
 
     // Try to submit report with empty reason
     let report_data = json!({
@@ -143,7 +143,7 @@ async fn test_update_existing_report() {
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let upload_response = upload_workout_data_for_user(&client, &test_app.address, &workout_owner.token, &mut workout_data).await;
     let upload_result = upload_response.unwrap();
-    let workout_id = upload_result["sync_id"].as_str().unwrap();
+    let workout_id = upload_result["data"]["sync_id"].as_str().unwrap();
 
     // Submit initial report
     let report_data = json!({
@@ -197,7 +197,7 @@ async fn test_get_my_report_for_workout() {
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let upload_response = upload_workout_data_for_user(&client, &test_app.address, &workout_owner.token, &mut workout_data).await;
     let upload_result = upload_response.unwrap();
-    let workout_id = upload_result["sync_id"].as_str().unwrap();
+    let workout_id = upload_result["data"]["sync_id"].as_str().unwrap();
 
     // Submit a report
     let report_data = json!({
@@ -243,7 +243,7 @@ async fn test_get_my_report_for_workout_with_no_report_returns_null() {
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let upload_response = upload_workout_data_for_user(&client, &test_app.address, &workout_owner.token, &mut workout_data).await;
     let upload_result = upload_response.unwrap();
-    let workout_id = upload_result["sync_id"].as_str().unwrap();
+    let workout_id = upload_result["data"]["sync_id"].as_str().unwrap();
 
     // Get report without submitting one
     let response = client
@@ -278,7 +278,7 @@ async fn test_other_user_cannot_see_report() {
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let upload_response = upload_workout_data_for_user(&client, &test_app.address, &workout_owner.token, &mut workout_data).await;
     let upload_result = upload_response.unwrap();
-    let workout_id = upload_result["sync_id"].as_str().unwrap();
+    let workout_id = upload_result["data"]["sync_id"].as_str().unwrap();
 
     // Reporter submits a report
     let report_data = json!({
@@ -328,7 +328,7 @@ async fn test_get_all_my_reports() {
         let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30 + (i * 10));
         let upload_response = upload_workout_data_for_user(&client, &test_app.address, &workout_owner.token, &mut workout_data).await;
         let upload_result = upload_response.unwrap();
-        let workout_id = upload_result["sync_id"].as_str().unwrap();
+        let workout_id = upload_result["data"]["sync_id"].as_str().unwrap();
 
         let report_data = json!({
             "reason": format!("Report {}", i)
@@ -379,7 +379,7 @@ async fn test_delete_own_report() {
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let upload_response = upload_workout_data_for_user(&client, &test_app.address, &workout_owner.token, &mut workout_data).await;
     let upload_result = upload_response.unwrap();
-    let workout_id = upload_result["sync_id"].as_str().unwrap();
+    let workout_id = upload_result["data"]["sync_id"].as_str().unwrap();
 
     // Submit a report
     let report_data = json!({
@@ -437,7 +437,7 @@ async fn test_cannot_delete_other_users_report() {
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let upload_response = upload_workout_data_for_user(&client, &test_app.address, &workout_owner.token, &mut workout_data).await;
     let upload_result = upload_response.unwrap();
-    let workout_id = upload_result["sync_id"].as_str().unwrap();
+    let workout_id = upload_result["data"]["sync_id"].as_str().unwrap();
 
     // Reporter submits a report
     let report_data = json!({
@@ -489,7 +489,7 @@ async fn test_admin_get_all_reports() {
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let upload_response = upload_workout_data_for_user(&client, &test_app.address, &workout_owner.token, &mut workout_data).await;
     let upload_result = upload_response.unwrap();
-    let workout_id = upload_result["sync_id"].as_str().unwrap();
+    let workout_id = upload_result["data"]["sync_id"].as_str().unwrap();
 
     // Two different users report the same workout
     for (i, reporter) in [&reporter1, &reporter2].iter().enumerate() {
@@ -538,7 +538,7 @@ async fn test_admin_get_pending_reports() {
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let upload_response = upload_workout_data_for_user(&client, &test_app.address, &workout_owner.token, &mut workout_data).await;
     let upload_result = upload_response.unwrap();
-    let workout_id = upload_result["sync_id"].as_str().unwrap();
+    let workout_id = upload_result["data"]["sync_id"].as_str().unwrap();
 
     // Submit a report
     let report_data = json!({
@@ -584,7 +584,7 @@ async fn test_admin_update_report_status() {
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let upload_response = upload_workout_data_for_user(&client, &test_app.address, &workout_owner.token, &mut workout_data).await;
     let upload_result = upload_response.unwrap();
-    let workout_id = upload_result["sync_id"].as_str().unwrap();
+    let workout_id = upload_result["data"]["sync_id"].as_str().unwrap();
 
     // Submit a report
     let report_data = json!({
@@ -642,7 +642,7 @@ async fn test_non_admin_cannot_update_report_status() {
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let upload_response = upload_workout_data_for_user(&client, &test_app.address, &workout_owner.token, &mut workout_data).await;
     let upload_result = upload_response.unwrap();
-    let workout_id = upload_result["sync_id"].as_str().unwrap();
+    let workout_id = upload_result["data"]["sync_id"].as_str().unwrap();
 
     // Submit a report
     let report_data = json!({

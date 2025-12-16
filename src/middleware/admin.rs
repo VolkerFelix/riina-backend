@@ -1,7 +1,7 @@
 use actix_web::{
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
     Error, HttpMessage, web,
-    error::ErrorUnauthorized,
+    error::{ErrorUnauthorized, ErrorForbidden},
 };
 use futures_util::future::LocalBoxFuture;
 use std::{
@@ -110,7 +110,7 @@ where
                 UserRole::Admin | UserRole::SuperAdmin => {},
                 _ => {
                     tracing::warn!("Non-admin user attempted admin access: {} (role: {:?})", claims.username, claims.role);
-                    return Err(ErrorUnauthorized("Insufficient privileges"));
+                    return Err(ErrorForbidden("Insufficient privileges"));
                 }
             }
             
