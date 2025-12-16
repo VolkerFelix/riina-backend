@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        DELETE FROM workout_reports\n        WHERE id = $1 AND reported_by_user_id = $2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a8861eb6e7eb21f90dd7d19f982aac8fa3a263e93bea1b2f7a011b978cf5e61e"
+}

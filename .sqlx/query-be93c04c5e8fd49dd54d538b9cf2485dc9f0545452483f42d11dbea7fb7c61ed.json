@@ -1,0 +1,74 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            id,\n            workout_data_id,\n            reported_by_user_id,\n            workout_owner_id,\n            reason,\n            status,\n            admin_notes,\n            reviewed_by_user_id,\n            reviewed_at,\n            created_at\n        FROM workout_reports\n        ORDER BY created_at DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "workout_data_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "reported_by_user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "workout_owner_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "reason",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "admin_notes",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "reviewed_by_user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 8,
+        "name": "reviewed_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "be93c04c5e8fd49dd54d538b9cf2485dc9f0545452483f42d11dbea7fb7c61ed"
+}
