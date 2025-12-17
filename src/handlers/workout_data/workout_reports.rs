@@ -1,9 +1,12 @@
 use actix_web::{web, HttpResponse, Result};
 use sqlx::PgPool;
 use uuid::Uuid;
+use std::sync::Arc;
 
 use crate::models::workout_data::{SubmitWorkoutReportRequest, UpdateWorkoutReportRequest, WorkoutReport};
 use crate::middleware::auth::Claims;
+use crate::handlers::notification_handler::send_notification_to_user;
+use crate::services::social_events::send_websocket_notification_to_user;
 
 /// Submit a report for a suspicious workout
 /// POST /workouts/{workout_id}/report
@@ -242,6 +245,7 @@ pub async fn delete_workout_report(
 /// PATCH /admin/workout-reports/{report_id}
 pub async fn update_report_status(
     pool: web::Data<PgPool>,
+    redis_client: web::Data<Arc<redis::Client>>,
     report_id: web::Path<Uuid>,
     claims: web::ReqData<Claims>,
     request: web::Json<UpdateWorkoutReportRequest>,
@@ -299,7 +303,71 @@ pub async fn update_report_status(
     })?;
 
     match report {
-        Some(r) => Ok(HttpResponse::Ok().json(r)),
+        Some(r) => {
+            // Send notifications to the reporter if status is confirmed or dismissed
+            if request.status == "confirmed" || request.status == "dismissed" {
+                let (title, body) = match request.status.as_str() {
+                    "confirmed" => (
+                        "Workout Report Confirmed".to_string(),
+                        "Your workout report has been reviewed and confirmed by an admin. Thank you for helping maintain fair play!".to_string()
+                    ),
+                    "dismissed" => (
+                        "Workout Report Reviewed".to_string(),
+                        "Your workout report has been reviewed. After investigation, the workout appears to be legitimate.".to_string()
+                    ),
+                    _ => ("Workout Report Updated".to_string(), "Your workout report status has been updated.".to_string()),
+                };
+
+                // Send notifications asynchronously - don't fail the request if notification fails
+                let pool_clone = pool.get_ref().clone();
+                let redis_clone = redis_client.clone();
+                let reporter_id = r.reported_by_user_id;
+                let report_id = r.id;
+                let workout_id = r.workout_data_id;
+                let status = request.status.clone();
+                let admin_username = claims.username.clone();
+
+                tokio::spawn(async move {
+                    // Send WebSocket notification
+                    let ws_message = format!("{} - {}", title, body);
+                    if let Err(e) = send_websocket_notification_to_user(
+                        &redis_clone,
+                        reporter_id,
+                        report_id,
+                        admin_username,
+                        "workout_report".to_string(),
+                        ws_message,
+                    ).await {
+                        tracing::error!("Failed to send WebSocket notification to user {}: {}", reporter_id, e);
+                    } else {
+                        tracing::info!("Successfully sent WebSocket notification to user {}", reporter_id);
+                    }
+
+                    // Send push notification
+                    let notification_data = serde_json::json!({
+                        "type": "workout_report_reviewed",
+                        "report_id": report_id,
+                        "workout_id": workout_id,
+                        "status": status,
+                    });
+
+                    if let Err(e) = send_notification_to_user(
+                        &pool_clone,
+                        reporter_id,
+                        title,
+                        body,
+                        Some(notification_data),
+                        Some("workout_report".to_string()),
+                    ).await {
+                        tracing::error!("Failed to send push notification to user {}: {}", reporter_id, e);
+                    } else {
+                        tracing::info!("Successfully sent push notification to user {}", reporter_id);
+                    }
+                });
+            }
+
+            Ok(HttpResponse::Ok().json(r))
+        },
         None => Ok(HttpResponse::NotFound().json(serde_json::json!({
             "error": "Report not found"
         }))),

@@ -11,11 +11,13 @@ use reqwest::Client;
 use serde_json::json;
 use uuid::Uuid;
 use chrono::Utc;
+use futures::StreamExt;
 
 mod common;
 use common::utils::{spawn_app, create_test_user_and_login, make_authenticated_request, delete_test_user};
 use common::workout_data_helpers::{WorkoutData, WorkoutIntensity, upload_workout_data_for_user, create_health_profile_for_user};
 use common::admin_helpers::create_admin_user_and_login;
+use common::redis_helpers::setup_redis_pubsub;
 
 // ============================================================================
 // WORKOUT REPORT SUBMISSION TESTS
@@ -702,5 +704,101 @@ async fn test_non_admin_cannot_get_all_reports() {
 
     // Cleanup
     delete_test_user(&test_app.address, &admin.token, non_admin.user_id).await;
+    delete_test_user(&test_app.address, &admin.token, admin.user_id).await;
+}
+
+// ============================================================================
+// NOTIFICATION TESTS
+// ============================================================================
+
+#[tokio::test]
+async fn test_report_status_update_sends_websocket_notification() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let reporter = create_test_user_and_login(&test_app.address).await;
+    let workout_owner = create_test_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address).await;
+
+    // Subscribe to the reporter's WebSocket notification channel BEFORE the event
+    let user_channel = format!("game:events:user:{}", reporter.user_id);
+    let mut pubsub = setup_redis_pubsub(&user_channel).await;
+
+    // Create workout and submit report
+    create_health_profile_for_user(&client, &test_app.address, &workout_owner).await.unwrap();
+    let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
+    let upload_response = upload_workout_data_for_user(&client, &test_app.address, &workout_owner.token, &mut workout_data).await;
+    let upload_result = upload_response.unwrap();
+    let workout_id = upload_result["data"]["sync_id"].as_str().unwrap();
+
+    let report_data = json!({
+        "reason": "Suspicious activity detected"
+    });
+    let submit_response = client
+        .post(&format!("{}/health/workout/{}/report", &test_app.address, workout_id))
+        .header("Authorization", format!("Bearer {}", reporter.token))
+        .json(&report_data)
+        .send()
+        .await
+        .expect("Failed to execute request");
+
+    let report_body: serde_json::Value = submit_response.json().await.expect("Failed to parse response");
+    let report_id = report_body["id"].as_str().unwrap();
+
+    // Admin confirms the report - should trigger WebSocket notification
+    let update_data = json!({
+        "status": "confirmed",
+        "admin_notes": "Verified after investigation"
+    });
+
+    let update_response = client
+        .patch(&format!("{}/admin/workout-reports/{}", &test_app.address, report_id))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&update_data)
+        .send()
+        .await
+        .expect("Failed to execute request");
+
+    assert!(update_response.status().is_success(), "Report update should succeed");
+
+    let update_body: serde_json::Value = update_response.json().await.expect("Failed to parse response");
+    assert_eq!(update_body["status"].as_str().unwrap(), "confirmed");
+
+    // Listen for WebSocket notification event
+    let mut stream = pubsub.on_message();
+
+    // Wait for the message with a timeout
+    let notification_received = tokio::time::timeout(
+        tokio::time::Duration::from_secs(5),
+        async {
+            while let Some(msg) = stream.next().await {
+                let payload: String = msg.get_payload().expect("Failed to get payload");
+                let event: serde_json::Value = serde_json::from_str(&payload).expect("Failed to parse event");
+
+                // Check if this is the notification event
+                if event["event_type"] == "notification_received" {
+                    return Some(event);
+                }
+            }
+            None
+        }
+    ).await;
+
+    assert!(notification_received.is_ok(), "Should receive WebSocket notification within timeout");
+    let event = notification_received.unwrap();
+    assert!(event.is_some(), "WebSocket notification event should be received");
+
+    let notification_event = event.unwrap();
+    assert_eq!(notification_event["recipient_id"].as_str().unwrap(), reporter.user_id.to_string());
+    assert_eq!(notification_event["notification_type"].as_str().unwrap(), "workout_report");
+    assert_eq!(notification_event["actor_username"].as_str().unwrap(), admin.username);
+
+    let message = notification_event["message"].as_str().unwrap();
+    assert!(message.contains("Workout Report Confirmed"), "Message should contain confirmation title");
+    assert!(message.contains("Thank you for helping maintain fair play"), "Message should contain confirmation body");
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin.token, reporter.user_id).await;
+    delete_test_user(&test_app.address, &admin.token, workout_owner.user_id).await;
     delete_test_user(&test_app.address, &admin.token, admin.user_id).await;
 }
