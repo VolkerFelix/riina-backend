@@ -794,7 +794,7 @@ async fn test_report_status_update_sends_websocket_notification() {
     assert_eq!(notification_event["actor_username"].as_str().unwrap(), admin.username);
 
     let message = notification_event["message"].as_str().unwrap();
-    assert!(message.contains("Workout Report Confirmed"), "Message should contain confirmation title");
+    assert!(message.contains("Reported Issue Confirmed"), "Message should contain confirmation title");
     assert!(message.contains("Thank you for helping maintain fair play"), "Message should contain confirmation body");
 
     // Cleanup

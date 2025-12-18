@@ -60,7 +60,7 @@ pub async fn submit_workout_report(
 
     let workout_owner_id = workout.user_id;
 
-    // Check if this workout has already been reported by any user
+    // Check if this workout has already been reported
     let existing_report = sqlx::query!(
         r#"
         SELECT id, reported_by_user_id
@@ -77,10 +77,44 @@ pub async fn submit_workout_report(
     })?;
 
     if let Some(existing) = existing_report {
-        return Ok(HttpResponse::Conflict().json(serde_json::json!({
-            "error": "This workout has already been reported and is under review",
-            "reported": true
-        })));
+        // If the same user is reporting again, allow them to update their report
+        if existing.reported_by_user_id == reporter_id {
+            let report = sqlx::query_as!(
+                WorkoutReport,
+                r#"
+                UPDATE workout_reports
+                SET reason = $1
+                WHERE id = $2
+                RETURNING
+                    id,
+                    workout_data_id,
+                    reported_by_user_id,
+                    workout_owner_id,
+                    reason,
+                    status,
+                    admin_notes,
+                    reviewed_by_user_id,
+                    reviewed_at,
+                    created_at
+                "#,
+                request.reason,
+                existing.id
+            )
+            .fetch_one(pool.as_ref())
+            .await
+            .map_err(|e| {
+                tracing::error!("Database error updating report: {}", e);
+                actix_web::error::ErrorInternalServerError("Failed to update report")
+            })?;
+
+            return Ok(HttpResponse::Ok().json(report));
+        } else {
+            // Different user trying to report - return conflict
+            return Ok(HttpResponse::Conflict().json(serde_json::json!({
+                "error": "This workout has already been reported and is under review",
+                "reported": true
+            })));
+        }
     }
 
     // Insert new report
