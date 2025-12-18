@@ -60,16 +60,35 @@ pub async fn submit_workout_report(
 
     let workout_owner_id = workout.user_id;
 
-    // Insert report (upsert in case user updates their report)
+    // Check if this workout has already been reported by any user
+    let existing_report = sqlx::query!(
+        r#"
+        SELECT id, reported_by_user_id
+        FROM workout_reports
+        WHERE workout_data_id = $1
+        "#,
+        workout_id
+    )
+    .fetch_optional(pool.as_ref())
+    .await
+    .map_err(|e| {
+        tracing::error!("Database error checking existing reports: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to check existing reports")
+    })?;
+
+    if let Some(existing) = existing_report {
+        return Ok(HttpResponse::Conflict().json(serde_json::json!({
+            "error": "This workout has already been reported and is under review",
+            "reported": true
+        })));
+    }
+
+    // Insert new report
     let report = sqlx::query_as!(
         WorkoutReport,
         r#"
         INSERT INTO workout_reports (workout_data_id, reported_by_user_id, workout_owner_id, reason)
         VALUES ($1, $2, $3, $4)
-        ON CONFLICT (workout_data_id, reported_by_user_id)
-        DO UPDATE SET
-            reason = $4,
-            created_at = NOW()
         RETURNING
             id,
             workout_data_id,
@@ -308,14 +327,14 @@ pub async fn update_report_status(
             if request.status == "confirmed" || request.status == "dismissed" {
                 let (title, body) = match request.status.as_str() {
                     "confirmed" => (
-                        "Workout Report Confirmed".to_string(),
-                        "Your workout report has been reviewed and confirmed by an admin. Thank you for helping maintain fair play!".to_string()
+                        "Reported Issue Confirmed".to_string(),
+                        "Your reported workout has been reviewed and confirmed by an admin. Thank you for helping maintain fair play!".to_string()
                     ),
                     "dismissed" => (
-                        "Workout Report Reviewed".to_string(),
-                        "Your workout report has been reviewed. After investigation, the workout appears to be legitimate.".to_string()
+                        "Reported Issue Reviewed".to_string(),
+                        "Your reported workout has been reviewed. After investigation, the workout appears to be legitimate.".to_string()
                     ),
-                    _ => ("Workout Report Updated".to_string(), "Your workout report status has been updated.".to_string()),
+                    _ => ("Reported Issue Updated".to_string(), "Your reported workout status has been updated.".to_string()),
                 };
 
                 // Send notifications asynchronously - don't fail the request if notification fails
