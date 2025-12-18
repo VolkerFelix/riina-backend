@@ -347,19 +347,42 @@ pub async fn update_report_status(
                 let admin_username = claims.username.clone();
 
                 tokio::spawn(async move {
-                    // Send WebSocket notification
-                    let ws_message = format!("{} - {}", title, body);
-                    if let Err(e) = send_websocket_notification_to_user(
-                        &redis_clone,
+                    // Create notification in database first
+                    let notification_message = format!("{} - {}", title, body);
+                    match sqlx::query!(
+                        r#"
+                        INSERT INTO notifications (recipient_id, actor_id, notification_type, entity_type, entity_id, message)
+                        VALUES ($1, $2, 'workout_report_reviewed', 'workout_report', $3, $4)
+                        RETURNING id
+                        "#,
                         reporter_id,
+                        admin_id,
                         report_id,
-                        admin_username,
-                        "workout_report".to_string(),
-                        ws_message,
-                    ).await {
-                        tracing::error!("Failed to send WebSocket notification to user {}: {}", reporter_id, e);
-                    } else {
-                        tracing::info!("Successfully sent WebSocket notification to user {}", reporter_id);
+                        notification_message
+                    )
+                    .fetch_one(&pool_clone)
+                    .await {
+                        Ok(notif_row) => {
+                            tracing::info!("Created notification {} for workout report review", notif_row.id);
+
+                            // Send WebSocket notification
+                            let ws_message = format!("{} - {}", title, body);
+                            if let Err(e) = send_websocket_notification_to_user(
+                                &redis_clone,
+                                reporter_id,
+                                notif_row.id,
+                                admin_username,
+                                "workout_report".to_string(),
+                                ws_message,
+                            ).await {
+                                tracing::error!("Failed to send WebSocket notification to user {}: {}", reporter_id, e);
+                            } else {
+                                tracing::info!("Successfully sent WebSocket notification to user {}", reporter_id);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to create notification in database for user {}: {}", reporter_id, e);
+                        }
                     }
 
                     // Send push notification
