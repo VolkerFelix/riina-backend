@@ -51,7 +51,7 @@ struct PlayerPoolEvent {
 async fn test_new_user_automatically_added_to_player_pool() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Set up Redis subscription for player pool events
     let mut pubsub = setup_redis_pubsub("player_pool_events").await;
@@ -123,7 +123,7 @@ async fn test_new_user_automatically_added_to_player_pool() {
 async fn test_user_status_change_to_inactive_removes_from_pool() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     let test_user = create_test_user_and_login(&test_app.address).await;
 
     // Verify user is in pool initially
@@ -174,7 +174,7 @@ async fn test_user_status_change_to_inactive_removes_from_pool() {
 async fn test_user_status_change_back_to_active_adds_to_pool() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     let test_user = create_test_user_and_login(&test_app.address).await;
 
     // Change to inactive
@@ -214,7 +214,7 @@ async fn test_user_status_change_back_to_active_adds_to_pool() {
 async fn test_inactive_user_with_team_removes_from_team() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create team owner
     let owner = create_test_user_and_login(&test_app.address).await;
@@ -322,7 +322,7 @@ async fn test_inactive_user_with_team_removes_from_team() {
 async fn test_get_player_pool_empty() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Make admin inactive so they're not in the pool
     let go_inactive = json!({"status": "inactive"});
@@ -363,7 +363,7 @@ async fn test_get_player_pool_empty() {
 async fn test_multiple_users_in_player_pool() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create multiple test users
     let user1 = create_test_user_and_login(&test_app.address).await;
@@ -410,7 +410,7 @@ async fn test_multiple_users_in_player_pool() {
 async fn test_user_in_team_not_in_player_pool() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create a user and team
     let owner = create_test_user_and_login(&test_app.address).await;
@@ -457,7 +457,7 @@ async fn test_user_in_team_not_in_player_pool() {
 async fn test_redis_player_assigned_event_on_team_join() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create a team owner
     let owner = create_test_user_and_login(&test_app.address).await;
@@ -706,7 +706,7 @@ async fn test_duplicate_invitation_handled_gracefully() {
 async fn test_redis_player_left_team_event_on_team_leave() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create a team with owner and a member
     let owner = create_test_user_and_login(&test_app.address).await;
@@ -898,7 +898,7 @@ async fn test_team_invitation_creates_notification() {
 async fn test_cannot_invite_when_team_is_full() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create team owner
     let owner = create_test_user_and_login(&test_app.address).await;
@@ -988,7 +988,7 @@ async fn test_invitation_acceptance_creates_notification() {
     
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create team owner
     let owner = create_test_user_and_login(&test_app.address).await;
@@ -1095,7 +1095,7 @@ async fn test_invitation_decline_creates_notification() {
     
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create team owner
     let owner = create_test_user_and_login(&test_app.address).await;

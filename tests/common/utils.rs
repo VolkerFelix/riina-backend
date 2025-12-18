@@ -195,7 +195,7 @@ pub async fn create_test_user_and_login(app_address: &str) -> UserRegLoginRespon
 /// # Example
 /// ```
 /// let test_user = create_test_user_and_login(&app.address).await;
-/// let admin_user = create_admin_user_and_login(&app.address).await;
+/// let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
 ///
 /// // ... run tests ...
 ///

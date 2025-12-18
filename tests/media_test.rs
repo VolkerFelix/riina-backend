@@ -33,7 +33,7 @@ async fn test_image_upload_workflow() {
     let app = spawn_app().await;
     let client = Client::new();
     let test_user = create_test_user_and_login(&app.address).await;
-    let admin_user = create_admin_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
 
     println!("📸 Testing image upload workflow");
 
@@ -69,7 +69,7 @@ async fn test_image_format_validation() {
     let app = spawn_app().await;
     let client = Client::new();
     let test_user = create_test_user_and_login(&app.address).await;
-    let admin_user = create_admin_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
 
     println!("📸 Testing image format validation");
 
@@ -126,7 +126,7 @@ async fn test_image_size_validation() {
     let app = spawn_app().await;
     let client = Client::new();
     let test_user = create_test_user_and_login(&app.address).await;
-    let admin_user = create_admin_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
 
     println!("📸 Testing image size validation");
 
@@ -171,7 +171,7 @@ async fn test_video_upload_workflow() {
     let app = spawn_app().await;
     let client = Client::new();
     let test_user = create_test_user_and_login(&app.address).await;
-    let admin_user = create_admin_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
 
     println!("🎥 Testing video upload workflow");
 
@@ -204,7 +204,7 @@ async fn test_video_format_validation() {
     let app = spawn_app().await;
     let client = Client::new();
     let test_user = create_test_user_and_login(&app.address).await;
-    let admin_user = create_admin_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
 
     println!("🎥 Testing video format validation");
 
@@ -261,7 +261,7 @@ async fn test_video_size_validation() {
     let app = spawn_app().await;
     let client = Client::new();
     let test_user = create_test_user_and_login(&app.address).await;
-    let admin_user = create_admin_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
 
     println!("🎥 Testing video size validation");
 
@@ -306,7 +306,7 @@ async fn test_signed_url_generation() {
     let app = spawn_app().await;
     let client = Client::new();
     let test_user = create_test_user_and_login(&app.address).await;
-    let admin_user = create_admin_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
 
     println!("🔐 Testing signed URL generation");
 

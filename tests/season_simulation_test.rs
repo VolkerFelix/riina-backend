@@ -34,7 +34,7 @@ async fn simulate_complete_season_with_4_players_2_teams() {
     println!("🏟️ Starting season simulation with 4 players and 2 teams");
     
     // Step 1: Create 4 users (2 team owners + 2 additional players)
-    let admin_user = create_admin_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
     let user1 = create_test_user_and_login(&app.address).await;
     let user2 = create_test_user_and_login(&app.address).await;
     let user3 = create_test_user_and_login(&app.address).await;

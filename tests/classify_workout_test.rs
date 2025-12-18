@@ -15,7 +15,7 @@ async fn upload_strength_workout_with_1_5x_multiplier() {
     let test_app = spawn_app().await;
     let client = Client::new();
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Real strength training heart rate data - characteristic pattern with intervals
@@ -357,7 +357,7 @@ async fn upload_cardio_workout_without_multiplier() {
     let test_app = spawn_app().await;
     let client = Client::new();
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Real cardio workout heart rate data - characteristic sustained elevated HR pattern
@@ -499,7 +499,7 @@ async fn upload_hiit_workout_with_1_5x_multiplier() {
     let test_app = spawn_app().await;
     let client = Client::new();
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Real HIIT workout heart rate data - characteristic pattern with high-intensity intervals

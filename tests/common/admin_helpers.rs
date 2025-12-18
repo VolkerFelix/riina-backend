@@ -10,7 +10,7 @@ use crate::common::utils::{
 };
 
 /// Helper function to create an admin user and get auth token
-pub async fn create_admin_user_and_login(app_address: &str) -> UserRegLoginResponse {
+pub async fn create_admin_user_and_login(app_address: &str, pool: &PgPool) -> UserRegLoginResponse {
     let client = Client::new();
     let username = format!("adminuser{}", Uuid::new_v4());
     let password = "password123";
@@ -33,17 +33,11 @@ pub async fn create_admin_user_and_login(app_address: &str) -> UserRegLoginRespo
     assert_eq!(200, register_response.status().as_u16());
 
     // Promote user to admin role using direct database access
-    let database_url = std::env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set");
-    let pool = PgPool::connect(&database_url)
-        .await
-        .expect("Failed to connect to database");
-    
     sqlx::query!(
         "UPDATE users SET role = 'admin' WHERE username = $1",
         username
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("Failed to promote user to admin");
 

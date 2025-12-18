@@ -12,7 +12,7 @@ async fn test_add_user_to_team_success() {
     let client = Client::new();
     
     // Create admin user (team owner with admin privileges)
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     
     // Create 4 more users(to be added as members)
     let mut member_usernames = Vec::new();

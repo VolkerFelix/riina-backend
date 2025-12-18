@@ -30,7 +30,7 @@ async fn test_submit_workout_report() {
 
     let reporter = create_test_user_and_login(&test_app.address).await;
     let workout_owner = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create health profile and upload workout for the owner
     create_health_profile_for_user(&client, &test_app.address, &workout_owner).await.unwrap();
@@ -75,7 +75,7 @@ async fn test_submit_report_with_empty_reason_fails() {
 
     let reporter = create_test_user_and_login(&test_app.address).await;
     let workout_owner = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     create_health_profile_for_user(&client, &test_app.address, &workout_owner).await.unwrap();
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
@@ -110,7 +110,7 @@ async fn test_submit_report_for_nonexistent_workout_fails() {
     let client = Client::new();
 
     let reporter = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     let fake_workout_id = Uuid::new_v4();
     let report_data = json!({
@@ -139,7 +139,7 @@ async fn test_update_existing_report() {
 
     let reporter = create_test_user_and_login(&test_app.address).await;
     let workout_owner = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     create_health_profile_for_user(&client, &test_app.address, &workout_owner).await.unwrap();
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
@@ -193,7 +193,7 @@ async fn test_get_my_report_for_workout() {
 
     let reporter = create_test_user_and_login(&test_app.address).await;
     let workout_owner = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     create_health_profile_for_user(&client, &test_app.address, &workout_owner).await.unwrap();
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
@@ -239,7 +239,7 @@ async fn test_get_my_report_for_workout_with_no_report_returns_null() {
 
     let reporter = create_test_user_and_login(&test_app.address).await;
     let workout_owner = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     create_health_profile_for_user(&client, &test_app.address, &workout_owner).await.unwrap();
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
@@ -274,7 +274,7 @@ async fn test_other_user_cannot_see_report() {
     let reporter = create_test_user_and_login(&test_app.address).await;
     let workout_owner = create_test_user_and_login(&test_app.address).await;
     let other_user = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     create_health_profile_for_user(&client, &test_app.address, &workout_owner).await.unwrap();
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
@@ -321,7 +321,7 @@ async fn test_get_all_my_reports() {
 
     let reporter = create_test_user_and_login(&test_app.address).await;
     let workout_owner = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     create_health_profile_for_user(&client, &test_app.address, &workout_owner).await.unwrap();
 
@@ -375,7 +375,7 @@ async fn test_delete_own_report() {
 
     let reporter = create_test_user_and_login(&test_app.address).await;
     let workout_owner = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     create_health_profile_for_user(&client, &test_app.address, &workout_owner).await.unwrap();
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
@@ -433,7 +433,7 @@ async fn test_cannot_delete_other_users_report() {
     let reporter = create_test_user_and_login(&test_app.address).await;
     let other_user = create_test_user_and_login(&test_app.address).await;
     let workout_owner = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     create_health_profile_for_user(&client, &test_app.address, &workout_owner).await.unwrap();
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
@@ -485,26 +485,35 @@ async fn test_admin_get_all_reports() {
     let reporter1 = create_test_user_and_login(&test_app.address).await;
     let reporter2 = create_test_user_and_login(&test_app.address).await;
     let workout_owner = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     create_health_profile_for_user(&client, &test_app.address, &workout_owner).await.unwrap();
-    let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
-    let upload_response = upload_workout_data_for_user(&client, &test_app.address, &workout_owner.token, &mut workout_data).await;
-    let upload_result = upload_response.unwrap();
-    let workout_id = upload_result["data"]["sync_id"].as_str().unwrap();
 
-    // Two different users report the same workout
+    // Create two different workouts and have different users report them
     for (i, reporter) in [&reporter1, &reporter2].iter().enumerate() {
+        // Space out workouts by 1 hour to avoid sync conflicts
+        let workout_start = Utc::now() - chrono::Duration::hours(i as i64 + 1);
+        let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, workout_start, 30);
+        let upload_response = upload_workout_data_for_user(&client, &test_app.address, &workout_owner.token, &mut workout_data).await;
+        let upload_result = upload_response.expect("Failed to upload workout");
+        let workout_id = upload_result["data"]["sync_id"].as_str().unwrap();
+
         let report_data = json!({
             "reason": format!("Report from user {}", i)
         });
-        client
+        let response = client
             .post(&format!("{}/health/workout/{}/report", &test_app.address, workout_id))
             .header("Authorization", format!("Bearer {}", reporter.token))
             .json(&report_data)
             .send()
             .await
             .expect("Failed to execute request");
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_else(|_| "Unable to read response body".to_string());
+            panic!("Failed to submit report for user {}: status={}, body={}", i, status, body);
+        }
     }
 
     // Admin gets all reports
@@ -534,7 +543,7 @@ async fn test_admin_get_pending_reports() {
 
     let reporter = create_test_user_and_login(&test_app.address).await;
     let workout_owner = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     create_health_profile_for_user(&client, &test_app.address, &workout_owner).await.unwrap();
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
@@ -580,7 +589,7 @@ async fn test_admin_update_report_status() {
 
     let reporter = create_test_user_and_login(&test_app.address).await;
     let workout_owner = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     create_health_profile_for_user(&client, &test_app.address, &workout_owner).await.unwrap();
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
@@ -638,7 +647,7 @@ async fn test_non_admin_cannot_update_report_status() {
     let reporter = create_test_user_and_login(&test_app.address).await;
     let workout_owner = create_test_user_and_login(&test_app.address).await;
     let non_admin = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     create_health_profile_for_user(&client, &test_app.address, &workout_owner).await.unwrap();
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
@@ -690,7 +699,7 @@ async fn test_non_admin_cannot_get_all_reports() {
     let client = Client::new();
 
     let non_admin = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Non-admin tries to get all reports
     let response = client
@@ -718,7 +727,7 @@ async fn test_report_status_update_sends_websocket_notification() {
 
     let reporter = create_test_user_and_login(&test_app.address).await;
     let workout_owner = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Subscribe to the reporter's WebSocket notification channel BEFORE the event
     let user_channel = format!("game:events:user:{}", reporter.user_id);

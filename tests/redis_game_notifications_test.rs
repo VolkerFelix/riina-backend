@@ -42,7 +42,7 @@ async fn test_redis_game_evaluation_notifications() {
     println!("✅ Subscribed to Redis global game events channel");
     
     // Step 1: Set up test data (simplified version)
-    let admin_user = create_admin_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
     let user1 = create_test_user_and_login(&app.address).await;
     let user2 = create_test_user_and_login(&app.address).await;
     

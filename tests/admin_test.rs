@@ -68,7 +68,7 @@ async fn admin_routes_with_invalid_token_return_401() {
 async fn admin_routes_return_proper_error_formats() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Try to get non-existent team
     let response = make_authenticated_request(
@@ -93,7 +93,7 @@ async fn admin_routes_return_proper_error_formats() {
 async fn admin_get_users_returns_paginated_results() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     let response = make_authenticated_request(
         &client,
@@ -114,7 +114,7 @@ async fn admin_get_users_returns_paginated_results() {
 async fn admin_get_users_with_search_filters_results() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     let response = make_authenticated_request(
         &client,
@@ -136,7 +136,7 @@ async fn admin_get_users_with_search_filters_results() {
 async fn admin_get_user_by_id_returns_user_details() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     let response = make_authenticated_request(
         &client,
@@ -156,7 +156,7 @@ async fn admin_get_user_by_id_returns_user_details() {
 async fn admin_update_user_status_changes_user_status() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     let update_request = json!({
         "status": "inactive"
@@ -180,7 +180,7 @@ async fn admin_update_user_status_changes_user_status() {
 async fn admin_get_users_without_team_returns_filtered_users() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     let response = make_authenticated_request(
         &client,
@@ -204,7 +204,7 @@ async fn admin_get_users_without_team_returns_filtered_users() {
 async fn admin_create_team_succeeds_with_valid_data() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     let team_request = json!({
         "name": format!("Test Dragons {}", &Uuid::new_v4().to_string()[..8]),
@@ -231,7 +231,7 @@ async fn admin_create_team_succeeds_with_valid_data() {
 async fn admin_get_teams_returns_paginated_results() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create a test team first
     let team_request = json!({
@@ -267,7 +267,7 @@ async fn admin_get_teams_returns_paginated_results() {
 async fn admin_get_team_by_id_returns_team_details() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create a test team first
     let team_request = json!({
@@ -306,7 +306,7 @@ async fn admin_get_team_by_id_returns_team_details() {
 async fn admin_update_team_modifies_team_data() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create a test team first
     let team_request = json!({
@@ -351,7 +351,7 @@ async fn admin_update_team_modifies_team_data() {
 async fn admin_update_team_owner_changes_ownership() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create a second user to be the new owner
     let new_owner = create_test_user_and_login(&test_app.address).await;
@@ -442,7 +442,7 @@ async fn admin_update_team_owner_changes_ownership() {
 async fn admin_update_team_owner_fails_if_new_owner_not_member() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create a second user who is NOT a team member
     let non_member = create_test_user_and_login(&test_app.address).await;
@@ -493,7 +493,7 @@ async fn admin_update_team_owner_fails_if_new_owner_not_member() {
 async fn admin_delete_team_removes_team() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create a test team first
     let team_request = json!({
@@ -543,7 +543,7 @@ async fn admin_delete_team_removes_team() {
 async fn admin_get_leagues_returns_list_of_leagues() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     let response = make_authenticated_request(
         &client,
@@ -565,7 +565,7 @@ async fn admin_get_leagues_returns_list_of_leagues() {
 async fn admin_create_league_succeeds_with_valid_data() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     let league_request = json!({
         "name": format!("Test League {}", &Uuid::new_v4().to_string()[..8]),
@@ -595,7 +595,7 @@ async fn admin_create_league_succeeds_with_valid_data() {
 async fn admin_create_league_with_invalid_max_teams_fails() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     let league_request = json!({
         "name": format!("Invalid League {}", &Uuid::new_v4().to_string()[..8]),
@@ -618,7 +618,7 @@ async fn admin_create_league_with_invalid_max_teams_fails() {
 async fn admin_get_league_by_id_returns_league_details() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create a league first
     let league_request = json!({
@@ -658,7 +658,7 @@ async fn admin_get_league_by_id_returns_league_details() {
 async fn admin_update_league_modifies_league_data() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create a league first
     let league_request = json!({
@@ -703,7 +703,7 @@ async fn admin_update_league_modifies_league_data() {
 async fn admin_assign_teams_to_league_works() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create a league
     let league_request = json!({

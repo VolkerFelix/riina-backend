@@ -26,7 +26,7 @@ async fn test_game_evaluation_websocket_notifications_comprehensive() {
     println!("🎯 Testing Comprehensive Game Evaluation WebSocket Notifications");
     
     // Step 1: Set up users with different power levels
-    let admin_user = create_admin_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
     let user1 = create_test_user_and_login(&app.address).await; // Elite (Team A)
     let user2 = create_test_user_and_login(&app.address).await; // Advanced (Team A)  
     let user3 = create_test_user_and_login(&app.address).await; // Elite (Team B)

@@ -20,7 +20,7 @@ async fn test_trailing_7_day_average_calculation() {
     println!("🧪 Testing trailing 7-day average calculation...");
     
     // Create admin user and teams
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     let teams = create_teams_for_test(&test_app.address, &admin_user.token, 1).await;
     let team = &teams[0];
     
@@ -152,7 +152,7 @@ async fn test_leaderboard_sort_by_trailing_average() {
     println!("🧪 Testing leaderboard sorting by trailing average...");
     
     // Create admin user and teams
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     let teams = create_teams_for_test(&test_app.address, &admin_user.token, 1).await;
     let team = &teams[0];
     

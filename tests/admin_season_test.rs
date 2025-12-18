@@ -16,7 +16,7 @@ async fn admin_generate_schedule_works() {
     let client = reqwest::Client::new();
     
     // Create admin user and get token
-    let admin = create_admin_user_and_login(&app.address).await;
+    let admin = create_admin_user_and_login(&app.address, &app.db_pool).await;
 
     let league_name = format!("Test League {}", Uuid::new_v4());
     let league_description = "Test League Description";
@@ -164,7 +164,7 @@ async fn admin_generate_schedule_with_invalid_date_fails() {
     // Arrange
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create a league first
     let league_request = json!({
@@ -248,7 +248,7 @@ async fn test_season_creation_with_proper_round_robin_schedule() {
     // Arrange
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create a league
     let league_request = json!({
@@ -436,7 +436,7 @@ async fn test_first_game_starts_on_season_start_date() {
     // Arrange
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create a league
     let league_request = json!({

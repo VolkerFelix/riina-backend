@@ -23,7 +23,7 @@ async fn test_create_post_with_video_urls() {
     println!("🎥 Testing post creation with video URLs");
 
     let test_user = create_test_user_and_login(&app.address).await;
-    let admin_user = create_admin_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
     let token = &test_user.token;
 
     // Create a universal post with video URLs using media_urls
@@ -93,7 +93,7 @@ async fn test_full_video_upload_and_post_workflow() {
     println!("🎥 Testing full video upload and post creation workflow");
 
     let test_user = create_test_user_and_login(&app.address).await;
-    let admin_user = create_admin_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
     let token = &test_user.token;
 
     // Step 1: Upload a video file
@@ -212,7 +212,7 @@ async fn test_update_post_video_urls() {
     println!("🎥 Testing post video URL updates");
 
     let test_user = create_test_user_and_login(&app.address).await;
-    let admin_user = create_admin_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
     let token = &test_user.token;
 
     // Create a post with one video using media_urls
@@ -294,7 +294,7 @@ async fn test_post_with_mixed_media() {
     println!("🎥📸 Testing post with both images and videos");
 
     let test_user = create_test_user_and_login(&app.address).await;
-    let admin_user = create_admin_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
     let token = &test_user.token;
 
     // Create a post with both images and videos using media_urls

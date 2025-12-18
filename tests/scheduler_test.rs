@@ -167,7 +167,7 @@ async fn test_scheduler_loads_active_seasons_from_database() {
     let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
 
     // Create admin user
-    let admin_user = create_admin_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
 
     // Create a league with teams
     let LeagueWithTeamsResult { league_id, team_ids } = create_league_with_teams(
@@ -401,7 +401,7 @@ async fn test_automated_scheduler_game_lifecycle() {
     println!("🧹 Cleaned up all games and seasons from other test runs");
     
     // Create admin and users
-    let admin_user = create_admin_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
     let user1 = create_test_user_and_login(&app.address).await;
     let user2 = create_test_user_and_login(&app.address).await;
     
@@ -761,7 +761,7 @@ async fn test_scheduler_multiple_seasons() {
     println!("🤖 Testing Automated Scheduler - Multiple Seasons");
     
     // Create admin
-    let admin_user = create_admin_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
     
     // Create 2 leagues with different teams
     let LeagueWithTeamsResult { league_id: league1_id, team_ids: team_ids1 } = create_league_with_teams(
@@ -878,7 +878,7 @@ async fn test_scheduler_error_recovery() {
     println!("🤖 Testing Automated Scheduler - Error Recovery");
     
     // Create admin user
-    let admin_user = create_admin_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
     
     // Create league and teams
     let LeagueWithTeamsResult { league_id, team_ids } = create_league_with_teams(
