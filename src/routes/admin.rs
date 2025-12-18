@@ -8,6 +8,7 @@ use crate::handlers::admin::{
     workout_handler,
 };
 use crate::handlers::notification_handler;
+use crate::handlers::workout_data::workout_reports;
 use crate::middleware::admin::AdminMiddleware;
 
 pub fn init_admin_routes(cfg: &mut web::ServiceConfig) {
@@ -128,6 +129,20 @@ pub fn init_admin_routes(cfg: &mut web::ServiceConfig) {
                 web::resource("/workouts/{id}")
                     .route(web::get().to(workout_handler::get_workout_detail))
                     .route(web::delete().to(workout_handler::delete_workout))
+            )
+
+            // Workout report management routes (admin only)
+            .service(
+                web::resource("/workout-reports")
+                    .route(web::get().to(workout_reports::get_all_reports))
+            )
+            .service(
+                web::resource("/workout-reports/pending")
+                    .route(web::get().to(workout_reports::get_pending_reports))
+            )
+            .service(
+                web::resource("/workout-reports/{report_id}")
+                    .route(web::patch().to(workout_reports::update_report_status))
             )
 
             // Push notification management (admin only)

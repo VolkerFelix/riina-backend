@@ -29,7 +29,7 @@ async fn test_profile_picture_upload_url_generation() {
     
     // Create test user and login
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     let token = &test_user.token;
     
     // Create a test file hash (SHA256 of "test-profile-picture")
@@ -75,7 +75,7 @@ async fn test_profile_picture_upload_url_invalid_file_type() {
     
     // Create test user and login
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     let token = &test_user.token;
     
     // Create a test file hash
@@ -121,7 +121,7 @@ async fn test_profile_picture_download_url_generation() {
     
     // Create test user and login
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     let token = &test_user.token;
     
     // Request download URL for profile picture
@@ -157,7 +157,7 @@ async fn test_profile_picture_upload_workflow() {
     
     // Create test user and login
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     let token = &test_user.token;
     
     // Step 1: Request upload URL
@@ -215,7 +215,7 @@ async fn test_user_profile_includes_profile_picture() {
     
     // Create test user and login
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     let token = &test_user.token;
     
     // Get user profile
@@ -263,7 +263,7 @@ async fn test_profile_picture_upload_with_large_file() {
     
     // Create test user and login
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     let token = &test_user.token;
     
     // Create a test file hash for a large file (simulate 6MB file)

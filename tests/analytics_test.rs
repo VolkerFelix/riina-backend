@@ -13,7 +13,7 @@ async fn test_analytics_store_session_events() {
 
     // Create users
     let user = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Prepare session events
     let session_id = format!("session_{}", Utc::now().timestamp_millis());
@@ -74,7 +74,7 @@ async fn test_analytics_store_screen_events() {
 
     // Create users
     let user = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     let session_id = format!("session_{}", Utc::now().timestamp_millis());
     let events_payload = json!({
@@ -134,7 +134,7 @@ async fn test_analytics_batch_events() {
 
     // Create users
     let user = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     let session_id = format!("session_{}", Utc::now().timestamp_millis());
 
@@ -214,7 +214,7 @@ async fn test_analytics_validates_event_structure() {
 
     // Create users
     let user = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Invalid: session event with wrong data structure
     let invalid_payload = json!({
@@ -249,7 +249,7 @@ async fn test_analytics_stores_user_hash() {
 
     // Create users
     let user = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     let user_hash = "abc123def456";
     let events_payload = json!({

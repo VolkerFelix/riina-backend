@@ -14,7 +14,7 @@ async fn test_season_creation_with_dynamic_scheduling() {
     println!("🎯 Testing Dynamic Season Scheduling");
     
     // Step 1: Create admin user
-    let admin_user = create_admin_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
     println!("✅ Created admin user");
 
     // Step 2: Create a league
@@ -251,7 +251,7 @@ async fn test_season_scheduling_edge_cases() {
     println!("🎯 Testing Season Scheduling Edge Cases");
     
     // Create admin and league
-    let admin_user = create_admin_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
     
     let league_request = json!({
         "name": "Edge Case Test League",
@@ -376,7 +376,7 @@ async fn test_single_vs_double_round_robin_scheduling() {
     println!("🎯 Testing Single vs Double Round-Robin Scheduling");
     
     // Create admin and league
-    let admin_user = create_admin_user_and_login(&app.address).await;
+    let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
     
     let league_request = json!({
         "name": "Round-Robin Test League",

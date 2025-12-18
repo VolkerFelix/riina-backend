@@ -228,7 +228,7 @@
         test_app: &TestApp, 
     ) -> LiveGameEnvironmentResult {
         let client = Client::new();
-        let admin_session = create_admin_user_and_login(&test_app.address).await;
+        let admin_session = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
         // Create league
         let league_id = create_league(&test_app.address, &admin_session.token, 2).await;
 

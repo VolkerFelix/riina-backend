@@ -44,7 +44,7 @@ async fn test_game_countdown_api_contract() {
     let client = reqwest::Client::new();
     
     // Setup: Create admin, users, teams, and season
-    let admin = create_admin_user_and_login(&app.address).await;
+    let admin = create_admin_user_and_login(&app.address, &app.db_pool).await;
     let user1 = create_test_user_and_login(&app.address).await;
     let user2 = create_test_user_and_login(&app.address).await;
     
@@ -325,7 +325,7 @@ async fn test_live_game_api_contract() {
     let client = reqwest::Client::new();
     
     // Setup similar to above
-    let admin = create_admin_user_and_login(&app.address).await;
+    let admin = create_admin_user_and_login(&app.address, &app.db_pool).await;
     let user1 = create_test_user_and_login(&app.address).await;
     
     println!("🔍 Testing GET /league/games/live-active API contract...");
@@ -382,7 +382,7 @@ async fn test_standings_api_contract() {
     let client = reqwest::Client::new();
     
     // Setup
-    let admin = create_admin_user_and_login(&app.address).await;
+    let admin = create_admin_user_and_login(&app.address, &app.db_pool).await;
     let user = create_test_user_and_login(&app.address).await;
     
     // Upload health data
@@ -582,7 +582,7 @@ async fn test_upcoming_games_excludes_live_games() {
     println!("🔍 Testing that upcoming games endpoint excludes live games...");
     
     // Setup: Create admin and regular users
-    let admin = create_admin_user_and_login(&app.address).await;
+    let admin = create_admin_user_and_login(&app.address, &app.db_pool).await;
     let user = create_test_user_and_login(&app.address).await;
     let user2 = create_test_user_and_login(&app.address).await;
 

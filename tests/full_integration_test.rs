@@ -161,7 +161,7 @@ async fn test_live_game_edge_cases() {
 
     // Test 1: Upload health data when no game is active
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     
     // This should not crash or cause errors
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
@@ -194,7 +194,7 @@ async fn test_live_games_api_filtering() {
     let client = Client::new();
     
     // Create admin and setup environment
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     let league_id = create_league(&test_app.address, &admin.token, 2).await;
     let season_name = format!("API Test Season {}", &Uuid::new_v4().to_string()[..8]);
     
@@ -957,7 +957,7 @@ async fn test_live_game_workout_deletion_score_update() {
     let live_game_environment = setup_live_game_environment(&test_app).await;
     
     // Get admin token for deletion
-    let admin_session = create_admin_user_and_login(&test_app.address).await;
+    let admin_session = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     
     // Update game times and start the game
     update_game_times_to_now(&test_app, live_game_environment.first_game_id).await;
@@ -1128,7 +1128,7 @@ async fn test_live_game_partial_workout_deletion() {
 
     // Setup test environment
     let live_game_environment = setup_live_game_environment(&test_app).await;
-    let admin_session = create_admin_user_and_login(&test_app.address).await;
+    let admin_session = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     
     // Start the game
     update_game_times_to_now(&test_app, live_game_environment.first_game_id).await;
@@ -1339,7 +1339,7 @@ async fn test_admin_live_game_score_adjustment() {
 
     // Setup test environment
     let live_game_environment = setup_live_game_environment(&test_app).await;
-    let admin_session = create_admin_user_and_login(&test_app.address).await;
+    let admin_session = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     
     // Start the game
     update_game_times_to_now(&test_app, live_game_environment.first_game_id).await;
@@ -1580,7 +1580,7 @@ async fn test_game_summary_creation_and_retrieval() {
 
     // Step 5: Get admin credentials and call the evaluation endpoint
     // This triggers game summary creation and broadcasts WebSocket events
-    let admin_session = create_admin_user_and_login(&test_app.address).await;
+    let admin_session = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     let today = Utc::now().format("%Y-%m-%d").to_string();
     let evaluation_request = json!({
@@ -1974,7 +1974,7 @@ async fn test_all_players_contribute_to_team_scoring() {
     println!("\n🎯 Step 9: Evaluating game and checking MVP/LVP determination...");
 
     // Get admin credentials
-    let admin_session = create_admin_user_and_login(&test_app.address).await;
+    let admin_session = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Evaluate the game
     let today = Utc::now().format("%Y-%m-%d").to_string();
@@ -2156,7 +2156,7 @@ async fn test_inactive_players_excluded_from_mvp_lvp() {
 
     // Step 7: Evaluate the game
     println!("\n🎯 Step 7: Evaluating game...");
-    let admin_session = create_admin_user_and_login(&test_app.address).await;
+    let admin_session = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     let today = Utc::now().format("%Y-%m-%d").to_string();
     let evaluation_request = json!({
         "date": today

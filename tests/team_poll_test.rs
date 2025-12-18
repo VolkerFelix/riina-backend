@@ -21,7 +21,7 @@ async fn test_create_poll_success() {
     let owner = create_test_user_and_login(&test_app.address).await;
 
     // Create admin for league creation
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create league
     let league_id = create_league(
@@ -129,7 +129,7 @@ async fn test_cannot_create_poll_for_owner() {
     let client = Client::new();
 
     let owner = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create league
     let league_id = create_league(
@@ -195,7 +195,7 @@ async fn test_can_create_poll_for_self() {
     let client = Client::new();
 
     let owner = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create league
     let league_id = create_league(
@@ -245,7 +245,7 @@ async fn test_cast_vote_and_check_result() {
     let client = Client::new();
 
     let owner = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create league
     let league_id = create_league(
@@ -313,7 +313,7 @@ async fn test_early_consensus_approval() {
     let client = Client::new();
 
     let owner = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create league
     let league_id = create_league(
@@ -410,7 +410,7 @@ async fn test_cannot_vote_twice() {
     let client = Client::new();
 
     let owner = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create league
     let league_id = create_league(
@@ -472,7 +472,7 @@ async fn test_delete_poll_success() {
     let owner = create_test_user_and_login(&test_app.address).await;
 
     // Create admin for league creation
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create league
     let league_id = create_league(
@@ -585,7 +585,7 @@ async fn test_delete_poll_not_creator() {
     let owner = create_test_user_and_login(&test_app.address).await;
 
     // Create admin for league creation
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create league
     let league_id = create_league(
@@ -676,7 +676,7 @@ async fn test_delete_poll_after_completion() {
     let owner = create_test_user_and_login(&test_app.address).await;
 
     // Create admin for league creation
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create league
     let league_id = create_league(
@@ -797,7 +797,7 @@ async fn test_removed_user_appears_in_leaderboard() {
     let client = Client::new();
 
     let owner = create_test_user_and_login(&test_app.address).await;
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create league
     let league_id = create_league(
@@ -944,7 +944,7 @@ async fn test_expired_poll_leaves_team_unchanged() {
     let owner = create_test_user_and_login(&test_app.address).await;
 
     // Create admin for league creation
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create league
     let _league_id = create_league(

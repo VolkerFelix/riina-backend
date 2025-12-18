@@ -28,7 +28,7 @@ async fn upload_workout_data_working() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
@@ -52,7 +52,7 @@ async fn upload_multiple_workout_data_sessions() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload multiple workouts
@@ -74,7 +74,7 @@ async fn upload_workout_data_with_invalid_data_fails() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Try to upload workout with invalid duration (negative)
@@ -103,7 +103,7 @@ async fn upload_workout_data_with_hard_workout() {
     let test_app = spawn_app().await;
     let client = Client::new();
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
     let mut workout_data = WorkoutData::new_with_hr_freq(WorkoutIntensity::Hard, Utc::now(), 30, Some(2));
     let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
@@ -120,7 +120,7 @@ async fn test_workout_history_empty() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Test workout history with no data
     let history_response = client
@@ -152,7 +152,7 @@ async fn test_workout_history_with_data() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload a workout first
@@ -190,7 +190,7 @@ async fn test_workout_history_pagination() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload multiple workouts
@@ -230,7 +230,7 @@ async fn test_workout_detail_endpoint() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload a workout with heart rate data
@@ -338,7 +338,7 @@ async fn test_workout_detail_endpoint_not_found() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Try to fetch a non-existent workout
     let fake_workout_id = Uuid::new_v4().to_string();
@@ -408,7 +408,7 @@ async fn test_workout_detail_endpoint_unauthorized_access() {
 async fn test_admin_can_delete_workout() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create a regular user
     let user = create_test_user_and_login(&test_app.address).await;
@@ -446,7 +446,7 @@ async fn test_admin_can_delete_workout() {
 async fn test_admin_can_view_all_workouts() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create a user and workout
     let user = create_test_user_and_login(&test_app.address).await;
@@ -478,7 +478,7 @@ async fn test_admin_can_view_all_workouts() {
 async fn test_admin_can_get_workout_by_id() {
     let test_app = spawn_app().await;
     let client = Client::new();
-    let admin = create_admin_user_and_login(&test_app.address).await;
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create a user and workout
     let user = create_test_user_and_login(&test_app.address).await;
@@ -518,7 +518,7 @@ async fn test_signed_url_endpoints_exist() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Test image signed URL endpoint
     let image_response = client
@@ -553,7 +553,7 @@ async fn test_workout_with_media_urls() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload workout with media URLs
@@ -581,7 +581,7 @@ async fn test_workout_upload_notification_integration() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload a workout (this should trigger notifications)
@@ -614,7 +614,7 @@ async fn test_edit_workout_post() {
 
     // Create user and upload workout
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 30);
@@ -701,7 +701,7 @@ async fn test_delete_workout_post() {
 
     // Create user and upload workout
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Light, Utc::now(), 20);
@@ -830,7 +830,7 @@ async fn test_max_heart_rate_updated_when_workout_exceeds_stored_value() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Create health profile with initial max heart rate
     let health_profile = json!({
@@ -932,7 +932,7 @@ async fn test_fetch_other_user_health_profile_for_vt_thresholds() {
 
     // Create user1 with a health profile
     let user1 = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     let health_profile = json!({
         "age": 30,
@@ -1048,7 +1048,7 @@ async fn test_workout_detail_includes_user_id() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload a workout
@@ -1129,7 +1129,7 @@ async fn test_submit_and_retrieve_scoring_feedback() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload a workout
@@ -1193,7 +1193,7 @@ async fn test_update_scoring_feedback() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload a workout
@@ -1269,7 +1269,7 @@ async fn test_scoring_feedback_for_nonexistent_workout() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
 
     // Try to submit feedback for a non-existent workout
     let fake_workout_id = Uuid::new_v4();
@@ -1298,7 +1298,7 @@ async fn test_all_effort_ratings() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Test various effort ratings (1-10 scale)
@@ -1353,7 +1353,7 @@ async fn test_invalid_effort_rating() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload a workout
@@ -1414,7 +1414,7 @@ async fn test_get_feedback_without_submission() {
     let client = Client::new();
 
     let test_user = create_test_user_and_login(&test_app.address).await;
-    let admin_user = create_admin_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
     // Upload a workout
