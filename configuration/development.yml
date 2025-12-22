@@ -9,7 +9,7 @@ database:
 jwt:
   # Development JWT secret - different from production
   secret: "dev_jwt_secret_change_me_in_production"
-  expiration_hours: 24
+  expiration_hours: 336
 redis:
   # Will be overridden by Fly.io environment variables  
   host: localhost
