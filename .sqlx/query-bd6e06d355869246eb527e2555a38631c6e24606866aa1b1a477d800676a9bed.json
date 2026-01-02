@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT team_name, team_description, team_color FROM teams WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "team_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 1,
+        "name": "team_description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "team_color",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "bd6e06d355869246eb527e2555a38631c6e24606866aa1b1a477d800676a9bed"
+}
