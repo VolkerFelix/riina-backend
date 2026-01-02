@@ -50,6 +50,8 @@ pub async fn get_unified_feed(
 
     // Fetch posts with user info, social counts, and optional workout data
     // Using CTEs to avoid N+1 query problem
+    // Posts from last 24h are ordered by engagement (media + reactions + comments)
+    // Older posts are ordered by creation time
     let posts: Vec<serde_json::Value> = match sqlx::query!(
         r#"
         WITH reaction_counts AS (
@@ -90,12 +92,12 @@ pub async fn get_unified_feed(
 
             -- Live game info (if workout was part of a live game)
             lse.game_id as live_game_id,
-            CASE 
+            CASE
                 WHEN lse.team_side = 'home' THEN ht.team_name
                 WHEN lse.team_side = 'away' THEN at.team_name
                 ELSE NULL
             END as user_team_name,
-            CASE 
+            CASE
                 WHEN lse.team_side = 'home' THEN at.team_name
                 WHEN lse.team_side = 'away' THEN ht.team_name
                 ELSE NULL
@@ -124,7 +126,18 @@ pub async fn get_unified_feed(
         WHERE
             p.visibility = 'public'
             AND ($2::timestamptz IS NULL OR p.created_at < $2)
-        ORDER BY p.created_at DESC
+        ORDER BY
+            CASE
+                -- Posts from last 24h: order by engagement score
+                WHEN p.created_at >= NOW() - INTERVAL '24 hours' THEN
+                    -- Engagement score: media presence + reactions + comments
+                    (CASE WHEN p.media_urls IS NOT NULL AND jsonb_array_length(p.media_urls) > 0 THEN 10 ELSE 0 END) +
+                    (CASE WHEN wd.image_url IS NOT NULL OR wd.video_url IS NOT NULL THEN 10 ELSE 0 END) +
+                    COALESCE(rc.count, 0) * 2 +
+                    COALESCE(cc.count, 0) * 3
+                ELSE 0
+            END DESC,
+            p.created_at DESC
         LIMIT $3
         "#,
         current_user_id,
