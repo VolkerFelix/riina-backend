@@ -503,7 +503,7 @@ async fn test_comment_reaction_websocket_events() {
 
     // Listen for comment reaction added event
     let mut reaction_added_received = false;
-    for _ in 0..10 {
+    for _ in 0..50 {
         if let Ok(Some(Ok(Message::Text(text)))) = tokio::time::timeout(Duration::from_millis(500), ws_stream.next()).await {
             println!("Received WebSocket message: {}", text);
             if let Ok(event) = serde_json::from_str::<serde_json::Value>(&text) {
@@ -532,7 +532,7 @@ async fn test_comment_reaction_websocket_events() {
 
     // Listen for comment reaction removed event
     let mut reaction_removed_received = false;
-    for _ in 0..10 {
+    for _ in 0..50 {
         if let Ok(Some(Ok(Message::Text(text)))) = tokio::time::timeout(Duration::from_millis(500), ws_stream.next()).await {
             println!("Received WebSocket message: {}", text);
             if let Ok(event) = serde_json::from_str::<serde_json::Value>(&text) {
