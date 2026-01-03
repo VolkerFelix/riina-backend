@@ -16,8 +16,9 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use futures_util::{StreamExt, SinkExt};
 use std::time::Duration;
 
-use crate::common::utils::{spawn_app, create_test_user_and_login};
-use crate::common::social_helpers::create_user_with_workout;
+mod common;
+use common::utils::{spawn_app, create_test_user_and_login};
+use common::social_helpers::create_user_with_workout;
 
 
 #[tokio::test]

@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT user_hash, event_name\n        FROM analytics_events\n        WHERE user_hash = $1\n        ORDER BY created_at DESC\n        LIMIT 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_hash",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 1,
+        "name": "event_name",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      true,
+      false
+    ]
+  },
+  "hash": "e7e4e5a1af5a26a6d8dfdf199ddb42d720db559321b6a7cfd249d3177fee41cc"
+}

@@ -15,8 +15,9 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use futures_util::StreamExt;
 use std::time::Duration;
 
-use crate::common::utils::spawn_app;
-use crate::common::social_helpers::create_user_with_workout;
+mod common;
+use common::utils::spawn_app;
+use common::social_helpers::create_user_with_workout;
 
 #[tokio::test]
 async fn test_add_reaction_success() {
