@@ -132,7 +132,6 @@ pub async fn get_unified_feed(
                 WHEN p.created_at >= NOW() - INTERVAL '24 hours' THEN
                     -- Engagement score: media presence + reactions + comments
                     (CASE WHEN p.media_urls IS NOT NULL AND jsonb_array_length(p.media_urls) > 0 THEN 10 ELSE 0 END) +
-                    (CASE WHEN wd.image_url IS NOT NULL OR wd.video_url IS NOT NULL THEN 10 ELSE 0 END) +
                     COALESCE(rc.count, 0) * 2 +
                     COALESCE(cc.count, 0) * 3
                 ELSE 0

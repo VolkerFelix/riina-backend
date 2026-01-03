@@ -25,8 +25,8 @@ pub struct WorkoutData {
     pub heart_rate: Vec<serde_json::Value>,
     pub device_id: String,
     timestamp: DateTime<Utc>,
-    pub image_url: Option<String>,
-    pub video_url: Option<String>,
+    pub image_urls: Option<Vec<String>>,
+    pub video_urls: Option<Vec<String>>,
     pub approval_token: Option<String>,
 }
 impl WorkoutData {
@@ -49,8 +49,8 @@ impl WorkoutData {
             heart_rate: heart_rate_data,
             device_id: format!("test-device-{}", &Uuid::new_v4().to_string()[..8]),
             timestamp: Utc::now(),
-            image_url: None,
-            video_url: None,
+            image_urls: None,
+            video_urls: None,
             approval_token: None,
         }
     }
@@ -74,8 +74,8 @@ impl WorkoutData {
             heart_rate: heart_rate_data,
             device_id: format!("test-device-{}", &Uuid::new_v4().to_string()[..8]),
             timestamp: Utc::now(),
-            image_url: None,
-            video_url: None,
+            image_urls: None,
+            video_urls: None,
             approval_token: None,
         }
     }
@@ -198,8 +198,8 @@ pub fn create_workout_from_custom_hr_data(hr_samples: Vec<(String, i32)>) -> Wor
         heart_rate: heart_rate_data,
         device_id: format!("test-device-{}", &Uuid::new_v4().to_string()[..8]),
         timestamp: Utc::now(),
-        image_url: None,
-        video_url: None,
+        image_urls: None,
+        video_urls: None,
         approval_token: None,
     }
 }

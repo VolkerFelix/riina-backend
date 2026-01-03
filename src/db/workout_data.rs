@@ -183,21 +183,37 @@ pub async fn create_post_for_workout(
     workout_start: DateTime<Utc>,
 ) -> Result<Uuid, sqlx::Error> {
 
-    // Convert Option<Vec<String>> to Option<&[String]> for SQLx
-    let image_urls_slice = image_urls.as_ref().map(|v| v.as_slice());
-    let video_urls_slice = video_urls.as_ref().map(|v| v.as_slice());
+    // Build media_urls JSONB array from image_urls and video_urls
+    let mut media_items = Vec::new();
 
-    // Create a post for this workout with media files (mandatory)
+    if let Some(images) = image_urls {
+        for url in images {
+            media_items.push(serde_json::json!({"type": "image", "url": url}));
+        }
+    }
+
+    if let Some(videos) = video_urls {
+        for url in videos {
+            media_items.push(serde_json::json!({"type": "video", "url": url}));
+        }
+    }
+
+    let media_urls_json = if media_items.is_empty() {
+        None
+    } else {
+        Some(serde_json::Value::Array(media_items))
+    };
+
+    // Create a post for this workout with media files
     let record = sqlx::query!(
         r#"
-        INSERT INTO posts (id, user_id, post_type, workout_id, image_urls, video_urls, visibility, is_editable, created_at, updated_at)
-        VALUES (gen_random_uuid(), $1, 'workout'::post_type, $2, $3, $4, 'public'::post_visibility, true, $5, $5)
+        INSERT INTO posts (id, user_id, post_type, workout_id, media_urls, visibility, is_editable, created_at, updated_at)
+        VALUES (gen_random_uuid(), $1, 'workout'::post_type, $2, $3, 'public'::post_visibility, true, $4, $4)
         RETURNING id
         "#,
         user_id,
         workout_id,
-        image_urls_slice as Option<&[String]>,
-        video_urls_slice as Option<&[String]>,
+        media_urls_json as Option<serde_json::Value>,
         workout_start
     )
     .fetch_one(pool)

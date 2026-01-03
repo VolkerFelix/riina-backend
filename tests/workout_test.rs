@@ -558,8 +558,8 @@ async fn test_workout_with_media_urls() {
 
     // Upload workout with media URLs
     let mut workout_with_media = WorkoutData::new(WorkoutIntensity::Light, Utc::now(), 30);
-    workout_with_media.image_url = Some("https://example.com/workout-image.jpg".to_string());
-    workout_with_media.video_url = Some("https://example.com/workout-video.mp4".to_string());
+    workout_with_media.image_urls = Some(vec!["https://example.com/workout-image.jpg".to_string()]);
+    workout_with_media.video_urls = Some(vec!["https://example.com/workout-video.mp4".to_string()]);
     let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_with_media).await;
     assert!(response.is_ok(), "Workout with media URLs should succeed");
 
