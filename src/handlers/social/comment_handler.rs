@@ -114,7 +114,7 @@ pub async fn add_comment(
                         workout_owner_id,
                         user_id,
                         NotificationType::Comment.as_str(),
-                        "comment",
+                        "post",
                         comment.id,
                         &message,
                     ).await {
