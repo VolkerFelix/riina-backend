@@ -114,7 +114,7 @@ pub async fn add_comment(
                         workout_owner_id,
                         user_id,
                         NotificationType::Comment.as_str(),
-                        "comment",
+                        "post",
                         comment.id,
                         &message,
                     ).await {
@@ -217,6 +217,29 @@ pub async fn edit_comment(
         );
     }
 
+    // First check if the comment exists
+    let existing_comment = match get_comment_by_id(&pool, comment_id).await {
+        Ok(Some(comment)) => comment,
+        Ok(None) => {
+            return HttpResponse::NotFound().json(
+                ApiResponse::<()>::error("Comment not found")
+            );
+        }
+        Err(e) => {
+            tracing::error!("Failed to get comment: {}", e);
+            return HttpResponse::InternalServerError().json(
+                ApiResponse::<()>::error("Failed to get comment")
+            );
+        }
+    };
+
+    // Check if the user owns the comment
+    if existing_comment.user_id != user_id {
+        return HttpResponse::Forbidden().json(
+            ApiResponse::<()>::error("You don't have permission to edit this comment")
+        );
+    }
+
     match update_comment(&pool, comment_id, user_id, &body.content).await {
         Ok(Some(comment)) => {
             // Broadcast WebSocket event (fire and forget)
@@ -234,7 +257,7 @@ pub async fn edit_comment(
             HttpResponse::Ok().json(comment)
         }
         Ok(None) => HttpResponse::NotFound().json(
-            ApiResponse::<()>::error("Comment not found or you don't have permission to edit it")
+            ApiResponse::<()>::error("Comment not found")
         ),
         Err(e) => {
             tracing::error!("Failed to update comment: {}", e);

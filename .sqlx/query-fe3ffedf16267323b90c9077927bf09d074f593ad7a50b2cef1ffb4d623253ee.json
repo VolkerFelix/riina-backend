@@ -1,0 +1,123 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            p.id, p.user_id, p.post_type as \"post_type: String\",\n            p.content, p.workout_id, p.media_urls,\n            p.ad_metadata, p.visibility as \"visibility: String\",\n            p.is_editable, p.created_at, p.updated_at, p.edited_at,\n            u.username, u.profile_picture_url\n        FROM posts p\n        JOIN users u ON u.id = p.user_id\n        WHERE\n            p.visibility = 'public'\n            AND ($1::timestamptz IS NULL OR p.created_at < $1)\n        ORDER BY p.created_at DESC, p.id DESC\n        LIMIT $2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "post_type: String",
+        "type_info": {
+          "Custom": {
+            "name": "post_type",
+            "kind": {
+              "Enum": [
+                "workout",
+                "ad",
+                "universal"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "content",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "workout_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "media_urls",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 6,
+        "name": "ad_metadata",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 7,
+        "name": "visibility: String",
+        "type_info": {
+          "Custom": {
+            "name": "post_visibility",
+            "kind": {
+              "Enum": [
+                "public",
+                "friends",
+                "private"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "is_editable",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "edited_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "username",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 13,
+        "name": "profile_picture_url",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "fe3ffedf16267323b90c9077927bf09d074f593ad7a50b2cef1ffb4d623253ee"
+}

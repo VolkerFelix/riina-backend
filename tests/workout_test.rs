@@ -558,8 +558,8 @@ async fn test_workout_with_media_urls() {
 
     // Upload workout with media URLs
     let mut workout_with_media = WorkoutData::new(WorkoutIntensity::Light, Utc::now(), 30);
-    workout_with_media.image_url = Some("https://example.com/workout-image.jpg".to_string());
-    workout_with_media.video_url = Some("https://example.com/workout-video.mp4".to_string());
+    workout_with_media.image_urls = Some(vec!["https://example.com/workout-image.jpg".to_string()]);
+    workout_with_media.video_urls = Some(vec!["https://example.com/workout-video.mp4".to_string()]);
     let response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_with_media).await;
     assert!(response.is_ok(), "Workout with media URLs should succeed");
 
@@ -621,32 +621,28 @@ async fn test_edit_workout_post() {
     let upload_response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
     assert!(upload_response.is_ok());
 
-    // Get the post ID from the feed
-    let feed_response = make_authenticated_request(
+    // Extract sync_id from the upload response (this is the DB-generated workout ID)
+    let upload_data = upload_response.unwrap();
+    let workout_id = upload_data["data"]["sync_id"].as_str().expect("Upload response should contain sync_id");
+
+    // Add a small delay to ensure post creation has completed
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    let post_response = make_authenticated_request(
         &client,
         reqwest::Method::GET,
-        &format!("{}/feed/?limit=200", &test_app.address),
+        &format!("{}/posts/workout/{}", &test_app.address, workout_id),
         &test_user.token,
         None,
     ).await;
 
-    let feed_data: serde_json::Value = feed_response.json().await.unwrap();
-
-    // Debug: Print the feed response to understand the structure
-    if feed_data["data"]["posts"].is_null() || !feed_data["data"]["posts"].is_array() {
-        eprintln!("Feed response: {}", serde_json::to_string_pretty(&feed_data).unwrap());
-        panic!("Feed did not return posts array. Check response above.");
+    let status = post_response.status();
+    if !status.is_success() {
+        let error_text = post_response.text().await.unwrap_or_else(|_| "Could not read error".to_string());
+        panic!("Failed to get post by workout ID. Status: {}, Response: {}", status, error_text);
     }
-
-    let posts = feed_data["data"]["posts"].as_array().unwrap();
-    assert!(!posts.is_empty(), "No posts found after workout upload");
-
-    // Find the post that belongs to the current test user
-    let user_post = posts.iter()
-        .find(|p| p["username"].as_str() == Some(&test_user.username))
-        .expect("Could not find a post belonging to the test user");
-
-    let post_id = user_post["id"].as_str().unwrap();
+    let post_data: serde_json::Value = post_response.json().await.unwrap();
+    let post_id = post_data["data"]["id"].as_str().expect("Post should have an ID");
 
     // Update the post with new description and activity type
     let update_body = json!({
@@ -708,37 +704,28 @@ async fn test_delete_workout_post() {
     let upload_response = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await;
     assert!(upload_response.is_ok());
 
-    // Get the post ID from the feed (fetch more posts to ensure we get ours)
-    let feed_response = make_authenticated_request(
+    // Extract sync_id from the upload response (this is the DB-generated workout ID)
+    let upload_data = upload_response.unwrap();
+    let workout_id = upload_data["data"]["sync_id"].as_str().expect("Upload response should contain sync_id");
+
+    // Add a small delay to ensure post creation has completed
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    let post_response = make_authenticated_request(
         &client,
         reqwest::Method::GET,
-        &format!("{}/feed/?limit=200", &test_app.address),
+        &format!("{}/posts/workout/{}", &test_app.address, workout_id),
         &test_user.token,
         None,
     ).await;
 
-    let feed_data: serde_json::Value = feed_response.json().await.unwrap();
-
-    // Debug: Print the feed response to understand the structure
-    if feed_data["data"]["posts"].is_null() || !feed_data["data"]["posts"].is_array() {
-        eprintln!("Feed response: {}", serde_json::to_string_pretty(&feed_data).unwrap());
-        panic!("Feed did not return posts array. Check response above.");
+    let status = post_response.status();
+    if !status.is_success() {
+        let error_text = post_response.text().await.unwrap_or_else(|_| "Could not read error".to_string());
+        panic!("Failed to get post by workout ID. Status: {}, Response: {}", status, error_text);
     }
-
-    let posts = feed_data["data"]["posts"].as_array().unwrap();
-    assert!(!posts.is_empty(), "No posts found after workout upload");
-
-    println!("DEBUG delete test: Looking for user '{}' in {} posts", test_user.username, posts.len());
-
-    // Find the post that belongs to the current test user
-    let user_post = posts.iter()
-        .find(|p| p["username"].as_str() == Some(&test_user.username))
-        .expect(&format!("Could not find a post belonging to user '{}'. Found usernames: {:?}",
-            test_user.username,
-            posts.iter().map(|p| p["username"].as_str().unwrap_or("unknown")).collect::<Vec<_>>()
-        ));
-
-    let post_id = user_post["id"].as_str().unwrap();
+    let post_data: serde_json::Value = post_response.json().await.unwrap();
+    let post_id = post_data["data"]["id"].as_str().expect("Post should have an ID");
 
     // Delete the post
     let delete_response = make_authenticated_request(
@@ -786,18 +773,28 @@ async fn test_cannot_edit_another_users_post() {
     let upload_response = upload_workout_data_for_user(&client, &test_app.address, &user1.token, &mut workout_data).await;
     assert!(upload_response.is_ok());
 
-    // Get the post ID
-    let feed_response = make_authenticated_request(
+    // Extract sync_id from the upload response (this is the DB-generated workout ID)
+    let upload_data = upload_response.unwrap();
+    let workout_id = upload_data["data"]["sync_id"].as_str().expect("Upload response should contain sync_id");
+
+    // Add a small delay to ensure post creation has completed
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    let post_response = make_authenticated_request(
         &client,
         reqwest::Method::GET,
-        &format!("{}/feed/?limit=1", &test_app.address),
+        &format!("{}/posts/workout/{}", &test_app.address, workout_id),
         &user1.token,
         None,
     ).await;
 
-    let feed_data: serde_json::Value = feed_response.json().await.unwrap();
-    let posts = feed_data["data"]["posts"].as_array().unwrap();
-    let post_id = posts[0]["id"].as_str().unwrap();
+    let status = post_response.status();
+    if !status.is_success() {
+        let error_text = post_response.text().await.unwrap_or_else(|_| "Could not read error".to_string());
+        panic!("Failed to get post by workout ID. Status: {}, Response: {}", status, error_text);
+    }
+    let post_data: serde_json::Value = post_response.json().await.unwrap();
+    let post_id = post_data["data"]["id"].as_str().expect("Post should have an ID");
 
     // Create second user
     let user2 = create_test_user_and_login(&test_app.address).await;

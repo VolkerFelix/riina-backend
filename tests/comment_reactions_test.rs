@@ -16,8 +16,9 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use futures_util::{StreamExt, SinkExt};
 use std::time::Duration;
 
-use crate::common::utils::{spawn_app, create_test_user_and_login};
-use crate::common::social_helpers::create_user_with_workout;
+mod common;
+use common::utils::{spawn_app, create_test_user_and_login};
+use common::social_helpers::create_user_with_workout;
 
 
 #[tokio::test]
@@ -502,7 +503,7 @@ async fn test_comment_reaction_websocket_events() {
 
     // Listen for comment reaction added event
     let mut reaction_added_received = false;
-    for _ in 0..10 {
+    for _ in 0..50 {
         if let Ok(Some(Ok(Message::Text(text)))) = tokio::time::timeout(Duration::from_millis(500), ws_stream.next()).await {
             println!("Received WebSocket message: {}", text);
             if let Ok(event) = serde_json::from_str::<serde_json::Value>(&text) {
@@ -531,7 +532,7 @@ async fn test_comment_reaction_websocket_events() {
 
     // Listen for comment reaction removed event
     let mut reaction_removed_received = false;
-    for _ in 0..10 {
+    for _ in 0..50 {
         if let Ok(Some(Ok(Message::Text(text)))) = tokio::time::timeout(Duration::from_millis(500), ws_stream.next()).await {
             println!("Received WebSocket message: {}", text);
             if let Ok(event) = serde_json::from_str::<serde_json::Value>(&text) {

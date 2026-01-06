@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            lse.workout_data_id,\n            lse.game_id,\n            lse.team_side as \"team_side: String\",\n            ht.team_name as home_team_name,\n            at.team_name as away_team_name\n        FROM live_score_events lse\n        JOIN games g ON g.id = lse.game_id\n        JOIN teams ht ON g.home_team_id = ht.id\n        JOIN teams at ON g.away_team_id = at.id\n        WHERE lse.workout_data_id = ANY($1)\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "workout_data_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "game_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "team_side: String",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "home_team_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "away_team_name",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c3c75df2104bb769d7d43df70782e5db1b7349ce2ce7b1c6fb8fb1de9d8b7673"
+}
