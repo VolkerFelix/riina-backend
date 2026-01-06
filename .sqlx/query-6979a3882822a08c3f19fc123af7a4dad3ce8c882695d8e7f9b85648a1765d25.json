@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT workout_id, COUNT(*) as \"count!\"\n        FROM post_reactions\n        WHERE workout_id = ANY($1)\n        GROUP BY workout_id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "workout_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "6979a3882822a08c3f19fc123af7a4dad3ce8c882695d8e7f9b85648a1765d25"
+}

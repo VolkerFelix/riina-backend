@@ -1,0 +1,100 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            id, workout_start, workout_end,\n            duration_minutes, calories_burned, activity_name, user_activity,\n            avg_heart_rate, max_heart_rate, heart_rate_zones,\n            stamina_gained, strength_gained,\n            image_url, video_url\n        FROM workout_data\n        WHERE id = ANY($1)\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "workout_start",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 2,
+        "name": "workout_end",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 3,
+        "name": "duration_minutes",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 4,
+        "name": "calories_burned",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "activity_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "user_activity",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "avg_heart_rate",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "max_heart_rate",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 9,
+        "name": "heart_rate_zones",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 10,
+        "name": "stamina_gained",
+        "type_info": "Float4"
+      },
+      {
+        "ordinal": 11,
+        "name": "strength_gained",
+        "type_info": "Float4"
+      },
+      {
+        "ordinal": 12,
+        "name": "image_url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
+        "name": "video_url",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "7d841f6ecb87c5614fadd2a3462cd5840020e6859eebec60e753933b9f0afc43"
+}
