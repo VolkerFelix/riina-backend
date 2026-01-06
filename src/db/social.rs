@@ -211,7 +211,7 @@ pub async fn get_workout_comments(
         r#"
         SELECT COUNT(*)
         FROM post_comments
-        WHERE workout_id = $1 AND parent_id IS NULL
+        WHERE workout_id = $1
         "#,
     )
     .bind(workout_id)
