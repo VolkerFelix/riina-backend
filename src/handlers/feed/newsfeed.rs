@@ -301,9 +301,9 @@ fn calculate_engagement_score(
     post: &FeedPost,
     social: Option<&SocialCounts>,
 ) -> i32 {
-    // Only apply engagement ranking for posts within last 5 days
+    // Only apply engagement ranking for posts within last 48 hours
     let now = Utc::now();
-    if now.signed_duration_since(post.created_at).num_hours() > 120 {
+    if now.signed_duration_since(post.created_at).num_hours() > 48 {
         return 0;
     }
 
@@ -366,13 +366,13 @@ pub async fn get_unified_feed(
 
     // Step 1: Determine which section we're in
     let now = Utc::now();
-    let engagement_cutoff = now - chrono::Duration::hours(120); // 5 days
+    let engagement_cutoff = now - chrono::Duration::hours(48); // 48 hours
 
     // Simple rule: If no cursor, show ranked section. If cursor exists, show chronological.
     let show_ranked_section = cursor_datetime.is_none();
 
     let mut posts = if show_ranked_section {
-        // FIRST REQUEST ONLY: Fetch and rank posts from last 5 days
+        // FIRST REQUEST ONLY: Fetch and rank posts from last 48 hours
         // This is a one-time snapshot, never paginated or re-calculated
         let all_recent = match fetch_feed_posts(&pool, None, 1000).await {
             Ok(p) => p,
@@ -384,7 +384,7 @@ pub async fn get_unified_feed(
             }
         };
 
-        // Filter to only posts within the last 5 days
+        // Filter to only posts within the last 48 hours
         all_recent.into_iter()
             .filter(|p| p.created_at >= engagement_cutoff)
             .collect::<Vec<_>>()
@@ -540,7 +540,7 @@ pub async fn get_unified_feed(
     }).collect();
 
     // Get the next cursor from the last item
-    // For ranked section: use the engagement cutoff so we continue with posts older than 5 days
+    // For ranked section: use the engagement cutoff so we continue with posts older than 48 hours
     // For chronological section: return the last post's timestamp for normal pagination
     let next_cursor = if show_ranked_section && !posts.is_empty() {
         // After ranked section, continue with posts older than the engagement window
