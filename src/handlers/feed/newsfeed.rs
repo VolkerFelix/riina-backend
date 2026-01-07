@@ -348,7 +348,7 @@ pub async fn get_unified_feed(
 
     let limit = query.limit.unwrap_or(20).min(50); // Max 50 items per request
 
-    // Parse cursor if provided
+    // Parse cursor if provided (simple format: just timestamp for chronological pagination)
     let cursor_datetime = match &query.cursor {
         Some(cursor) => {
             match DateTime::parse_from_rfc3339(cursor) {
@@ -364,15 +364,16 @@ pub async fn get_unified_feed(
         None => None
     };
 
-    // Step 1: Determine if we're in the engagement-ranked section or chronological section
+    // Step 1: Determine which section we're in
     let now = Utc::now();
     let engagement_cutoff = now - chrono::Duration::hours(120); // 5 days
 
-    let in_engagement_section = cursor_datetime.map_or(true, |cursor| cursor >= engagement_cutoff);
+    // Simple rule: If no cursor, show ranked section. If cursor exists, show chronological.
+    let show_ranked_section = cursor_datetime.is_none();
 
-    let mut posts = if in_engagement_section {
-        // Fetch posts from the engagement-ranked section
-        // We need to fetch ALL posts from the last 5 days to rank them properly
+    let mut posts = if show_ranked_section {
+        // FIRST REQUEST ONLY: Fetch and rank posts from last 5 days
+        // This is a one-time snapshot, never paginated or re-calculated
         let all_recent = match fetch_feed_posts(&pool, None, 1000).await {
             Ok(p) => p,
             Err(e) => {
@@ -388,12 +389,11 @@ pub async fn get_unified_feed(
             .filter(|p| p.created_at >= engagement_cutoff)
             .collect::<Vec<_>>()
     } else {
-        // Fetch chronological posts (older than 5 days)
-        let fetch_limit = limit as i64;
-        match fetch_feed_posts(&pool, cursor_datetime, fetch_limit).await {
+        // ALL SUBSEQUENT REQUESTS: Pure chronological feed
+        match fetch_feed_posts(&pool, cursor_datetime, limit as i64).await {
             Ok(p) => p,
             Err(e) => {
-                tracing::error!("Failed to fetch feed posts: {}", e);
+                tracing::error!("Failed to fetch chronological posts: {}", e);
                 return HttpResponse::InternalServerError().json(json!({
                     "error": "Failed to fetch feed"
                 }));
@@ -460,9 +460,9 @@ pub async fn get_unified_feed(
         }
     };
 
-    // Step 4: Sort posts based on which section we're in
-    if in_engagement_section {
-        // Sort by engagement score for recent posts
+    // Step 4: Sort and limit
+    if show_ranked_section {
+        // Sort by engagement score for the ranked snapshot
         posts.sort_by(|a, b| {
             let a_social = a.workout_id.and_then(|id| social_counts.get(&id));
             let b_social = b.workout_id.and_then(|id| social_counts.get(&id));
@@ -475,19 +475,14 @@ pub async fn get_unified_feed(
                 .then_with(|| b.id.cmp(&a.id))
         });
 
-        // If we have a cursor, skip posts until we reach it
-        if let Some(cursor) = cursor_datetime {
-            if let Some(start_idx) = posts.iter().position(|p| p.created_at < cursor) {
-                posts = posts[start_idx..].to_vec();
-            } else {
-                posts.clear();
-            }
-        }
+        // Return ALL ranked posts (or up to a reasonable limit like 50)
+        // This is the complete ranked section - no pagination
+        posts.truncate(50);
+    } else {
+        // Chronological posts are already sorted by the database query
+        // Apply normal pagination limit
+        posts.truncate(limit as usize);
     }
-    // Chronological posts are already sorted correctly by the query
-
-    // Step 5: Take only the requested limit
-    posts.truncate(limit as usize);
 
     // Step 6: Build response JSON
     let response_posts: Vec<serde_json::Value> = posts.iter().map(|post| {
@@ -545,8 +540,18 @@ pub async fn get_unified_feed(
     }).collect();
 
     // Get the next cursor from the last item
+    // For ranked section: return the oldest post's timestamp to start chronological from there
+    // For chronological section: return the last post's timestamp for normal pagination
     let next_cursor = posts.last().map(|p| p.created_at.to_rfc3339());
-    let has_more = posts.len() == limit as usize;
+
+    // has_more is true if we returned a full page (only applies to chronological section)
+    // For ranked section, we return everything, so has_more indicates chronological posts exist
+    let has_more = if show_ranked_section {
+        // There are more posts if the oldest ranked post is older than the cutoff
+        posts.last().map_or(false, |p| p.created_at < engagement_cutoff)
+    } else {
+        posts.len() == limit as usize
+    };
 
     tracing::info!(
         "Successfully retrieved {} unified feed items for user: {}",
