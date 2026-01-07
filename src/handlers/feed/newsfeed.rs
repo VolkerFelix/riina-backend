@@ -10,7 +10,7 @@ use crate::{
     models::post::FeedQueryParams,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct FeedPost {
     id: Uuid,
     user_id: Uuid,
@@ -301,9 +301,9 @@ fn calculate_engagement_score(
     post: &FeedPost,
     social: Option<&SocialCounts>,
 ) -> i32 {
-    // Only apply engagement ranking for posts within last 24 hours
+    // Only apply engagement ranking for posts within last 5 days
     let now = Utc::now();
-    if now.signed_duration_since(post.created_at).num_hours() > 24 {
+    if now.signed_duration_since(post.created_at).num_hours() > 120 {
         return 0;
     }
 
@@ -364,15 +364,40 @@ pub async fn get_unified_feed(
         None => None
     };
 
-    // Step 1: Fetch base posts (limit * 2 to ensure we have enough after sorting)
-    let fetch_limit = (limit * 2) as i64;
-    let mut posts = match fetch_feed_posts(&pool, cursor_datetime, fetch_limit).await {
-        Ok(p) => p,
-        Err(e) => {
-            tracing::error!("Failed to fetch feed posts: {}", e);
-            return HttpResponse::InternalServerError().json(json!({
-                "error": "Failed to fetch feed"
-            }));
+    // Step 1: Determine if we're in the engagement-ranked section or chronological section
+    let now = Utc::now();
+    let engagement_cutoff = now - chrono::Duration::hours(120); // 5 days
+
+    let in_engagement_section = cursor_datetime.map_or(true, |cursor| cursor >= engagement_cutoff);
+
+    let mut posts = if in_engagement_section {
+        // Fetch posts from the engagement-ranked section
+        // We need to fetch ALL posts from the last 5 days to rank them properly
+        let all_recent = match fetch_feed_posts(&pool, None, 1000).await {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::error!("Failed to fetch feed posts: {}", e);
+                return HttpResponse::InternalServerError().json(json!({
+                    "error": "Failed to fetch feed"
+                }));
+            }
+        };
+
+        // Filter to only posts within the last 5 days
+        all_recent.into_iter()
+            .filter(|p| p.created_at >= engagement_cutoff)
+            .collect::<Vec<_>>()
+    } else {
+        // Fetch chronological posts (older than 5 days)
+        let fetch_limit = limit as i64;
+        match fetch_feed_posts(&pool, cursor_datetime, fetch_limit).await {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::error!("Failed to fetch feed posts: {}", e);
+                return HttpResponse::InternalServerError().json(json!({
+                    "error": "Failed to fetch feed"
+                }));
+            }
         }
     };
 
@@ -435,18 +460,31 @@ pub async fn get_unified_feed(
         }
     };
 
-    // Step 4: Sort by engagement score, then by created_at, then by ID for stable pagination
-    posts.sort_by(|a, b| {
-        let a_social = a.workout_id.and_then(|id| social_counts.get(&id));
-        let b_social = b.workout_id.and_then(|id| social_counts.get(&id));
+    // Step 4: Sort posts based on which section we're in
+    if in_engagement_section {
+        // Sort by engagement score for recent posts
+        posts.sort_by(|a, b| {
+            let a_social = a.workout_id.and_then(|id| social_counts.get(&id));
+            let b_social = b.workout_id.and_then(|id| social_counts.get(&id));
 
-        let a_score = calculate_engagement_score(a, a_social);
-        let b_score = calculate_engagement_score(b, b_social);
+            let a_score = calculate_engagement_score(a, a_social);
+            let b_score = calculate_engagement_score(b, b_social);
 
-        b_score.cmp(&a_score)
-            .then_with(|| b.created_at.cmp(&a.created_at))
-            .then_with(|| b.id.cmp(&a.id))
-    });
+            b_score.cmp(&a_score)
+                .then_with(|| b.created_at.cmp(&a.created_at))
+                .then_with(|| b.id.cmp(&a.id))
+        });
+
+        // If we have a cursor, skip posts until we reach it
+        if let Some(cursor) = cursor_datetime {
+            if let Some(start_idx) = posts.iter().position(|p| p.created_at < cursor) {
+                posts = posts[start_idx..].to_vec();
+            } else {
+                posts.clear();
+            }
+        }
+    }
+    // Chronological posts are already sorted correctly by the query
 
     // Step 5: Take only the requested limit
     posts.truncate(limit as usize);
