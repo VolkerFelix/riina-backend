@@ -540,16 +540,23 @@ pub async fn get_unified_feed(
     }).collect();
 
     // Get the next cursor from the last item
-    // For ranked section: return the oldest post's timestamp to start chronological from there
+    // For ranked section: use the engagement cutoff so we continue with posts older than 5 days
     // For chronological section: return the last post's timestamp for normal pagination
-    let next_cursor = posts.last().map(|p| p.created_at.to_rfc3339());
+    let next_cursor = if show_ranked_section && !posts.is_empty() {
+        // After ranked section, continue with posts older than the engagement window
+        // This prevents duplicates and provides a clean transition
+        Some(engagement_cutoff.to_rfc3339())
+    } else {
+        posts.last().map(|p| p.created_at.to_rfc3339())
+    };
 
     // has_more is true if we returned a full page (only applies to chronological section)
-    // For ranked section, we return everything, so has_more indicates chronological posts exist
+    // For ranked section, we always return true to allow scrolling to chronological posts
     let has_more = if show_ranked_section {
-        // There are more posts if the oldest ranked post is older than the cutoff
-        posts.last().map_or(false, |p| p.created_at < engagement_cutoff)
+        // Always true after ranked section - there may be chronological posts
+        true
     } else {
+        // For chronological section, check if we got a full page
         posts.len() == limit as usize
     };
 
