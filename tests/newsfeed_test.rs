@@ -93,15 +93,16 @@ async fn test_newsfeed_pagination() {
             30
         );
         let _ = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout_data).await;
-
     }
 
     // Small delay to ensure all posts are committed
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    // Get first page with limit
+    // Get first page (ranked section)
+    // Note: The first request returns ALL ranked posts from last 48 hours (up to 50),
+    // ignoring the limit parameter. Limit only applies to chronological pagination.
     let response = client
-        .get(&format!("{}/feed/?limit=2", test_app.address))
+        .get(&format!("{}/feed/", test_app.address))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -115,13 +116,16 @@ async fn test_newsfeed_pagination() {
     let first_page: serde_json::Value = response.json().await.expect("Failed to parse response");
 
     let posts = first_page["data"]["posts"].as_array().unwrap();
-    assert_eq!(posts.len(), 2, "Should have 2 workouts in first page");
+    // First page returns all recent posts (ranked section) - we created 4 workouts
+    assert!(posts.len() >= 4, "Should have at least 4 workouts in ranked section (got {})", posts.len());
 
     let pagination = &first_page["data"]["pagination"];
-    assert!(pagination["has_more"].as_bool().unwrap(), "Should have more pages");
+    // Ranked section always has has_more=true to allow scrolling to chronological posts
+    assert!(pagination["has_more"].as_bool().unwrap(), "Should have more pages after ranked section");
     assert!(pagination["next_cursor"].is_string(), "Should have next cursor");
 
-    // Get second page using cursor
+    // Get second page using cursor (chronological section)
+    // This returns posts OLDER than 48 hours, which may be empty in this test
     let cursor = pagination["next_cursor"].as_str().unwrap();
     let encoded_cursor = form_urlencoded::byte_serialize(cursor.as_bytes()).collect::<String>();
     let response = client
@@ -139,18 +143,21 @@ async fn test_newsfeed_pagination() {
     let second_page: serde_json::Value = response.json().await.expect("Failed to parse response");
 
     let second_posts = second_page["data"]["posts"].as_array().unwrap();
-    assert!(second_posts.len() > 0, "Should have workouts in second page");
+    // Second page contains chronological posts older than 48 hours
+    // Since our test posts are recent, this may be empty - that's OK
 
-    // Verify no overlap between pages
-    let first_ids: Vec<String> = posts.iter()
-        .map(|w| w["id"].as_str().unwrap().to_string())
-        .collect();
-    let second_ids: Vec<String> = second_posts.iter()
-        .map(|w| w["id"].as_str().unwrap().to_string())
-        .collect();
+    // Verify no overlap between pages (if there are posts in second page)
+    if !second_posts.is_empty() {
+        let first_ids: Vec<String> = posts.iter()
+            .map(|w| w["id"].as_str().unwrap().to_string())
+            .collect();
+        let second_ids: Vec<String> = second_posts.iter()
+            .map(|w| w["id"].as_str().unwrap().to_string())
+            .collect();
 
-    for id in &second_ids {
-        assert!(!first_ids.contains(id), "Pages should not have overlapping workouts");
+        for id in &second_ids {
+            assert!(!first_ids.contains(id), "Pages should not have overlapping workouts");
+        }
     }
 }
 
