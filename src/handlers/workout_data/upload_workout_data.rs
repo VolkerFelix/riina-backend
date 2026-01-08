@@ -20,7 +20,6 @@ use crate::models::{
 use crate::game::stats_calculator::WorkoutStatsCalculator;
 use crate::utils::{
     workout_approval::WorkoutApprovalToken,
-    parse_user::parse_user_id_from_jwt_token,
     heart_rate_filters::filter_heart_rate_data,
 };
 use crate::config::jwt::JwtSettings;
@@ -44,13 +43,10 @@ pub async fn upload_workout_data(
 ) -> HttpResponse {
     tracing::info!("🎮 Processing workout data with game mechanics for user: {}", claims.username);
     
-    let user_id = match parse_user_id_from_jwt_token(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            return HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error(e.to_string())
-            );
-        }
+    let Some(user_id) = claims.user_id() else {
+        return HttpResponse::BadRequest().json(
+            ApiResponse::<()>::error("Invalid user ID")
+        );
     };
     // Validate approval token (required)
     let approval_token = match &data.approval_token {

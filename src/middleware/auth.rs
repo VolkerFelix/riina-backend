@@ -30,6 +30,39 @@ impl Claims {
     }
 }
 
+/// Shared JWT validation logic used by both auth and admin middlewares.
+/// Extracts and validates a JWT token from the request, returning the decoded claims.
+pub fn validate_jwt_from_request(req: &ServiceRequest) -> Result<Claims, Error> {
+    // Get JWT settings from app state
+    let jwt_settings = req.app_data::<web::Data<JwtSettings>>()
+        .ok_or_else(|| ErrorUnauthorized("JWT settings not found"))?;
+
+    // Extract Authorization header
+    let auth_header = req.headers()
+        .get(header::AUTHORIZATION)
+        .ok_or_else(|| ErrorUnauthorized("No authorization header"))?
+        .to_str()
+        .map_err(|_| ErrorUnauthorized("Invalid authorization header"))?;
+
+    // Check Bearer token format
+    if !auth_header.starts_with("Bearer ") {
+        return Err(ErrorUnauthorized("Invalid authorization header format"));
+    }
+
+    // Extract and decode the token
+    let token = &auth_header[7..]; // Skip "Bearer "
+    let token_data = decode::<Claims>(
+        token,
+        &DecodingKey::from_secret(jwt_settings.secret.expose_secret().as_bytes()),
+        &Validation::new(Algorithm::HS256),
+    ).map_err(|e| {
+        tracing::error!("Failed to decode token: {:?}", e);
+        ErrorUnauthorized("Invalid token")
+    })?;
+
+    Ok(token_data.claims)
+}
+
 // Create the middleware
 pub struct AuthMiddleware;
 
@@ -68,54 +101,14 @@ where
     forward_ready!(service);
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        // Extract JWT from Authorization header
-        let auth_header = req.headers().get(header::AUTHORIZATION);
-        let jwt_settings = req.app_data::<web::Data<JwtSettings>>().cloned();
-
-        // No JWT settings in app state
-        if jwt_settings.is_none() {
-            return Box::pin(async move {
-                Err(ErrorUnauthorized("JWT settings not found"))
-            });
-        }
-
-        // No auth header
-        if auth_header.is_none() {
-            return Box::pin(async move {
-                Err(ErrorUnauthorized("No authorization header"))
-            });
-        }
-
-        let auth_header = auth_header.unwrap().to_str().unwrap_or_default();
-        
-        // Check if it's a Bearer token
-        if !auth_header.starts_with("Bearer ") {
-            return Box::pin(async move {
-                Err(ErrorUnauthorized("Invalid authorization header format"))
-            });
-        }
-
-        // Extract the token
-        let token = &auth_header[7..]; // Skip "Bearer "
-        let jwt_settings = jwt_settings.unwrap();
-
-        // Decode the token
-        let token_data = match decode::<Claims>(
-            token,
-            &DecodingKey::from_secret(jwt_settings.secret.expose_secret().as_bytes()),
-            &Validation::new(Algorithm::HS256),
-        ) {
-            Ok(c) => c,
-            Err(e) => {
-                return Box::pin(async move {
-                    tracing::error!("Failed to decode token: {:?}", e);
-                    Err(ErrorUnauthorized("Invalid token"))
-                });
-            }
+        // Validate JWT and extract claims using shared function
+        let claims = match validate_jwt_from_request(&req) {
+            Ok(claims) => claims,
+            Err(e) => return Box::pin(async move { Err(e) }),
         };
 
         // Store the claims in the request extensions for handlers to access
-        req.extensions_mut().insert(token_data.claims);
+        req.extensions_mut().insert(claims);
 
         let fut = self.service.call(req);
 
