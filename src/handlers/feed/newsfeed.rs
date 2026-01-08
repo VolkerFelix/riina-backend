@@ -336,14 +336,11 @@ pub async fn get_unified_feed(
     claims: web::ReqData<Claims>,
     query: web::Query<FeedQueryParams>,
 ) -> HttpResponse {
-    let current_user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::BadRequest().json(json!({
-                "error": "Invalid user ID"
-            }));
-        }
+    let Some(current_user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return HttpResponse::BadRequest().json(json!({
+            "error": "Invalid user ID"
+        }));
     };
 
     let limit = query.limit.unwrap_or(20).min(50); // Max 50 items per request

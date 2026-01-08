@@ -28,14 +28,9 @@ pub async fn send_team_chat_message(
     claims: web::ReqData<Claims>,
     redis_client: web::Data<Arc<redis::Client>>,
 ) -> HttpResponse {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error("Invalid user ID")
-            );
-        }
+    let Some(user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
     };
     let team_id = team_id.into_inner();
 
@@ -196,14 +191,9 @@ pub async fn get_team_chat(
     query: web::Query<ChatHistoryQuery>,
     claims: web::ReqData<Claims>,
 ) -> HttpResponse {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error("Invalid user ID")
-            );
-        }
+    let Some(user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
     };
     let team_id = team_id.into_inner();
 
@@ -277,14 +267,9 @@ pub async fn edit_team_chat_message(
     claims: web::ReqData<Claims>,
     redis_client: web::Data<Arc<redis::Client>>,
 ) -> HttpResponse {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error("Invalid user ID")
-            );
-        }
+    let Some(user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
     };
     let (team_id, message_id) = path.into_inner();
 
@@ -383,14 +368,9 @@ pub async fn delete_team_chat_message(
     claims: web::ReqData<Claims>,
     redis_client: web::Data<Arc<redis::Client>>,
 ) -> HttpResponse {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error("Invalid user ID")
-            );
-        }
+    let Some(user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
     };
     let (team_id, message_id) = path.into_inner();
 
@@ -507,14 +487,9 @@ pub async fn mark_team_messages_as_read(
     team_id: web::Path<Uuid>,
     claims: web::ReqData<Claims>,
 ) -> HttpResponse {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error("Invalid user ID")
-            );
-        }
+    let Some(user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
     };
     let team_id = team_id.into_inner();
 
@@ -554,14 +529,9 @@ pub async fn get_unread_chat_count(
     pool: web::Data<PgPool>,
     claims: web::ReqData<Claims>,
 ) -> HttpResponse {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error("Invalid user ID")
-            );
-        }
+    let Some(user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
     };
 
     match crate::db::chat::get_unread_message_count(&pool, user_id).await {

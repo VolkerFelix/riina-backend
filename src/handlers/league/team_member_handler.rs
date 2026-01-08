@@ -37,13 +37,9 @@ pub async fn add_team_member(
         return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error(validation_error)));
     }
 
-    // Parse requester user ID from claims
-    let requester_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Invalid user ID in claims: {}", e);
-            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID")));
-        }
+    let Some(requester_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID")));
     };
 
     // Check if requester has permission to add members (must be owner or admin)
@@ -144,14 +140,10 @@ pub async fn get_team_members(
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
     let team_id = team_id.into_inner();
-    
-    // Parse requester user ID from claims
-    let requester_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Invalid user ID in claims: {}", e);
-            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID")));
-        }
+
+    let Some(requester_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID")));
     };
 
     // Check if requester is a member of the team or an admin (regardless of status)
@@ -250,13 +242,9 @@ pub async fn remove_team_member(
 ) -> Result<HttpResponse> {
     let (team_id, target_user_id) = path.into_inner();
 
-    // Parse requester user ID from claims
-    let requester_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Invalid user ID in claims: {}", e);
-            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID")));
-        }
+    let Some(requester_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID")));
     };
 
     // Get requester's role
@@ -415,13 +403,9 @@ pub async fn update_my_team_status(
         }
     };
 
-    // Parse requester user ID from claims
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Invalid user ID in claims: {}", e);
-            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID")));
-        }
+    let Some(user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID")));
     };
 
     // Check if user is a member of this team (regardless of status, since they need to be able to reactivate)
@@ -491,13 +475,9 @@ pub async fn update_team_member(
         return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error(validation_error)));
     }
 
-    // Parse requester user ID from claims
-    let requester_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Invalid user ID in claims: {}", e);
-            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID")));
-        }
+    let Some(requester_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return Ok(HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID")));
     };
 
     // Get requester's role

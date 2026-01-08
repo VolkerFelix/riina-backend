@@ -19,14 +19,11 @@ pub async fn create_poll(
     team_id: web::Path<Uuid>,
     claims: web::ReqData<Claims>,
 ) -> HttpResponse {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(_) => {
-            return HttpResponse::BadRequest().json(serde_json::json!({
-                "success": false,
-                "message": "Invalid user ID in token"
-            }));
-        }
+    let Some(user_id) = claims.user_id() else {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "success": false,
+            "message": "Invalid user ID in token"
+        }));
     };
 
     // Validate request
@@ -242,14 +239,11 @@ pub async fn cast_vote(
     path: web::Path<(Uuid, Uuid)>,
     claims: web::ReqData<Claims>,
 ) -> HttpResponse {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(_) => {
-            return HttpResponse::BadRequest().json(serde_json::json!({
-                "success": false,
-                "message": "Invalid user ID in token"
-            }));
-        }
+    let Some(user_id) = claims.user_id() else {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "success": false,
+            "message": "Invalid user ID in token"
+        }));
     };
 
     let (team_id, poll_id) = path.into_inner();
@@ -410,14 +404,11 @@ pub async fn get_team_polls(
     team_id: web::Path<Uuid>,
     claims: web::ReqData<Claims>,
 ) -> HttpResponse {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(_) => {
-            return HttpResponse::BadRequest().json(serde_json::json!({
-                "success": false,
-                "message": "Invalid user ID in token"
-            }));
-        }
+    let Some(user_id) = claims.user_id() else {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "success": false,
+            "message": "Invalid user ID in token"
+        }));
     };
 
     let team_id = team_id.into_inner();
@@ -554,14 +545,11 @@ pub async fn delete_poll(
     path: web::Path<(Uuid, Uuid)>,
     claims: web::ReqData<Claims>,
 ) -> HttpResponse {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(_) => {
-            return HttpResponse::BadRequest().json(serde_json::json!({
-                "success": false,
-                "message": "Invalid user ID in token"
-            }));
-        }
+    let Some(user_id) = claims.user_id() else {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "success": false,
+            "message": "Invalid user ID in token"
+        }));
     };
 
     let (team_id, poll_id) = path.into_inner();

@@ -10,6 +10,8 @@ use crate::models::league::*;
 use crate::models::team::{TeamRegistrationRequest, TeamUpdateRequest, TeamInfo, TeamInfoWithPower};
 use crate::utils::team_power;
 use crate::services::player_pool_events;
+use crate::db::helpers::{ensure_not_exists, require_record};
+use crate::ok_or_return;
 
 /// Register a new team
 #[tracing::instrument(
@@ -38,70 +40,30 @@ pub async fn register_new_team(
         })));
     }
 
-    // Parse user ID from claims
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Invalid user ID in claims: {}", e);
-            return Ok(HttpResponse::BadRequest().json(json!({
-                "success": false,
-                "message": "Invalid user ID"
-            })));
-        }
+    let Some(user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return Ok(HttpResponse::BadRequest().json(json!({
+            "success": false,
+            "message": "Invalid user ID"
+        })));
     };
 
     // Check if user already has a team
-    match sqlx::query!(
-        "SELECT id FROM teams WHERE user_id = $1",
-        user_id
-    )
-    .fetch_optional(pool.get_ref())
-    .await
-    {
-        Ok(Some(_)) => {
-            return Ok(HttpResponse::Conflict().json(json!({
-                "success": false,
-                "message": "User already has a registered team"
-            })));
-        }
-        Ok(None) => {
-            // User doesn't have a team yet, proceed with registration
-        }
-        Err(e) => {
-            tracing::error!("Database error checking existing team: {}", e);
-            return Ok(HttpResponse::InternalServerError().json(json!({
-                "success": false,
-                "message": "Failed to check existing team registration"
-            })));
-        }
-    }
+    ok_or_return!(ensure_not_exists(
+        sqlx::query!("SELECT id FROM teams WHERE user_id = $1", user_id)
+            .fetch_optional(pool.get_ref())
+            .await,
+        "User already has a registered team"
+    ));
 
     // Check if team name is already taken
     let sanitized_team_name = team_request.get_sanitized_name();
-    match sqlx::query!(
-        "SELECT id FROM teams WHERE LOWER(team_name) = LOWER($1)",
-        sanitized_team_name
-    )
-    .fetch_optional(pool.get_ref())
-    .await
-    {
-        Ok(Some(_)) => {
-            return Ok(HttpResponse::Conflict().json(json!({
-                "success": false,
-                "message": "Team name already taken"
-            })));
-        }
-        Ok(None) => {
-            // Team name is available
-        }
-        Err(e) => {
-            tracing::error!("Database error checking team name: {}", e);
-            return Ok(HttpResponse::InternalServerError().json(json!({
-                "success": false,
-                "message": "Failed to check team name availability"
-            })));
-        }
-    }
+    ok_or_return!(ensure_not_exists(
+        sqlx::query!("SELECT id FROM teams WHERE LOWER(team_name) = LOWER($1)", sanitized_team_name)
+            .fetch_optional(pool.get_ref())
+            .await,
+        "Team name already taken"
+    ));
 
     // Create the team
     let team_id = Uuid::new_v4();
@@ -419,46 +381,27 @@ pub async fn update_team_information(
         })));
     }
     
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Invalid user ID in claims: {}", e);
-            return Ok(HttpResponse::BadRequest().json(json!({
-                "success": false,
-                "message": "Invalid user ID"
-            })));
-        }
+    let Some(user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return Ok(HttpResponse::BadRequest().json(json!({
+            "success": false,
+            "message": "Invalid user ID"
+        })));
     };
 
     // Verify user owns this team
-    match sqlx::query!(
-        "SELECT user_id FROM teams WHERE id = $1",
-        team_id
-    )
-    .fetch_optional(pool.get_ref())
-    .await
-    {
-        Ok(Some(team)) => {
-            if team.user_id != user_id {
-                return Ok(HttpResponse::Forbidden().json(json!({
-                    "success": false,
-                    "message": "You can only update your own team"
-                })));
-            }
-        }
-        Ok(None) => {
-            return Ok(HttpResponse::NotFound().json(json!({
-                "success": false,
-                "message": "Team not found"
-            })));
-        }
-        Err(e) => {
-            tracing::error!("Database error checking team ownership: {}", e);
-            return Ok(HttpResponse::InternalServerError().json(json!({
-                "success": false,
-                "message": "Failed to verify team ownership"
-            })));
-        }
+    let team = ok_or_return!(require_record(
+        sqlx::query!("SELECT user_id FROM teams WHERE id = $1", team_id)
+            .fetch_optional(pool.get_ref())
+            .await,
+        "Team not found"
+    ));
+
+    if team.user_id != user_id {
+        return Ok(HttpResponse::Forbidden().json(json!({
+            "success": false,
+            "message": "You can only update your own team"
+        })));
     }
 
     // Update team information
@@ -519,14 +462,11 @@ pub async fn get_user_team(
     pool: web::Data<PgPool>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(_) => {
-            return Ok(HttpResponse::BadRequest().json(json!({
-                "success": false,
-                "error": "Invalid user ID"
-            })));
-        }
+    let Some(user_id) = claims.user_id() else {
+        return Ok(HttpResponse::BadRequest().json(json!({
+            "success": false,
+            "error": "Invalid user ID"
+        })));
     };
 
     // Get the team the user belongs to (regardless of status so inactive users can see their team)

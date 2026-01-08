@@ -17,13 +17,10 @@ pub async fn submit_workout_report(
     request: web::Json<SubmitWorkoutReportRequest>,
 ) -> Result<HttpResponse> {
     let workout_id = workout_id.into_inner();
-    let reporter_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(_) => {
-            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-                "error": "Invalid user ID in token"
-            })));
-        }
+    let Some(reporter_id) = claims.user_id() else {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Invalid user ID in token"
+        })));
     };
 
     // Validate request
@@ -158,13 +155,10 @@ pub async fn get_my_report_for_workout(
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
     let workout_id = workout_id.into_inner();
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(_) => {
-            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-                "error": "Invalid user ID in token"
-            })));
-        }
+    let Some(user_id) = claims.user_id() else {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Invalid user ID in token"
+        })));
     };
 
     let report = sqlx::query_as!(
@@ -208,13 +202,10 @@ pub async fn get_my_reports(
     pool: web::Data<PgPool>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(_) => {
-            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-                "error": "Invalid user ID in token"
-            })));
-        }
+    let Some(user_id) = claims.user_id() else {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Invalid user ID in token"
+        })));
     };
 
     let reports = sqlx::query_as!(
@@ -258,13 +249,10 @@ pub async fn delete_workout_report(
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
     let report_id = report_id.into_inner();
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(_) => {
-            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-                "error": "Invalid user ID in token"
-            })));
-        }
+    let Some(user_id) = claims.user_id() else {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Invalid user ID in token"
+        })));
     };
 
     // Delete the report if it belongs to the user
@@ -304,13 +292,10 @@ pub async fn update_report_status(
     request: web::Json<UpdateWorkoutReportRequest>,
 ) -> Result<HttpResponse> {
     let report_id = report_id.into_inner();
-    let admin_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(_) => {
-            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-                "error": "Invalid user ID in token"
-            })));
-        }
+    let Some(admin_id) = claims.user_id() else {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Invalid user ID in token"
+        })));
     };
 
     // Validate request

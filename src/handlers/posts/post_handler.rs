@@ -21,14 +21,9 @@ pub async fn create_post(
     claims: web::ReqData<Claims>,
     body: web::Json<CreatePostRequest>,
 ) -> HttpResponse {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::BadRequest().json(
-                ApiResponse::<()>::error("Invalid user ID")
-            );
-        }
+    let Some(user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
     };
 
     // Validate workout post has workout_id
@@ -131,14 +126,9 @@ pub async fn update_post(
     post_id: web::Path<Uuid>,
     body: web::Json<UpdatePostRequest>,
 ) -> HttpResponse {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::BadRequest().json(
-                ApiResponse::<()>::error("Invalid user ID")
-            );
-        }
+    let Some(user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
     };
 
     let post_id = post_id.into_inner();
@@ -294,14 +284,9 @@ pub async fn delete_post(
     claims: web::ReqData<Claims>,
     post_id: web::Path<Uuid>,
 ) -> HttpResponse {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::BadRequest().json(
-                ApiResponse::<()>::error("Invalid user ID")
-            );
-        }
+    let Some(user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
     };
 
     let post_id = post_id.into_inner();
@@ -368,14 +353,9 @@ pub async fn get_post(
     claims: web::ReqData<Claims>,
     post_id: web::Path<Uuid>,
 ) -> HttpResponse {
-    let _current_user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::BadRequest().json(
-                ApiResponse::<()>::error("Invalid user ID")
-            );
-        }
+    let Some(_current_user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
     };
 
     let post_id = post_id.into_inner();
@@ -477,14 +457,9 @@ pub async fn get_post_by_workout_id(
     claims: web::ReqData<Claims>,
     workout_id: web::Path<Uuid>,
 ) -> HttpResponse {
-    let current_user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::BadRequest().json(
-                ApiResponse::<()>::error("Invalid user ID")
-            );
-        }
+    let Some(current_user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
     };
 
     let workout_id = workout_id.into_inner();

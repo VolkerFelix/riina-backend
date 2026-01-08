@@ -40,15 +40,11 @@ pub async fn get_user_profile(
         }
     } else {
         // Default: get the current user's own profile
-        match Uuid::parse_str(&claims.sub) {
-            Ok(id) => id,
-            Err(e) => {
-                tracing::error!("Failed to parse user ID: {}", e);
-                return HttpResponse::BadRequest().json(
-                    ApiResponse::<()>::error("Invalid user ID")
-                );
-            }
-        }
+        let Some(id) = claims.user_id() else {
+            tracing::error!("Invalid user ID in claims");
+            return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
+        };
+        id
     };
 
     tracing::info!("Fetching user profile for: {}", user_id);

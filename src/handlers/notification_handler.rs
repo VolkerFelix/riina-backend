@@ -16,10 +16,10 @@ pub async fn register_push_token(
     claims: web::ReqData<Claims>,
     req: web::Json<RegisterPushTokenRequest>,
 ) -> actix_web::Result<HttpResponse> {
-    let user_id = Uuid::parse_str(&claims.sub).map_err(|e| {
-        error!("Failed to parse user_id from claims: {}", e);
-        actix_web::error::ErrorInternalServerError("Invalid user ID")
-    })?;
+    let Some(user_id) = claims.user_id() else {
+        error!("Invalid user ID in claims");
+        return Err(actix_web::error::ErrorBadRequest("Invalid user ID"));
+    };
 
     info!("Registering push token for user_id={} platform={}", user_id, req.platform);
 
@@ -100,10 +100,10 @@ pub async fn unregister_push_token(
     claims: web::ReqData<Claims>,
     req: web::Json<UnregisterPushTokenRequest>,
 ) -> actix_web::Result<HttpResponse> {
-    let user_id = Uuid::parse_str(&claims.sub).map_err(|e| {
-        error!("Failed to parse user_id from claims: {}", e);
-        actix_web::error::ErrorInternalServerError("Invalid user ID")
-    })?;
+    let Some(user_id) = claims.user_id() else {
+        error!("Invalid user ID in claims");
+        return Err(actix_web::error::ErrorBadRequest("Invalid user ID"));
+    };
 
     info!("Unregistering push token for user_id={}", user_id);
 
@@ -130,10 +130,10 @@ pub async fn get_user_tokens(
     pool: web::Data<PgPool>,
     claims: web::ReqData<Claims>,
 ) -> actix_web::Result<HttpResponse> {
-    let user_id = Uuid::parse_str(&claims.sub).map_err(|e| {
-        error!("Failed to parse user_id from claims: {}", e);
-        actix_web::error::ErrorInternalServerError("Invalid user ID")
-    })?;
+    let Some(user_id) = claims.user_id() else {
+        error!("Invalid user ID in claims");
+        return Err(actix_web::error::ErrorBadRequest("Invalid user ID"));
+    };
 
     info!("Fetching push tokens for user_id={}", user_id);
 
@@ -424,10 +424,10 @@ pub async fn get_badge_count(
     pool: web::Data<PgPool>,
     claims: web::ReqData<Claims>,
 ) -> actix_web::Result<HttpResponse> {
-    let user_id = Uuid::parse_str(&claims.sub).map_err(|e| {
-        error!("Failed to parse user_id from claims: {}", e);
-        actix_web::error::ErrorInternalServerError("Invalid user ID")
-    })?;
+    let Some(user_id) = claims.user_id() else {
+        error!("Invalid user ID in claims");
+        return Err(actix_web::error::ErrorBadRequest("Invalid user ID"));
+    };
 
     // Get unread notification count
     let notification_count = crate::db::social::get_unread_count(&pool, user_id)

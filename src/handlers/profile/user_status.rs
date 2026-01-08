@@ -30,12 +30,9 @@ pub async fn update_user_status(
     claims: web::ReqData<Claims>,
     request: web::Json<UpdateUserStatusRequest>,
 ) -> HttpResponse {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
-        }
+    let Some(user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
     };
 
     let new_status = &request.status;
@@ -221,12 +218,9 @@ pub async fn get_user_status(
     pool: web::Data<PgPool>,
     claims: web::ReqData<Claims>,
 ) -> HttpResponse {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
-        }
+    let Some(user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
     };
 
     // Get user status and check if in player pool
