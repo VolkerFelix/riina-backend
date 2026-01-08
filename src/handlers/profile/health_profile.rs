@@ -41,23 +41,18 @@ pub async fn get_health_profile(
         }
     } else {
         // Default: get the current user's own health profile
-        match Uuid::parse_str(&claims.sub) {
-            Ok(id) => id,
-            Err(e) => {
-                tracing::error!("Failed to parse user ID from claims: {}", e);
-                return HttpResponse::BadRequest().json(json!({
-                    "error": "Invalid user ID"
-                }));
-            }
-        }
+        let Some(id) = claims.user_id() else {
+            tracing::error!("Invalid user ID in claims");
+            return HttpResponse::BadRequest().json(json!({
+                "error": "Invalid user ID"
+            }));
+        };
+        id
     };
 
     // For privacy, only return VT thresholds and heart rate zones (not sensitive data like weight/height)
     // when fetching another user's profile
-    let is_own_profile = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id == target_user_id,
-        Err(_) => false,
-    };
+    let is_own_profile = claims.user_id().map(|id| id == target_user_id).unwrap_or(false);
 
     match sqlx::query_as!(
         HealthProfileResponse,
@@ -112,14 +107,11 @@ pub async fn update_health_profile(
     claims: web::ReqData<Claims>,
     profile_data: web::Json<UpdateHealthProfileRequest>
 ) -> HttpResponse {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::BadRequest().json(json!({
-                "error": "Invalid user ID"
-            }));
-        }
+    let Some(user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return HttpResponse::BadRequest().json(json!({
+            "error": "Invalid user ID"
+        }));
     };
     tracing::info!("Updating health profile for user: {}", user_id);
 

@@ -57,15 +57,9 @@ pub async fn request_profile_picture_upload_url(
         );
     }
 
-    // Parse user ID from claims
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(_) => {
-            tracing::error!("Invalid user ID in claims");
-            return HttpResponse::BadRequest().json(
-                ApiResponse::<()>::error("Invalid user ID")
-            );
-        }
+    let Some(user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
     };
 
     // Generate unique object key for profile picture
@@ -106,15 +100,9 @@ pub async fn confirm_profile_picture_upload(
     tracing::info!("✅ User {} confirming profile picture upload: {}", 
                    claims.username, request.object_key);
 
-    // Parse user ID from claims
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(_) => {
-            tracing::error!("Invalid user ID in claims");
-            return HttpResponse::BadRequest().json(
-                ApiResponse::<()>::error("Invalid user ID")
-            );
-        }
+    let Some(user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
     };
 
     // Check if file exists and verify hash

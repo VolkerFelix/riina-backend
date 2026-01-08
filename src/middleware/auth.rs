@@ -8,6 +8,8 @@ use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
 use serde::{Deserialize, Serialize};
 use secrecy::ExposeSecret;
 
+use uuid::Uuid;
+
 use crate::config::jwt::JwtSettings;
 use crate::models::user::{UserRole, UserStatus};
 
@@ -18,6 +20,14 @@ pub struct Claims {
     pub role: UserRole,
     pub status: UserStatus,
     pub exp: usize,   // Expiration time (as UTC timestamp)
+}
+
+impl Claims {
+    /// Parse the user ID from the claims subject field.
+    /// Returns None if the UUID is invalid.
+    pub fn user_id(&self) -> Option<Uuid> {
+        Uuid::parse_str(&self.sub).ok()
+    }
 }
 
 // Create the middleware

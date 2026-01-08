@@ -73,14 +73,9 @@ pub async fn request_upload_signed_url(
     claims: web::ReqData<Claims>,
     minio_service: web::Data<MinIOService>,
 ) -> HttpResponse {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error("Invalid user ID")
-            );
-        }
+    let Some(user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
     };
 
     tracing::info!("📤 User {} requesting upload URL for: {}", claims.username, request.filename);

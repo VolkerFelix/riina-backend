@@ -144,6 +144,13 @@ pub async fn refresh_biometric_token(
         }));
     }
 
+    let Some(user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Invalid user ID"
+        }));
+    };
+
     // Verify user still exists and is active
     let user_result = sqlx::query!(
         r#"
@@ -151,7 +158,7 @@ pub async fn refresh_biometric_token(
         FROM users
         WHERE id = $1 AND status = 'active'
         "#,
-        uuid::Uuid::parse_str(&claims.sub).unwrap_or_default(),
+        user_id,
     )
     .fetch_optional(pool.get_ref())
     .await;

@@ -19,54 +19,35 @@ pub fn calculate_team_power_from_members(members: &[TeamMemberStats]) -> f32 {
         .sum()
 }
 
-/// Fetch team members with their stats
+/// Fetch team members with their stats using a single JOIN query
 pub async fn get_team_members_with_stats(
     team_id: Uuid,
     pool: &PgPool,
 ) -> Result<Vec<TeamMemberStats>, sqlx::Error> {
-    // First, get all team members
-    let members = sqlx::query!(
+    let results = sqlx::query!(
         r#"
-        SELECT user_id, status
-        FROM team_members
-        WHERE team_id = $1
+        SELECT
+            tm.user_id,
+            COALESCE(ua.stamina, 0.0) as "stamina!",
+            COALESCE(ua.strength, 0.0) as "strength!"
+        FROM team_members tm
+        LEFT JOIN user_avatars ua ON tm.user_id = ua.user_id
+        WHERE tm.team_id = $1
         "#,
         team_id
     )
     .fetch_all(pool)
     .await?;
 
-    // Then, fetch stats for each member separately
-    let mut team_members = Vec::new();
-    
-    for member in members {
-        // Get user avatar stats if they exist
-        let stats = sqlx::query!(
-            r#"
-            SELECT stamina, strength
-            FROM user_avatars
-            WHERE user_id = $1
-            "#,
-            member.user_id
-        )
-        .fetch_optional(pool)
-        .await?;
-
-        let player_stats = match stats {
-            Some(row) => PlayerStats {
+    let team_members = results
+        .into_iter()
+        .map(|row| TeamMemberStats {
+            stats: PlayerStats {
                 stamina: row.stamina,
                 strength: row.strength,
             },
-            None => PlayerStats {
-                stamina: 0.0,
-                strength: 0.0,
-            },
-        };
-
-        team_members.push(TeamMemberStats {
-            stats: player_stats,
-        });
-    }
+        })
+        .collect();
 
     Ok(team_members)
 }

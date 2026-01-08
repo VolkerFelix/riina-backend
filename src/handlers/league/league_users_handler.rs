@@ -243,15 +243,12 @@ pub async fn get_league_users_with_stats(
     claims: web::ReqData<Claims>,
     query: web::Query<PaginationParams>,
 ) -> Result<HttpResponse> {
-    let requester_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Invalid user ID in claims: {}", e);
-            return Ok(HttpResponse::BadRequest().json(json!({
-                "success": false,
-                "message": "Invalid user ID"
-            })));
-        }
+    let Some(requester_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return Ok(HttpResponse::BadRequest().json(json!({
+            "success": false,
+            "message": "Invalid user ID"
+        })));
     };
 
     tracing::info!("Fetching league users with stats for requester: {}", requester_id);

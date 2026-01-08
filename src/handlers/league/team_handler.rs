@@ -38,16 +38,12 @@ pub async fn register_new_team(
         })));
     }
 
-    // Parse user ID from claims
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Invalid user ID in claims: {}", e);
-            return Ok(HttpResponse::BadRequest().json(json!({
-                "success": false,
-                "message": "Invalid user ID"
-            })));
-        }
+    let Some(user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return Ok(HttpResponse::BadRequest().json(json!({
+            "success": false,
+            "message": "Invalid user ID"
+        })));
     };
 
     // Check if user already has a team
@@ -419,15 +415,12 @@ pub async fn update_team_information(
         })));
     }
     
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::error!("Invalid user ID in claims: {}", e);
-            return Ok(HttpResponse::BadRequest().json(json!({
-                "success": false,
-                "message": "Invalid user ID"
-            })));
-        }
+    let Some(user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return Ok(HttpResponse::BadRequest().json(json!({
+            "success": false,
+            "message": "Invalid user ID"
+        })));
     };
 
     // Verify user owns this team
@@ -519,14 +512,11 @@ pub async fn get_user_team(
     pool: web::Data<PgPool>,
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(_) => {
-            return Ok(HttpResponse::BadRequest().json(json!({
-                "success": false,
-                "error": "Invalid user ID"
-            })));
-        }
+    let Some(user_id) = claims.user_id() else {
+        return Ok(HttpResponse::BadRequest().json(json!({
+            "success": false,
+            "error": "Invalid user ID"
+        })));
     };
 
     // Get the team the user belongs to (regardless of status so inactive users can see their team)

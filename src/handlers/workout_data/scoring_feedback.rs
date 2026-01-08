@@ -14,13 +14,10 @@ pub async fn submit_scoring_feedback(
     request: web::Json<SubmitScoringFeedbackRequest>,
 ) -> Result<HttpResponse> {
     let workout_id = workout_id.into_inner();
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(_) => {
-            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-                "error": "Invalid user ID in token"
-            })));
-        }
+    let Some(user_id) = claims.user_id() else {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Invalid user ID in token"
+        })));
     };
 
     // Validate effort rating
@@ -93,13 +90,10 @@ pub async fn get_scoring_feedback(
     claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
     let workout_id = workout_id.into_inner();
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(_) => {
-            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-                "error": "Invalid user ID in token"
-            })));
-        }
+    let Some(user_id) = claims.user_id() else {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Invalid user ID in token"
+        })));
     };
 
     // Verify the workout exists and belongs to this user

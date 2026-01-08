@@ -1,7 +1,6 @@
 use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use uuid::Uuid;
 use chrono::{DateTime, Utc, Duration};
 use std::cmp::Ordering;
 
@@ -57,17 +56,9 @@ pub async fn check_workout_sync(
     tracing::info!("🎮 Checking workout sync for user: {} ({} workouts)", 
         claims.username, request.workouts.len());
 
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => {
-            tracing::info!("User ID parsed successfully: {}", id);
-            id
-        },
-        Err(e) => {
-            tracing::error!("Failed to parse user ID: {}", e);
-            return HttpResponse::InternalServerError().json(
-                ApiResponse::<()>::error("Invalid user ID")
-            );
-        }
+    let Some(user_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
     };
 
     let mut synced_workouts = Vec::new();

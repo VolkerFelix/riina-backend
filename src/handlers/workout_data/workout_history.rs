@@ -93,15 +93,13 @@ pub async fn get_workout_history(
         }
     } else {
         // Default: get the current user's own workout history
-        match Uuid::parse_str(&claims.sub) {
-            Ok(id) => id,
-            Err(e) => {
-                tracing::error!("Failed to parse user ID: {}", e);
-                return HttpResponse::BadRequest().json(json!({
-                    "error": "Invalid user ID"
-                }));
-            }
-        }
+        let Some(id) = claims.user_id() else {
+            tracing::error!("Invalid user ID in claims");
+            return HttpResponse::BadRequest().json(json!({
+                "error": "Invalid user ID"
+            }));
+        };
+        id
     };
 
     let limit = query.limit.unwrap_or(20).min(100); // Max 100 items

@@ -27,11 +27,8 @@ pub async fn send_invitation(
     request: web::Json<SendInvitationRequest>,
 ) -> HttpResponse {
     let team_id = team_id.into_inner();
-    let inviter_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(_) => {
-            return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
-        }
+    let Some(inviter_id) = claims.user_id() else {
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
     };
 
     // Check if inviter is team owner or admin
@@ -273,11 +270,8 @@ pub async fn get_user_invitations(
     pool: web::Data<PgPool>,
     claims: web::ReqData<Claims>,
 ) -> HttpResponse {
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(_) => {
-            return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
-        }
+    let Some(user_id) = claims.user_id() else {
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
     };
 
     let result = sqlx::query_as!(
@@ -343,11 +337,8 @@ pub async fn respond_to_invitation(
     request: web::Json<RespondToInvitationRequest>,
 ) -> HttpResponse {
     let invitation_id = invitation_id.into_inner();
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(_) => {
-            return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
-        }
+    let Some(user_id) = claims.user_id() else {
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error("Invalid user ID"));
     };
 
     // Get invitation details
