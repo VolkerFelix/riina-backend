@@ -272,7 +272,7 @@ pub async fn get_games_status(
         match game.status.as_str() {
             "scheduled" => upcoming_games.push(game_info),
             "in_progress" | "live" => live_games.push(game_info),
-            "finished" => finished_games.push(game_info),
+            "finished" | "evaluated" => finished_games.push(game_info),
             _ => upcoming_games.push(game_info), // Default to upcoming
         }
     }
