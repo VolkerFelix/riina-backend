@@ -488,3 +488,120 @@ async fn test_newsfeed_engagement_ranking_combined_score() {
     assert!(workout2_pos.unwrap() < workout3_pos.unwrap(),
         "Workout2 (3 comments = 9) should rank higher than workout3 (4 reactions = 8)");
 }
+
+#[tokio::test]
+async fn test_newsfeed_chronological_sorting() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    // Create user and upload 3 workouts with delays to ensure different timestamps
+    let user = create_test_user_and_login(&test_app.address).await;
+
+    // First workout (oldest)
+    let mut workout1_data = WorkoutData::new(
+        WorkoutIntensity::Light,
+        Utc::now() - chrono::Duration::hours(2),
+        20
+    );
+    let workout1_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout1_data).await.expect("Failed to upload workout 1");
+    let workout1_id = workout1_response["data"]["sync_id"].as_str().unwrap().to_string();
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Second workout (middle)
+    let mut workout2_data = WorkoutData::new(
+        WorkoutIntensity::Moderate,
+        Utc::now() - chrono::Duration::hours(1),
+        30
+    );
+    workout2_data.image_urls = Some(vec!["https://example.com/image.jpg".to_string()]); // Add media for engagement boost
+    let workout2_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout2_data).await.expect("Failed to upload workout 2");
+    let workout2_id = workout2_response["data"]["sync_id"].as_str().unwrap().to_string();
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Third workout (newest)
+    let mut workout3_data = WorkoutData::new(
+        WorkoutIntensity::Hard,
+        Utc::now(),
+        40
+    );
+    let workout3_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout3_data).await.expect("Failed to upload workout 3");
+    let workout3_id = workout3_response["data"]["sync_id"].as_str().unwrap().to_string();
+
+    // Add high engagement to workout2 to make it rank higher in relevance mode
+    let reactor = create_test_user_and_login(&test_app.address).await;
+    client.post(&format!("{}/social/workouts/{}/reactions", test_app.address, workout2_id))
+        .header("Authorization", format!("Bearer {}", reactor.token))
+        .json(&json!({"reaction_type": "fire"}))
+        .send().await.expect("Failed to add reaction");
+
+    let commenter = create_test_user_and_login(&test_app.address).await;
+    client.post(&format!("{}/social/workouts/{}/comments", test_app.address, workout2_id))
+        .header("Authorization", format!("Bearer {}", commenter.token))
+        .json(&json!({"content": "Great workout!", "parent_id": null}))
+        .send().await.expect("Failed to add comment");
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Test 1: Get feed with chronological sorting
+    let chronological_response = client
+        .get(&format!("{}/feed/?sort_by=chronological&limit=50", test_app.address))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Failed to get chronological feed");
+
+    assert!(chronological_response.status().is_success());
+    let chronological_body: serde_json::Value = chronological_response.json().await.expect("Failed to parse response");
+    let chronological_posts = chronological_body["data"]["posts"].as_array().unwrap();
+
+    // Find positions in chronological feed
+    let chrono_workout1_pos = chronological_posts.iter().position(|p| p["workout_id"] == workout1_id);
+    let chrono_workout2_pos = chronological_posts.iter().position(|p| p["workout_id"] == workout2_id);
+    let chrono_workout3_pos = chronological_posts.iter().position(|p| p["workout_id"] == workout3_id);
+
+    assert!(chrono_workout1_pos.is_some(), "workout1 should be in chronological feed");
+    assert!(chrono_workout2_pos.is_some(), "workout2 should be in chronological feed");
+    assert!(chrono_workout3_pos.is_some(), "workout3 should be in chronological feed");
+
+    // In chronological order: newest first (workout3, workout2, workout1)
+    assert!(chrono_workout3_pos.unwrap() < chrono_workout2_pos.unwrap(),
+        "Chronological: workout3 (newest) should appear before workout2");
+    assert!(chrono_workout2_pos.unwrap() < chrono_workout1_pos.unwrap(),
+        "Chronological: workout2 should appear before workout1 (oldest)");
+
+    // Test 2: Get feed with relevance sorting (default)
+    let relevance_response = client
+        .get(&format!("{}/feed/?sort_by=relevance&limit=50", test_app.address))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Failed to get relevance feed");
+
+    assert!(relevance_response.status().is_success());
+    let relevance_body: serde_json::Value = relevance_response.json().await.expect("Failed to parse response");
+    let relevance_posts = relevance_body["data"]["posts"].as_array().unwrap();
+
+    // Find positions in relevance feed
+    let rel_workout1_pos = relevance_posts.iter().position(|p| p["workout_id"] == workout1_id);
+    let rel_workout2_pos = relevance_posts.iter().position(|p| p["workout_id"] == workout2_id);
+    let rel_workout3_pos = relevance_posts.iter().position(|p| p["workout_id"] == workout3_id);
+
+    assert!(rel_workout1_pos.is_some(), "workout1 should be in relevance feed");
+    assert!(rel_workout2_pos.is_some(), "workout2 should be in relevance feed");
+    assert!(rel_workout3_pos.is_some(), "workout3 should be in relevance feed");
+
+    // In relevance mode: workout2 should rank highest due to media + reaction + comment
+    // workout2 has: media (10) + reaction (2) + comment (3) = 15 points
+    // workout3 and workout1 have: 0 points
+    assert!(rel_workout2_pos.unwrap() < rel_workout3_pos.unwrap(),
+        "Relevance: workout2 (high engagement) should rank higher than workout3");
+    assert!(rel_workout2_pos.unwrap() < rel_workout1_pos.unwrap(),
+        "Relevance: workout2 (high engagement) should rank higher than workout1");
+
+    // Test 3: Verify the order is different between the two modes
+    // workout2 should be in different positions
+    assert_ne!(chrono_workout2_pos.unwrap(), rel_workout2_pos.unwrap(),
+        "Workout2 position should differ between chronological and relevance sorting");
+}

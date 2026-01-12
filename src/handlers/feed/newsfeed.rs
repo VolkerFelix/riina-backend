@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use crate::{
     middleware::auth::Claims,
-    models::post::FeedQueryParams,
+    models::post::{FeedQueryParams, FeedSortBy},
 };
 
 #[derive(Debug, Clone)]
@@ -344,6 +344,7 @@ pub async fn get_unified_feed(
     };
 
     let limit = query.limit.unwrap_or(20).min(50); // Max 50 items per request
+    let sort_by = query.sort_by.clone().unwrap_or(FeedSortBy::Relevance);
 
     // Parse cursor if provided (simple format: just timestamp for chronological pagination)
     let cursor_datetime = match &query.cursor {
@@ -365,8 +366,9 @@ pub async fn get_unified_feed(
     let now = Utc::now();
     let engagement_cutoff = now - chrono::Duration::hours(48); // 48 hours
 
-    // Simple rule: If no cursor, show ranked section. If cursor exists, show chronological.
-    let show_ranked_section = cursor_datetime.is_none();
+    // If sort_by is chronological, always show chronological feed
+    // If sort_by is relevance (default), show ranked section on first request only
+    let show_ranked_section = sort_by == FeedSortBy::Relevance && cursor_datetime.is_none();
 
     let mut posts = if show_ranked_section {
         // FIRST REQUEST ONLY: Fetch and rank posts from last 48 hours
