@@ -497,10 +497,10 @@ async fn test_newsfeed_chronological_sorting() {
     // Create user and upload 3 workouts with delays to ensure different timestamps
     let user = create_test_user_and_login(&test_app.address).await;
 
-    // First workout (oldest)
+    // First workout (oldest) - use recent timestamp to ensure it appears in feed
     let mut workout1_data = WorkoutData::new(
         WorkoutIntensity::Light,
-        Utc::now() - chrono::Duration::hours(2),
+        Utc::now() - chrono::Duration::minutes(10),
         20
     );
     let workout1_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout1_data).await.expect("Failed to upload workout 1");
@@ -511,7 +511,7 @@ async fn test_newsfeed_chronological_sorting() {
     // Second workout (middle)
     let mut workout2_data = WorkoutData::new(
         WorkoutIntensity::Moderate,
-        Utc::now() - chrono::Duration::hours(1),
+        Utc::now() - chrono::Duration::minutes(5),
         30
     );
     workout2_data.image_urls = Some(vec!["https://example.com/image.jpg".to_string()]); // Add media for engagement boost
@@ -556,14 +556,24 @@ async fn test_newsfeed_chronological_sorting() {
     let chronological_body: serde_json::Value = chronological_response.json().await.expect("Failed to parse response");
     let chronological_posts = chronological_body["data"]["posts"].as_array().unwrap();
 
+    // Debug: Print all workout IDs in the feed
+    println!("Chronological feed workout IDs:");
+    for (i, post) in chronological_posts.iter().enumerate() {
+        println!("  [{}] workout_id: {:?}", i, post["workout_id"]);
+    }
+    println!("Looking for:");
+    println!("  workout1_id: {}", workout1_id);
+    println!("  workout2_id: {}", workout2_id);
+    println!("  workout3_id: {}", workout3_id);
+
     // Find positions in chronological feed
     let chrono_workout1_pos = chronological_posts.iter().position(|p| p["workout_id"] == workout1_id);
     let chrono_workout2_pos = chronological_posts.iter().position(|p| p["workout_id"] == workout2_id);
     let chrono_workout3_pos = chronological_posts.iter().position(|p| p["workout_id"] == workout3_id);
 
-    assert!(chrono_workout1_pos.is_some(), "workout1 should be in chronological feed");
-    assert!(chrono_workout2_pos.is_some(), "workout2 should be in chronological feed");
-    assert!(chrono_workout3_pos.is_some(), "workout3 should be in chronological feed");
+    assert!(chrono_workout1_pos.is_some(), "workout1 ({}) should be in chronological feed", workout1_id);
+    assert!(chrono_workout2_pos.is_some(), "workout2 ({}) should be in chronological feed", workout2_id);
+    assert!(chrono_workout3_pos.is_some(), "workout3 ({}) should be in chronological feed", workout3_id);
 
     // In chronological order: newest first (workout3, workout2, workout1)
     assert!(chrono_workout3_pos.unwrap() < chrono_workout2_pos.unwrap(),
