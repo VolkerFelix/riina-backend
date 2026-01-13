@@ -68,10 +68,9 @@ pub async fn fetch_all_leaderboard_users(pool: &PgPool) -> Result<Vec<LeagueUser
     let user_ids: Vec<Uuid> = all_users.iter().filter_map(|row| row.user_id).collect();
 
     // Calculate trailing averages for all users in batch
-    let trailing_averages = match trailing_average::calculate_trailing_averages_batch(pool, &user_ids).await {
-        Ok(averages) => averages,
-        Err(_) => std::collections::HashMap::new(),
-    };
+    let trailing_averages = trailing_average::calculate_trailing_averages_batch(pool, &user_ids)
+        .await
+        .unwrap_or_default();
 
     // Transform to LeagueUserWithStats
     // UNION makes all fields nullable, so we need to handle Option types
@@ -97,10 +96,10 @@ pub async fn fetch_all_leaderboard_users(pool: &PgPool) -> Result<Vec<LeagueUser
             team_status: row.team_status,
             joined_at: row.joined_at,
             stats: PlayerStats {
-                stamina: row.stamina.unwrap_or(0.0) as f32,
-                strength: row.strength.unwrap_or(0.0) as f32,
+                stamina: row.stamina.unwrap_or(0.0),
+                strength: row.strength.unwrap_or(0.0),
             },
-            total_stats: (row.stamina.unwrap_or(0.0) + row.strength.unwrap_or(0.0)) as f32,
+            total_stats: (row.stamina.unwrap_or(0.0) + row.strength.unwrap_or(0.0)),
             trailing_average: trailing_avg,
             rank: 0, // Will be assigned after sorting
             avatar_style: row.avatar_style.unwrap_or_else(|| "warrior".to_string()),
@@ -123,69 +122,6 @@ pub async fn fetch_all_leaderboard_users(pool: &PgPool) -> Result<Vec<LeagueUser
     }
 
     Ok(users_with_stats)
-}
-
-/// Fetch player pool users with their stats (for backwards compatibility - deprecated)
-/// USE fetch_all_leaderboard_users instead to prevent duplicates
-async fn fetch_player_pool_users(pool: &PgPool) -> Vec<LeagueUserWithStats> {
-    let pool_result = sqlx::query!(
-        r#"
-        SELECT
-            pp.user_id as "user_id!",
-            u.username as "username!",
-            u.email as "email!",
-            u.profile_picture_url,
-            COALESCE(ua.stamina, 0) as "stamina!",
-            COALESCE(ua.strength, 0) as "strength!",
-            COALESCE(ua.avatar_style, 'warrior') as "avatar_style!"
-        FROM player_pool pp
-        INNER JOIN users u ON pp.user_id = u.id
-        LEFT JOIN user_avatars ua ON pp.user_id = ua.user_id
-        WHERE u.status = 'active'
-        AND NOT EXISTS (
-            SELECT 1 FROM team_members tm WHERE tm.user_id = u.id
-        )
-        "#
-    )
-    .fetch_all(pool)
-    .await;
-
-    match pool_result {
-        Ok(entries) => {
-            let user_ids: Vec<Uuid> = entries.iter().map(|e| e.user_id).collect();
-
-            let trailing_averages = match trailing_average::calculate_trailing_averages_batch(pool, &user_ids).await {
-                Ok(averages) => averages,
-                Err(_) => std::collections::HashMap::new(),
-            };
-
-            entries.into_iter().map(|entry| {
-                let trailing_avg = trailing_averages.get(&entry.user_id).copied().unwrap_or(0.0);
-
-                LeagueUserWithStats {
-                    user_id: entry.user_id,
-                    username: entry.username,
-                    email: entry.email,
-                    team_id: None,
-                    team_name: None,
-                    team_role: TeamRole::Member,
-                    team_status: None,
-                    joined_at: None,
-                    stats: PlayerStats {
-                        stamina: entry.stamina,
-                        strength: entry.strength,
-                    },
-                    total_stats: entry.stamina + entry.strength,
-                    trailing_average: trailing_avg,
-                    rank: 0,
-                    avatar_style: entry.avatar_style,
-                    is_online: false,
-                    profile_picture_url: entry.profile_picture_url,
-                }
-            }).collect()
-        }
-        Err(_) => Vec::new(),
-    }
 }
 
 /// Enhanced team member with user stats
@@ -226,7 +162,6 @@ pub struct LeagueUsersResponse {
 pub struct PaginationParams {
     pub page: Option<usize>,
     pub page_size: Option<usize>,
-    pub sort_by: Option<String>, // Accepted but currently ignored (always sorts by trailing_average)
 }
 
 /// Get all users in the same league with their stats
@@ -277,7 +212,7 @@ pub async fn get_league_users_with_stats(
 
     // Set pagination defaults
     let page = query.page.unwrap_or(1).max(1);
-    let page_size = query.page_size.unwrap_or(20).min(200).max(1); // Default 20, max 200
+    let page_size = query.page_size.unwrap_or(20).clamp(1, 200); // Default 20, max 200
 
     // Fetch ALL leaderboard users (team members + free agents, ensuring no duplicates)
     let all_users = match fetch_all_leaderboard_users(pool.get_ref()).await {

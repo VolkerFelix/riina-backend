@@ -90,8 +90,8 @@ pub async fn get_user_profile(
     .await
     {
         Ok(Some(avatar)) => GameStats {
-            stamina: avatar.stamina as f32,
-            strength: avatar.strength as f32,
+            stamina: avatar.stamina,
+            strength: avatar.strength,
         },
         Ok(None) => {
             // Create default avatar if none exists

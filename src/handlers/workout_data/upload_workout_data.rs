@@ -87,7 +87,7 @@ pub async fn upload_workout_data(
         Err(e) => {
             tracing::error!("❌ Invalid approval token for workout {}: {}", data.workout_uuid, e);
             return HttpResponse::Unauthorized().json(
-                ApiResponse::<()>::error(format!("Invalid or expired approval token: {}", e))
+                ApiResponse::<()>::error(format!("Invalid or expired approval token: {e}"))
             );
         }
     }
@@ -177,7 +177,7 @@ pub async fn upload_workout_data(
     };
 
     // 🎲 NOW CALCULATE GAME STATS
-    let workout_type = WorkoutType::from_str(&ml_classification.prediction.to_lowercase());
+    let workout_type = WorkoutType::parse(&ml_classification.prediction.to_lowercase());
     let calculator = WorkoutStatsCalculator::with_universal_hr_based();
     let workout_stats = match calculator.calculate_stat_changes(user_health_profile, heart_rate_data.clone(), workout_type).await {
         Ok(stats) => stats,
@@ -251,7 +251,7 @@ pub async fn upload_workout_data(
 
     // 📡 PUBLISH TO REDIS FOR REAL-TIME NOTIFICATION
     if let Some(redis_client) = &redis {
-        let user_channel = format!("game:events:user:{}", user_id);
+        let user_channel = format!("game:events:user:{user_id}");
         let global_channel = "game:events:global".to_string();
         let event_str = serde_json::to_string(&game_event)
             .unwrap_or_else(|e| {
@@ -350,7 +350,7 @@ async fn check_and_update_active_games(
                     username,
                     user_team_id,
                     &game,
-                    &stat_changes,
+                    stat_changes,
                     workout_data_id,
                     pool,
                 ).await?;
@@ -454,6 +454,7 @@ async fn get_user_team_for_game(
 }
 
 /// Record a scoring event in the live_score_events table
+#[allow(clippy::too_many_arguments)]
 async fn record_score_event(
     game_id: Uuid,
     user_id: Uuid,

@@ -118,14 +118,13 @@ pub async fn get_users(
             sql.push_str(" AND tm.team_id IS NULL");
             count_sql.push_str(" AND tm.team_id IS NULL");
         } else if let Ok(team_uuid) = Uuid::parse_str(team_filter) {
-            sql.push_str(&format!(" AND tm.team_id = '{}'", team_uuid));
-            count_sql.push_str(&format!(" AND tm.team_id = '{}'", team_uuid));
+            sql.push_str(&format!(" AND tm.team_id = '{team_uuid}'"));
+            count_sql.push_str(&format!(" AND tm.team_id = '{team_uuid}'"));
         }
     }
 
     sql.push_str(&format!(
-        " ORDER BY u.created_at DESC LIMIT {} OFFSET {}",
-        limit, offset
+        " ORDER BY u.created_at DESC LIMIT {limit} OFFSET {offset}"
     ));
 
     // Get total count
@@ -133,7 +132,7 @@ pub async fn get_users(
         .fetch_one(pool.get_ref())
         .await
         .map_err(|e| {
-            eprintln!("Database error getting user count: {}", e);
+            eprintln!("Database error getting user count: {e}");
             actix_web::error::ErrorInternalServerError("Database error")
         })?;
 
@@ -142,7 +141,7 @@ pub async fn get_users(
         .fetch_all(pool.get_ref())
         .await
         .map_err(|e| {
-            eprintln!("Database error getting users: {}", e);
+            eprintln!("Database error getting users: {e}");
             actix_web::error::ErrorInternalServerError("Database error")
         })?;
 
@@ -211,7 +210,7 @@ pub async fn get_user_by_id(
     .fetch_optional(pool.get_ref())
     .await
     .map_err(|e| {
-        eprintln!("Database error getting user: {}", e);
+        eprintln!("Database error getting user: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -292,7 +291,7 @@ pub async fn get_users_without_team(
     .fetch_all(pool.get_ref())
     .await
     .map_err(|e| {
-        eprintln!("Database error getting users without team: {}", e);
+        eprintln!("Database error getting users without team: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -335,7 +334,7 @@ pub async fn delete_user(
 
     // Start a transaction to ensure all related data is deleted atomically
     let mut tx = pool.begin().await.map_err(|e| {
-        eprintln!("Database error starting transaction: {}", e);
+        eprintln!("Database error starting transaction: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -347,7 +346,7 @@ pub async fn delete_user(
     .fetch_optional(&mut *tx)
     .await
     .map_err(|e| {
-        eprintln!("Database error checking user: {}", e);
+        eprintln!("Database error checking user: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -369,7 +368,7 @@ pub async fn delete_user(
     .execute(&mut *tx)
     .await
     .map_err(|e| {
-        eprintln!("Database error deleting team memberships: {}", e);
+        eprintln!("Database error deleting team memberships: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -381,7 +380,7 @@ pub async fn delete_user(
     .execute(&mut *tx)
     .await
     .map_err(|e| {
-        eprintln!("Database error deleting owned teams: {}", e);
+        eprintln!("Database error deleting owned teams: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -396,7 +395,7 @@ pub async fn delete_user(
     .execute(&mut *tx)
     .await
     .map_err(|e| {
-        eprintln!("Database error deleting user avatar: {}", e);
+        eprintln!("Database error deleting user avatar: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -408,7 +407,7 @@ pub async fn delete_user(
     .execute(&mut *tx)
     .await
     .map_err(|e| {
-        eprintln!("Database error deleting health data: {}", e);
+        eprintln!("Database error deleting health data: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -420,7 +419,7 @@ pub async fn delete_user(
     .execute(&mut *tx)
     .await
     .map_err(|e| {
-        eprintln!("Database error deleting user: {}", e);
+        eprintln!("Database error deleting user: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -432,7 +431,7 @@ pub async fn delete_user(
 
     // Commit the transaction
     tx.commit().await.map_err(|e| {
-        eprintln!("Database error committing transaction: {}", e);
+        eprintln!("Database error committing transaction: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 

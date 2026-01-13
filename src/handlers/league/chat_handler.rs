@@ -141,7 +141,7 @@ pub async fn send_team_chat_message(
                             if let Err(e) = send_notification_to_user(
                                 &pool,
                                 member_user_id,
-                                format!("{}", claims.username),
+                                claims.username.to_string(),
                                 notification_body,
                                 Some(notification_data),
                                 Some("team_message".to_string())
@@ -229,10 +229,7 @@ pub async fn get_team_chat(
     // Get messages
     match get_team_chat_history(&pool, team_id, limit, before_id).await {
         Ok(messages) => {
-            let total_count = match get_team_message_count(&pool, team_id).await {
-                Ok(count) => count,
-                Err(_) => 0,
-            };
+            let total_count = get_team_message_count(&pool, team_id).await.unwrap_or_default();
 
             let has_more = messages.len() as i64 >= limit;
 

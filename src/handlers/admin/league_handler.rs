@@ -98,7 +98,7 @@ pub async fn get_leagues(
     .fetch_all(pool.get_ref())
     .await
     .map_err(|e| {
-        eprintln!("Database error getting leagues: {}", e);
+        eprintln!("Database error getting leagues: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -150,7 +150,7 @@ pub async fn get_league_by_id(
     .fetch_optional(pool.get_ref())
     .await
     .map_err(|e| {
-        eprintln!("Database error getting league: {}", e);
+        eprintln!("Database error getting league: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -229,7 +229,7 @@ pub async fn create_league(
             Ok(HttpResponse::Created().json(response))
         }
         Err(e) => {
-            eprintln!("Database error creating league: {}", e);
+            eprintln!("Database error creating league: {e}");
             Ok(HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": "Failed to create league"
             })))
@@ -252,7 +252,7 @@ pub async fn update_league(
     }
 
     let mut tx = pool.begin().await.map_err(|e| {
-        eprintln!("Database error starting transaction: {}", e);
+        eprintln!("Database error starting transaction: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -281,7 +281,7 @@ pub async fn update_league(
             }
         }
         Err(e) => {
-            eprintln!("Database error updating league: {}", e);
+            eprintln!("Database error updating league: {e}");
             return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": "Failed to update league"
             })));
@@ -309,7 +309,7 @@ pub async fn update_league(
         let season_result = season_query_builder.build().execute(&mut *tx).await;
 
         if let Err(e) = season_result {
-            eprintln!("Database error updating league season: {}", e);
+            eprintln!("Database error updating league season: {e}");
             return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": "Failed to update league season"
             })));
@@ -317,7 +317,7 @@ pub async fn update_league(
     }
 
     tx.commit().await.map_err(|e| {
-        eprintln!("Database error committing transaction: {}", e);
+        eprintln!("Database error committing transaction: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -342,7 +342,7 @@ pub async fn assign_team_to_league(
     .fetch_optional(pool.get_ref())
     .await
     .map_err(|e| {
-        eprintln!("Database error checking league: {}", e);
+        eprintln!("Database error checking league: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -360,7 +360,7 @@ pub async fn assign_team_to_league(
     .fetch_optional(pool.get_ref())
     .await
     .map_err(|e| {
-        eprintln!("Database error checking team: {}", e);
+        eprintln!("Database error checking team: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -379,7 +379,7 @@ pub async fn assign_team_to_league(
     .fetch_optional(pool.get_ref())
     .await
     .map_err(|e| {
-        eprintln!("Database error checking existing assignment: {}", e);
+        eprintln!("Database error checking existing assignment: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -397,7 +397,7 @@ pub async fn assign_team_to_league(
     .fetch_optional(pool.get_ref())
     .await
     .map_err(|e| {
-        eprintln!("Database error checking team league: {}", e);
+        eprintln!("Database error checking team league: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -433,7 +433,7 @@ pub async fn assign_team_to_league(
             Ok(HttpResponse::Created().json(response))
         }
         Err(e) => {
-            eprintln!("Database error assigning team to league: {}", e);
+            eprintln!("Database error assigning team to league: {e}");
             Ok(HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": "Failed to assign team to league"
             })))
@@ -452,7 +452,7 @@ pub async fn remove_team_from_league(
 
     // Remove team from league_memberships, league_teams, and league_standings tables
     let mut tx = pool.begin().await.map_err(|e| {
-        eprintln!("Database error starting transaction: {}", e);
+        eprintln!("Database error starting transaction: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -464,7 +464,7 @@ pub async fn remove_team_from_league(
     .fetch_all(&mut *tx)
     .await
     .map_err(|e| {
-        eprintln!("Database error getting seasons: {}", e);
+        eprintln!("Database error getting seasons: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -480,7 +480,7 @@ pub async fn remove_team_from_league(
         .execute(&mut *tx)
         .await
         .map_err(|e| {
-            eprintln!("Database error removing from league_standings: {}", e);
+            eprintln!("Database error removing from league_standings: {e}");
             actix_web::error::ErrorInternalServerError("Database error")
         })?;
         total_rows_affected += standings_result.rows_affected();
@@ -496,7 +496,7 @@ pub async fn remove_team_from_league(
         .execute(&mut *tx)
         .await
         .map_err(|e| {
-            eprintln!("Database error removing from league_teams: {}", e);
+            eprintln!("Database error removing from league_teams: {e}");
             actix_web::error::ErrorInternalServerError("Database error")
         })?;
         total_rows_affected += teams_result.rows_affected();
@@ -511,14 +511,14 @@ pub async fn remove_team_from_league(
     .execute(&mut *tx)
     .await
     .map_err(|e| {
-        eprintln!("Database error removing team from league: {}", e);
+        eprintln!("Database error removing team from league: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
     total_rows_affected += team_result.rows_affected();
 
     if total_rows_affected > 0 {
         tx.commit().await.map_err(|e| {
-            eprintln!("Database error committing transaction: {}", e);
+            eprintln!("Database error committing transaction: {e}");
             actix_web::error::ErrorInternalServerError("Database error")
         })?;
 
@@ -567,7 +567,7 @@ pub async fn get_league_teams(
     .fetch_all(pool.get_ref())
     .await
     .map_err(|e| {
-        eprintln!("Database error getting league teams: {}", e);
+        eprintln!("Database error getting league teams: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -634,7 +634,7 @@ pub async fn get_league_seasons(
     .fetch_all(pool.get_ref())
     .await
     .map_err(|e| {
-        eprintln!("Database error getting league seasons: {}", e);
+        eprintln!("Database error getting league seasons: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -691,7 +691,7 @@ pub async fn create_league_season(
     .fetch_one(pool.get_ref())
     .await
     .map_err(|e| {
-        eprintln!("Database error counting teams: {}", e);
+        eprintln!("Database error counting teams: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?
     .count.unwrap_or(0);
@@ -716,7 +716,7 @@ pub async fn create_league_season(
     let games_per_matchup = body.games_per_matchup.unwrap_or(1); // Default to single round-robin
     
     // Validate games_per_matchup
-    if games_per_matchup < 1 || games_per_matchup > 2 {
+    if !(1..=2).contains(&games_per_matchup) {
         return Ok(HttpResponse::BadRequest().json(serde_json::json!({
             "error": "Games per matchup must be 1 (single round-robin) or 2 (double round-robin)"
         })));
@@ -737,7 +737,7 @@ pub async fn create_league_season(
     .fetch_optional(pool.get_ref())
     .await
     .map_err(|e| {
-        eprintln!("Database error checking league: {}", e);
+        eprintln!("Database error checking league: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -749,7 +749,7 @@ pub async fn create_league_season(
 
     // Create the season in a transaction so we can add teams
     let mut tx = pool.begin().await.map_err(|e| {
-        eprintln!("Database error starting transaction: {}", e);
+        eprintln!("Database error starting transaction: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
     
@@ -761,9 +761,9 @@ pub async fn create_league_season(
     let evaluation_cron = body.evaluation_cron.as_deref().unwrap_or("0 * * * * *");
     
     // Validate game duration (1 second to 30 days)
-    if game_duration_seconds < 1 || game_duration_seconds > 2592000 {
+    if !(1..=2592000).contains(&game_duration_seconds) {
         return Err(actix_web::error::ErrorBadRequest(
-            format!("Game duration must be between 1 second and 2592000 seconds (30 days). Got: {} seconds", game_duration_seconds)
+            format!("Game duration must be between 1 second and 2592000 seconds (30 days). Got: {game_duration_seconds} seconds")
         ));
     }
 
@@ -804,7 +804,7 @@ pub async fn create_league_season(
             .execute(&mut *tx)
             .await
             .map_err(|e| {
-                eprintln!("Database error adding teams to season: {}", e);
+                eprintln!("Database error adding teams to season: {e}");
                 actix_web::error::ErrorInternalServerError("Database error")
             })?;
 
@@ -822,13 +822,13 @@ pub async fn create_league_season(
             .execute(&mut *tx)
             .await
             .map_err(|e| {
-                eprintln!("Database error adding team standings: {}", e);
+                eprintln!("Database error adding team standings: {e}");
                 actix_web::error::ErrorInternalServerError("Database error")
             })?;
 
             // Commit the transaction first to ensure season and teams are created
             tx.commit().await.map_err(|e| {
-                eprintln!("Database error committing transaction: {}", e);
+                eprintln!("Database error committing transaction: {e}");
                 actix_web::error::ErrorInternalServerError("Database error")
             })?;
 
@@ -900,7 +900,7 @@ pub async fn create_league_season(
                 match scheduler.schedule_season_with_frequency(
                     season_id,
                     body.name.clone(),
-                    &evaluation_cron,
+                    evaluation_cron,
                 ).await {
                     Ok(_) => {
                         tracing::info!("✅ Successfully scheduled evaluation for season '{}'", body.name);
@@ -923,20 +923,20 @@ pub async fn create_league_season(
                 evaluation_timezone: Some(evaluation_timezone.to_string()),
                 auto_evaluation_enabled: Some(auto_evaluation_enabled),
                 created_at: now,
-                game_duration_seconds: game_duration_seconds,
+                game_duration_seconds,
                 games_per_matchup: Some(games_per_matchup),
             };
 
             let response = ApiResponse {
                 data: season,
                 success: true,
-                message: Some(format!("Season created successfully with {} games automatically generated", games_created)),
+                message: Some(format!("Season created successfully with {games_created} games automatically generated")),
             };
 
             Ok(HttpResponse::Created().json(response))
         }
         Err(e) => {
-            eprintln!("Database error creating season: {}", e);
+            eprintln!("Database error creating season: {e}");
             Ok(HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": "Failed to create season"
             })))
@@ -979,7 +979,7 @@ pub async fn get_league_season_by_id(
     .fetch_optional(pool.get_ref())
     .await
     .map_err(|e| {
-        eprintln!("Database error getting season: {}", e);
+        eprintln!("Database error getting season: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -1062,7 +1062,7 @@ pub async fn update_league_season(
             get_league_season_by_id(pool, web::Path::from((league_id, season_id))).await
         }
         Err(e) => {
-            eprintln!("Database error updating season: {}", e);
+            eprintln!("Database error updating season: {e}");
             Ok(HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": "Failed to update season"
             })))
@@ -1087,7 +1087,7 @@ pub async fn delete_league_season(
     .fetch_optional(pool.get_ref())
     .await
     .map_err(|e| {
-        eprintln!("Database error checking season: {}", e);
+        eprintln!("Database error checking season: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -1099,7 +1099,7 @@ pub async fn delete_league_season(
 
     // Start transaction to delete all related data
     let mut tx = pool.begin().await.map_err(|e| {
-        eprintln!("Database error starting transaction: {}", e);
+        eprintln!("Database error starting transaction: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -1113,7 +1113,7 @@ pub async fn delete_league_season(
     .execute(&mut *tx)
     .await
     .map_err(|e| {
-        eprintln!("Database error deleting games: {}", e);
+        eprintln!("Database error deleting games: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -1125,7 +1125,7 @@ pub async fn delete_league_season(
     .execute(&mut *tx)
     .await
     .map_err(|e| {
-        eprintln!("Database error deleting standings: {}", e);
+        eprintln!("Database error deleting standings: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -1137,7 +1137,7 @@ pub async fn delete_league_season(
     .execute(&mut *tx)
     .await
     .map_err(|e| {
-        eprintln!("Database error deleting league teams: {}", e);
+        eprintln!("Database error deleting league teams: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -1159,7 +1159,7 @@ pub async fn delete_league_season(
             }
 
             tx.commit().await.map_err(|e| {
-                eprintln!("Database error committing transaction: {}", e);
+                eprintln!("Database error committing transaction: {e}");
                 actix_web::error::ErrorInternalServerError("Database error")
             })?;
 
@@ -1184,7 +1184,7 @@ pub async fn delete_league_season(
             Ok(HttpResponse::NoContent().finish())
         }
         Err(e) => {
-            eprintln!("Database error deleting season: {}", e);
+            eprintln!("Database error deleting season: {e}");
             Ok(HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": "Failed to delete season"
             })))

@@ -7,6 +7,7 @@ use redis::Client as RedisClient;
 use crate::models::game_events::GameEvent;
 
 /// Publish a chat message event to Redis for WebSocket broadcasting to team members
+#[allow(clippy::too_many_arguments)]
 pub async fn publish_chat_message(
     redis_client: &Arc<RedisClient>,
     team_id: Uuid,
@@ -90,16 +91,16 @@ pub async fn send_chat_message_received_to_user(
     let mut conn = redis_client
         .get_multiplexed_async_connection()
         .await
-        .map_err(|e| format!("Failed to get Redis connection: {}", e))?;
+        .map_err(|e| format!("Failed to get Redis connection: {e}"))?;
 
     // Send to user-specific channel only
-    let user_channel = format!("game:events:user:{}", recipient_id);
+    let user_channel = format!("game:events:user:{recipient_id}");
     let event_message = serde_json::to_string(&event)
-        .map_err(|e| format!("Failed to serialize chat message received event: {}", e))?;
+        .map_err(|e| format!("Failed to serialize chat message received event: {e}"))?;
 
     conn.publish::<_, _, ()>(&user_channel, event_message)
         .await
-        .map_err(|e| format!("Failed to publish chat message received event to Redis: {}", e))?;
+        .map_err(|e| format!("Failed to publish chat message received event to Redis: {e}"))?;
 
     tracing::info!(
         "📬 Sent chat_message_received to user {} from {} in team {}",
@@ -120,16 +121,16 @@ async fn publish_team_event(
     let mut conn = redis_client
         .get_multiplexed_async_connection()
         .await
-        .map_err(|e| format!("Failed to get Redis connection: {}", e))?;
+        .map_err(|e| format!("Failed to get Redis connection: {e}"))?;
 
     // Publish to team-specific channel so all team members receive it
-    let channel = format!("game:events:team:{}", team_id);
+    let channel = format!("game:events:team:{team_id}");
     let redis_message = serde_json::to_string(&event)
-        .map_err(|e| format!("Failed to serialize team event: {}", e))?;
+        .map_err(|e| format!("Failed to serialize team event: {e}"))?;
 
     conn.publish::<_, _, ()>(&channel, redis_message)
         .await
-        .map_err(|e| format!("Failed to publish team event to Redis: {}", e))?;
+        .map_err(|e| format!("Failed to publish team event to Redis: {e}"))?;
 
     tracing::info!(
         "Published team event to channel {} for team {}",

@@ -93,10 +93,8 @@ pub async fn request_upload_signed_url(
 
     if !is_video && !is_image {
         return HttpResponse::BadRequest().json(
-            ApiResponse::<()>::error(&format!(
-                "Invalid file type. Allowed images: {:?}, videos: {:?}",
-                ALLOWED_IMAGE_EXTENSIONS,
-                ALLOWED_VIDEO_EXTENSIONS
+            ApiResponse::<()>::error(format!(
+                "Invalid file type. Allowed images: {ALLOWED_IMAGE_EXTENSIONS:?}, videos: {ALLOWED_VIDEO_EXTENSIONS:?}"
             ))
         );
     }
@@ -104,7 +102,7 @@ pub async fn request_upload_signed_url(
     // Validate file size based on type
     if is_image && request.file_size > MAX_IMAGE_SIZE {
         return HttpResponse::BadRequest().json(
-            ApiResponse::<()>::error(&format!(
+            ApiResponse::<()>::error(format!(
                 "Image file too large. Maximum size: {} MB",
                 MAX_IMAGE_SIZE / (1024 * 1024)
             ))
@@ -113,7 +111,7 @@ pub async fn request_upload_signed_url(
 
     if is_video && request.file_size > MAX_VIDEO_SIZE {
         return HttpResponse::BadRequest().json(
-            ApiResponse::<()>::error(&format!(
+            ApiResponse::<()>::error(format!(
                 "Video file too large. Maximum size: {} MB",
                 MAX_VIDEO_SIZE / (1024 * 1024)
             ))
@@ -132,7 +130,7 @@ pub async fn request_upload_signed_url(
 
     // Generate unique filename with proper extension
     let unique_filename = format!("{}.{}", Uuid::new_v4(), extension);
-    let object_key = format!("media/{}/{}", user_id, unique_filename);
+    let object_key = format!("media/{user_id}/{unique_filename}");
 
     // Generate signed upload URL with checksum verification
     match minio_service.generate_presigned_upload_url(&object_key, &request.content_type, &request.expected_hash, 3600).await {
@@ -227,7 +225,7 @@ pub async fn get_download_signed_url(
     }
 
     // Validate that user_id_str is a valid UUID format
-    if let Err(_) = uuid::Uuid::parse_str(&user_id_str) {
+    if uuid::Uuid::parse_str(&user_id_str).is_err() {
         tracing::warn!("Invalid user ID format: {}", user_id_str);
         return HttpResponse::BadRequest().json(
             ApiResponse::<()>::error("Invalid user ID format")
@@ -236,8 +234,8 @@ pub async fn get_download_signed_url(
 
     // All authenticated users can access all files (as requested)
     // Try new format first (media/), then fall back to legacy format (users/)
-    let new_object_key = format!("media/{}/{}", user_id_str, filename);
-    let legacy_object_key = format!("users/{}/{}", user_id_str, filename);
+    let new_object_key = format!("media/{user_id_str}/{filename}");
+    let legacy_object_key = format!("users/{user_id_str}/{filename}");
 
     // Try to get file from new location first, then legacy location
     let (object_key, get_result) = match minio_service.get_file(&new_object_key).await {
@@ -291,7 +289,7 @@ pub async fn get_download_signed_url(
 fn get_file_extension(filename: &str) -> String {
     filename
         .split('.')
-        .last()
+        .next_back()
         .unwrap_or("")
         .to_lowercase()
 }

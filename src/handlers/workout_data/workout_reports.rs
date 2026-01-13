@@ -367,7 +367,7 @@ pub async fn update_report_status(
 
                 tokio::spawn(async move {
                     // Create notification in database first
-                    let notification_message = format!("{} - {}", title, body);
+                    let notification_message = format!("{title} - {body}");
                     match sqlx::query!(
                         r#"
                         INSERT INTO notifications (recipient_id, actor_id, notification_type, entity_type, entity_id, message)
@@ -385,7 +385,7 @@ pub async fn update_report_status(
                             tracing::info!("Created notification {} for workout report review", notif_row.id);
 
                             // Send WebSocket notification
-                            let ws_message = format!("{} - {}", title, body);
+                            let ws_message = format!("{title} - {body}");
                             if let Err(e) = send_websocket_notification_to_user(
                                 &redis_clone,
                                 reporter_id,

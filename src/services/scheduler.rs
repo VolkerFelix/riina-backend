@@ -208,7 +208,7 @@ impl SchedulerService {
                         tracing::info!("   ▶️  Games just started: {:?}", started_games);
                         tracing::info!("   🏁 Games just finished: {:?}", finished_games);
 
-                        if finished_games.len() > 0 {
+                        if !finished_games.is_empty() {
                             // Step 2: Evaluate any finished games
                             tracing::info!("⏰ [SCHEDULER] Step 2: Evaluating {} finished games", finished_games.len());
                             match evaluate_games.evaluate_finished_live_games(&finished_games).await {

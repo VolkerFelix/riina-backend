@@ -110,7 +110,7 @@ pub async fn send_invitation(
             if let Some(count) = row.count {
                 if count >= MAX_TEAM_SIZE {
                     return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
-                        &format!("Your team is already full (maximum {} members)", MAX_TEAM_SIZE)
+                        format!("Your team is already full (maximum {MAX_TEAM_SIZE} members)")
                     ));
                 }
             }
@@ -492,9 +492,9 @@ pub async fn respond_to_invitation(
                 };
 
                 let message = if request.accept {
-                    format!("{} accepted the invitation to join {}", respondent_username, team_name)
+                    format!("{respondent_username} accepted the invitation to join {team_name}")
                 } else {
-                    format!("{} declined the invitation to join {}", respondent_username, team_name)
+                    format!("{respondent_username} declined the invitation to join {team_name}")
                 };
 
                 let notification_type = if request.accept {
@@ -545,7 +545,7 @@ pub async fn respond_to_invitation(
             }
 
             HttpResponse::Ok().json(ApiResponse::success(
-                format!("Invitation {} successfully", action),
+                format!("Invitation {action} successfully"),
                 serde_json::json!({})
             ))
         }

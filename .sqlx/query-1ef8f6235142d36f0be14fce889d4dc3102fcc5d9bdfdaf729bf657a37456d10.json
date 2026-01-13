@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, week_number FROM games WHERE season_id = $1 AND week_number = $2 AND status = 'scheduled' ORDER BY week_number, game_start_time",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "week_number",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "1ef8f6235142d36f0be14fce889d4dc3102fcc5d9bdfdaf729bf657a37456d10"
+}

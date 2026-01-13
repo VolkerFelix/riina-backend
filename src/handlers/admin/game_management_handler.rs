@@ -19,8 +19,6 @@ pub struct StartGamesRequest {
 #[derive(Debug, sqlx::FromRow)]
 struct GameToStart {
     pub id: Uuid,
-    pub home_team_id: Uuid,
-    pub away_team_id: Uuid,
     pub week_number: i32,
 }
 
@@ -66,7 +64,7 @@ pub async fn start_games_now(
     let games: Vec<GameToStart> = if let Some(week) = body.week_number {
         sqlx::query_as!(
             GameToStart,
-            "SELECT id, home_team_id, away_team_id, week_number FROM games WHERE season_id = $1 AND week_number = $2 AND status = 'scheduled' ORDER BY week_number, game_start_time",
+            "SELECT id, week_number FROM games WHERE season_id = $1 AND week_number = $2 AND status = 'scheduled' ORDER BY week_number, game_start_time",
             body.season_id,
             week
         )
@@ -79,7 +77,7 @@ pub async fn start_games_now(
     } else {
         sqlx::query_as!(
             GameToStart,
-            "SELECT id, home_team_id, away_team_id, week_number FROM games WHERE season_id = $1 AND status = 'scheduled' AND game_start_time > NOW() ORDER BY week_number, game_start_time LIMIT 10",
+            "SELECT id, week_number FROM games WHERE season_id = $1 AND status = 'scheduled' AND game_start_time > NOW() ORDER BY week_number, game_start_time LIMIT 10",
             body.season_id
         )
         .fetch_all(&mut *tx)
@@ -175,11 +173,9 @@ pub async fn start_games_now(
     }
 
     let message = if let Some(week) = body.week_number {
-        format!("Started {} games for week {} and initialized {} live games", 
-            games_started, week, live_games_initialized)
+        format!("Started {games_started} games for week {week} and initialized {live_games_initialized} live games")
     } else {
-        format!("Started {} upcoming games and initialized {} live games", 
-            games_started, live_games_initialized)
+        format!("Started {games_started} upcoming games and initialized {live_games_initialized} live games")
     };
 
     info!("{}", message);
@@ -622,7 +618,7 @@ pub async fn finish_ongoing_games(
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
-    let message = format!("Successfully finished {} ongoing games", games_finished);
+    let message = format!("Successfully finished {games_finished} ongoing games");
     info!("{}", message);
 
     let response = serde_json::json!({
@@ -721,7 +717,7 @@ pub async fn create_missing_game_summaries(
     }
 
     let message = if errors.is_empty() {
-        format!("Successfully created {} game summaries", summaries_created)
+        format!("Successfully created {summaries_created} game summaries")
     } else {
         format!("Created {} game summaries with {} errors", summaries_created, errors.len())
     };

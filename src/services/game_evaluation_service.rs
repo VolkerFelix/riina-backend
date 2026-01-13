@@ -354,13 +354,12 @@ winner_team_id,
                     let notification = GameEvent::Notification {
                         notification_id: Uuid::new_v4(),
                         user_id: member.user_id,
-                        title: format!("Match Result: {}", result_text),
+                        title: format!("Match Result: {result_text}"),
                         message: format!(
-                            "Your team scored {} against {} ({}). Final score: {} - {}",
-                            user_team_score, opponent_name, opponent_score, user_team_score, opponent_score
+                            "Your team scored {user_team_score} against {opponent_name} ({opponent_score}). Final score: {user_team_score} - {opponent_score}"
                         ),
                         notification_type: NotificationType::GameResult,
-                        action_url: Some(format!("/game/{}", game_id)),
+                        action_url: Some(format!("/game/{game_id}")),
                         created_at: Utc::now(),
                     };
 
@@ -376,7 +375,7 @@ winner_team_id,
     async fn send_user_notification(&self, user_id: &Uuid, notification: &GameEvent) -> Result<(), Box<dyn std::error::Error>> {
             let mut conn = self.redis_client.get_async_connection().await?;
             let message = serde_json::to_string(notification)?;
-            let user_channel = format!("game:events:user:{}", user_id);
+            let user_channel = format!("game:events:user:{user_id}");
             
             let result: Result<i32, redis::RedisError> = conn.publish(&user_channel, message).await;
             

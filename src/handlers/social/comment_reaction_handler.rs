@@ -32,7 +32,7 @@ pub async fn add_comment_reaction(
     };
     let comment_id = comment_id.into_inner();
 
-    if ReactionType::from_str(&body.reaction_type).is_none() {
+    if ReactionType::parse(&body.reaction_type).is_none() {
         return HttpResponse::BadRequest().json(
             ApiResponse::<()>::error("Invalid reaction type")
         );
@@ -76,7 +76,7 @@ pub async fn add_comment_reaction(
                             &pool,
                             comment.user_id,
                             format!("{} reacted to your comment", claims.username),
-                            format!("🔥"),
+                            "🔥".to_string(),
                             Some(notification_data),
                             Some("comment_reaction".to_string()),
                         ).await {

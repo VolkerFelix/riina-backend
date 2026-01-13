@@ -118,7 +118,7 @@ pub async fn refresh_biometric_token(
     validation.validate_nbf = false;
 
     let token_data = match decode::<Claims>(
-        &expired_token,
+        expired_token,
         &DecodingKey::from_secret(jwt_settings.secret.expose_secret().as_bytes()),
         &validation,
     ) {

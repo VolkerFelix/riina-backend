@@ -39,7 +39,7 @@ async fn main() -> std::io::Result<()> {
         .idle_timeout(Duration::from_secs(600))
         .max_lifetime(Duration::from_secs(1800))
         .connect_lazy(
-            &config.database.connection_string().expose_secret()
+            config.database.connection_string().expose_secret()
         )
         .expect("Failed to create Postgres connection pool");
     let address = format!("{}:{}", config.application.host, config.application.port);

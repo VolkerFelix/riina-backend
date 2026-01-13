@@ -45,16 +45,16 @@ fn calculate_duration_minutes(start: DateTime<Utc>, end: DateTime<Utc>) -> Optio
     }
 }
 
-fn calculate_avg_heart_rate(heart_rate_data: &Vec<HeartRateData>) -> Option<i32> {
+fn calculate_avg_heart_rate(heart_rate_data: &[HeartRateData]) -> Option<i32> {
     if heart_rate_data.is_empty() {
         return None;
     }
     let sum: i32 = heart_rate_data.iter().map(|hr| hr.heart_rate).sum();
     let count = heart_rate_data.len() as i32;
-    Some((sum / count) as i32)
+    Some(sum / count)
 }
 
-fn calculate_max_heart_rate(heart_rate_data: &Vec<HeartRateData>) -> Option<i32> {
+fn calculate_max_heart_rate(heart_rate_data: &[HeartRateData]) -> Option<i32> {
     heart_rate_data.iter().map(|hr| hr.heart_rate).reduce(i32::max)
 }
 

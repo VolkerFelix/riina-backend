@@ -372,7 +372,7 @@ pub async fn remove_team_member(
         }
         Err(e) => {
             tracing::error!("Failed to remove user {} from team {}: {}", target_user_id, team_id, e);
-            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error(&format!("Failed to remove user from team: {}", e))))
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()>::error(format!("Failed to remove user from team: {e}"))))
         }
     }
 }
@@ -449,7 +449,7 @@ pub async fn update_my_team_status(
         Ok(_) => {
             tracing::info!("User {} updated status to {} in team {}", user_id, new_status, team_id);
             Ok(HttpResponse::Ok().json(ApiResponse::success(
-                format!("Status updated to {}", new_status),
+                format!("Status updated to {new_status}"),
                 json!({"status": new_status})
             )))
         }

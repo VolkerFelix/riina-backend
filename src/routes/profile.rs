@@ -82,7 +82,7 @@ async fn serve_profile_picture(
     // This allows users to see each other's profile pictures in the app
     tracing::info!("📸 User {} requesting profile picture for user {}", claims.sub, user_id);
 
-    let object_key = format!("profile-pictures/{}/{}", user_id, filename);
+    let object_key = format!("profile-pictures/{user_id}/{filename}");
 
     match minio_service.get_file(&object_key).await {
         Ok((contents, content_type)) => {

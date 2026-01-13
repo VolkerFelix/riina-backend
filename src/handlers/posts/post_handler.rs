@@ -182,16 +182,7 @@ pub async fn update_post(
 
     // Convert media_urls to JSON
     // Important: We need to distinguish between "not updating media" (None) and "clearing media" (Some(empty array))
-    let media_urls_json = match &body.media_urls {
-        Some(media) => {
-            // If media array is provided (even if empty), convert it to JSON
-            Some(serde_json::to_value(media).unwrap_or(serde_json::Value::Null))
-        }
-        None => {
-            // If media_urls field is not provided at all, don't update it
-            None
-        }
-    };
+    let media_urls_json = body.media_urls.as_ref().map(|media| serde_json::to_value(media).unwrap_or(serde_json::Value::Null));
 
     // Build the UPDATE query
     // Note: Only update media_urls if it's explicitly provided (even if empty)

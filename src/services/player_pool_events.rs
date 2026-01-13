@@ -42,21 +42,21 @@ pub async fn publish_player_pool_event(
     )
     .execute(pool)
     .await
-    .map_err(|e| format!("Failed to save player pool notification to database: {}", e))?;
+    .map_err(|e| format!("Failed to save player pool notification to database: {e}"))?;
 
     // 2. Publish to Redis for real-time WebSocket broadcasting
     let mut conn = redis_client
         .get_multiplexed_async_connection()
         .await
-        .map_err(|e| format!("Failed to get Redis connection: {}", e))?;
+        .map_err(|e| format!("Failed to get Redis connection: {e}"))?;
 
     let channel = "player_pool_events";
     let redis_message = serde_json::to_string(&event)
-        .map_err(|e| format!("Failed to serialize player pool event: {}", e))?;
+        .map_err(|e| format!("Failed to serialize player pool event: {e}"))?;
 
     conn.publish::<_, _, ()>(channel, redis_message)
         .await
-        .map_err(|e| format!("Failed to publish player pool event to Redis: {}", e))?;
+        .map_err(|e| format!("Failed to publish player pool event to Redis: {e}"))?;
 
     tracing::info!(
         "Published and saved player pool event: {} for user {}",

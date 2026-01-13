@@ -87,7 +87,7 @@ pub async fn get_game_live_score(
     
     // Set pagination defaults
     let page = query.page.unwrap_or(1).max(1);
-    let limit = query.limit.unwrap_or(10).min(100).max(1);
+    let limit = query.limit.unwrap_or(10).clamp(1, 100);
     let offset = (page - 1) * limit;
     
     // Get game info with live scoring data from unified games table

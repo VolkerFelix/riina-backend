@@ -649,7 +649,7 @@ async fn check_and_complete_poll(
     team_id: Uuid,
 ) -> Result<(), String> {
     let poll_info = get_poll_info(pool, poll_id).await
-        .map_err(|e| format!("Failed to get poll info: {}", e))?;
+        .map_err(|e| format!("Failed to get poll info: {e}"))?;
 
     let total_votes = poll_info.votes_for + poll_info.votes_against;
     let votes_remaining = poll_info.total_eligible_voters - total_votes;
@@ -684,7 +684,7 @@ async fn check_and_complete_poll(
     )
     .execute(pool)
     .await
-    .map_err(|e| format!("Failed to update poll status: {}", e))?;
+    .map_err(|e| format!("Failed to update poll status: {e}"))?;
 
     // If approved, remove the member from the team and add back to player pool
     if result == PollResult::Approved {
@@ -786,7 +786,7 @@ async fn check_and_complete_poll(
     )
     .fetch_all(pool)
     .await
-    .map_err(|e| format!("Failed to fetch team members: {}", e))?;
+    .map_err(|e| format!("Failed to fetch team members: {e}"))?;
 
     let notification_message = if result == PollResult::Approved {
         format!("Poll completed: {} has been removed from {}", poll_info.target_username, poll_info.team_name)

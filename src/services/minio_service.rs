@@ -49,15 +49,11 @@ impl MinIOService {
         tracing::info!("🗄️ Initializing MinIO bucket: {}", self.bucket_name);
         
         // Check if bucket exists
-        let bucket_exists = match self.internal_client
+        let bucket_exists = (self.internal_client
             .head_bucket()
             .bucket(&self.bucket_name)
             .send()
-            .await 
-        {
-            Ok(_) => true,
-            Err(_) => false,
-        };
+            .await).is_ok();
 
         if !bucket_exists {
             tracing::info!("📦 Creating MinIO bucket: {}", self.bucket_name);
@@ -116,7 +112,7 @@ impl MinIOService {
         user_id: Uuid,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         // Create a unique path with user_id prefix for organization
-        let object_key = format!("users/{}/{}", user_id, file_name);
+        let object_key = format!("users/{user_id}/{file_name}");
         
         tracing::info!("📤 Uploading file to MinIO: {} (size: {} bytes)", object_key, file_data.len());
 
@@ -208,16 +204,16 @@ impl MinIOService {
         // Handle different object key patterns
         if let Some(path_without_users) = object_key.strip_prefix("users/") {
             // Workout media files: users/{user_id}/{filename} -> /health/workout-media/{user_id}/{filename}
-            format!("/health/workout-media/{}", path_without_users)
+            format!("/health/workout-media/{path_without_users}")
         } else if let Some(path_without_profile) = object_key.strip_prefix("profile-pictures/") {
             // Profile pictures: profile-pictures/{user_id}/{filename} -> /profile/picture/{user_id}/{filename}
-            format!("/profile/picture/{}", path_without_profile)
+            format!("/profile/picture/{path_without_profile}")
         } else if let Some(path_without_media) = object_key.strip_prefix("media/") {
             // Media files: media/{user_id}/{filename} -> {user_id}/{filename}
             path_without_media.to_string()
         } else {
             // Fallback for any non-standard object keys
-            format!("/health/workout-media/{}", object_key)
+            format!("/health/workout-media/{object_key}")
         }
     }
 
@@ -255,7 +251,7 @@ impl MinIOService {
         
         // Convert hex hash to base64 for S3 checksum
         let hash_bytes = hex::decode(expected_hash)
-            .map_err(|e| format!("Invalid hash format: {}", e))?;
+            .map_err(|e| format!("Invalid hash format: {e}"))?;
         let checksum_sha256 = general_purpose::STANDARD.encode(&hash_bytes);
         
         let presigning_config = PresigningConfig::builder()
