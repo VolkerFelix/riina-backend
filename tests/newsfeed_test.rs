@@ -99,7 +99,7 @@ async fn test_newsfeed_pagination() {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Get first page (ranked section)
-    // Note: The first request returns ALL ranked posts from last 48 hours (up to 50),
+    // Note: The first request returns ALL ranked posts from last 24 hours (up to 50),
     // ignoring the limit parameter. Limit only applies to chronological pagination.
     let response = client
         .get(&format!("{}/feed/", test_app.address))
@@ -125,7 +125,7 @@ async fn test_newsfeed_pagination() {
     assert!(pagination["next_cursor"].is_string(), "Should have next cursor");
 
     // Get second page using cursor (chronological section)
-    // This returns posts OLDER than 48 hours, which may be empty in this test
+    // This returns posts OLDER than 24 hours, which may be empty in this test
     let cursor = pagination["next_cursor"].as_str().unwrap();
     let encoded_cursor = form_urlencoded::byte_serialize(cursor.as_bytes()).collect::<String>();
     let response = client
@@ -143,7 +143,7 @@ async fn test_newsfeed_pagination() {
     let second_page: serde_json::Value = response.json().await.expect("Failed to parse response");
 
     let second_posts = second_page["data"]["posts"].as_array().unwrap();
-    // Second page contains chronological posts older than 48 hours
+    // Second page contains chronological posts older than 24 hours
     // Since our test posts are recent, this may be empty - that's OK
 
     // Verify no overlap between pages (if there are posts in second page)
