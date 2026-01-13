@@ -86,7 +86,7 @@ impl MLClient {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
             tracing::error!("❌ ML service returned error {}: {}", status, error_text);
-            return Err(format!("ML service error: {} - {}", status, error_text).into());
+            return Err(format!("ML service error: {status} - {error_text}").into());
         }
 
         let classification = response.json::<ClassifyResponse>().await?;

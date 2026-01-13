@@ -14,7 +14,7 @@ pub struct WorkoutAnalyzer {
 }
 
 impl WorkoutAnalyzer {
-    pub fn new(heart_rate: &Vec<HeartRateData>, zones: &HeartRateZones) -> Self {
+    pub fn new(heart_rate: &[HeartRateData], zones: &HeartRateZones) -> Self {
         if heart_rate.is_empty() {
             return Self {
                 total_duration_min: 0,
@@ -38,7 +38,7 @@ impl WorkoutAnalyzer {
         };
 
         // Sort by timestamp to ensure chronological order
-        let mut sorted_data = heart_rate.clone();
+        let mut sorted_data = heart_rate.to_vec();
         sorted_data.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
 
         let start_time = sorted_data.first().unwrap().timestamp;
@@ -102,7 +102,7 @@ impl WorkoutAnalyzer {
     }
 }
 
-fn calc_hrv(hr_values: &Vec<i32>) -> f32 {
+fn calc_hrv(hr_values: &[i32]) -> f32 {
     if hr_values.len() < 2 {
         return 0.0;
     }

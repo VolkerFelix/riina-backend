@@ -180,7 +180,7 @@ pub async fn send_websocket_notification_to_user(
     let event_message = serde_json::to_string(&event)?;
 
     // Send to user-specific channel only
-    let user_channel = format!("game:events:user:{}", recipient_id);
+    let user_channel = format!("game:events:user:{recipient_id}");
     let result: Result<i32, redis::RedisError> = conn.publish(&user_channel, event_message).await;
 
     match result {

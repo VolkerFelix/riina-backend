@@ -17,7 +17,7 @@ impl ReactionType {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "fire" => Some(ReactionType::Fire),
             _ => None,

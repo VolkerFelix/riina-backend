@@ -92,13 +92,13 @@ impl TimingService {
         let secs = seconds % 60;
 
         if days > 0 {
-            format!("{}d {}h {}m {}s", days, hours, minutes, secs)
+            format!("{days}d {hours}h {minutes}m {secs}s")
         } else if hours > 0 {
-            format!("{}h {}m {}s", hours, minutes, secs)
+            format!("{hours}h {minutes}m {secs}s")
         } else if minutes > 0 {
-            format!("{}m {}s", minutes, secs)
+            format!("{minutes}m {secs}s")
         } else {
-            format!("{}s", secs)
+            format!("{secs}s")
         }
     }
 
@@ -130,11 +130,11 @@ impl TimingService {
         let minutes = (total_seconds % 3600) / 60;
 
         if days > 0 {
-            format!("{} days, {} hours", days, hours)
+            format!("{days} days, {hours} hours")
         } else if hours > 0 {
-            format!("{} hours, {} minutes", hours, minutes)
+            format!("{hours} hours, {minutes} minutes")
         } else {
-            format!("{} minutes", minutes)
+            format!("{minutes} minutes")
         }
     }
 

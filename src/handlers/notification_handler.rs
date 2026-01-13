@@ -314,7 +314,7 @@ pub async fn send_notification_to_user(
     .await
     .map_err(|e| {
         error!("Database error fetching tokens for user {}: {}", user_id, e);
-        format!("Database error: {}", e)
+        format!("Database error: {e}")
     })?;
 
     if tokens.is_empty() {
@@ -383,7 +383,7 @@ pub async fn send_notification_to_user(
         .await
         .map_err(|e| {
             error!("❌ HTTP error sending notification for user {}: {}", user_id, e);
-            format!("HTTP error: {}", e)
+            format!("HTTP error: {e}")
         })?;
 
     let status = response.status();
@@ -392,7 +392,7 @@ pub async fn send_notification_to_user(
     if !status.is_success() {
         let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
         error!("❌ Expo error for user {}: {}", user_id, error_text);
-        return Err(format!("Expo error: {}", error_text));
+        return Err(format!("Expo error: {error_text}"));
     }
 
     // Parse response to check for ticket errors

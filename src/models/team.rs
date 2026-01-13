@@ -150,7 +150,7 @@ impl std::str::FromStr for TeamRole {
             "owner" => Ok(TeamRole::Owner),
             "admin" => Ok(TeamRole::Admin),
             "member" => Ok(TeamRole::Member),
-            _ => Err(format!("Invalid team role: {}", s)),
+            _ => Err(format!("Invalid team role: {s}")),
         }
     }
 }
@@ -190,7 +190,7 @@ impl std::str::FromStr for MemberStatus {
             "inactive" => Ok(MemberStatus::Inactive),
             "pending" => Ok(MemberStatus::Pending),
             "banned" => Ok(MemberStatus::Banned),
-            _ => Err(format!("Invalid member status: {}", s)),
+            _ => Err(format!("Invalid member status: {s}")),
         }
     }
 }
@@ -504,7 +504,7 @@ impl std::str::FromStr for PollType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "member_removal" => Ok(PollType::MemberRemoval),
-            _ => Err(format!("Invalid poll type: {}", s)),
+            _ => Err(format!("Invalid poll type: {s}")),
         }
     }
 }
@@ -544,7 +544,7 @@ impl std::str::FromStr for PollStatus {
             "completed" => Ok(PollStatus::Completed),
             "expired" => Ok(PollStatus::Expired),
             "cancelled" => Ok(PollStatus::Cancelled),
-            _ => Err(format!("Invalid poll status: {}", s)),
+            _ => Err(format!("Invalid poll status: {s}")),
         }
     }
 }
@@ -580,7 +580,7 @@ impl std::str::FromStr for PollResult {
             "approved" => Ok(PollResult::Approved),
             "rejected" => Ok(PollResult::Rejected),
             "no_consensus" => Ok(PollResult::NoConsensus),
-            _ => Err(format!("Invalid poll result: {}", s)),
+            _ => Err(format!("Invalid poll result: {s}")),
         }
     }
 }
@@ -622,7 +622,7 @@ impl std::str::FromStr for VoteChoice {
         match s.to_lowercase().as_str() {
             "for" => Ok(VoteChoice::For),
             "against" => Ok(VoteChoice::Against),
-            _ => Err(format!("Invalid vote choice: {}", s)),
+            _ => Err(format!("Invalid vote choice: {s}")),
         }
     }
 }

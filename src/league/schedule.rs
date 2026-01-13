@@ -17,14 +17,6 @@ struct GameQueryRow {
     winner_team_id: Option<Uuid>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
-    home_score: i32,
-    away_score: i32,
-    game_start_time: Option<DateTime<Utc>>,
-    game_end_time: Option<DateTime<Utc>>,
-    last_score_time: Option<DateTime<Utc>>,
-    last_scorer_id: Option<Uuid>,
-    last_scorer_name: Option<String>,
-    last_scorer_team: Option<String>,
     home_team_name: String,
     away_team_name: String,
     home_team_color: String,
@@ -110,7 +102,7 @@ impl ScheduleService {
                 );
 
                 // Round starts at the scheduled time, ends after game duration
-                let game_end_time = game_start_time.clone() + game_duration;
+                let game_end_time = game_start_time + game_duration;
 
                 sqlx::query!(
                     r#"
@@ -176,7 +168,7 @@ impl ScheduleService {
                 );
 
                 // Week starts at the scheduled time, ends after game duration
-                let game_end_time = game_start_time.clone() + game_duration;
+                let game_end_time = game_start_time + game_duration;
 
                 sqlx::query!(
                     r#"
@@ -284,7 +276,7 @@ impl ScheduleService {
             return Err(sqlx::Error::RowNotFound);
         }
 
-        let game_time = games_query[0].game_start_time.unwrap_or_else(|| chrono::Utc::now());
+        let game_time = games_query[0].game_start_time.unwrap_or_else(chrono::Utc::now);
         let now = Utc::now();
         let next_saturday = self.timing.get_next_game_time();
         let is_current_week = (game_time - next_saturday).abs() < Duration::days(7);
@@ -442,8 +434,6 @@ impl ScheduleService {
                 SELECT
                     lg.id, lg.season_id, lg.home_team_id, lg.away_team_id, lg.week_number,
                     lg.is_first_leg, lg.status, lg.winner_team_id, lg.created_at, lg.updated_at,
-                    lg.home_score, lg.away_score, lg.game_start_time, lg.game_end_time,
-                    lg.last_score_time, lg.last_scorer_id, lg.last_scorer_name, lg.last_scorer_team,
                     ht.team_name as home_team_name,
                     at.team_name as away_team_name,
                     ht.team_color as home_team_color,
@@ -468,8 +458,6 @@ impl ScheduleService {
                 SELECT
                     lg.id, lg.season_id, lg.home_team_id, lg.away_team_id, lg.week_number,
                     lg.is_first_leg, lg.status, lg.winner_team_id, lg.created_at, lg.updated_at,
-                    lg.home_score, lg.away_score, lg.game_start_time, lg.game_end_time,
-                    lg.last_score_time, lg.last_scorer_id, lg.last_scorer_name, lg.last_scorer_team,
                     ht.team_name as home_team_name,
                     at.team_name as away_team_name,
                     ht.team_color as home_team_color,
@@ -565,7 +553,7 @@ impl ScheduleService {
             return Err("Maximum 20 teams allowed".to_string());
         }
 
-        if games_per_matchup < 1 || games_per_matchup > 2 {
+        if !(1..=2).contains(&games_per_matchup) {
             return Err("Games per matchup must be 1 (single round-robin) or 2 (double round-robin)".to_string());
         }
 

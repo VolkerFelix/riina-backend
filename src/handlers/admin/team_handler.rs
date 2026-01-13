@@ -121,8 +121,7 @@ pub async fn get_teams(
 
     sql.push_str(" GROUP BY t.id, t.team_name, t.team_color, t.created_at, t.user_id");
     sql.push_str(&format!(
-        " ORDER BY t.created_at DESC LIMIT {} OFFSET {}",
-        limit, offset
+        " ORDER BY t.created_at DESC LIMIT {limit} OFFSET {offset}"
     ));
 
     // Get total count
@@ -130,7 +129,7 @@ pub async fn get_teams(
         .fetch_one(pool.get_ref())
         .await
         .map_err(|e| {
-            eprintln!("Database error getting team count: {}", e);
+            eprintln!("Database error getting team count: {e}");
             actix_web::error::ErrorInternalServerError("Database error")
         })?;
 
@@ -139,7 +138,7 @@ pub async fn get_teams(
         .fetch_all(pool.get_ref())
         .await
         .map_err(|e| {
-            eprintln!("Database error getting teams: {}", e);
+            eprintln!("Database error getting teams: {e}");
             actix_web::error::ErrorInternalServerError("Database error")
         })?;
 
@@ -199,7 +198,7 @@ pub async fn get_team_by_id(
     .fetch_optional(pool.get_ref())
     .await
     .map_err(|e| {
-        eprintln!("Database error getting team: {}", e);
+        eprintln!("Database error getting team: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -246,7 +245,7 @@ pub async fn create_team(
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
         Err(e) => {
-            eprintln!("Failed to start transaction: {}", e);
+            eprintln!("Failed to start transaction: {e}");
             return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": "Failed to start database transaction"
             })));
@@ -271,7 +270,7 @@ pub async fn create_team(
     .await;
 
     if let Err(e) = team_result {
-        eprintln!("Database error creating team: {}", e);
+        eprintln!("Database error creating team: {e}");
         let _ = tx.rollback().await;
         return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
             "error": "Failed to create team"
@@ -295,7 +294,7 @@ pub async fn create_team(
     .await;
 
     if let Err(e) = member_result {
-        eprintln!("Database error adding team owner as member: {}", e);
+        eprintln!("Database error adding team owner as member: {e}");
         let _ = tx.rollback().await;
         return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
             "error": "Failed to add team owner as member"
@@ -304,7 +303,7 @@ pub async fn create_team(
 
     // Commit the transaction
     if let Err(e) = tx.commit().await {
-        eprintln!("Failed to commit transaction: {}", e);
+        eprintln!("Failed to commit transaction: {e}");
         return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
             "error": "Failed to commit team creation"
         })));
@@ -344,7 +343,7 @@ pub async fn update_team(
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
         Err(e) => {
-            eprintln!("Failed to start transaction: {}", e);
+            eprintln!("Failed to start transaction: {e}");
             return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": "Failed to start database transaction"
             })));
@@ -359,7 +358,7 @@ pub async fn update_team(
     .fetch_optional(&mut *tx)
     .await
     .map_err(|e| {
-        eprintln!("Database error fetching team: {}", e);
+        eprintln!("Database error fetching team: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -383,7 +382,7 @@ pub async fn update_team(
         .fetch_optional(&mut *tx)
         .await
         .map_err(|e| {
-            eprintln!("Database error checking new owner membership: {}", e);
+            eprintln!("Database error checking new owner membership: {e}");
             actix_web::error::ErrorInternalServerError("Database error")
         })?;
 
@@ -412,7 +411,7 @@ pub async fn update_team(
     .await;
 
     if let Err(e) = result {
-        eprintln!("Database error updating team: {}", e);
+        eprintln!("Database error updating team: {e}");
         let _ = tx.rollback().await;
         return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
             "error": "Failed to update team"
@@ -450,7 +449,7 @@ pub async fn update_team(
         .await;
 
         if let Err(e) = update_result {
-            eprintln!("Database error updating new owner role: {}", e);
+            eprintln!("Database error updating new owner role: {e}");
             let _ = tx.rollback().await;
             return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": "Failed to update owner role"
@@ -460,7 +459,7 @@ pub async fn update_team(
 
     // Commit the transaction
     if let Err(e) = tx.commit().await {
-        eprintln!("Failed to commit transaction: {}", e);
+        eprintln!("Failed to commit transaction: {e}");
         return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
             "error": "Failed to commit team update"
         })));
@@ -505,7 +504,7 @@ pub async fn delete_team(
             }
         }
         Err(e) => {
-            eprintln!("Database error deleting team: {}", e);
+            eprintln!("Database error deleting team: {e}");
             Ok(HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": "Failed to delete team"
             })))
@@ -544,7 +543,7 @@ pub async fn get_team_members(
     .fetch_all(pool.get_ref())
     .await
     .map_err(|e| {
-        eprintln!("Database error getting team members: {}", e);
+        eprintln!("Database error getting team members: {e}");
         actix_web::error::ErrorInternalServerError("Database error")
     })?;
 
@@ -643,7 +642,7 @@ pub async fn add_team_member(
             .fetch_one(pool.get_ref())
             .await
             .map_err(|e| {
-                eprintln!("Database error fetching created member: {}", e);
+                eprintln!("Database error fetching created member: {e}");
                 actix_web::error::ErrorInternalServerError("Database error")
             })?;
 
@@ -677,7 +676,7 @@ pub async fn add_team_member(
             Ok(HttpResponse::Created().json(response))
         }
         Err(e) => {
-            eprintln!("Database error adding team member: {}", e);
+            eprintln!("Database error adding team member: {e}");
             Ok(HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": "Failed to add team member"
             })))
@@ -753,7 +752,7 @@ pub async fn update_team_member(
             }
         }
         Err(e) => {
-            eprintln!("Database error updating team member: {}", e);
+            eprintln!("Database error updating team member: {e}");
             Ok(HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": "Failed to update team member"
             })))
@@ -784,7 +783,7 @@ pub async fn remove_team_member(
             })));
         }
         Err(e) => {
-            eprintln!("Database error fetching member: {}", e);
+            eprintln!("Database error fetching member: {e}");
             return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": "Failed to fetch team member"
             })));
@@ -802,7 +801,7 @@ pub async fn remove_team_member(
             Ok(HttpResponse::Ok().json(response))
         }
         Err(e) => {
-            eprintln!("Error removing team member: {}", e);
+            eprintln!("Error removing team member: {e}");
             Ok(HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": format!("Failed to remove team member: {}", e)
             })))

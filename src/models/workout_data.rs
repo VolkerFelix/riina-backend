@@ -92,6 +92,12 @@ pub struct WorkoutStats {
     pub zone_breakdown: Option<Vec<ZoneBreakdown>>,
 }
 
+impl Default for WorkoutStats {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WorkoutStats {
     pub fn new() -> Self {
         Self {
@@ -119,7 +125,7 @@ impl WorkoutType {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "strength" => WorkoutType::Strength,
             "cardio" => WorkoutType::Cardio,

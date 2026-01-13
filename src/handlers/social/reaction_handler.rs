@@ -30,7 +30,7 @@ pub async fn add_reaction(
     };
     let workout_id = workout_id.into_inner();
 
-    if ReactionType::from_str(&body.reaction_type).is_none() {
+    if ReactionType::parse(&body.reaction_type).is_none() {
         return HttpResponse::BadRequest().json(
             ApiResponse::<()>::error("Invalid reaction type")
         );
@@ -80,7 +80,7 @@ pub async fn add_reaction(
                                 &pool,
                                 workout_owner_id,
                                 format!("{} reacted to your workout", claims.username),
-                                format!("🔥"),
+                                "🔥".to_string(),
                                 Some(notification_data),
                                 Some("reaction".to_string())
                             ).await {

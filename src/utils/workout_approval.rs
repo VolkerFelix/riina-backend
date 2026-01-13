@@ -46,14 +46,14 @@ impl WorkoutApprovalToken {
 
         // Create HMAC
         let mut mac = HmacSha256::new_from_slice(secret.expose_secret().as_bytes())
-            .map_err(|e| format!("Failed to create HMAC: {}", e))?;
+            .map_err(|e| format!("Failed to create HMAC: {e}"))?;
         
         mac.update(payload.as_bytes());
         let result = mac.finalize();
         let signature = hex::encode(result.into_bytes());
 
         // Combine payload and signature
-        Ok(format!("{}|{}", payload, signature))
+        Ok(format!("{payload}|{signature}"))
     }
 
     pub fn validate_token(
@@ -102,7 +102,7 @@ impl WorkoutApprovalToken {
         );
         // Verify signature
         let mut mac = HmacSha256::new_from_slice(secret.expose_secret().as_bytes())
-            .map_err(|e| format!("Failed to create HMAC: {}", e))?;
+            .map_err(|e| format!("Failed to create HMAC: {e}"))?;
         mac.update(payload.as_bytes());
         let result = mac.finalize();
         let expected_signature = hex::encode(result.into_bytes());

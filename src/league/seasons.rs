@@ -103,25 +103,25 @@ impl SeasonService {
         let mut params: Vec<Box<dyn sqlx::Encode<sqlx::Postgres> + Send + Sync>> = Vec::new();
 
         if let Some(ref name) = name {
-            query.push_str(&format!(", name = ${}", param_count));
+            query.push_str(&format!(", name = ${param_count}"));
             params.push(Box::new(name.clone()));
             param_count += 1;
         }
 
         if let Some(start_date) = start_date {
-            query.push_str(&format!(", start_date = ${}", param_count));
+            query.push_str(&format!(", start_date = ${param_count}"));
             params.push(Box::new(start_date));
             param_count += 1;
         }
 
         if let Some(end_date) = end_date {
-            query.push_str(&format!(", end_date = ${}", param_count));
+            query.push_str(&format!(", end_date = ${param_count}"));
             params.push(Box::new(end_date));
             param_count += 1;
         }
 
 
-        query.push_str(&format!(" WHERE id = ${} RETURNING *", param_count));
+        query.push_str(&format!(" WHERE id = ${param_count} RETURNING *"));
 
         // For now, let's use a simpler approach with individual field updates
         let updated_season = if name.is_some() || start_date.is_some() || end_date.is_some() {

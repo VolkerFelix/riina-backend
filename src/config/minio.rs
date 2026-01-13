@@ -99,13 +99,13 @@ impl MinIOSettings {
             .with_root_certificates(roots)
             .with_no_client_auth();
 
-        let https = hyper_rustls::HttpsConnectorBuilder::new()
+        
+
+        hyper_rustls::HttpsConnectorBuilder::new()
             .with_tls_config(config)
             .https_or_http()
             .enable_http1()
             .enable_http2()
-            .build();
-
-        https
+            .build()
     }
 }

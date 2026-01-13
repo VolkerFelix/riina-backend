@@ -112,7 +112,7 @@ impl GameConnection {
                                 Ok(team_ids) => {
                                     let team_count = team_ids.len();
                                     for team_id in team_ids {
-                                        channels.push(format!("game:events:team:{}", team_id));
+                                        channels.push(format!("game:events:team:{team_id}"));
                                     }
                                     tracing::info!("Added {} team channels for user {}", team_count, user_id);
                                 },

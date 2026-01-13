@@ -71,6 +71,7 @@ pub struct LeagueGame {
 
 impl LeagueGame {
     /// Create a LeagueGame with all the original fields, setting new consolidated fields to defaults
+    #[allow(clippy::too_many_arguments)]
     pub fn with_defaults(
         id: Uuid,
         season_id: Uuid,
@@ -107,6 +108,7 @@ impl LeagueGame {
     }
     
     /// Create a new LeagueGame with basic fields, defaulting new consolidated fields to None
+    #[allow(clippy::too_many_arguments)]
     pub fn new_basic(
         id: Uuid,
         season_id: Uuid,

@@ -1,3 +1,4 @@
+#[allow(clippy::module_inception)]
 pub mod league;
 pub mod timing;
 pub mod schedule;
