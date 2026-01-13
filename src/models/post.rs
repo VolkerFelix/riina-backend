@@ -113,11 +113,20 @@ pub struct UpdatePostRequest {
     pub activity_name: Option<String>, // For workout posts
 }
 
+// Feed sort order
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum FeedSortBy {
+    Relevance,
+    Chronological,
+}
+
 // Feed query params
 #[derive(Debug, Deserialize)]
 pub struct FeedQueryParams {
     pub limit: Option<i32>,
     pub cursor: Option<String>, // ISO 8601 timestamp for cursor-based pagination
+    pub sort_by: Option<FeedSortBy>, // Sort order: relevance (engagement) or chronological
 }
 
 // Feed response with pagination

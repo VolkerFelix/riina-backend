@@ -99,7 +99,7 @@ async fn test_newsfeed_pagination() {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Get first page (ranked section)
-    // Note: The first request returns ALL ranked posts from last 48 hours (up to 50),
+    // Note: The first request returns ALL ranked posts from last 24 hours (up to 50),
     // ignoring the limit parameter. Limit only applies to chronological pagination.
     let response = client
         .get(&format!("{}/feed/", test_app.address))
@@ -125,7 +125,7 @@ async fn test_newsfeed_pagination() {
     assert!(pagination["next_cursor"].is_string(), "Should have next cursor");
 
     // Get second page using cursor (chronological section)
-    // This returns posts OLDER than 48 hours, which may be empty in this test
+    // This returns posts OLDER than 24 hours, which may be empty in this test
     let cursor = pagination["next_cursor"].as_str().unwrap();
     let encoded_cursor = form_urlencoded::byte_serialize(cursor.as_bytes()).collect::<String>();
     let response = client
@@ -143,7 +143,7 @@ async fn test_newsfeed_pagination() {
     let second_page: serde_json::Value = response.json().await.expect("Failed to parse response");
 
     let second_posts = second_page["data"]["posts"].as_array().unwrap();
-    // Second page contains chronological posts older than 48 hours
+    // Second page contains chronological posts older than 24 hours
     // Since our test posts are recent, this may be empty - that's OK
 
     // Verify no overlap between pages (if there are posts in second page)
@@ -487,4 +487,166 @@ async fn test_newsfeed_engagement_ranking_combined_score() {
         "Workout1 (media+reactions+comment = 17) should rank higher than workout2 (3 comments = 9)");
     assert!(workout2_pos.unwrap() < workout3_pos.unwrap(),
         "Workout2 (3 comments = 9) should rank higher than workout3 (4 reactions = 8)");
+}
+
+#[tokio::test]
+async fn test_newsfeed_chronological_sorting() {
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    // Create user and upload 3 workouts with delays to ensure different timestamps
+    let user = create_test_user_and_login(&test_app.address).await;
+
+    // Use very recent timestamps (just seconds apart) to ensure these are the newest workouts
+    // This helps avoid issues with other parallel tests polluting the feed
+    let now = Utc::now();
+
+    // First workout (oldest)
+    let mut workout1_data = WorkoutData::new(
+        WorkoutIntensity::Light,
+        now - chrono::Duration::seconds(20),
+        20
+    );
+    let workout1_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout1_data).await.expect("Failed to upload workout 1");
+    let workout1_id = workout1_response["data"]["sync_id"].as_str().unwrap().to_string();
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Second workout (middle)
+    let mut workout2_data = WorkoutData::new(
+        WorkoutIntensity::Moderate,
+        now - chrono::Duration::seconds(10),
+        30
+    );
+    workout2_data.image_urls = Some(vec!["https://example.com/image.jpg".to_string()]); // Add media for engagement boost
+    let workout2_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout2_data).await.expect("Failed to upload workout 2");
+    let workout2_id = workout2_response["data"]["sync_id"].as_str().unwrap().to_string();
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Third workout (newest) - use current time to be the absolute newest
+    let mut workout3_data = WorkoutData::new(
+        WorkoutIntensity::Hard,
+        Utc::now(),
+        40
+    );
+    let workout3_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout3_data).await.expect("Failed to upload workout 3");
+    let workout3_id = workout3_response["data"]["sync_id"].as_str().unwrap().to_string();
+
+    // IMPORTANT: Create reactor and commenter users BEFORE we start,
+    // so we don't create posts in between our workout posts
+    let reactor = create_test_user_and_login(&test_app.address).await;
+    let commenter = create_test_user_and_login(&test_app.address).await;
+
+    // Small delay to ensure posts are committed
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Add high engagement to workout2 to make it rank higher in relevance mode
+    // These don't create new posts, just add engagement data
+    client.post(&format!("{}/social/workouts/{}/reactions", test_app.address, workout2_id))
+        .header("Authorization", format!("Bearer {}", reactor.token))
+        .json(&json!({"reaction_type": "fire"}))
+        .send().await.expect("Failed to add reaction");
+
+    client.post(&format!("{}/social/workouts/{}/comments", test_app.address, workout2_id))
+        .header("Authorization", format!("Bearer {}", commenter.token))
+        .json(&json!({"content": "Great workout!", "parent_id": null}))
+        .send().await.expect("Failed to add comment");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Test 1: Get feed with chronological sorting
+    // Note: In CI, many tests run in parallel and create workouts, so we need a large limit
+    let chronological_response = client
+        .get(&format!("{}/feed/?sort_by=chronological&limit=1000", test_app.address))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Failed to get chronological feed");
+
+    assert!(chronological_response.status().is_success());
+    let chronological_body: serde_json::Value = chronological_response.json().await.expect("Failed to parse response");
+    let chronological_posts = chronological_body["data"]["posts"].as_array().unwrap();
+
+    // Debug: Print all workout IDs in the feed
+    println!("Chronological feed workout IDs:");
+    for (i, post) in chronological_posts.iter().enumerate() {
+        println!("  [{}] workout_id: {:?}", i, post["workout_id"]);
+    }
+    println!("Looking for:");
+    println!("  workout1_id: {}", workout1_id);
+    println!("  workout2_id: {}", workout2_id);
+    println!("  workout3_id: {}", workout3_id);
+
+    // Find positions in chronological feed
+    let chrono_workout1_pos = chronological_posts.iter().position(|p| p["workout_id"] == workout1_id);
+    let chrono_workout2_pos = chronological_posts.iter().position(|p| p["workout_id"] == workout2_id);
+    let chrono_workout3_pos = chronological_posts.iter().position(|p| p["workout_id"] == workout3_id);
+
+    // In parallel test execution, not all workouts may appear in top 50
+    // But we should see at least workout3 (the newest)
+    assert!(chrono_workout3_pos.is_some(), "workout3 ({}) should be in chronological feed (newest)", workout3_id);
+
+    // If all three appear, verify chronological ordering
+    if let (Some(pos1), Some(pos2), Some(pos3)) = (chrono_workout1_pos, chrono_workout2_pos, chrono_workout3_pos) {
+        // In chronological order: newest first (workout3, workout2, workout1)
+        assert!(pos3 < pos2,
+            "Chronological: workout3 (newest) should appear before workout2");
+        assert!(pos2 < pos1,
+            "Chronological: workout2 should appear before workout1 (oldest)");
+    } else {
+        println!("Note: Not all test workouts in top 50 (parallel tests running). Testing with available workouts.");
+    }
+
+    // Test 2: Get feed with relevance sorting (default)
+    let relevance_response = client
+        .get(&format!("{}/feed/?sort_by=relevance&limit=50", test_app.address))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Failed to get relevance feed");
+
+    assert!(relevance_response.status().is_success());
+    let relevance_body: serde_json::Value = relevance_response.json().await.expect("Failed to parse response");
+    let relevance_posts = relevance_body["data"]["posts"].as_array().unwrap();
+
+    // Find positions in relevance feed
+    let rel_workout1_pos = relevance_posts.iter().position(|p| p["workout_id"] == workout1_id);
+    let rel_workout2_pos = relevance_posts.iter().position(|p| p["workout_id"] == workout2_id);
+    let rel_workout3_pos = relevance_posts.iter().position(|p| p["workout_id"] == workout3_id);
+
+    // We should at least see workout2 or workout3 (the most recent/engaging ones)
+    assert!(rel_workout2_pos.is_some() || rel_workout3_pos.is_some(),
+        "At least workout2 or workout3 should be in relevance feed");
+
+    // If all workouts appear, verify engagement-based ranking
+    if let (Some(pos1), Some(pos2), Some(pos3)) = (rel_workout1_pos, rel_workout2_pos, rel_workout3_pos) {
+        // In relevance mode: workout2 should rank highest due to media + reaction + comment
+        // workout2 has: media (10) + reaction (2) + comment (3) = 15 points
+        // workout3 and workout1 have: 0 points
+        assert!(pos2 < pos3,
+            "Relevance: workout2 (high engagement) should rank higher than workout3");
+        assert!(pos2 < pos1,
+            "Relevance: workout2 (high engagement) should rank higher than workout1");
+
+        // Test 3: Verify the order is different between the two modes
+        // workout2 should be in different positions
+        if let Some(chrono_pos2) = chrono_workout2_pos {
+            assert_ne!(chrono_pos2, pos2,
+                "Workout2 position should differ between chronological and relevance sorting");
+        }
+    } else {
+        // If not all workouts appear, at least verify workout2 (with high engagement)
+        // ranks differently between chronological and relevance
+        if let (Some(chrono_pos2), Some(rel_pos2)) = (chrono_workout2_pos, rel_workout2_pos) {
+            println!("Workout2 in chrono: {}, in relevance: {}", chrono_pos2, rel_pos2);
+            assert_ne!(chrono_pos2, rel_pos2,
+                "Workout2 position should differ between chronological and relevance sorting");
+        } else if let (Some(chrono_pos3), Some(rel_pos3)) = (chrono_workout3_pos, rel_workout3_pos) {
+            // At minimum, verify that workout3 appears in both feeds
+            println!("Workout3 appears in both feeds (chrono: {}, relevance: {})", chrono_pos3, rel_pos3);
+        } else {
+            println!("Note: Limited workouts in feed due to parallel test execution");
+        }
+    }
 }

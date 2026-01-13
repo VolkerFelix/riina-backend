@@ -7,8 +7,10 @@ use std::collections::HashMap;
 
 use crate::{
     middleware::auth::Claims,
-    models::post::FeedQueryParams,
+    models::post::{FeedQueryParams, FeedSortBy},
 };
+
+const ENGAGEMENT_WINDOW_HOURS: i64 = 24;
 
 #[derive(Debug, Clone)]
 struct FeedPost {
@@ -301,9 +303,9 @@ fn calculate_engagement_score(
     post: &FeedPost,
     social: Option<&SocialCounts>,
 ) -> i32 {
-    // Only apply engagement ranking for posts within last 48 hours
+    // Only apply engagement ranking for posts within last ENGAGEMENT_WINDOW_HOURS hours
     let now = Utc::now();
-    if now.signed_duration_since(post.created_at).num_hours() > 48 {
+    if now.signed_duration_since(post.created_at).num_hours() > ENGAGEMENT_WINDOW_HOURS {
         return 0;
     }
 
@@ -344,6 +346,7 @@ pub async fn get_unified_feed(
     };
 
     let limit = query.limit.unwrap_or(20).min(50); // Max 50 items per request
+    let sort_by = query.sort_by.clone().unwrap_or(FeedSortBy::Relevance);
 
     // Parse cursor if provided (simple format: just timestamp for chronological pagination)
     let cursor_datetime = match &query.cursor {
@@ -363,13 +366,14 @@ pub async fn get_unified_feed(
 
     // Step 1: Determine which section we're in
     let now = Utc::now();
-    let engagement_cutoff = now - chrono::Duration::hours(48); // 48 hours
+    let engagement_cutoff = now - chrono::Duration::hours(ENGAGEMENT_WINDOW_HOURS);
 
-    // Simple rule: If no cursor, show ranked section. If cursor exists, show chronological.
-    let show_ranked_section = cursor_datetime.is_none();
+    // If sort_by is chronological, always show chronological feed
+    // If sort_by is relevance (default), show ranked section on first request only
+    let show_ranked_section = sort_by == FeedSortBy::Relevance && cursor_datetime.is_none();
 
     let mut posts = if show_ranked_section {
-        // FIRST REQUEST ONLY: Fetch and rank posts from last 48 hours
+        // FIRST REQUEST ONLY: Fetch and rank posts from last ENGAGEMENT_WINDOW_HOURS hours
         // This is a one-time snapshot, never paginated or re-calculated
         let all_recent = match fetch_feed_posts(&pool, None, 1000).await {
             Ok(p) => p,
@@ -381,7 +385,7 @@ pub async fn get_unified_feed(
             }
         };
 
-        // Filter to only posts within the last 48 hours
+        // Filter to only posts within the last ENGAGEMENT_WINDOW_HOURS hours
         all_recent.into_iter()
             .filter(|p| p.created_at >= engagement_cutoff)
             .collect::<Vec<_>>()
@@ -537,7 +541,7 @@ pub async fn get_unified_feed(
     }).collect();
 
     // Get the next cursor from the last item
-    // For ranked section: use the engagement cutoff so we continue with posts older than 48 hours
+    // For ranked section: use the engagement cutoff so we continue with posts older than ENGAGEMENT_WINDOW_HOURS hours
     // For chronological section: return the last post's timestamp for normal pagination
     let next_cursor = if show_ranked_section && !posts.is_empty() {
         // After ranked section, continue with posts older than the engagement window
