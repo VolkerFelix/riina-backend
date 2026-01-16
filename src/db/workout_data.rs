@@ -163,6 +163,49 @@ pub async fn check_workout_exists_by_time(
     Ok(record.is_some())
 }
 
+/// Check if a workout overlaps with any existing workouts for the user
+/// Two workouts overlap if their time intervals intersect (including exact duplicates)
+/// Uses a 1-second tolerance to avoid false positives from rounding/precision issues
+#[tracing::instrument(
+    name = "Check workout overlap",
+    skip(pool),
+    fields(
+        user_id = %user_id,
+        workout_start = %workout_start,
+        workout_end = %workout_end
+    )
+)]
+pub async fn check_workout_overlap(
+    pool: &Pool<Postgres>,
+    user_id: Uuid,
+    workout_start: &DateTime<Utc>,
+    workout_end: &DateTime<Utc>,
+) -> Result<bool, sqlx::Error> {
+    let record = sqlx::query!(
+        r#"
+        SELECT id, workout_start, workout_end
+        FROM workout_data
+        WHERE user_id = $1
+        AND workout_start IS NOT NULL
+        AND workout_end IS NOT NULL
+        AND (
+            -- Check if intervals overlap with 1-second tolerance:
+            -- start1 <= end2 + 1sec AND end1 >= start2 - 1sec
+            workout_start <= ($3::timestamptz + INTERVAL '1 second')
+            AND workout_end >= ($2::timestamptz - INTERVAL '1 second')
+        )
+        LIMIT 1
+        "#,
+        user_id,
+        workout_start,
+        workout_end
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(record.is_some())
+}
+
 #[tracing::instrument(
     name = "Create post for workout",
     skip(pool, user_id, workout_id, image_urls, video_urls, workout_start),

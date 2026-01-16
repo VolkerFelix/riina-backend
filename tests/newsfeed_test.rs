@@ -504,7 +504,7 @@ async fn test_newsfeed_chronological_sorting() {
     // First workout (oldest)
     let mut workout1_data = WorkoutData::new(
         WorkoutIntensity::Light,
-        now - chrono::Duration::seconds(20),
+        now - chrono::Duration::minutes(60),
         20
     );
     let workout1_response = upload_workout_data_for_user(&client, &test_app.address, &user.token, &mut workout1_data).await.expect("Failed to upload workout 1");
@@ -515,7 +515,7 @@ async fn test_newsfeed_chronological_sorting() {
     // Second workout (middle)
     let mut workout2_data = WorkoutData::new(
         WorkoutIntensity::Moderate,
-        now - chrono::Duration::seconds(10),
+        now - chrono::Duration::minutes(39),
         30
     );
     workout2_data.image_urls = Some(vec!["https://example.com/image.jpg".to_string()]); // Add media for engagement boost

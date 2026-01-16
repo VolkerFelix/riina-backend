@@ -1,0 +1,36 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, workout_start, workout_end\n        FROM workout_data\n        WHERE user_id = $1\n        AND workout_start IS NOT NULL\n        AND workout_end IS NOT NULL\n        AND (\n            -- Check if intervals overlap with 1-second tolerance:\n            -- start1 <= end2 + 1sec AND end1 >= start2 - 1sec\n            workout_start <= ($3::timestamptz + INTERVAL '1 second')\n            AND workout_end >= ($2::timestamptz - INTERVAL '1 second')\n        )\n        LIMIT 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "workout_start",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 2,
+        "name": "workout_end",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "ea73f212aef4c972c330eeb430964096fa6e4261ebfe10ae1b7c389c87273542"
+}

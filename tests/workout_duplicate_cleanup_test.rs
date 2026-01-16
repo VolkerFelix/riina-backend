@@ -116,7 +116,11 @@ async fn create_single_workout(
         user_token,
         vec![(start_time, end_time, calories)],
     ).await?;
-    
+
+    if workout_ids.is_empty() {
+        return Err("Workout was rejected (likely due to overlap detection)".into());
+    }
+
     Ok(workout_ids[0])
 }
 
@@ -354,10 +358,12 @@ async fn test_overlapping_but_not_identical_times_grouped() {
 
     create_single_workout(&test_app, &user.token, start1, end1, 200).await
         .expect("Failed to create first workout");
-    create_single_workout(&test_app, &user.token, start2, end2, 300).await
-        .expect("Failed to create second workout");
 
-    // Verify that both workouts remain since they have different start/end times
+    // Second workout overlaps with the first, so it should be rejected
+    let result = create_single_workout(&test_app, &user.token, start2, end2, 300).await;
+    assert!(result.is_err(), "Overlapping workout should be rejected");
+
+    // Verify that only ONE workout exists (the first one)
     let client = reqwest::Client::new();
     let history_response = client
         .get(&format!("{}/health/history", &test_app.address))
@@ -367,16 +373,16 @@ async fn test_overlapping_but_not_identical_times_grouped() {
         .expect("Failed to execute workout history request");
 
     assert!(history_response.status().is_success());
-    
+
     let history_data: serde_json::Value = history_response
         .json()
         .await
         .expect("Failed to parse workout history response");
 
     let workouts = history_data["data"]["workouts"].as_array().unwrap();
-    
-    // Should have 2 workouts remaining since they have different start/end times
-    assert_eq!(workouts.len(), 2, "Should have 2 workouts remaining since they have different times");
+
+    // Should have only 1 workout since the second was rejected due to overlap
+    assert_eq!(workouts.len(), 1, "Should have only 1 workout since overlapping workouts from same user are rejected");
 
 }
 
