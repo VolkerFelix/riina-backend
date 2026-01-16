@@ -10,7 +10,7 @@
 use reqwest::Client;
 use serde_json::json;
 use uuid::Uuid;
-use chrono::Utc;
+use chrono::{Utc, Duration};
 use futures::StreamExt;
 
 mod common;
@@ -327,7 +327,7 @@ async fn test_get_all_my_reports() {
 
     // Upload two workouts and report both
     for i in 0..2 {
-        let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30 + (i * 10));
+        let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now() + Duration::minutes(i * 30), 20);
         let upload_response = upload_workout_data_for_user(&client, &test_app.address, &workout_owner.token, &mut workout_data).await;
         let upload_result = upload_response.unwrap();
         let workout_id = upload_result["data"]["sync_id"].as_str().unwrap();
