@@ -62,19 +62,20 @@ async fn test_complete_live_game_workflow() {
     let stamina = response_data["data"]["game_stats"]["stamina_change"].as_i64().unwrap_or(0);
     let strength = response_data["data"]["game_stats"]["strength_change"].as_i64().unwrap_or(0);
     println!("DEBUG: Home user workout generated stamina: {}, strength: {}", stamina, strength);
-    
+
     // Verify live game was updated
     let updated_live_game = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
     println!("DEBUG: Updated live game - home_score: {}", updated_live_game.home_score);
     assert!(updated_live_game.home_score > 0, "Home team score should increase after workout upload");
     assert_eq!(updated_live_game.away_score, 0, "Away team score should remain 0");
-    
+
     // Verify last scorer information
     assert_eq!(updated_live_game.last_scorer_id, Some(live_game_environment.home_user.user_id));
     assert_eq!(updated_live_game.last_scorer_name, Some(live_game_environment.home_user.username.clone()));
     assert_eq!(updated_live_game.last_scorer_team, Some("home".to_string()));
 
     // Away team users upload workout data
+    // Different users CAN have overlapping workouts (overlap detection is per-user)
     let mut workout1 = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 30);
     let mut workout2 = WorkoutData::new(WorkoutIntensity::Light, Utc::now(), 30);
     let response1 = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_1.token, &mut workout1).await;
@@ -124,10 +125,10 @@ async fn test_complete_live_game_workflow() {
     assert!(final_live_game.game_progress() >= 0.0 && final_live_game.game_progress() <= 100.0);
     assert!(final_live_game.time_remaining().is_some());
 
-    // Step 9: Test multiple uploads from same user (use different time to avoid duplicate detection)
-    // Use a workout 30 minutes into the game (still within the 2-hour window)
-    let second_workout_start = Utc::now() + Duration::minutes(30);
-    let mut second_workout = WorkoutData::new(WorkoutIntensity::Intense, second_workout_start, 30);
+    // Step 9: Test multiple uploads from same user (must not overlap with their first workout)
+    // Wait a bit to ensure first workout has ended, then upload a second non-overlapping workout
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+    let mut second_workout = WorkoutData::new(WorkoutIntensity::Intense, Utc::now() + Duration::minutes(30), 30);
     let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut second_workout).await;
     assert!(response.is_ok(), "Second workout upload should succeed");
     
@@ -299,12 +300,12 @@ async fn test_live_game_finish_workflow() {
     start_test_game(&test_app, live_game_environment.first_game_id).await;
     
     let live_game = initialize_live_game(&test_app, live_game_environment.first_game_id, redis_client.clone()).await;
-    
+
     // Upload some data while game is active
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
     let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut workout_data).await;
     assert!(response.is_ok(), "Workout upload should succeed");
-    
+
     let active_game = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
     assert!(active_game.game_start_time.is_some());
     assert!(active_game.game_end_time.is_some());
@@ -312,34 +313,34 @@ async fn test_live_game_finish_workflow() {
 
     // Wait for game to end (in real test, we'd manipulate time or end the game programmatically)
     finish_live_game(&test_app, live_game.id, redis_client).await;
-    
+
     let finished_game = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
-    
+
     // Verify the game no longer appears in the live games API
     let season_id = get_season_id_for_game(&test_app, live_game_environment.first_game_id).await;
     let live_games_after_finish = get_live_games_via_api(&test_app, &client, &live_game_environment.home_user.token, Some(season_id)).await;
-    
+
     // The finished game should NOT appear in the live games list
     let finished_game_in_api = live_games_after_finish.iter().find(|g| g["game"]["id"].as_str() == Some(&live_game_environment.first_game_id.to_string()));
     assert!(finished_game_in_api.is_none(), "Finished game should not appear in live games API");
-    
+
     println!("✅ Verified finished game is removed from live games API");
-    
+
     // Also verify through the actual game status in the API
     if !live_games_after_finish.is_empty() {
         // If there are any games, verify they're all actually live
         for game in &live_games_after_finish {
             let status = game["game"]["status"].as_str().unwrap_or("");
-            assert!(status == "in_progress" || status == "live", 
+            assert!(status == "in_progress" || status == "live",
                 "Only in_progress or live games should be returned, got: {}", status);
         }
     }
-    
-    // Try to upload data after game ended - should not affect scores
+
+    // Try to upload data after game ended - should not affect scores (must not overlap with first workout)
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
     let final_score = finished_game.home_score;
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Intense, Utc::now(), 30);
-    let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut workout_data).await;
+    let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_1.token, &mut workout_data).await;
     assert!(response.is_ok(), "Workout upload should succeed");
     
     // Wait a bit for score recalculation
@@ -976,27 +977,27 @@ async fn test_live_game_workout_deletion_score_update() {
     let home_workout_response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut home_workout_data).await;
     assert!(home_workout_response.is_ok(), "Home workout upload should succeed");
     let home_workout_data: serde_json::Value = home_workout_response.unwrap();
-    
+
     // Get workout ID from the health data response
     let home_workout_id = home_workout_data["data"]["sync_id"].as_str()
         .expect("Health upload response should contain sync_id");
-    
+
     // Get the score gained from stat changes
     let home_score_gained = if let Some(game_stats) = home_workout_data["data"]["game_stats"].as_object() {
         game_stats["stamina_change"].as_i64().unwrap_or(0) + game_stats["strength_change"].as_i64().unwrap_or(0)
     } else {
         0
     };
-    
+
     // Verify home team score increased
     let after_home_upload = get_live_game_state(&test_app, live_game_environment.first_game_id).await;
     assert!(after_home_upload.home_score > 0, "Home score should increase after workout");
     let home_score_before_deletion = after_home_upload.home_score;
-    
-    println!("📊 After home workout - Home: {}, Away: 0 (gained: {})", 
+
+    println!("📊 After home workout - Home: {}, Away: 0 (gained: {})",
              home_score_before_deletion, home_score_gained);
-    
-    // Away team workouts
+
+    // Away team workouts (different users, can overlap with each other and home user)
     let mut away1_workout_data = WorkoutData::new(WorkoutIntensity::Moderate, Utc::now(), 30);
     let away1_workout_response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_1.token, &mut away1_workout_data).await;
     assert!(away1_workout_response.is_ok(), "Away workout upload should succeed");
@@ -1008,7 +1009,7 @@ async fn test_live_game_workout_deletion_score_update() {
     } else {
         0
     };
-    
+
     let mut away2_workout_data = WorkoutData::new(WorkoutIntensity::Light, Utc::now(), 30);
     let away2_workout_response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.away_user_2.token, &mut away2_workout_data).await;
     assert!(away2_workout_response.is_ok(), "Away workout upload should succeed");
@@ -1086,7 +1087,8 @@ async fn test_live_game_workout_deletion_score_update() {
     
     println!("📊 After bulk deletion - Home: 0, Away: 0");
     
-    // Step 6: Upload new workout to verify system still works
+    // Step 6: Upload new workout to verify system still works (must not overlap with home user's previous workout)
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
     let mut workout_data = WorkoutData::new(WorkoutIntensity::Light, Utc::now(), 30);
     let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut workout_data).await;
     assert!(response.is_ok(), "Workout upload should succeed");
@@ -1135,36 +1137,36 @@ async fn test_live_game_partial_workout_deletion() {
     start_test_game(&test_app, live_game_environment.first_game_id).await;
     initialize_live_game(&test_app, live_game_environment.first_game_id, redis_client.clone()).await;
     
-    // Upload multiple workouts for the same user (with different times to avoid duplicate detection)
+    // Upload multiple workouts for the same user (must not overlap - 35+ min apart for 30-min workouts)
     let mut workout_ids = Vec::new();
     let mut total_score = 0i64;
-    
+
     for i in 0..3 {
         let workout_type = match i {
             0 => WorkoutIntensity::Intense,
             1 => WorkoutIntensity::Moderate,
             _ => WorkoutIntensity::Light,
         };
-        
-        // Use different times for each workout (20 minutes apart) to avoid duplicate detection
-        // but still within the 2-hour game window
-        let workout_start = Utc::now() + Duration::minutes((i * 20) as i64);
+
+        // Space workouts 35 minutes apart to avoid overlap (30 min duration + 5 min gap)
+        // Still within the 2-hour game window (0, 35, 70 minutes from now)
+        let workout_start = Utc::now() + Duration::minutes((i * 35) as i64);
         let mut workout_data = WorkoutData::new(workout_type, workout_start, 30);
-        
+
         let response = upload_workout_data_for_user(&client, &test_app.address, &live_game_environment.home_user.token, &mut workout_data).await;
-        
+
         let response_data = response.unwrap();
         let workout_id = response_data["data"]["sync_id"].as_str()
             .expect("Health upload response should contain sync_id");
         workout_ids.push(workout_id.to_string());
-        
+
         let score_gained = if let Some(game_stats) = response_data["data"]["game_stats"].as_object() {
             game_stats["stamina_change"].as_i64().unwrap_or(0) + game_stats["strength_change"].as_i64().unwrap_or(0)
         } else {
             0
         };
         total_score += score_gained;
-        
+
         println!("📊 Workout {} uploaded, gained {} points", i + 1, score_gained);
     }
     
