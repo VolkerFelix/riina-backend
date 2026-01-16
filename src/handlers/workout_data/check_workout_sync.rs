@@ -6,7 +6,7 @@ use std::cmp::Ordering;
 
 use crate::middleware::auth::Claims;
 use crate::models::common::ApiResponse;
-use crate::db::workout_data::check_workout_exists_by_time;
+use crate::db::workout_data::check_workout_overlap;
 use crate::utils::workout_approval::WorkoutApprovalToken;
 use crate::config::jwt::JwtSettings;
 
@@ -67,17 +67,17 @@ pub async fn check_workout_sync(
 
     let unique_workouts = remove_duplicates(request.workouts.clone(), WORKOUT_TIME_TOLERANCE);
 
-    // Check each workout using the time-based duplicate detection function
+    // Check each workout for overlaps with existing workouts in the database
     for workout in &unique_workouts {
-        match check_workout_exists_by_time(pool.get_ref(), user_id, &workout.start, &workout.end, WORKOUT_TIME_TOLERANCE).await {
-            Ok(exists) => {
-                if exists {
-                    tracing::debug!("Workout {} already synced (time match)", workout.id);
+        match check_workout_overlap(pool.get_ref(), user_id, &workout.start, &workout.end).await {
+            Ok(overlaps) => {
+                if overlaps {
+                    tracing::debug!("Workout {} overlaps with existing workout", workout.id);
                     synced_workouts.push(workout.id.clone());
                 } else {
-                    tracing::debug!("Workout {} not synced", workout.id);
+                    tracing::debug!("Workout {} does not overlap, approved for upload", workout.id);
                     unsynced_workouts.push(workout.id.clone());
-                    
+
                     // Generate approval token for this workout
                     let token_data = WorkoutApprovalToken::new(
                         user_id,
@@ -86,7 +86,7 @@ pub async fn check_workout_sync(
                         workout.end,
                         5, // 5 minutes validity
                     );
-                    
+
                     match token_data.generate_token(&jwt_settings.secret) {
                         Ok(token) => {
                             approved_workouts.push(WorkoutApproval {
@@ -103,10 +103,10 @@ pub async fn check_workout_sync(
                 }
             },
             Err(e) => {
-                tracing::error!("Error checking workout {}: {}", workout.id, e);
+                tracing::error!("Error checking workout overlap for {}: {}", workout.id, e);
                 // Treat as unsynced on error to allow retry
                 unsynced_workouts.push(workout.id.clone());
-                
+
                 // Generate approval token even on error to allow upload
                 let token_data = WorkoutApprovalToken::new(
                     user_id,
@@ -115,7 +115,7 @@ pub async fn check_workout_sync(
                     workout.end,
                     5, // 5 minutes validity
                 );
-                
+
                 match token_data.generate_token(&jwt_settings.secret) {
                     Ok(token) => {
                         approved_workouts.push(WorkoutApproval {

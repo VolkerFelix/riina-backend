@@ -55,11 +55,12 @@ async fn upload_multiple_workout_data_sessions() {
     let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
-    // Upload multiple workouts
+    // Upload multiple workouts with different start times to avoid overlaps
     for i in 0..3 {
+        let workout_start = Utc::now() - chrono::Duration::hours((i + 1) as i64);
         let mut workout_data = WorkoutData::new(
             if i % 2 == 0 { WorkoutIntensity::Intense } else { WorkoutIntensity::Moderate },
-            Utc::now(),
+            workout_start,
             30 + (i * 10)
         );
 
@@ -193,9 +194,10 @@ async fn test_workout_history_pagination() {
     let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
     create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
 
-    // Upload multiple workouts
+    // Upload multiple workouts with different start times to avoid overlaps
     for i in 0..5 {
-        let mut workout_data = WorkoutData::new(WorkoutIntensity::Light, Utc::now(), 20 + i);
+        let workout_start = Utc::now() - chrono::Duration::hours((i + 1) as i64);
+        let mut workout_data = WorkoutData::new(WorkoutIntensity::Light, workout_start, 20 + i);
         upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout_data).await
             .expect("Workout upload should succeed");
     }
@@ -1443,6 +1445,177 @@ async fn test_get_feedback_without_submission() {
 
     let get_data: serde_json::Value = get_response.json().await.unwrap();
     assert_eq!(get_data["feedback"], serde_json::Value::Null, "Should return null feedback when none submitted");
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
+}
+
+// ============================================================================
+// WORKOUT OVERLAP DETECTION TESTS
+// ============================================================================
+
+#[tokio::test]
+async fn test_overlapping_workouts_batch_sync_should_prevent_duplicates() {
+    use chrono::NaiveDateTime;
+    use common::workout_data_helpers::WorkoutSyncRequest;
+
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
+    create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
+
+    // Test case from user report - all 3 workouts synced together:
+    // Workout 1: 15/01/2026 14:07:30 - 15:05:29 (57 min)
+    // Workout 2: 15/01/2026 14:42:00 - 15:05:59 (23 min) - OVERLAPS with Workout 1
+    // Workout 3: 15/01/2026 14:07:30 - 14:31:29 (23 min) - OVERLAPS with Workout 1
+
+    let base_date = NaiveDateTime::parse_from_str("2026-01-15 14:07:30", "%Y-%m-%d %H:%M:%S")
+        .unwrap()
+        .and_utc();
+
+    // Prepare all 3 workouts for batch sync
+    let workout1 = WorkoutSyncRequest {
+        start: base_date,
+        end: base_date + chrono::Duration::minutes(57) + chrono::Duration::seconds(59),
+        calories: 300,
+        id: Uuid::new_v4().to_string(),
+    };
+
+    let workout2 = WorkoutSyncRequest {
+        start: base_date + chrono::Duration::minutes(34) + chrono::Duration::seconds(30),
+        end: base_date + chrono::Duration::minutes(58) + chrono::Duration::seconds(29),
+        calories: 150,
+        id: Uuid::new_v4().to_string(),
+    };
+
+    let workout3 = WorkoutSyncRequest {
+        start: base_date,
+        end: base_date + chrono::Duration::minutes(23) + chrono::Duration::seconds(59),
+        calories: 120,
+        id: Uuid::new_v4().to_string(),
+    };
+
+    // Batch sync all 3 workouts at once (simulates real app behavior)
+    let sync_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/check_sync_status", &test_app.address),
+        &test_user.token,
+        Some(json!({
+            "workouts": [workout1, workout2, workout3]
+        })),
+    ).await;
+
+    assert!(sync_response.status().is_success(), "Sync check should succeed");
+    let sync_data: serde_json::Value = sync_response.json().await.unwrap();
+
+    // The sync endpoint should have detected overlaps and filtered them out
+    let approved_workouts = sync_data["data"]["approved_workouts"].as_array().unwrap();
+
+    // Only ONE workout should be approved (the one with highest calories: workout1 with 300 calories)
+    assert_eq!(
+        approved_workouts.len(),
+        1,
+        "Only one workout should be approved when overlapping workouts are synced together. Got {} approved workouts",
+        approved_workouts.len()
+    );
+
+    // Cleanup
+    delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
+    delete_test_user(&test_app.address, &admin_user.token, admin_user.user_id).await;
+}
+
+#[tokio::test]
+async fn test_overlapping_workouts_sequential_batch_should_be_rejected() {
+    use chrono::NaiveDateTime;
+    use common::workout_data_helpers::{WorkoutSyncRequest, WorkoutData, WorkoutIntensity};
+
+    let test_app = spawn_app().await;
+    let client = Client::new();
+
+    let test_user = create_test_user_and_login(&test_app.address).await;
+    let admin_user = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
+    create_health_profile_for_user(&client, &test_app.address, &test_user).await.unwrap();
+
+    // Realistic scenario: User uploads workout 1 first, then later syncs workouts 2 and 3 together
+    // Workout 1: 15/01/2026 14:07:30 - 15:05:29 (57 min)
+    // Workout 2: 15/01/2026 14:42:00 - 15:05:59 (23 min) - OVERLAPS with Workout 1
+    // Workout 3: 15/01/2026 14:07:30 - 14:31:29 (23 min) - OVERLAPS with Workout 1
+
+    let base_date = NaiveDateTime::parse_from_str("2026-01-15 14:07:30", "%Y-%m-%d %H:%M:%S")
+        .unwrap()
+        .and_utc();
+
+    // Upload workout 1 first: 14:07:30 - 15:05:29 (57 min)
+    let workout1_start = base_date;
+    let workout1_end = base_date + chrono::Duration::minutes(57) + chrono::Duration::seconds(59);
+    let mut workout1 = WorkoutData::new(WorkoutIntensity::Moderate, workout1_start, 57);
+    workout1.workout_end = workout1_end;
+
+    let response1 = upload_workout_data_for_user(&client, &test_app.address, &test_user.token, &mut workout1).await;
+    assert!(response1.is_ok(), "First workout should upload successfully: {:?}", response1.err());
+
+    // Now batch sync workouts 2 and 3 together (they both overlap with workout 1)
+    let workout2 = WorkoutSyncRequest {
+        start: base_date + chrono::Duration::minutes(34) + chrono::Duration::seconds(30),
+        end: base_date + chrono::Duration::minutes(58) + chrono::Duration::seconds(29),
+        calories: 150,
+        id: Uuid::new_v4().to_string(),
+    };
+
+    let workout3 = WorkoutSyncRequest {
+        start: base_date,
+        end: base_date + chrono::Duration::minutes(23) + chrono::Duration::seconds(59),
+        calories: 120,
+        id: Uuid::new_v4().to_string(),
+    };
+
+    // Batch sync workouts 2 and 3
+    let sync_response = make_authenticated_request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{}/health/check_sync_status", &test_app.address),
+        &test_user.token,
+        Some(json!({
+            "workouts": [workout2, workout3]
+        })),
+    ).await;
+
+    assert!(sync_response.status().is_success(), "Sync check should succeed");
+    let sync_data: serde_json::Value = sync_response.json().await.unwrap();
+
+    // Both workouts 2 and 3 overlap with the already uploaded workout 1
+    // The check_sync_status should detect that these workouts already exist (via time-based check)
+    let approved_workouts = sync_data["data"]["approved_workouts"].as_array().unwrap();
+
+    // ZERO workouts should be approved because both overlap with already-uploaded workout 1
+    assert_eq!(
+        approved_workouts.len(),
+        0,
+        "No workouts should be approved when they overlap with existing workouts. Got {} approved workouts",
+        approved_workouts.len()
+    );
+
+    // Verify only workout 1 is in the database
+    let history_response = client
+        .get(&format!("{}/health/history", &test_app.address))
+        .header("Authorization", format!("Bearer {}", test_user.token))
+        .send()
+        .await
+        .expect("Failed to fetch workout history");
+
+    let history_data: serde_json::Value = history_response.json().await.unwrap();
+    let workouts = history_data["data"]["workouts"].as_array().unwrap();
+
+    assert_eq!(
+        workouts.len(),
+        1,
+        "Only the first workout should be in the database, but found {} workouts",
+        workouts.len()
+    );
 
     // Cleanup
     delete_test_user(&test_app.address, &admin_user.token, test_user.user_id).await;
