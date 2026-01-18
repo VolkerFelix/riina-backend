@@ -284,6 +284,16 @@ async fn get_game_live_score(
     live_game_handler::get_game_live_score(pool, path, query, claims).await
 }
 
+/// Get aggregated player scores for a game
+#[get("/games/{game_id}/player-scores")]
+async fn get_game_player_scores(
+    path: web::Path<Uuid>,
+    pool: web::Data<PgPool>,
+    claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    live_game_handler::get_game_player_scores(pool, path, claims).await
+}
+
 /// Get all currently active games
 #[get("/games/active")]
 async fn get_active_games(
