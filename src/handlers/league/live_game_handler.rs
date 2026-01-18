@@ -360,6 +360,7 @@ pub async fn get_game_player_scores(
     match game {
         Ok(Some(game_data)) => {
             // Aggregate player scores directly in the database for efficiency
+            // Note: After consolidation migration, live_score_events.game_id directly references games table
             let player_scores = sqlx::query!(
                 r#"
                 SELECT
