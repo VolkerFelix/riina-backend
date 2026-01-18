@@ -298,7 +298,7 @@ pub async fn get_active_games(
     _claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse> {
     let week_game_service = ManageGameService::new(pool.get_ref().clone());
-    
+
     match week_game_service.get_active_games().await {
         Ok(games) => {
             Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -312,6 +312,118 @@ pub async fn get_active_games(
             Ok(HttpResponse::InternalServerError().json(serde_json::json!({
                 "success": false,
                 "error": "Failed to get active games"
+            })))
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct PlayerScore {
+    pub user_id: Uuid,
+    pub username: String,
+    pub profile_picture_url: Option<String>,
+    pub team_id: Uuid,
+    pub team_name: String,
+    pub team_side: String,
+    pub total_points: i32,
+    pub event_count: i64,
+}
+
+/// GET /league/games/{game_id}/player-scores - Get aggregated player scores for a game
+/// Returns total points scored by each player in the game, calculated directly in the database
+pub async fn get_game_player_scores(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    _claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    let game_id = path.into_inner();
+
+    // Get game info to verify it exists and get team names
+    let game = sqlx::query!(
+        r#"
+        SELECT
+            g.id,
+            ht.id as home_team_id,
+            ht.team_name as home_team_name,
+            at.id as away_team_id,
+            at.team_name as away_team_name
+        FROM games g
+        JOIN teams ht ON g.home_team_id = ht.id
+        JOIN teams at ON g.away_team_id = at.id
+        WHERE g.id = $1
+        "#,
+        game_id
+    )
+    .fetch_optional(pool.get_ref())
+    .await;
+
+    match game {
+        Ok(Some(game_data)) => {
+            // Aggregate player scores directly in the database for efficiency
+            let player_scores = sqlx::query!(
+                r#"
+                SELECT
+                    lse.user_id,
+                    lse.username,
+                    u.profile_picture_url,
+                    lse.team_id,
+                    lse.team_side,
+                    SUM(lse.score_points) as "total_points!",
+                    COUNT(*) as "event_count!"
+                FROM live_score_events lse
+                LEFT JOIN users u ON u.id = lse.user_id
+                WHERE lse.game_id = $1
+                GROUP BY lse.user_id, lse.username, u.profile_picture_url, lse.team_id, lse.team_side
+                ORDER BY SUM(lse.score_points) DESC
+                "#,
+                game_id
+            )
+            .fetch_all(pool.get_ref())
+            .await
+            .unwrap_or_else(|_| vec![]);
+
+            let scores: Vec<PlayerScore> = player_scores
+                .into_iter()
+                .map(|row| {
+                    let team_name = if row.team_side == "home" {
+                        game_data.home_team_name.clone()
+                    } else {
+                        game_data.away_team_name.clone()
+                    };
+
+                    PlayerScore {
+                        user_id: row.user_id,
+                        username: row.username,
+                        profile_picture_url: row.profile_picture_url,
+                        team_id: row.team_id,
+                        team_name,
+                        team_side: row.team_side,
+                        total_points: row.total_points as i32,
+                        event_count: row.event_count,
+                    }
+                })
+                .collect();
+
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "data": {
+                    "game_id": game_id,
+                    "player_scores": scores,
+                    "total_players": scores.len()
+                }
+            })))
+        }
+        Ok(None) => {
+            Ok(HttpResponse::NotFound().json(serde_json::json!({
+                "success": false,
+                "error": "Game not found"
+            })))
+        }
+        Err(e) => {
+            tracing::error!("Failed to get game player scores for {}: {}", game_id, e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "error": "Failed to get player scores"
             })))
         }
     }

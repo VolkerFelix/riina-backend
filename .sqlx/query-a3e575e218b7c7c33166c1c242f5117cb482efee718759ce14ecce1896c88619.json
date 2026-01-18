@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            g.id,\n            ht.id as home_team_id,\n            ht.team_name as home_team_name,\n            at.id as away_team_id,\n            at.team_name as away_team_name\n        FROM games g\n        JOIN teams ht ON g.home_team_id = ht.id\n        JOIN teams at ON g.away_team_id = at.id\n        WHERE g.id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "home_team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "home_team_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "away_team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "away_team_name",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "a3e575e218b7c7c33166c1c242f5117cb482efee718759ce14ecce1896c88619"
+}

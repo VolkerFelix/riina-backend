@@ -1,0 +1,58 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT\n                    lse.user_id,\n                    lse.username,\n                    u.profile_picture_url,\n                    lse.team_id,\n                    lse.team_side,\n                    SUM(lse.score_points) as \"total_points!\",\n                    COUNT(*) as \"event_count!\"\n                FROM live_score_events lse\n                LEFT JOIN users u ON u.id = lse.user_id\n                WHERE lse.game_id = $1\n                GROUP BY lse.user_id, lse.username, u.profile_picture_url, lse.team_id, lse.team_side\n                ORDER BY SUM(lse.score_points) DESC\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "username",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "profile_picture_url",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "team_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "team_side",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "total_points!",
+        "type_info": "Float4"
+      },
+      {
+        "ordinal": 6,
+        "name": "event_count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "6ba7539be8e8cf35d3e556115ace331d1b5238457b333b71d5d7fceb0d4b4058"
+}
