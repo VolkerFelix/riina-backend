@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT \n                ls.*,\n                t.team_name,\n                t.team_color\n            FROM league_standings ls\n            JOIN teams t ON ls.team_id = t.id\n            WHERE ls.season_id = $1\n            ORDER BY ls.points DESC, ls.wins DESC\n            LIMIT $2\n            ",
+  "query": "\n            SELECT\n                ls.*,\n                t.team_name,\n                t.team_color\n            FROM league_standings ls\n            JOIN teams t ON ls.team_id = t.id\n            WHERE ls.season_id = $1\n            ORDER BY ls.position ASC\n            LIMIT $2\n            ",
   "describe": {
     "columns": [
       {
@@ -85,5 +85,5 @@
       false
     ]
   },
-  "hash": "09ae984792a035fcce1207617a808dfdf4a06bd02b305096ec3d0c672e21fadd"
+  "hash": "63323e76b65e763faa75fc2c9e5218fdedbf64fdfa2027f26cde71d0fecc9b06"
 }
