@@ -146,11 +146,103 @@ async fn test_complete_live_game_workflow() {
     // Step 10: Test live scoring history API endpoint
     test_live_scoring_history_api(&test_app, &client, &live_game_environment.home_user.token, live_game_environment.first_game_id, &live_game_environment.home_user, &live_game_environment.away_user_1, &live_game_environment.away_user_2).await;
 
-    println!("✅ Live game integration test completed successfully!");
-    println!("Final scores: {} {} - {} {}", 
-        after_second_upload.home_team_name, 
+    // Step 11: Test player scores API endpoint
+    println!("\n🧪 Testing player scores API endpoint...");
+    let url = format!("{}/league/games/{}/player-scores", test_app.address, live_game_environment.first_game_id);
+    let response = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", live_game_environment.home_user.token))
+        .send()
+        .await
+        .expect("Failed to execute player scores request");
+
+    assert_eq!(response.status().as_u16(), 200, "Player scores API should return 200 OK");
+
+    let response_body: serde_json::Value = response.json().await.expect("Failed to parse response");
+
+    println!("📊 Player scores API response:");
+    println!("{}", serde_json::to_string_pretty(&response_body).unwrap());
+
+    // Verify response structure
+    assert_eq!(response_body["success"], true, "Response should indicate success");
+    assert!(response_body["data"].is_object(), "Response should have data object");
+    assert!(response_body["data"]["player_scores"].is_array(), "Should have player_scores array");
+    assert_eq!(
+        response_body["data"]["game_id"].as_str().unwrap(),
+        live_game_environment.first_game_id.to_string(),
+        "Response should include correct game_id"
+    );
+
+    let player_scores = response_body["data"]["player_scores"].as_array().unwrap();
+
+    // Should have exactly 3 players
+    assert_eq!(player_scores.len(), 3, "Should have 3 unique players in the scores");
+
+    // Verify home player has 2 events (uploaded 2 workouts)
+    let home_player = player_scores.iter()
+        .find(|p| p["user_id"].as_str().unwrap() == live_game_environment.home_user.user_id.to_string())
+        .expect("Home player should be in scores");
+
+    assert_eq!(
+        home_player["username"].as_str().unwrap(),
+        live_game_environment.home_user.username,
+        "Home player username should match"
+    );
+    assert!(
+        home_player["total_points"].as_i64().unwrap() > 0,
+        "Home player should have positive total points"
+    );
+    assert_eq!(
+        home_player["event_count"].as_i64().unwrap(),
+        2,
+        "Home player should have 2 scoring events"
+    );
+    assert_eq!(
+        home_player["team_side"].as_str().unwrap(),
+        "home",
+        "Home player should be on home team side"
+    );
+
+    // Verify away players each have 1 event
+    let away_player_1 = player_scores.iter()
+        .find(|p| p["user_id"].as_str().unwrap() == live_game_environment.away_user_1.user_id.to_string())
+        .expect("Away player 1 should be in scores");
+
+    assert!(
+        away_player_1["total_points"].as_i64().unwrap() > 0,
+        "Away player 1 should have positive total points"
+    );
+    assert_eq!(
+        away_player_1["event_count"].as_i64().unwrap(),
+        1,
+        "Away player 1 should have 1 scoring event"
+    );
+    assert_eq!(
+        away_player_1["team_side"].as_str().unwrap(),
+        "away",
+        "Away player 1 should be on away team side"
+    );
+
+    // Verify scores are sorted by total_points (descending)
+    let first_score = player_scores[0]["total_points"].as_i64().unwrap();
+    let second_score = player_scores[1]["total_points"].as_i64().unwrap();
+    let third_score = player_scores[2]["total_points"].as_i64().unwrap();
+
+    assert!(
+        first_score >= second_score && second_score >= third_score,
+        "Player scores should be sorted in descending order by total_points"
+    );
+
+    println!("✅ Player scores API test passed!");
+    println!("   - All 3 players present with correct aggregated scores");
+    println!("   - Home player's 2 events correctly aggregated");
+    println!("   - Scores properly sorted by total points");
+
+    println!("\n✅ Live game integration test completed successfully!");
+    println!("Final scores: {} {} - {} {}",
+        after_second_upload.home_team_name,
         after_second_upload.home_score,
-        after_second_upload.away_score, 
+        after_second_upload.away_score,
         after_second_upload.away_team_name
     );
 }
