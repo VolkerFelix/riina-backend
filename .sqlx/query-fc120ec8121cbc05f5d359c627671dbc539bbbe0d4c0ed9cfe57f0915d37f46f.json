@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE games \n        SET game_start_time = $1, game_end_time = $2\n        WHERE id = $3\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Timestamptz",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fc120ec8121cbc05f5d359c627671dbc539bbbe0d4c0ed9cfe57f0915d37f46f"
+}

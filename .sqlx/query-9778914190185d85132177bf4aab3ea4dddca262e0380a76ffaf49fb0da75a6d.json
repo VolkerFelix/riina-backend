@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM league_seasons WHERE created_at < $1 AND name LIKE '%Test%'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9778914190185d85132177bf4aab3ea4dddca262e0380a76ffaf49fb0da75a6d"
+}
