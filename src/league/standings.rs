@@ -332,20 +332,84 @@ impl StandingsService {
         }
 
         // Sort standings using tie-breaker logic
+        // First, group teams by their league points to identify ties
+        let mut point_groups: std::collections::HashMap<i32, Vec<usize>> = std::collections::HashMap::new();
+        for (idx, standing) in standings.iter().enumerate() {
+            let points = standing.points.unwrap_or(0);
+            point_groups.entry(points).or_insert_with(Vec::new).push(idx);
+        }
+
+        // For each group of tied teams, check if they have circular head-to-head
+        // If so, they should be sorted by total points scored instead
+        let mut skip_h2h_for_teams: std::collections::HashSet<Uuid> = std::collections::HashSet::new();
+
+        for (_, team_indices) in &point_groups {
+            if team_indices.len() >= 3 {
+                // Check if this is a circular head-to-head situation
+                // Calculate head-to-head points for each team against others in the group
+                let mut h2h_points_map: std::collections::HashMap<Uuid, i32> = std::collections::HashMap::new();
+
+                for &idx in team_indices {
+                    let team_id = standings[idx].team_id;
+                    let mut h2h_pts = 0;
+
+                    for &other_idx in team_indices {
+                        if idx != other_idx {
+                            let other_team_id = standings[other_idx].team_id;
+                            for game_data in &games {
+                                if (game_data.home_team_id == team_id && game_data.away_team_id == other_team_id)
+                                    || (game_data.home_team_id == other_team_id && game_data.away_team_id == team_id)
+                                {
+                                    let (team_score, _other_score) = if game_data.home_team_id == team_id {
+                                        (game_data.home_score, game_data.away_score)
+                                    } else {
+                                        (game_data.away_score, game_data.home_score)
+                                    };
+                                    let other_score = if game_data.home_team_id == team_id {
+                                        game_data.away_score
+                                    } else {
+                                        game_data.home_score
+                                    };
+
+                                    if team_score > other_score {
+                                        h2h_pts += 3;
+                                    } else if team_score == other_score {
+                                        h2h_pts += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    h2h_points_map.insert(team_id, h2h_pts);
+                }
+
+                // Check if all teams have the same head-to-head points (circular tie)
+                let h2h_values: Vec<i32> = h2h_points_map.values().copied().collect();
+                if h2h_values.len() > 0 && h2h_values.iter().all(|&v| v == h2h_values[0]) {
+                    // Circular tie detected - skip head-to-head for these teams
+                    for &idx in team_indices {
+                        skip_h2h_for_teams.insert(standings[idx].team_id);
+                    }
+                }
+            }
+        }
+
         standings.sort_by(|a, b| {
             let a_points = a.points.unwrap_or(0);
             let b_points = b.points.unwrap_or(0);
 
-            // 1. First by points
+            // 1. First by league points
             let points_cmp = b_points.cmp(&a_points);
             if points_cmp != std::cmp::Ordering::Equal {
                 return points_cmp;
             }
 
-            // 2. Then by head-to-head record
-            let h2h_cmp = compare_head_to_head(a.team_id, b.team_id, &games);
-            if h2h_cmp != std::cmp::Ordering::Equal {
-                return h2h_cmp;
+            // 2. Then by head-to-head record (unless circular tie detected)
+            if !skip_h2h_for_teams.contains(&a.team_id) || !skip_h2h_for_teams.contains(&b.team_id) {
+                let h2h_cmp = compare_head_to_head(a.team_id, b.team_id, &games);
+                if h2h_cmp != std::cmp::Ordering::Equal {
+                    return h2h_cmp;
+                }
             }
 
             // 3. Then by total points scored during the season
