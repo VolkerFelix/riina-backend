@@ -182,6 +182,8 @@ pub struct LeagueStanding {
     pub points: Option<i32>,
     pub position: i32,
     pub last_updated: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_points_scored: Option<i32>,
 }
 
 // Request/Response DTOs
