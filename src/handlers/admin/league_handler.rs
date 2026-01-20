@@ -1191,3 +1191,37 @@ pub async fn delete_league_season(
         }
     }
 }
+
+/// Recalculate standings positions for a season
+#[tracing::instrument(
+    name = "Recalculate standings",
+    skip(pool)
+)]
+pub async fn recalculate_standings_positions(
+    season_id: web::Path<Uuid>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse> {
+    use crate::league::standings::StandingsService;
+
+    let season_id = season_id.into_inner();
+    tracing::info!("Recalculating standings for season {}", season_id);
+
+    let standings_service = StandingsService::new(pool.get_ref().clone());
+
+    match standings_service.recalculate_positions(season_id).await {
+        Ok(()) => {
+            tracing::info!("Successfully recalculated standings for season {}", season_id);
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "message": "Standings positions recalculated successfully"
+            })))
+        }
+        Err(e) => {
+            tracing::error!("Failed to recalculate standings: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "error": "Failed to recalculate standings positions"
+            })))
+        }
+    }
+}
