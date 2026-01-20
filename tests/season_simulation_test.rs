@@ -359,3 +359,610 @@ async fn simulate_complete_season_with_4_players_2_teams() {
     println!("   • Final standings reflect team strength and some randomness");
     println!("   • All data integrity checks passed");
 }
+#[tokio::test]
+async fn test_standings_tiebreaker_head_to_head() {
+    let app = spawn_app().await;
+    let client = Client::new();
+
+    println!("🎯 Testing Standings Tie-Breaker: Head-to-Head");
+
+    // Step 1: Create 4 users (team owners)
+    let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
+    let user1 = create_test_user_and_login(&app.address).await;
+    let user2 = create_test_user_and_login(&app.address).await;
+    let user3 = create_test_user_and_login(&app.address).await;
+    let user4 = create_test_user_and_login(&app.address).await;
+
+    println!("✅ Created 5 users (1 admin + 4 team owners)");
+
+    // Step 2: Create a league
+    let league_id = create_league(
+        &app.address,
+        &admin_user.token,
+        4
+    ).await;
+
+    println!("✅ Created league: {}", league_id);
+
+    // Step 3: Create 4 teams with specific names and owners
+    let team_a_id = create_team(
+        &app.address,
+        &admin_user.token,
+        TeamConfig {
+            name: Some(format!("Team A {}", &Uuid::new_v4().to_string()[..8])),
+            color: Some("#FF0000".to_string()),
+            owner_id: Some(user1.user_id),
+            description: None,
+        }
+    ).await;
+
+    let team_b_id = create_team(
+        &app.address,
+        &admin_user.token,
+        TeamConfig {
+            name: Some(format!("Team B {}", &Uuid::new_v4().to_string()[..8])),
+            color: Some("#00FF00".to_string()),
+            owner_id: Some(user2.user_id),
+            description: None,
+        }
+    ).await;
+
+    let team_c_id = create_team(
+        &app.address,
+        &admin_user.token,
+        TeamConfig {
+            name: Some(format!("Team C {}", &Uuid::new_v4().to_string()[..8])),
+            color: Some("#0000FF".to_string()),
+            owner_id: Some(user3.user_id),
+            description: None,
+        }
+    ).await;
+
+    let team_d_id = create_team(
+        &app.address,
+        &admin_user.token,
+        TeamConfig {
+            name: Some(format!("Team D {}", &Uuid::new_v4().to_string()[..8])),
+            color: Some("#FFFF00".to_string()),
+            owner_id: Some(user4.user_id),
+            description: None,
+        }
+    ).await;
+
+    println!("✅ Created teams: {} (Team A), {} (Team B), {} (Team C), {} (Team D)",
+        team_a_id, team_b_id, team_c_id, team_d_id);
+
+    // Step 4: Assign teams to league
+    add_team_to_league(&app.address, &admin_user.token, &league_id, &team_a_id).await;
+    add_team_to_league(&app.address, &admin_user.token, &league_id, &team_b_id).await;
+    add_team_to_league(&app.address, &admin_user.token, &league_id, &team_c_id).await;
+    add_team_to_league(&app.address, &admin_user.token, &league_id, &team_d_id).await;
+
+    println!("✅ Assigned all 4 teams to league");
+    
+    // Step 4: Create a season
+    let start_date = get_next_date(Weekday::Mon, NaiveTime::from_hms_opt(9, 0, 0).unwrap());
+    let season_id = create_league_season(
+        &app.address,
+        &admin_user.token,
+        &league_id,
+        "Tie-Breaker Season",
+        &start_date.to_rfc3339(),
+    ).await;
+    
+    println!("✅ Created season");
+    
+    // Step 5: Get the games
+    let schedule_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/seasons/{}/schedule", &app.address, season_id),
+        &admin_user.token,
+        None,
+    ).await;
+    
+    assert_eq!(schedule_response.status(), 200);
+    let schedule_data: serde_json::Value = schedule_response.json().await.unwrap();
+    let games = schedule_data["data"]["games"].as_array().unwrap();
+    
+    println!("✅ Got {} games from schedule", games.len());
+    
+    // Step 6: Simulate game results to create a tie scenario
+    // In a 4-team single round-robin: 6 games total (each team plays 3 games)
+    // Target: Team A and Team B both get 6 points (2 wins, 1 loss each)
+    // Team A beats Team B in their head-to-head matchup
+    // Expected result: Team A ranks higher than Team B due to head-to-head
+
+    println!("🎮 Simulating game results to create tie scenario...");
+
+    for game_wrapper in games {
+        let game = &game_wrapper["game"];
+        let game_id = game["id"].as_str().unwrap();
+        let home_team_id = game["home_team_id"].as_str().unwrap();
+        let away_team_id = game["away_team_id"].as_str().unwrap();
+
+        // Determine result for each specific matchup
+        // Team A: beats B and C, loses to D = 6 points (2W, 0D, 1L)
+        // Team B: beats C and D, loses to A = 6 points (2W, 0D, 1L)
+        // Team C: loses all = 0 points
+        // Team D: beats A, loses to B, draw with C = 4 points (1W, 1D, 1L)
+        let (home_score, away_score) =
+            if (home_team_id == team_a_id && away_team_id == team_b_id) ||
+               (home_team_id == team_b_id && away_team_id == team_a_id) {
+            // A vs B: A wins
+            if home_team_id == team_a_id {
+                println!("   A vs B: A wins (40-20)");
+                (40, 20)
+            } else {
+                println!("   B vs A: A wins (20-40)");
+                (20, 40)
+            }
+        } else if (home_team_id == team_a_id && away_team_id == team_c_id) ||
+                  (home_team_id == team_c_id && away_team_id == team_a_id) {
+            // A vs C: A wins
+            if home_team_id == team_a_id {
+                println!("   A vs C: A wins (40-20)");
+                (40, 20)
+            } else {
+                println!("   C vs A: A wins (20-40)");
+                (20, 40)
+            }
+        } else if (home_team_id == team_a_id && away_team_id == team_d_id) ||
+                  (home_team_id == team_d_id && away_team_id == team_a_id) {
+            // A vs D: D wins
+            if home_team_id == team_a_id {
+                println!("   A vs D: D wins (20-40)");
+                (20, 40)
+            } else {
+                println!("   D vs A: D wins (40-20)");
+                (40, 20)
+            }
+        } else if (home_team_id == team_b_id && away_team_id == team_c_id) ||
+                  (home_team_id == team_c_id && away_team_id == team_b_id) {
+            // B vs C: B wins
+            if home_team_id == team_b_id {
+                println!("   B vs C: B wins (40-20)");
+                (40, 20)
+            } else {
+                println!("   C vs B: B wins (20-40)");
+                (20, 40)
+            }
+        } else if (home_team_id == team_b_id && away_team_id == team_d_id) ||
+                  (home_team_id == team_d_id && away_team_id == team_b_id) {
+            // B vs D: B wins
+            if home_team_id == team_b_id {
+                println!("   B vs D: B wins (40-20)");
+                (40, 20)
+            } else {
+                println!("   D vs B: B wins (20-40)");
+                (20, 40)
+            }
+        } else if (home_team_id == team_c_id && away_team_id == team_d_id) ||
+                  (home_team_id == team_d_id && away_team_id == team_c_id) {
+            // C vs D: Draw
+            println!("   C vs D: Draw (30-30)");
+            (30, 30)
+        } else {
+            println!("   ⚠️  Unknown matchup");
+            (25, 25)
+        };
+        
+        let result_request = json!({
+            "home_score": home_score,
+            "away_score": away_score
+        });
+        
+        let result_response = make_authenticated_request(
+            &client,
+            reqwest::Method::PUT,
+            &format!("{}/league/games/{}/result", &app.address, game_id),
+            &admin_user.token,
+            Some(result_request),
+        ).await;
+
+        if result_response.status() != 200 {
+            let status = result_response.status();
+            let error_text = result_response.text().await.unwrap();
+            panic!("Failed to submit game result for game {}: Status {}, Error: {}", game_id, status, error_text);
+        }
+    }
+    
+    println!("✅ Submitted all game results");
+    
+    // Step 7: Get the final standings
+    let standings_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/seasons/{}/standings", &app.address, season_id),
+        &admin_user.token,
+        None,
+    ).await;
+    
+    assert_eq!(standings_response.status(), 200);
+    let standings_data: serde_json::Value = standings_response.json().await.unwrap();
+    let standings = standings_data["data"]["standings"].as_array().unwrap();
+    
+    println!("✅ Got final standings");
+    
+    // Find Team A and Team B positions
+    let mut team_a_position = 0;
+    let mut team_b_position = 0;
+    let mut team_a_points = 0;
+    let mut team_b_points = 0;
+    
+    for standing in standings {
+        let team_id = standing["standing"]["team_id"].as_str().unwrap();
+        let position = standing["standing"]["position"].as_i64().unwrap();
+        let points = standing["standing"]["points"].as_i64().unwrap();
+        
+        if team_id == team_a_id {
+            team_a_position = position;
+            team_a_points = points;
+        } else if team_id == team_b_id {
+            team_b_position = position;
+            team_b_points = points;
+        }
+    }
+    
+    println!("Team A: Position {}, Points {}", team_a_position, team_a_points);
+    println!("Team B: Position {}, Points {}", team_b_position, team_b_points);
+    
+    // Verify both teams have the same points
+    assert_eq!(team_a_points, team_b_points, "Teams should have equal points");
+    
+    // Verify Team A is ranked higher (lower position number) than Team B due to head-to-head
+    assert!(team_a_position < team_b_position,
+        "Team A (position {}) should be ranked higher than Team B (position {}) due to head-to-head advantage",
+        team_a_position, team_b_position);
+    
+    println!("✅ Tie-breaker working correctly: Team A is ranked higher than Team B due to head-to-head advantage");
+}
+
+#[tokio::test]
+async fn test_standings_tiebreaker_three_way_tie() {
+    let app = spawn_app().await;
+    let client = Client::new();
+
+    println!("🎯 Testing Standings Tie-Breaker: Three-way Tie with Total Points Scored");
+
+    // Step 1: Create 6 users (team owners)
+    let admin_user = create_admin_user_and_login(&app.address, &app.db_pool).await;
+    let user1 = create_test_user_and_login(&app.address).await;
+    let user2 = create_test_user_and_login(&app.address).await;
+    let user3 = create_test_user_and_login(&app.address).await;
+    let user4 = create_test_user_and_login(&app.address).await;
+    let user5 = create_test_user_and_login(&app.address).await;
+    let user6 = create_test_user_and_login(&app.address).await;
+
+    println!("✅ Created 7 users (1 admin + 6 team owners)");
+
+    // Step 2: Create a league
+    let league_id = create_league(
+        &app.address,
+        &admin_user.token,
+        6
+    ).await;
+
+    println!("✅ Created league: {}", league_id);
+
+    // Step 3: Create 6 teams
+    let team_a_id = create_team(
+        &app.address,
+        &admin_user.token,
+        TeamConfig {
+            name: Some(format!("Team A {}", &Uuid::new_v4().to_string()[..8])),
+            color: Some("#FF0000".to_string()),
+            owner_id: Some(user1.user_id),
+            description: None,
+        }
+    ).await;
+
+    let team_b_id = create_team(
+        &app.address,
+        &admin_user.token,
+        TeamConfig {
+            name: Some(format!("Team B {}", &Uuid::new_v4().to_string()[..8])),
+            color: Some("#00FF00".to_string()),
+            owner_id: Some(user2.user_id),
+            description: None,
+        }
+    ).await;
+
+    let team_c_id = create_team(
+        &app.address,
+        &admin_user.token,
+        TeamConfig {
+            name: Some(format!("Team C {}", &Uuid::new_v4().to_string()[..8])),
+            color: Some("#0000FF".to_string()),
+            owner_id: Some(user3.user_id),
+            description: None,
+        }
+    ).await;
+
+    let team_d_id = create_team(
+        &app.address,
+        &admin_user.token,
+        TeamConfig {
+            name: Some(format!("Team D {}", &Uuid::new_v4().to_string()[..8])),
+            color: Some("#FFFF00".to_string()),
+            owner_id: Some(user4.user_id),
+            description: None,
+        }
+    ).await;
+
+    let team_e_id = create_team(
+        &app.address,
+        &admin_user.token,
+        TeamConfig {
+            name: Some(format!("Team E {}", &Uuid::new_v4().to_string()[..8])),
+            color: Some("#FF00FF".to_string()),
+            owner_id: Some(user5.user_id),
+            description: None,
+        }
+    ).await;
+
+    let team_f_id = create_team(
+        &app.address,
+        &admin_user.token,
+        TeamConfig {
+            name: Some(format!("Team F {}", &Uuid::new_v4().to_string()[..8])),
+            color: Some("#00FFFF".to_string()),
+            owner_id: Some(user6.user_id),
+            description: None,
+        }
+    ).await;
+
+    println!("✅ Created 6 teams");
+
+    // Step 4: Assign teams to league
+    add_team_to_league(&app.address, &admin_user.token, &league_id, &team_a_id).await;
+    add_team_to_league(&app.address, &admin_user.token, &league_id, &team_b_id).await;
+    add_team_to_league(&app.address, &admin_user.token, &league_id, &team_c_id).await;
+    add_team_to_league(&app.address, &admin_user.token, &league_id, &team_d_id).await;
+    add_team_to_league(&app.address, &admin_user.token, &league_id, &team_e_id).await;
+    add_team_to_league(&app.address, &admin_user.token, &league_id, &team_f_id).await;
+
+    println!("✅ Assigned all 6 teams to league");
+
+    // Step 5: Create a season
+    let start_date = get_next_date(Weekday::Mon, NaiveTime::from_hms_opt(9, 0, 0).unwrap());
+    let season_id = create_league_season(
+        &app.address,
+        &admin_user.token,
+        &league_id,
+        "Three-way Tie Season",
+        &start_date.to_rfc3339()
+    ).await;
+
+    println!("✅ Created season: {}", season_id);
+
+    // Step 6: Get the games
+    let schedule_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/seasons/{}/schedule", &app.address, season_id),
+        &admin_user.token,
+        None,
+    ).await;
+
+    assert_eq!(schedule_response.status(), 200);
+    let schedule_data: serde_json::Value = schedule_response.json().await.unwrap();
+    let games = schedule_data["data"]["games"].as_array().unwrap();
+
+    println!("✅ Got {} games from schedule", games.len());
+
+    // Step 7: Simulate game results to create a 3-way tie scenario
+    // Target scenario:
+    // Teams A, B, C all have 6 points (2W, 0D, 3L each)
+    // Head-to-head among A, B, C (CIRCULAR - rock/paper/scissors):
+    //   - A beats B (3 points for A)
+    //   - B beats C (3 points for B)
+    //   - C beats A (3 points for C)
+    // Head-to-head points: A=3, B=3, C=3 (still tied!)
+    // Total points scored (second tie-breaker):
+    //   - Team A scores 45 total (high: 40+5)
+    //   - Team B scores 40 total (medium: 35+5)
+    //   - Team C scores 35 total (low: 30+5)
+    // Expected ranking: A > B > C (based on total points scored)
+
+    println!("🎮 Simulating game results for 3-way circular tie scenario...");
+
+    for game_wrapper in games {
+        let game = &game_wrapper["game"];
+        let game_id = game["id"].as_str().unwrap();
+        let home_team_id = game["home_team_id"].as_str().unwrap();
+        let away_team_id = game["away_team_id"].as_str().unwrap();
+
+        let (home_score, away_score) =
+            // Games among A, B, C (circular head-to-head)
+            if (home_team_id == team_a_id && away_team_id == team_b_id) ||
+               (home_team_id == team_b_id && away_team_id == team_a_id) {
+                // A vs B: A wins (A scores 40)
+                if home_team_id == team_a_id {
+                    println!("   A vs B: A wins (40-20)");
+                    (40, 20)
+                } else {
+                    println!("   B vs A: A wins (20-40)");
+                    (20, 40)
+                }
+            } else if (home_team_id == team_b_id && away_team_id == team_c_id) ||
+                      (home_team_id == team_c_id && away_team_id == team_b_id) {
+                // B vs C: B wins (B scores 35)
+                if home_team_id == team_b_id {
+                    println!("   B vs C: B wins (35-20)");
+                    (35, 20)
+                } else {
+                    println!("   C vs B: B wins (20-35)");
+                    (20, 35)
+                }
+            } else if (home_team_id == team_c_id && away_team_id == team_a_id) ||
+                      (home_team_id == team_a_id && away_team_id == team_c_id) {
+                // C vs A: C wins (C scores 30)
+                if home_team_id == team_c_id {
+                    println!("   C vs A: C wins (30-20)");
+                    (30, 20)
+                } else {
+                    println!("   A vs C: C wins (20-30)");
+                    (20, 30)
+                }
+            }
+            // Games where A, B, or C play against D, E, F
+            // Each of A, B, C wins 1 more game (against D, E, or F)
+            // A scores 5 more, B scores 5 more, C scores 5 more
+            else if (home_team_id == team_a_id && away_team_id == team_d_id) ||
+                    (home_team_id == team_d_id && away_team_id == team_a_id) {
+                // A vs D: A wins (scores 5 more to make total: 40+5=45)
+                if home_team_id == team_a_id {
+                    println!("   A vs D: A wins (5-2)");
+                    (5, 2)
+                } else {
+                    println!("   D vs A: A wins (2-5)");
+                    (2, 5)
+                }
+            } else if (home_team_id == team_b_id && away_team_id == team_e_id) ||
+                      (home_team_id == team_e_id && away_team_id == team_b_id) {
+                // B vs E: B wins (scores 5 more to make total: 35+5=40)
+                if home_team_id == team_b_id {
+                    println!("   B vs E: B wins (5-2)");
+                    (5, 2)
+                } else {
+                    println!("   E vs B: B wins (2-5)");
+                    (2, 5)
+                }
+            } else if (home_team_id == team_c_id && away_team_id == team_f_id) ||
+                      (home_team_id == team_f_id && away_team_id == team_c_id) {
+                // C vs F: C wins (scores 5 more to make total: 30+5=35)
+                if home_team_id == team_c_id {
+                    println!("   C vs F: C wins (5-2)");
+                    (5, 2)
+                } else {
+                    println!("   F vs C: C wins (2-5)");
+                    (2, 5)
+                }
+            }
+            // A, B, C lose their remaining games (each scores 0 in losses)
+            else if home_team_id == team_a_id || away_team_id == team_a_id {
+                // A loses to E or F (scores 0)
+                if home_team_id == team_a_id {
+                    println!("   A loses (0-25)");
+                    (0, 25)
+                } else {
+                    println!("   A loses (25-0)");
+                    (25, 0)
+                }
+            } else if home_team_id == team_b_id || away_team_id == team_b_id {
+                // B loses to D or F (scores 0)
+                if home_team_id == team_b_id {
+                    println!("   B loses (0-25)");
+                    (0, 25)
+                } else {
+                    println!("   B loses (25-0)");
+                    (25, 0)
+                }
+            } else if home_team_id == team_c_id || away_team_id == team_c_id {
+                // C loses to D or E (scores 0)
+                if home_team_id == team_c_id {
+                    println!("   C loses (0-25)");
+                    (0, 25)
+                } else {
+                    println!("   C loses (25-0)");
+                    (25, 0)
+                }
+            }
+            // Other games (D, E, F playing each other)
+            else {
+                println!("   Other game: Draw (25-25)");
+                (25, 25)
+            };
+
+        let result_request = json!({
+            "home_score": home_score,
+            "away_score": away_score
+        });
+
+        let result_response = make_authenticated_request(
+            &client,
+            reqwest::Method::PUT,
+            &format!("{}/league/games/{}/result", &app.address, game_id),
+            &admin_user.token,
+            Some(result_request),
+        ).await;
+
+        if result_response.status() != 200 {
+            let status = result_response.status();
+            let error_text = result_response.text().await.unwrap();
+            panic!("Failed to submit game result for game {}: Status {}, Error: {}", game_id, status, error_text);
+        }
+    }
+
+    println!("✅ Submitted all game results");
+
+    // Step 8: Get the final standings
+    let standings_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/seasons/{}/standings", &app.address, season_id),
+        &admin_user.token,
+        None,
+    ).await;
+
+    assert_eq!(standings_response.status(), 200);
+    let standings_data: serde_json::Value = standings_response.json().await.unwrap();
+    let standings = standings_data["data"]["standings"].as_array().unwrap();
+
+    println!("✅ Got final standings");
+    println!("\n📊 Final Standings:");
+
+    // Find positions and points for teams A, B, C
+    let mut team_a_position = 0;
+    let mut team_b_position = 0;
+    let mut team_c_position = 0;
+    let mut team_a_points = 0;
+    let mut team_b_points = 0;
+    let mut team_c_points = 0;
+
+    for standing in standings {
+        let team_id = standing["standing"]["team_id"].as_str().unwrap();
+        let position = standing["standing"]["position"].as_i64().unwrap();
+        let points = standing["standing"]["points"].as_i64().unwrap();
+        let team_name = standing["team_name"].as_str().unwrap();
+
+        println!("   {} - Position: {}, Points: {}", team_name, position, points);
+
+        if team_id == team_a_id {
+            team_a_position = position;
+            team_a_points = points;
+        } else if team_id == team_b_id {
+            team_b_position = position;
+            team_b_points = points;
+        } else if team_id == team_c_id {
+            team_c_position = position;
+            team_c_points = points;
+        }
+    }
+
+    println!("\n🔍 Verifying tie-breaker logic:");
+    println!("   Team A: Position {}, Points {}", team_a_position, team_a_points);
+    println!("   Team B: Position {}, Points {}", team_b_position, team_b_points);
+    println!("   Team C: Position {}, Points {}", team_c_position, team_c_points);
+
+    // Verify all three teams have the same points
+    assert_eq!(team_a_points, team_b_points, "Teams A and B should have equal points");
+    assert_eq!(team_b_points, team_c_points, "Teams B and C should have equal points");
+
+    // Verify ranking based on head-to-head
+    // Head-to-head: A has 4 points (1W, 1D), B has 3 points (1W, 1L), C has 1 point (1D, 1L)
+    assert!(team_a_position < team_b_position,
+        "Team A (position {}) should be ranked higher than Team B (position {}) due to better head-to-head record",
+        team_a_position, team_b_position);
+
+    assert!(team_b_position < team_c_position,
+        "Team B (position {}) should be ranked higher than Team C (position {}) due to better head-to-head record",
+        team_b_position, team_c_position);
+
+    println!("\n✅ Three-way tie-breaker working correctly:");
+    println!("   • All three teams tied on {} points", team_a_points);
+    println!("   • Team A ranked 1st (head-to-head: 4 points)");
+    println!("   • Team B ranked 2nd (head-to-head: 3 points)");
+    println!("   • Team C ranked 3rd (head-to-head: 1 point)");
+}

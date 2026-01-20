@@ -2,6 +2,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 use crate::models::league::*;
 use crate::utils::team_power;
+use std::collections::HashMap;
 
 /// Service responsible for managing league standings
 #[derive(Debug)]
@@ -140,14 +141,14 @@ impl StandingsService {
 
         let standings_with_teams = sqlx::query!(
             r#"
-            SELECT 
+            SELECT
                 ls.*,
                 t.team_name,
                 t.team_color
             FROM league_standings ls
             JOIN teams t ON ls.team_id = t.id
             WHERE ls.season_id = $1
-            ORDER BY ls.points DESC, (ls.wins * 3 + ls.draws) DESC, ls.wins DESC
+            ORDER BY ls.position ASC
             "#,
             season_id
         )
@@ -196,30 +197,138 @@ impl StandingsService {
         })
     }
 
-    /// Recalculate all positions based on current points
+    /// Recalculate all positions based on current points with tie-breaker logic
     async fn recalculate_positions_in_tx(
         &self,
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         season_id: Uuid,
     ) -> Result<(), sqlx::Error> {
-        // Get all standings ordered by points/wins
-        let standings = sqlx::query!(
+        // Define a struct to hold game data
+        #[derive(Clone)]
+        struct GameData {
+            home_team_id: Uuid,
+            away_team_id: Uuid,
+            home_score: i32,
+            away_score: i32,
+        }
+
+        // Helper function to compare head-to-head records
+        fn compare_head_to_head(
+            team_a_id: Uuid,
+            team_b_id: Uuid,
+            games: &[GameData],
+        ) -> std::cmp::Ordering {
+            let mut a_points = 0;
+            let mut b_points = 0;
+
+            // Calculate head-to-head points from games between these two teams
+            for game_data in games {
+                // Check if this game involves both teams
+                if (game_data.home_team_id == team_a_id && game_data.away_team_id == team_b_id)
+                    || (game_data.home_team_id == team_b_id && game_data.away_team_id == team_a_id)
+                {
+                    let (a_score, b_score) = if game_data.home_team_id == team_a_id {
+                        (game_data.home_score, game_data.away_score)
+                    } else {
+                        (game_data.away_score, game_data.home_score)
+                    };
+
+                    // Award points based on result
+                    if a_score > b_score {
+                        a_points += 3;
+                    } else if b_score > a_score {
+                        b_points += 3;
+                    } else {
+                        a_points += 1;
+                        b_points += 1;
+                    }
+                }
+            }
+
+            // Compare head-to-head points (higher is better, so b first in comparison)
+            b_points.cmp(&a_points)
+        }
+
+        // Get all standings with complete data
+        let mut standings = sqlx::query!(
             r#"
-            SELECT team_id
-            FROM league_standings 
+            SELECT
+                team_id,
+                points,
+                wins,
+                draws,
+                losses,
+                games_played
+            FROM league_standings
             WHERE season_id = $1
-            ORDER BY points DESC, wins DESC, (wins * 3 + draws) DESC
             "#,
             season_id
         )
         .fetch_all(&mut **tx)
         .await?;
 
+        // Get all finished games for this season to calculate head-to-head and total points
+        let game_rows = sqlx::query!(
+            r#"
+            SELECT
+                home_team_id,
+                away_team_id,
+                home_score,
+                away_score
+            FROM games
+            WHERE season_id = $1 AND status = 'finished'
+            "#,
+            season_id
+        )
+        .fetch_all(&mut **tx)
+        .await?;
+
+        // Convert to our simple struct
+        let games: Vec<GameData> = game_rows
+            .iter()
+            .map(|row| GameData {
+                home_team_id: row.home_team_id,
+                away_team_id: row.away_team_id,
+                home_score: row.home_score,
+                away_score: row.away_score,
+            })
+            .collect();
+
+        // Calculate total points scored for each team
+        let mut total_points: HashMap<Uuid, i32> = HashMap::new();
+        for game in &games {
+            *total_points.entry(game.home_team_id).or_insert(0) += game.home_score;
+            *total_points.entry(game.away_team_id).or_insert(0) += game.away_score;
+        }
+
+        // Sort standings using tie-breaker logic
+        standings.sort_by(|a, b| {
+            let a_points = a.points.unwrap_or(0);
+            let b_points = b.points.unwrap_or(0);
+
+            // 1. First by points
+            let points_cmp = b_points.cmp(&a_points);
+            if points_cmp != std::cmp::Ordering::Equal {
+                return points_cmp;
+            }
+
+            // 2. Then by head-to-head record
+            let h2h_cmp = compare_head_to_head(a.team_id, b.team_id, &games);
+            if h2h_cmp != std::cmp::Ordering::Equal {
+                return h2h_cmp;
+            }
+
+            // 3. Then by total points scored during the season
+            let a_total = total_points.get(&a.team_id).copied().unwrap_or(0);
+            let b_total = total_points.get(&b.team_id).copied().unwrap_or(0);
+            b_total.cmp(&a_total)
+        });
+
         // Update positions
         for (index, standing) in standings.iter().enumerate() {
             sqlx::query!(
                 r#"
-                UPDATE league_standings 
+                UPDATE league_standings
                 SET position = $1
                 WHERE season_id = $2 AND team_id = $3
                 "#,
@@ -258,14 +367,14 @@ impl StandingsService {
     ) -> Result<Vec<StandingWithTeam>, sqlx::Error> {
         let standings_with_teams = sqlx::query!(
             r#"
-            SELECT 
+            SELECT
                 ls.*,
                 t.team_name,
                 t.team_color
             FROM league_standings ls
             JOIN teams t ON ls.team_id = t.id
             WHERE ls.season_id = $1
-            ORDER BY ls.points DESC, ls.wins DESC
+            ORDER BY ls.position ASC
             LIMIT $2
             "#,
             season_id,
