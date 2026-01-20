@@ -164,7 +164,7 @@ impl StandingsService {
                 home_score,
                 away_score
             FROM games
-            WHERE season_id = $1 AND status = 'finished'
+            WHERE season_id = $1 AND status = 'evaluated'
             "#,
             season_id
         )
@@ -196,7 +196,7 @@ impl StandingsService {
                         points: row.points,
                         position: row.position,
                         last_updated: row.last_updated,
-                        total_points_scored: total_points_scored.get(&row.team_id).copied(),
+                        total_points_scored: total_points_scored.get(&row.team_id).copied().unwrap_or(0),
                     },
                     team_name: row.team_name,
                     team_color: row.team_color,
@@ -217,6 +217,14 @@ impl StandingsService {
             standings,
             last_updated,
         })
+    }
+
+    /// Recalculate positions for a season (public method for manual recalculation)
+    pub async fn recalculate_positions(&self, season_id: Uuid) -> Result<(), sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+        self.recalculate_positions_in_tx(&mut tx, season_id).await?;
+        tx.commit().await?;
+        Ok(())
     }
 
     /// Recalculate all positions based on current points with tie-breaker logic
@@ -289,7 +297,7 @@ impl StandingsService {
         .fetch_all(&mut **tx)
         .await?;
 
-        // Get all finished games for this season to calculate head-to-head and total points
+        // Get all evaluated games for this season to calculate head-to-head and total points
         let game_rows = sqlx::query!(
             r#"
             SELECT
@@ -298,7 +306,7 @@ impl StandingsService {
                 home_score,
                 away_score
             FROM games
-            WHERE season_id = $1 AND status = 'finished'
+            WHERE season_id = $1 AND status = 'evaluated'
             "#,
             season_id
         )
@@ -384,10 +392,10 @@ impl StandingsService {
             let total_points = sqlx::query_scalar!(
                 r#"
                 SELECT COALESCE(
-                    (SELECT SUM(home_score) FROM games WHERE season_id = $1 AND home_team_id = $2 AND status = 'finished'),
+                    (SELECT SUM(home_score) FROM games WHERE season_id = $1 AND home_team_id = $2 AND status = 'evaluated'),
                     0
                 ) + COALESCE(
-                    (SELECT SUM(away_score) FROM games WHERE season_id = $1 AND away_team_id = $2 AND status = 'finished'),
+                    (SELECT SUM(away_score) FROM games WHERE season_id = $1 AND away_team_id = $2 AND status = 'evaluated'),
                     0
                 ) as "total!"
                 "#,
@@ -408,7 +416,7 @@ impl StandingsService {
                 points: row.points,
                 position: row.position,
                 last_updated: row.last_updated,
-                total_points_scored: Some(total_points as i32),
+                total_points_scored: total_points as i32,
             }))
         } else {
             Ok(None)

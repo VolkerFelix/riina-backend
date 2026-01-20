@@ -86,6 +86,10 @@ pub fn init_admin_routes(cfg: &mut web::ServiceConfig) {
                     .route(web::patch().to(league_handler::update_league_season))
                     .route(web::delete().to(league_handler::delete_league_season))
             )
+            .service(
+                web::resource("/seasons/{season_id}/recalculate-standings")
+                    .route(web::post().to(league_handler::recalculate_standings_positions))
+            )
             // Game management routes
             .service(
                 web::resource("/games/start-now")

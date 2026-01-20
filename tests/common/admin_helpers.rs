@@ -467,3 +467,18 @@ pub async fn create_league_with_teams(
         team_ids,
     }
 }
+
+/// Helper function to mark a game as evaluated in the database (for test purposes)
+pub async fn mark_game_as_evaluated(pool: &PgPool, game_id: Uuid) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+        UPDATE games
+        SET status = 'evaluated'
+        WHERE id = $1
+        "#,
+        game_id
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
+}

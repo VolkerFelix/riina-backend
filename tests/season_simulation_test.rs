@@ -14,7 +14,7 @@ use common::utils::{
     get_next_date,
     make_authenticated_request
 , delete_test_user};
-use common::admin_helpers::{create_admin_user_and_login, create_league_season, create_league, create_team, TeamConfig, add_team_to_league, add_user_to_team};
+use common::admin_helpers::{create_admin_user_and_login, create_league_season, create_league, create_team, TeamConfig, add_team_to_league, add_user_to_team, mark_game_as_evaluated};
 use common::workout_data_helpers::{
     WorkoutData,
     WorkoutIntensity,
@@ -275,11 +275,9 @@ async fn simulate_complete_season_with_4_players_2_teams() {
         
         let result_request = json!({
             "home_score": home_score,
-            "away_score": away_score,
-            "winner_team_id": winner_team_id,
-            "status": "finished"
+            "away_score": away_score
         });
-        
+
         let result_response = make_authenticated_request(
             &client,
             reqwest::Method::PUT,
@@ -287,8 +285,12 @@ async fn simulate_complete_season_with_4_players_2_teams() {
             &admin_user.token,
             Some(result_request),
         ).await;
-        
+
         assert_eq!(result_response.status(), 200);
+
+        // Mark game as evaluated for test purposes
+        mark_game_as_evaluated(&app.db_pool, Uuid::parse_str(game_id).unwrap()).await.unwrap();
+
         simulated_games += 1;
         
         println!("   {} ({}) {} - {} {} ({}) (Game {})", 
@@ -631,10 +633,13 @@ async fn test_standings_tiebreaker_head_to_head() {
             let error_text = result_response.text().await.unwrap();
             panic!("Failed to submit game result for game {}: Status {}, Error: {}", game_id, status, error_text);
         }
+
+        // Mark game as evaluated for test purposes
+        mark_game_as_evaluated(&app.db_pool, Uuid::parse_str(game_id).unwrap()).await.unwrap();
     }
-    
+
     println!("✅ Submitted all game results");
-    
+
     // Step 7: Get the final standings
     let standings_response = make_authenticated_request(
         &client,
@@ -959,6 +964,9 @@ async fn test_standings_tiebreaker_three_way_tie() {
             let error_text = result_response.text().await.unwrap();
             panic!("Failed to submit game result for game {}: Status {}, Error: {}", game_id, status, error_text);
         }
+
+        // Mark game as evaluated for test purposes
+        mark_game_as_evaluated(&app.db_pool, Uuid::parse_str(game_id).unwrap()).await.unwrap();
     }
 
     println!("✅ Submitted all game results");
