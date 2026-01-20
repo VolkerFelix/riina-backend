@@ -155,6 +155,27 @@ impl StandingsService {
         .fetch_all(&self.pool)
         .await?;
 
+        // Calculate total points scored for each team
+        let game_rows = sqlx::query!(
+            r#"
+            SELECT
+                home_team_id,
+                away_team_id,
+                home_score,
+                away_score
+            FROM games
+            WHERE season_id = $1 AND status = 'finished'
+            "#,
+            season_id
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut total_points_scored: HashMap<Uuid, i32> = HashMap::new();
+        for game in &game_rows {
+            *total_points_scored.entry(game.home_team_id).or_insert(0) += game.home_score;
+            *total_points_scored.entry(game.away_team_id).or_insert(0) += game.away_score;
+        }
 
         // Calculate team powers
         let team_ids: Vec<Uuid> = standings_with_teams.iter().map(|row| row.team_id).collect();
@@ -175,6 +196,7 @@ impl StandingsService {
                         points: row.points,
                         position: row.position,
                         last_updated: row.last_updated,
+                        total_points_scored: total_points_scored.get(&row.team_id).copied(),
                     },
                     team_name: row.team_name,
                     team_color: row.team_color,
@@ -349,64 +371,47 @@ impl StandingsService {
         season_id: Uuid,
         team_id: Uuid,
     ) -> Result<Option<LeagueStanding>, sqlx::Error> {
-        sqlx::query_as!(
-            LeagueStanding,
+        let standing_row = sqlx::query!(
             "SELECT * FROM league_standings WHERE season_id = $1 AND team_id = $2",
             season_id,
             team_id
         )
         .fetch_optional(&self.pool)
-        .await
-    }
-
-    /// Get top N teams
-    pub async fn get_top_teams(
-        &self,
-        season_id: Uuid,
-        limit: i64,
-    ) -> Result<Vec<StandingWithTeam>, sqlx::Error> {
-        let standings_with_teams = sqlx::query!(
-            r#"
-            SELECT
-                ls.*,
-                t.team_name,
-                t.team_color
-            FROM league_standings ls
-            JOIN teams t ON ls.team_id = t.id
-            WHERE ls.season_id = $1
-            ORDER BY ls.position ASC
-            LIMIT $2
-            "#,
-            season_id,
-            limit
-        )
-        .fetch_all(&self.pool)
         .await?;
 
-        // Calculate team powers
-        let team_ids: Vec<Uuid> = standings_with_teams.iter().map(|row| row.team_id).collect();
-        let team_powers = team_power::calculate_multiple_team_powers(&team_ids, &self.pool).await?;
+        if let Some(row) = standing_row {
+            // Calculate total points scored for this team
+            let total_points = sqlx::query_scalar!(
+                r#"
+                SELECT COALESCE(
+                    (SELECT SUM(home_score) FROM games WHERE season_id = $1 AND home_team_id = $2 AND status = 'finished'),
+                    0
+                ) + COALESCE(
+                    (SELECT SUM(away_score) FROM games WHERE season_id = $1 AND away_team_id = $2 AND status = 'finished'),
+                    0
+                ) as "total!"
+                "#,
+                season_id,
+                team_id
+            )
+            .fetch_one(&self.pool)
+            .await?;
 
-        Ok(standings_with_teams
-            .into_iter()
-            .map(|row| StandingWithTeam {
-                standing: LeagueStanding {
-                    id: row.id,
-                    season_id: row.season_id,
-                    team_id: row.team_id,
-                    games_played: row.games_played,
-                    wins: row.wins,
-                    draws: row.draws,
-                    losses: row.losses,
-                    points: row.points,
-                    position: row.position,
-                    last_updated: row.last_updated,
-                },
-                team_name: row.team_name,
-                team_color: row.team_color,
-                recent_form: vec!['W', 'L', 'D'], // TODO: Calculate actual form
-                team_power: team_powers.get(&row.team_id).copied().unwrap_or(0.0),
-            })
-            .collect())
+            Ok(Some(LeagueStanding {
+                id: row.id,
+                season_id: row.season_id,
+                team_id: row.team_id,
+                games_played: row.games_played,
+                wins: row.wins,
+                draws: row.draws,
+                losses: row.losses,
+                points: row.points,
+                position: row.position,
+                last_updated: row.last_updated,
+                total_points_scored: Some(total_points as i32),
+            }))
+        } else {
+            Ok(None)
+        }
     }
 }

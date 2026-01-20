@@ -298,8 +298,48 @@ async fn simulate_complete_season_with_4_players_2_teams() {
     }
     
     println!("✅ Simulated {} games based on team power", simulated_games);
-    
-    // Step 11: Get final standings
+
+    // Step 11: Re-fetch games to get updated scores
+    let updated_games_response = make_authenticated_request(
+        &client,
+        reqwest::Method::GET,
+        &format!("{}/league/seasons/{}/schedule", &app.address, season_id),
+        &admin_user.token,
+        None,
+    ).await;
+
+    assert_eq!(updated_games_response.status(), 200);
+    let updated_games_data: serde_json::Value = updated_games_response.json().await.unwrap();
+    let updated_games = updated_games_data["data"]["games"].as_array().unwrap();
+
+    // Calculate expected total points scored from updated game results
+    let mut expected_team1_scored = 0;
+    let mut expected_team2_scored = 0;
+
+    for game_wrapper in updated_games {
+        let game = &game_wrapper["game"];
+        let home_team_id = game["home_team_id"].as_str().unwrap();
+        let away_team_id = game["away_team_id"].as_str().unwrap();
+        let home_score = game["home_score"].as_i64().unwrap_or(0);
+        let away_score = game["away_score"].as_i64().unwrap_or(0);
+
+        if home_team_id == team1_id {
+            expected_team1_scored += home_score;
+        } else if home_team_id == team2_id {
+            expected_team2_scored += home_score;
+        }
+
+        if away_team_id == team1_id {
+            expected_team1_scored += away_score;
+        } else if away_team_id == team2_id {
+            expected_team2_scored += away_score;
+        }
+    }
+
+    println!("   Expected scores - Fire Dragons: {}, Ice Warriors: {}",
+             expected_team1_scored, expected_team2_scored);
+
+    // Step 12: Get final standings
     let standings_response = make_authenticated_request(
         &client,
         reqwest::Method::GET,
@@ -307,29 +347,55 @@ async fn simulate_complete_season_with_4_players_2_teams() {
         &admin_user.token,
         None,
     ).await;
-    
+
     assert_eq!(standings_response.status(), 200);
     let standings_data: serde_json::Value = standings_response.json().await.unwrap();
     let standings = standings_data["data"]["standings"].as_array().unwrap();
-    
+
     println!("\n🏆 FINAL STANDINGS:");
-    println!("Pos | Team           | GP | W | D | L | Pts");
-    println!("----|----------------|----|----|----|----|----");
-    
+    println!("Pos | Team           | GP | W | D | L | Pts | Scored");
+    println!("----|----------------|----|----|----|----|-----|-------");
+
     for standing in standings {
         let position = standing["standing"]["position"].as_i64().unwrap();
+        let team_id = standing["standing"]["team_id"].as_str().unwrap();
         let team_name = standing["team_name"].as_str().unwrap();
         let games_played = standing["standing"]["games_played"].as_i64().unwrap();
         let wins = standing["standing"]["wins"].as_i64().unwrap();
         let draws = standing["standing"]["draws"].as_i64().unwrap();
         let losses = standing["standing"]["losses"].as_i64().unwrap();
         let points = standing["standing"]["points"].as_i64().unwrap_or(0);
-        
-        println!("{:3} | {:14} | {:2} | {:2} | {:2} | {:2} | {:3}",
-                 position, team_name, games_played, wins, draws, losses, points);
+        let total_points_scored = standing["standing"]["total_points_scored"].as_i64();
+
+        println!("{:3} | {:14} | {:2} | {:2} | {:2} | {:2} | {:3} | {:7}",
+                 position, team_name, games_played, wins, draws, losses, points,
+                 total_points_scored.map(|p| p.to_string()).unwrap_or("N/A".to_string()));
+
+        // Verify that total_points_scored is present in the API response
+        assert!(total_points_scored.is_some(),
+            "total_points_scored should be present in the standings response for team {}", team_name);
+
+        let actual_scored = total_points_scored.unwrap();
+        assert!(actual_scored >= 0,
+            "total_points_scored should be >= 0 for team {}", team_name);
+
+        // Verify the correct amount of points scored matches what we calculated
+        let expected_scored = if team_id == team1_id {
+            expected_team1_scored
+        } else if team_id == team2_id {
+            expected_team2_scored
+        } else {
+            panic!("Unknown team ID in standings: {}", team_id);
+        };
+
+        assert_eq!(actual_scored, expected_scored,
+            "Team {} should have scored {} points total, but API returned {}",
+            team_name, expected_scored, actual_scored);
+
+        println!("   ✓ {} total points scored verified: {}", team_name, actual_scored);
     }
     
-    // Step 12: Verify season integrity
+    // Step 13: Verify season integrity
     println!("\n🔍 Season verification:");
     
     // Check that each team played the expected number of games
