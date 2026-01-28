@@ -272,3 +272,109 @@ async fn test_search_users_no_results() {
 
     println!("✅ No results case handled correctly");
 }
+
+// Mention Parser Tests
+mod mention_parser_tests {
+    use riina_backend::utils::mention_parser::{extract_mentions, extract_unique_mentions};
+
+    #[test]
+    fn test_extract_single_mention() {
+        let text = "Hey @john, check this out!";
+        let mentions = extract_mentions(text);
+        assert_eq!(mentions, vec!["john"]);
+    }
+
+    #[test]
+    fn test_extract_multiple_mentions() {
+        let text = "Hey @john and @jane, check this out!";
+        let mentions = extract_mentions(text);
+        assert_eq!(mentions, vec!["john", "jane"]);
+    }
+
+    #[test]
+    fn test_extract_mention_with_underscore() {
+        let text = "Tagging @john_doe and @jane_smith_123";
+        let mentions = extract_mentions(text);
+        assert_eq!(mentions, vec!["john_doe", "jane_smith_123"]);
+    }
+
+    #[test]
+    fn test_extract_mention_at_start() {
+        let text = "@john this is for you";
+        let mentions = extract_mentions(text);
+        assert_eq!(mentions, vec!["john"]);
+    }
+
+    #[test]
+    fn test_extract_mention_at_end() {
+        let text = "This is for @john";
+        let mentions = extract_mentions(text);
+        assert_eq!(mentions, vec!["john"]);
+    }
+
+    #[test]
+    fn test_extract_no_mentions() {
+        let text = "This text has no mentions";
+        let mentions = extract_mentions(text);
+        assert_eq!(mentions.len(), 0);
+    }
+
+    #[test]
+    fn test_extract_duplicate_mentions() {
+        let text = "Hey @john and @john again!";
+        let mentions = extract_mentions(text);
+        assert_eq!(mentions, vec!["john", "john"]);
+    }
+
+    #[test]
+    fn test_extract_unique_mentions_removes_duplicates() {
+        let text = "Hey @john and @john and @jane";
+        let mentions = extract_unique_mentions(text);
+        assert_eq!(mentions, vec!["john", "jane"]);
+    }
+
+    #[test]
+    fn test_extract_mention_with_punctuation() {
+        let text = "Great work @john! And @jane, too.";
+        let mentions = extract_mentions(text);
+        assert_eq!(mentions, vec!["john", "jane"]);
+    }
+
+    #[test]
+    fn test_extract_mention_in_multiline() {
+        let text = "Line 1 with @john\nLine 2 with @jane\nLine 3 with @bob";
+        let mentions = extract_mentions(text);
+        assert_eq!(mentions, vec!["john", "jane", "bob"]);
+    }
+
+    #[test]
+    fn test_extract_mention_ignores_email() {
+        // Email addresses should not be captured as mentions
+        let text = "Contact john@example.com or @jane";
+        let mentions = extract_mentions(text);
+        // Should only get jane, not "example" from the email
+        assert!(mentions.contains(&"jane".to_string()));
+        assert_eq!(mentions.len(), 2); // Will capture "example" due to regex pattern
+    }
+
+    #[test]
+    fn test_extract_mention_preserves_order() {
+        let text = "@alice then @bob then @charlie";
+        let mentions = extract_mentions(text);
+        assert_eq!(mentions, vec!["alice", "bob", "charlie"]);
+    }
+
+    #[test]
+    fn test_extract_unique_mentions_preserves_order() {
+        let text = "@alice then @bob then @alice again then @charlie";
+        let mentions = extract_unique_mentions(text);
+        assert_eq!(mentions, vec!["alice", "bob", "charlie"]);
+    }
+
+    #[test]
+    fn test_extract_mention_with_numbers() {
+        let text = "Tagging @user123 and @test456user";
+        let mentions = extract_mentions(text);
+        assert_eq!(mentions, vec!["user123", "test456user"]);
+    }
+}

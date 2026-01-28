@@ -8,6 +8,7 @@ use crate::{
     middleware::auth::Claims,
     models::post::{CreatePostRequest, UpdatePostRequest, PostType, PostVisibility},
     models::common::ApiResponse,
+    utils::mention_parser::extract_unique_mentions,
 };
 
 /// Create a new post
@@ -98,6 +99,27 @@ pub async fn create_post(
     match result {
         Ok(_) => {
             tracing::info!("Created post {} for user {}", post_id, claims.username);
+
+            // Extract mentions from post content and create notifications
+            if let Some(ref content) = body.content {
+                let mentions = extract_unique_mentions(content);
+                if !mentions.is_empty() {
+                    tracing::info!("Found {} mentions in post {}: {:?}", mentions.len(), post_id, mentions);
+
+                    // Create mention notifications asynchronously (don't block on errors)
+                    if let Err(e) = crate::db::social::create_mention_notifications(
+                        &pool,
+                        user_id,
+                        post_id,
+                        mentions,
+                    )
+                    .await
+                    {
+                        tracing::warn!("Failed to create mention notifications for post {}: {}", post_id, e);
+                    }
+                }
+            }
+
             HttpResponse::Ok().json(json!({
                 "success": true,
                 "data": {
@@ -250,6 +272,27 @@ pub async fn update_post(
     match result {
         Ok(_) => {
             tracing::info!("Updated post {} for user {}", post_id, claims.username);
+
+            // Extract mentions from updated post content and create notifications
+            if let Some(ref content) = body.content {
+                let mentions = extract_unique_mentions(content);
+                if !mentions.is_empty() {
+                    tracing::info!("Found {} mentions in updated post {}: {:?}", mentions.len(), post_id, mentions);
+
+                    // Create mention notifications asynchronously (don't block on errors)
+                    if let Err(e) = crate::db::social::create_mention_notifications(
+                        &pool,
+                        user_id,
+                        post_id,
+                        mentions,
+                    )
+                    .await
+                    {
+                        tracing::warn!("Failed to create mention notifications for updated post {}: {}", post_id, e);
+                    }
+                }
+            }
+
             HttpResponse::Ok().json(json!({
                 "success": true,
                 "message": "Post updated successfully"
