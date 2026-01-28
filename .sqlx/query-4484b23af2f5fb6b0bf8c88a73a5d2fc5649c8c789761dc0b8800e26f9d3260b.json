@@ -1,0 +1,36 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                u.id as user_id,\n                u.username,\n                u.profile_picture_url\n            FROM users u\n            WHERE u.status = 'active'\n            AND LOWER(u.username) LIKE $1\n            ORDER BY\n                CASE WHEN LOWER(u.username) = $2 THEN 0 ELSE 1 END,\n                u.username\n            LIMIT $3\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "username",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "profile_picture_url",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "4484b23af2f5fb6b0bf8c88a73a5d2fc5649c8c789761dc0b8800e26f9d3260b"
+}
