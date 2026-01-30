@@ -54,26 +54,8 @@ async fn websocket_connection_working() {
     assert!(welcome_json["user_id"].is_string(), "Welcome message should contain user_id");
     assert!(welcome_json["session_id"].is_string(), "Welcome message should contain session_id");
 
-    // Send a ping message
-    let ping_msg = json!({
-        "type": "ping",
-        "timestamp": chrono::Utc::now().to_rfc3339()
-    });
-    ws_stream.send(Message::Text(ping_msg.to_string())).await.unwrap();
-    
-    // Wait for pong response
-    let pong_msg = ws_stream.next().await.expect("No pong response received").unwrap();
-    let pong_text = match pong_msg {
-        Message::Text(text) => {
-            println!("Received pong message: {}", text);
-            text
-        },
-        _ => panic!("Expected text message for pong"),
-    };
-    
-    let pong_json: serde_json::Value = serde_json::from_str(&pong_text)
-        .expect("Failed to parse pong message as JSON");
-    assert_eq!(pong_json["type"], "pong", "Expected pong message type");
+    // Note: Application-level ping/pong was removed in favor of protocol-level WebSocket pings
+    // The WebSocket protocol handles keep-alive automatically
 
     // Test leaderboard request
     let leaderboard_request = json!({
