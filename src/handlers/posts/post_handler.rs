@@ -126,7 +126,7 @@ pub async fn create_post(
                         }
                     };
 
-                    // Create notification for each mentioned user and broadcast via WebSocket
+                    // Create notification for each mentioned user and broadcast via WebSocket + push
                     for (mentioned_user_id, mentioned_username) in mentioned_user_ids {
                         if mentioned_user_id == user_id {
                             continue; // Skip self-mentions
@@ -153,6 +153,24 @@ pub async fn create_post(
                                     message.clone(),
                                 ).await {
                                     tracing::error!("Failed to send WebSocket notification for mention: {}", e);
+                                }
+
+                                // Send push notification
+                                let notification_data = serde_json::json!({
+                                    "type": "mention",
+                                    "post_id": post_id.to_string(),
+                                    "notification_id": notification_id.to_string(),
+                                });
+
+                                if let Err(e) = crate::handlers::notification_handler::send_notification_to_user(
+                                    &pool,
+                                    mentioned_user_id,
+                                    format!("{} mentioned you", claims.username),
+                                    message.clone(),
+                                    Some(notification_data),
+                                    Some("mention".to_string())
+                                ).await {
+                                    tracing::warn!("Failed to send push notification for mention: {}", e);
                                 }
                             }
                             Ok(None) => {
@@ -414,7 +432,7 @@ pub async fn update_post(
                         }
                     };
 
-                    // Create notification for each newly mentioned user and broadcast via WebSocket
+                    // Create notification for each newly mentioned user and broadcast via WebSocket + push
                     for (mentioned_user_id, mentioned_username) in mentioned_user_ids {
                         if mentioned_user_id == user_id {
                             continue; // Skip self-mentions
@@ -441,6 +459,24 @@ pub async fn update_post(
                                     message.clone(),
                                 ).await {
                                     tracing::error!("Failed to send WebSocket notification for mention: {}", e);
+                                }
+
+                                // Send push notification
+                                let notification_data = serde_json::json!({
+                                    "type": "mention",
+                                    "post_id": post_id.to_string(),
+                                    "notification_id": notification_id.to_string(),
+                                });
+
+                                if let Err(e) = crate::handlers::notification_handler::send_notification_to_user(
+                                    &pool,
+                                    mentioned_user_id,
+                                    format!("{} mentioned you", claims.username),
+                                    message.clone(),
+                                    Some(notification_data),
+                                    Some("mention".to_string())
+                                ).await {
+                                    tracing::warn!("Failed to send push notification for mention: {}", e);
                                 }
                             }
                             Ok(None) => {
