@@ -770,8 +770,48 @@ async fn test_websocket_receives_deleted_message() {
         _ => panic!("Expected text message"),
     };
 
-    // Give WebSocket time to fully subscribe
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    // Verify Redis subscriptions are established before sending the delete
+    let redis_password = std::env::var("REDIS__REDIS__PASSWORD")
+        .expect("REDIS__REDIS__PASSWORD environment variable is required");
+    let redis_url = format!("redis://:{}@localhost:6379", redis_password);
+    let redis_client_test = redis::Client::open(redis_url.as_str())
+        .expect("Failed to create Redis client");
+    let mut redis_conn = redis_client_test.get_async_connection().await
+        .expect("Failed to connect to Redis");
+
+    let team_channel = format!("game:events:team:{}", team_id);
+    let mut subscription_ready = false;
+    for _ in 0..10 {
+        let subscriber_check: Result<Vec<redis::Value>, redis::RedisError> = redis::cmd("PUBSUB")
+            .arg("NUMSUB")
+            .arg(&team_channel)
+            .query_async(&mut redis_conn)
+            .await;
+
+        if let Ok(values) = subscriber_check {
+            if values.len() >= 2 {
+                if let redis::Value::Int(count) = &values[1] {
+                    if *count > 0 {
+                        subscription_ready = true;
+                        break;
+                    }
+                }
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+
+    assert!(subscription_ready, "Redis subscription was not established for team channel");
+
+    // Clear any pending messages
+    let clear_timeout = tokio::time::sleep(Duration::from_millis(500));
+    tokio::pin!(clear_timeout);
+    loop {
+        tokio::select! {
+            Some(_) = ws_stream.next() => {},
+            _ = &mut clear_timeout => break,
+        }
+    }
 
     // Owner deletes the message
     client

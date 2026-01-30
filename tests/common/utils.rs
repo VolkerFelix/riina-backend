@@ -1,6 +1,6 @@
 use secrecy::ExposeSecret;
 use serde_json::json;
-use sqlx::{PgPool, PgConnection, Connection, Executor};
+use sqlx::{PgPool, PgConnection, Connection, Executor, postgres::PgPoolOptions};
 use std::net::TcpListener;
 use uuid::Uuid;
 use once_cell::sync::Lazy;
@@ -114,7 +114,11 @@ pub async fn configure_db(config: &DatabaseSettings) -> PgPool {
         .expect("Failed to create database.");
 
     // Migrate database
-    let connection_pool = PgPool::connect(&config.connection_string().expose_secret())
+    // Use a small connection pool for tests to avoid hitting PostgreSQL max_connections limit
+    // With 30+ tests running in parallel, default pool size (10) * 30 tests = 300+ connections
+    let connection_pool = PgPoolOptions::new()
+        .max_connections(2)  // Only 2 connections per test database
+        .connect(&config.connection_string().expose_secret())
         .await
         .expect("Failed to connect to Postgres.");
     sqlx::migrate!("./migrations")
