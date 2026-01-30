@@ -22,6 +22,7 @@ fn get_mention_regex() -> &'static Regex {
 ///
 /// # Examples
 /// ```
+/// use riina_backend::utils::mention_parser::extract_mentions;
 /// let mentions = extract_mentions("Hey @john and @jane, check this out!");
 /// assert_eq!(mentions, vec!["john", "jane"]);
 /// ```
@@ -44,6 +45,7 @@ pub fn extract_mentions(text: &str) -> Vec<String> {
 ///
 /// # Examples
 /// ```
+/// use riina_backend::utils::mention_parser::extract_unique_mentions;
 /// let mentions = extract_unique_mentions("Hey @john and @john again!");
 /// assert_eq!(mentions, vec!["john"]);
 /// ```
