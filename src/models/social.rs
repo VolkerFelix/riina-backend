@@ -153,6 +153,7 @@ pub enum NotificationType {
     Reaction,
     Comment,
     Reply,
+    Mention,
 }
 
 impl NotificationType {
@@ -161,6 +162,7 @@ impl NotificationType {
             NotificationType::Reaction => "reaction",
             NotificationType::Comment => "comment",
             NotificationType::Reply => "reply",
+            NotificationType::Mention => "mention",
         }
     }
 }

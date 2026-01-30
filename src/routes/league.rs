@@ -263,6 +263,16 @@ async fn get_league_users_with_stats(
     league_users_handler::get_league_users_with_stats(pool, claims, query).await
 }
 
+/// Search users for mentions/tagging
+#[get("/users/search")]
+async fn search_users(
+    pool: web::Data<PgPool>,
+    claims: web::ReqData<Claims>,
+    query: web::Query<league_users_handler::UserSearchParams>
+) -> Result<HttpResponse> {
+    league_users_handler::search_users(pool, claims, query).await
+}
+
 /// Get live scores for all active games
 #[get("/games/live")]
 async fn get_live_scores(

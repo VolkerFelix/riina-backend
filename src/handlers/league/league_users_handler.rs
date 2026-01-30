@@ -255,3 +255,131 @@ pub async fn get_league_users_with_stats(
         total_pages,
     }))
 }
+
+/// Simple user info for mentions/tagging
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserSearchResult {
+    pub user_id: Uuid,
+    pub username: String,
+    pub profile_picture_url: Option<String>,
+}
+
+/// Database row struct for user search queries
+#[derive(Debug)]
+struct UserSearchRow {
+    user_id: Uuid,
+    username: String,
+    profile_picture_url: Option<String>,
+}
+
+/// Response for user search
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserSearchResponse {
+    pub success: bool,
+    pub data: Vec<UserSearchResult>,
+}
+
+/// Query parameters for user search
+#[derive(Debug, Deserialize)]
+pub struct UserSearchParams {
+    pub q: Option<String>,
+    pub limit: Option<i64>,
+}
+
+/// Search users by username (for mentions/tagging)
+/// Returns lightweight user info without stats
+#[tracing::instrument(
+    name = "Search users",
+    skip(pool, claims),
+    fields(
+        username = %claims.username
+    )
+)]
+pub async fn search_users(
+    pool: web::Data<PgPool>,
+    claims: web::ReqData<Claims>,
+    query: web::Query<UserSearchParams>,
+) -> Result<HttpResponse> {
+    let Some(_requester_id) = claims.user_id() else {
+        tracing::error!("Invalid user ID in claims");
+        return Ok(HttpResponse::BadRequest().json(json!({
+            "success": false,
+            "message": "Invalid user ID"
+        })));
+    };
+
+    let search_query = query.q.clone().unwrap_or_default().to_lowercase();
+    let limit = query.limit.unwrap_or(20).min(50); // Max 50 results
+
+    tracing::info!("Searching users with query: '{}', limit: {}", search_query, limit);
+
+    let users = if search_query.is_empty() {
+        // Return recent active users if no query
+        sqlx::query_as!(
+            UserSearchRow,
+            r#"
+            SELECT
+                u.id as user_id,
+                u.username,
+                u.profile_picture_url
+            FROM users u
+            WHERE u.status = 'active'
+            ORDER BY u.created_at DESC
+            LIMIT $1
+            "#,
+            limit
+        )
+        .fetch_all(pool.get_ref())
+        .await
+    } else {
+        // Search by username
+        sqlx::query_as!(
+            UserSearchRow,
+            r#"
+            SELECT
+                u.id as user_id,
+                u.username,
+                u.profile_picture_url
+            FROM users u
+            WHERE u.status = 'active'
+            AND LOWER(u.username) LIKE $1
+            ORDER BY
+                CASE WHEN LOWER(u.username) = $2 THEN 0 ELSE 1 END,
+                u.username
+            LIMIT $3
+            "#,
+            format!("%{}%", search_query),
+            search_query,
+            limit
+        )
+        .fetch_all(pool.get_ref())
+        .await
+    };
+
+    match users {
+        Ok(rows) => {
+            let results: Vec<UserSearchResult> = rows
+                .into_iter()
+                .map(|row| UserSearchResult {
+                    user_id: row.user_id,
+                    username: row.username,
+                    profile_picture_url: row.profile_picture_url,
+                })
+                .collect();
+
+            tracing::info!("Found {} users matching query", results.len());
+
+            Ok(HttpResponse::Ok().json(UserSearchResponse {
+                success: true,
+                data: results,
+            }))
+        }
+        Err(e) => {
+            tracing::error!("Failed to search users: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "message": "Failed to search users"
+            })))
+        }
+    }
+}
