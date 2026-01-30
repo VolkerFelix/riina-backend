@@ -276,16 +276,6 @@ impl GameConnection {
         // Parse incoming game commands from client
         if let Ok(command) = serde_json::from_str::<serde_json::Value>(message) {
             match command.get("type").and_then(|t| t.as_str()) {
-                Some("ping") => {
-                    let pong = serde_json::json!({
-                        "type": "pong",
-                        "timestamp": Utc::now().to_rfc3339(),
-                        "session_id": self.session_id
-                    });
-                    ctx.text(serde_json::to_string(&pong).unwrap_or_default());
-                    tracing::debug!("🏓 App-level pong sent for {} ({}) session: {}", 
-                        self.user_id, self.username, self.session_id);
-                }
                 Some("avatar_position_update") => {
                     // Handle avatar position updates
                     if let (Some(x), Some(y)) = (

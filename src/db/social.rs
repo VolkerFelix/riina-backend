@@ -859,7 +859,7 @@ pub async fn create_mention_notifications(
 
     // Create a notification for each mentioned user
     for recipient_id in user_ids {
-        let message = format!("@{} mentioned you in a post", actor_username);
+        let message = format!("{} mentioned you in a post", actor_username);
 
         match create_notification(
             pool,
@@ -881,6 +881,111 @@ pub async fn create_mention_notifications(
                 let push_data = Some(serde_json::json!({
                     "type": "mention",
                     "post_id": post_id,
+                    "actor_id": actor_id,
+                    "actor_username": actor_username,
+                }));
+
+                // Send push notification asynchronously (don't block on errors)
+                if let Err(e) = crate::handlers::notification_handler::send_notification_to_user(
+                    pool,
+                    recipient_id,
+                    push_title,
+                    push_body,
+                    push_data,
+                    Some("mention".to_string()),
+                )
+                .await
+                {
+                    tracing::warn!(
+                        "Failed to send push notification for mention to user {}: {}",
+                        recipient_id,
+                        e
+                    );
+                }
+            }
+            Ok(None) => {
+                // Notification not created (actor is the recipient)
+                tracing::debug!("Skipped self-mention notification for user {}", recipient_id);
+            }
+            Err(e) => {
+                tracing::error!(
+                    "Failed to create mention notification for user {}: {}",
+                    recipient_id,
+                    e
+                );
+            }
+        }
+    }
+
+    Ok(notification_count)
+}
+
+/// Create mention notifications for a comment
+pub async fn create_mention_notifications_for_comment(
+    pool: &PgPool,
+    actor_id: Uuid,
+    comment_id: Uuid,
+    usernames: Vec<String>,
+) -> Result<i64, sqlx::Error> {
+    if usernames.is_empty() {
+        return Ok(0);
+    }
+
+    // Get actor username for notification message
+    let actor_username: Option<String> = sqlx::query_scalar(
+        "SELECT username FROM users WHERE id = $1"
+    )
+    .bind(actor_id)
+    .fetch_optional(pool)
+    .await?;
+
+    let actor_username = match actor_username {
+        Some(username) => username,
+        None => {
+            tracing::warn!("Actor {} not found when creating mention notifications", actor_id);
+            return Ok(0);
+        }
+    };
+
+    // Look up user IDs for all mentioned usernames
+    let user_ids: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM users WHERE username = ANY($1)"
+    )
+    .bind(&usernames)
+    .fetch_all(pool)
+    .await?;
+
+    if user_ids.is_empty() {
+        tracing::debug!("No valid users found for mentions: {:?}", usernames);
+        return Ok(0);
+    }
+
+    let mut notification_count = 0;
+
+    // Create a notification for each mentioned user
+    for recipient_id in user_ids {
+        let message = format!("{} mentioned you in a comment", actor_username);
+
+        match create_notification(
+            pool,
+            recipient_id,
+            actor_id,
+            "mention",
+            "comment",
+            comment_id,
+            &message,
+        )
+        .await
+        {
+            Ok(Some(_)) => {
+                notification_count += 1;
+
+                // Send push notification to the mentioned user
+                let push_title = "New Mention".to_string();
+                let push_body = message.clone();
+                let push_data = Some(serde_json::json!({
+                    "type": "mention",
+                    "comment_id": comment_id,
                     "actor_id": actor_id,
                     "actor_username": actor_username,
                 }));
