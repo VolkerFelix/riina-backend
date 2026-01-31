@@ -23,10 +23,42 @@ pub async fn register_user(
     pool: web::Data<PgPool>,
     redis_client: web::Data<Arc<redis::Client>>,
 ) -> HttpResponse {
+    // Validate the registration request
+    if let Err(validation_error) = user_form.validate() {
+        tracing::warn!("Registration validation failed: {}", validation_error);
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "error": validation_error
+        }));
+    }
+
     match insert_user(&user_form, &pool, &redis_client).await
     {
         Ok(_) => HttpResponse::Ok().finish(),
-        Err(_) => HttpResponse::InternalServerError().finish()
+        Err(e) => {
+            // Check if error is due to unique constraint violation
+            if let Some(db_error) = e.as_database_error() {
+                if db_error.is_unique_violation() {
+                    // Determine which field caused the violation
+                    let error_message = if db_error.message().contains("username") {
+                        "Username already exists"
+                    } else if db_error.message().contains("email") {
+                        "Email already exists"
+                    } else {
+                        "User already exists"
+                    };
+
+                    tracing::warn!("Registration failed due to unique constraint: {}", error_message);
+                    return HttpResponse::Conflict().json(serde_json::json!({
+                        "error": error_message
+                    }));
+                }
+            }
+
+            tracing::error!("Registration failed with unexpected error: {:?}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to create user"
+            }))
+        }
     }
 }
 
