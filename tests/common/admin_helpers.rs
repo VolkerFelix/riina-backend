@@ -6,13 +6,14 @@ use sqlx::PgPool;
 use crate::common::utils::{
     UserRegLoginResponse,
     parse_user_id_from_jwt_token,
-    make_authenticated_request
+    make_authenticated_request,
+    generate_valid_username_suffix
 };
 
 /// Helper function to create an admin user and get auth token
 pub async fn create_admin_user_and_login(app_address: &str, pool: &PgPool) -> UserRegLoginResponse {
     let client = Client::new();
-    let username = format!("adminuser{}", Uuid::new_v4());
+    let username = format!("adminuser{}", generate_valid_username_suffix());
     let password = "password123";
     let email = format!("{}@example.com", username);
 
@@ -175,7 +176,7 @@ pub async fn create_teams_for_test(app_address: &str, token: &str, count: usize)
     // Create regular users first to use as team owners
     let mut user_ids = Vec::new();
     for i in 0..count {
-        let username = format!("teamowner{}{}", i, Uuid::new_v4());
+        let username = format!("teamowner{}_{}", i, generate_valid_username_suffix());
         let password = "password123";
         let email = format!("{}@example.com", username);
 
@@ -396,7 +397,7 @@ pub async fn create_league_with_teams(
             .expect("Failed to connect to database");
         
         for i in owner_ids.len()..team_count {
-            let username = format!("teamowner{}{}", i, Uuid::new_v4());
+            let username = format!("teamowner{}_{}", i, generate_valid_username_suffix());
             let password = "password123";
             let email = format!("{}@example.com", username);
 

@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id\n        FROM games\n        WHERE season_id = $1\n        AND home_team_id = $2\n        AND away_team_id = $3\n        ORDER BY week_number\n        LIMIT 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "4b2b60ce1b06190d050d48b60e80efbc5a372c8583c819e94b82864421a4852a"
+}

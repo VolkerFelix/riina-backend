@@ -2,7 +2,7 @@ use reqwest::Client;
 use serde_json::json;
 
 mod common;
-use common::utils::spawn_app;
+use common::utils::{spawn_app, generate_valid_username_suffix};
 
 #[tokio::test]
 async fn register_user_working() {
@@ -10,9 +10,7 @@ async fn register_user_working() {
     let client = Client::new();
 
     // Register a new user first
-    // Use only alphanumeric part of UUID (remove hyphens for valid username)
-    let uuid_str = uuid::Uuid::new_v4().to_string().replace("-", "");
-    let username = format!("user{}", &uuid_str[..8]); // Use first 8 chars
+    let username = format!("user{}", generate_valid_username_suffix());
     let password = "password123";
     let email = format!("{}@example.com", username);
 
@@ -156,10 +154,10 @@ async fn register_duplicate_username_fails() {
     let test_app = spawn_app().await;
     let client = Client::new();
 
-    let uuid_str = uuid::Uuid::new_v4().to_string().replace("-", "");
-    let username = format!("user{}", &uuid_str[..8]);
-    let email1 = format!("user1_{}@example.com", &uuid_str[..8]);
-    let email2 = format!("user2_{}@example.com", &uuid_str[8..16]);
+    let suffix = generate_valid_username_suffix();
+    let username = format!("user{}", &suffix);
+    let email1 = format!("user1_{}@example.com", &suffix);
+    let email2 = format!("user2_{}@example.com", generate_valid_username_suffix());
 
     // Register first user
     let user_request1 = json!({
@@ -214,10 +212,9 @@ async fn register_duplicate_email_fails() {
     let test_app = spawn_app().await;
     let client = Client::new();
 
-    let uuid_str = uuid::Uuid::new_v4().to_string().replace("-", "");
-    let username1 = format!("user1_{}", &uuid_str[..8]);
-    let username2 = format!("user2_{}", &uuid_str[8..16]);
-    let email = format!("shared_{}@example.com", &uuid_str[16..24]);
+    let username1 = format!("user1_{}", generate_valid_username_suffix());
+    let username2 = format!("user2_{}", generate_valid_username_suffix());
+    let email = format!("shared_{}@example.com", generate_valid_username_suffix());
 
     // Register first user
     let user_request1 = json!({

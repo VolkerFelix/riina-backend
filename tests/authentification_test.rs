@@ -2,7 +2,7 @@ use reqwest::Client;
 use serde_json::json;
 
 mod common;
-use common::utils::spawn_app;
+use common::utils::{spawn_app, generate_valid_username_suffix};
 
 #[tokio::test]
 async fn login_returns_200_for_valid_credentials() {
@@ -11,7 +11,7 @@ async fn login_returns_200_for_valid_credentials() {
     let client = Client::new();
 
     // Register a new user first
-    let username = format!("protecteduser{}", uuid::Uuid::new_v4());
+    let username = format!("protecteduser{}", generate_valid_username_suffix());
     let password = "password123";
     let email = format!("{}@example.com", username);
 
@@ -83,7 +83,7 @@ async fn reset_password_returns_200_for_valid_user() {
     let client = Client::new();
 
     // Register a new user first
-    let username = format!("resetuser{}", uuid::Uuid::new_v4());
+    let username = format!("resetuser{}", generate_valid_username_suffix());
     let old_password = "oldpassword123";
     let new_password = "newpassword456";
     let email = format!("{}@example.com", username);
@@ -192,7 +192,7 @@ async fn reset_password_accepts_any_valid_password() {
     let client = Client::new();
 
     // Register a new user
-    let username = format!("anypassuser{}", uuid::Uuid::new_v4());
+    let username = format!("anypassuser{}", generate_valid_username_suffix());
     let old_password = "oldpassword";
     let email = format!("{}@example.com", username);
 
