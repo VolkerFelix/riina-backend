@@ -837,6 +837,24 @@ async fn update_game_times_to_now(test_app: &TestApp, game_id: Uuid) {
     .expect("Failed to update game times to current");
 }
 
+async fn update_game_times(test_app: &TestApp, game_id: Uuid, game_start_time: DateTime<Utc>, duration_minutes: i64) {
+    let game_end = game_start_time + Duration::minutes(duration_minutes);
+    
+    sqlx::query!(
+        r#"
+        UPDATE games 
+        SET game_start_time = $1, game_end_time = $2
+        WHERE id = $3
+        "#,
+        game_start_time,
+        game_end,
+        game_id
+    )
+    .execute(&test_app.db_pool)
+    .await
+    .expect("Failed to update game times");
+}
+
 async fn start_test_game(test_app: &TestApp, game_id: Uuid) {
     let now = Utc::now();
     let game_end = now + Duration::hours(2);
@@ -2308,4 +2326,180 @@ async fn test_inactive_players_excluded_from_mvp_lvp() {
     println!("   - Inactive players are properly excluded from MVP/LVP awards");
 
     println!("\n✅ Inactive player MVP/LVP exclusion test completed successfully!");
+}
+
+#[tokio::test]
+async fn test_workout_only_counts_after_joining_team() {
+    println!("\n🧪 Testing that workouts only count after player joins team...");
+
+    let test_app = spawn_app().await;
+    let client = Client::new();
+    let configuration = get_config().expect("Failed to read configuration.");
+    let redis_client = Arc::new(redis::Client::open(RedisSettings::get_redis_url(&configuration.redis).expose_secret()).unwrap());
+
+    // Step 1: Create admin and league
+    let admin = create_admin_user_and_login(&test_app.address, &test_app.db_pool).await;
+    let league_id = create_league(&test_app.address, &admin.token, 2).await;
+
+    // Step 2: Create two teams with their owners
+    let home_owner = create_test_user_and_login(&test_app.address).await;
+    let away_owner = create_test_user_and_login(&test_app.address).await;
+
+    let team_ids = create_teams_for_test(&test_app.address, &admin.token, 2).await;
+    let home_team_id_str = &team_ids[0];
+    let away_team_id_str = &team_ids[1];
+    let home_team_id = Uuid::parse_str(home_team_id_str).expect("Invalid team ID");
+    let away_team_id = Uuid::parse_str(away_team_id_str).expect("Invalid team ID");
+
+    // Add teams to league (must be done BEFORE creating season)
+    add_team_to_league(&test_app.address, &admin.token, &league_id, home_team_id_str).await;
+    add_team_to_league(&test_app.address, &admin.token, &league_id, away_team_id_str).await;
+
+    // Add owners to their teams
+    add_user_to_team(&test_app.address, &admin.token, home_team_id_str, home_owner.user_id).await;
+    add_user_to_team(&test_app.address, &admin.token, away_team_id_str, away_owner.user_id).await;
+
+    // Step 3: Create season (AFTER teams are added to league)
+    let season_name = format!("Join Time Test Season {}", &Uuid::new_v4().to_string()[..8]);
+    let game_time = NaiveTime::from_hms_opt(18, 0, 0).unwrap();
+    let start_date = get_next_date(Weekday::Mon, game_time);
+    let season_id_str = create_league_season(
+        &test_app.address,
+        &admin.token,
+        &league_id,
+        &season_name,
+        &start_date.to_rfc3339(),
+    ).await;
+    let season_id = Uuid::parse_str(&season_id_str).expect("Invalid season ID");
+
+    // Step 4: Create a new player who will join the team later
+    let late_joiner = create_test_user_and_login(&test_app.address).await;
+
+    // Create health profile for all users
+    create_health_profile_for_user(&client, &test_app.address, &home_owner).await.expect("Failed to create health profile");
+    create_health_profile_for_user(&client, &test_app.address, &away_owner).await.expect("Failed to create health profile");
+    create_health_profile_for_user(&client, &test_app.address, &late_joiner).await.expect("Failed to create health profile");
+
+    // Step 5: Get the first scheduled game between these teams
+    let game_id = sqlx::query!(
+        r#"
+        SELECT id
+        FROM games
+        WHERE season_id = $1
+        AND ((home_team_id = $2 AND away_team_id = $3)
+             OR (home_team_id = $3 AND away_team_id = $2))
+        ORDER BY week_number
+        LIMIT 1
+        "#,
+        season_id,
+        home_team_id,
+        away_team_id
+    )
+    .fetch_one(&test_app.db_pool)
+    .await
+    .expect("Should find a game between the teams")
+    .id;
+
+    // Step 6: Start the game and set it to current time
+    let start_time = Utc::now() - Duration::minutes(60);
+    update_game_times(&test_app, game_id, start_time, 120).await;
+    start_test_game(&test_app, game_id).await;
+    let _live_game = initialize_live_game(&test_app, game_id, redis_client).await;
+
+    // Step 7: Add the late joiner to the home team FIRST
+    add_user_to_team(&test_app.address, &admin.token, home_team_id_str, late_joiner.user_id).await;
+
+    // Get the actual join time from database
+    let joined_at = sqlx::query!(
+        r#"
+        SELECT joined_at
+        FROM team_members
+        WHERE user_id = $1 AND team_id = $2
+        "#,
+        late_joiner.user_id,
+        home_team_id
+    )
+    .fetch_one(&test_app.db_pool)
+    .await
+    .expect("Should find team membership")
+    .joined_at;
+
+    println!("👥 Player joined team at: {}", joined_at);
+
+    // Wait a moment to ensure clear time separation
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+    // Step 8: Upload a workout with timestamp BEFORE the player joined
+    // Calculate a time that's definitely before they joined (subtract 5 minutes from join time)
+    let workout_time_before_join = joined_at - Duration::minutes(35);
+    println!("⏰ Creating workout with timestamp: {} (before join time)", workout_time_before_join);
+
+    let mut early_workout = WorkoutData::new(
+        WorkoutIntensity::Intense,
+        workout_time_before_join,
+        30
+    );
+
+    // Upload the workout (uploaded AFTER joining, but with timestamp BEFORE joining)
+    // This should succeed as upload, but should NOT count toward game score
+    let response = upload_workout_data_for_user(
+        &client,
+        &test_app.address,
+        &late_joiner.token,
+        &mut early_workout
+    ).await;
+    assert!(response.is_ok(), "Workout upload should succeed");
+
+    // Step 9: Check game score - should still be 0 for home team
+    let game_after_early = get_live_game_state(&test_app, game_id).await;
+    println!("🎮 Game score after early workout: home={}, away={}",
+        game_after_early.home_score, game_after_early.away_score);
+
+    assert_eq!(
+        game_after_early.home_score, 0,
+        "Home score should be 0 because workout was before player joined team"
+    );
+
+    // Step 10: Upload a workout AFTER joining (should count)
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+    let after_join_time = Utc::now();
+    let mut valid_workout = WorkoutData::new(
+        WorkoutIntensity::Intense,
+        after_join_time,
+        30
+    );
+
+    let response = upload_workout_data_for_user(
+        &client,
+        &test_app.address,
+        &late_joiner.token,
+        &mut valid_workout
+    ).await;
+    assert!(response.is_ok(), "Workout upload should succeed");
+
+    // Step 11: Check game score - should now be > 0 for home team
+    let game_after_valid = get_live_game_state(&test_app, game_id).await;
+    println!("🎮 Game score after valid workout: home={}, away={}",
+        game_after_valid.home_score, game_after_valid.away_score);
+
+    assert!(
+        game_after_valid.home_score > 0,
+        "Home score should increase because workout was after player joined team"
+    );
+
+    // Step 12: Verify score events - should only have 1 event (the valid one)
+    let score_events = get_recent_score_events(&test_app, game_id).await;
+    let late_joiner_events: Vec<_> = score_events.iter()
+        .filter(|e| e.user_id == late_joiner.user_id)
+        .collect();
+
+    assert_eq!(
+        late_joiner_events.len(), 1,
+        "Should only have 1 score event for late joiner (the workout after joining)"
+    );
+
+    println!("\n✅ Test completed successfully!");
+    println!("   - Workout before joining team: did NOT count (score remained 0)");
+    println!("   - Workout after joining team: counted correctly (score increased)");
+    println!("   - Only 1 score event recorded (the valid one)");
 }

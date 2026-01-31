@@ -331,19 +331,26 @@ async fn check_and_update_active_games(
     tracing::info!("🏆 Found {} active game(s) to check for user {}", active_games.len(), username);
 
     for game in active_games {
-        // Check if user is a member of either team in this game
-        let user_team_id = match get_user_team_for_game(user_id, &game, pool).await {
-            Ok(team_id) => team_id,
+        // Check if user is a member of either team in this game and get join date
+        let (user_team_id, joined_at) = match get_user_team_for_game(user_id, &game, pool).await {
+            Ok(result) => result,
             Err(_) => {
                 tracing::debug!("User {} is not a member of teams playing in game {}", username, game.id);
                 continue;
             }
         };
 
+        // Check if the workout was performed after the player joined the team
+        if workout_start_time < &joined_at {
+            tracing::debug!("❌ Workout time ({}) is before player joined team ({}) for user {} in game {}",
+                           workout_start_time, joined_at, username, game.id);
+            continue;
+        }
+
         // Check if the workout time falls within the game's live scoring period
         if let (Some(game_start), Some(game_end)) = (game.game_start_time, game.game_end_time) {
             if workout_start_time >= &game_start && workout_end_time <= &game_end {
-                tracing::info!("🏆 Workout time is within live game period for user {} in game {} ({} to {})", 
+                tracing::info!("🏆 Workout time is within live game period for user {} in game {} ({} to {})",
                               username, game.id, workout_start_time, workout_end_time);
                 update_game_score_from_workout(
                     user_id,
@@ -355,7 +362,7 @@ async fn check_and_update_active_games(
                     pool,
                 ).await?;
             } else {
-                tracing::debug!("❌ Workout time ({} to {}) is outside live game period ({} to {}) for user {} in game {}", 
+                tracing::debug!("❌ Workout time ({} to {}) is outside live game period ({} to {}) for user {} in game {}",
                                workout_start_time, workout_end_time, game_start, game_end, username, game.id);
             }
         } else {
@@ -427,16 +434,17 @@ async fn update_game_score_from_workout(
 }
 
 /// Helper function to determine which team a user belongs to in a game
+/// Returns the team_id and joined_at timestamp
 async fn get_user_team_for_game(
-    user_id: Uuid, 
+    user_id: Uuid,
     game: &LeagueGame,
     pool: &sqlx::PgPool
-) -> Result<Uuid, Box<dyn std::error::Error>> {
+) -> Result<(Uuid, DateTime<Utc>), Box<dyn std::error::Error>> {
     let membership = sqlx::query!(
         r#"
-        SELECT team_id 
-        FROM team_members 
-        WHERE user_id = $1 
+        SELECT team_id, joined_at
+        FROM team_members
+        WHERE user_id = $1
         AND status = 'active'
         AND (team_id = $2 OR team_id = $3)
         "#,
@@ -446,9 +454,9 @@ async fn get_user_team_for_game(
     )
     .fetch_optional(pool)
     .await?;
-    
+
     match membership {
-        Some(m) => Ok(m.team_id),
+        Some(m) => Ok((m.team_id, m.joined_at)),
         None => Err("User does not belong to either team in this game".into())
     }
 }
