@@ -756,10 +756,11 @@ async fn get_first_game_for_teams(test_app: &TestApp, season_id: Uuid, home_team
     // Get the auto-generated game between these teams
     let game = sqlx::query!(
         r#"
-        SELECT id 
-        FROM games 
-        WHERE season_id = $1 
-        AND ((home_team_id = $2 AND away_team_id = $3) OR (home_team_id = $3 AND away_team_id = $2))
+        SELECT id
+        FROM games
+        WHERE season_id = $1
+        AND home_team_id = $2
+        AND away_team_id = $3
         ORDER BY week_number
         LIMIT 1
         "#,
@@ -770,7 +771,7 @@ async fn get_first_game_for_teams(test_app: &TestApp, season_id: Uuid, home_team
     .fetch_one(&test_app.db_pool)
     .await
     .expect("Failed to find auto-generated game");
-    
+
     game.id
 }
 
@@ -2386,8 +2387,8 @@ async fn test_workout_only_counts_after_joining_team() {
         SELECT id
         FROM games
         WHERE season_id = $1
-        AND ((home_team_id = $2 AND away_team_id = $3)
-             OR (home_team_id = $3 AND away_team_id = $2))
+        AND home_team_id = $2
+        AND away_team_id = $3
         ORDER BY week_number
         LIMIT 1
         "#,
@@ -2397,7 +2398,7 @@ async fn test_workout_only_counts_after_joining_team() {
     )
     .fetch_one(&test_app.db_pool)
     .await
-    .expect("Should find a game between the teams")
+    .expect("Should find a game with home_team vs away_team")
     .id;
 
     // Step 6: Start the game and set it to current time

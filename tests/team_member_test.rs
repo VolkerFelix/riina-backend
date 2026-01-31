@@ -3,7 +3,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 mod common;
-use common::utils::spawn_app;
+use common::utils::{spawn_app, generate_valid_username_suffix};
 use common::admin_helpers::create_admin_user_and_login;
 
 #[tokio::test]
@@ -17,7 +17,7 @@ async fn test_add_user_to_team_success() {
     // Create 4 more users(to be added as members)
     let mut member_usernames = Vec::new();
     for _ in 1..5 {
-        let member_username = format!("team_member_{}", Uuid::new_v4());
+        let member_username = format!("team_member_{}", generate_valid_username_suffix());
         let member_user = json!({
             "username": member_username,
             "email": format!("{}@example.com", member_username),
@@ -36,7 +36,7 @@ async fn test_add_user_to_team_success() {
     }
     
     // First create a league to assign the team to
-    let league_name = format!("Test_League_{}", Uuid::new_v4());
+    let league_name = format!("Test_League_{}", generate_valid_username_suffix());
     let league_data = json!({
         "name": league_name,
         "description": "A test league for team creation",
@@ -56,7 +56,7 @@ async fn test_add_user_to_team_success() {
     let league_id = league_body["data"]["id"].as_str().unwrap();
     
     // Register a team with league assignment
-    let team_name = format!("Test_Team_{}", Uuid::new_v4());
+    let team_name = format!("Test_Team_{}", generate_valid_username_suffix());
     let team_data = json!({
         "team_name": team_name,
         "team_description": "A test team",
@@ -123,7 +123,7 @@ async fn test_get_team_members() {
     let client = Client::new();
     
     // Create owner
-    let owner_username = format!("team_owner_{}", Uuid::new_v4());
+    let owner_username = format!("team_owner_{}", generate_valid_username_suffix());
     let owner_user = json!({
         "username": owner_username,
         "email": format!("{}@example.com", owner_username),
@@ -154,7 +154,7 @@ async fn test_get_team_members() {
     let login_body: serde_json::Value = login_response.json().await.unwrap();
     let owner_token = login_body["token"].as_str().unwrap();
     
-    let team_name = format!("Test_Team_{}", Uuid::new_v4());
+    let team_name = format!("Test_Team_{}", generate_valid_username_suffix());
     let team_data = json!({
         "team_name": team_name,
         "team_description": "A test team"

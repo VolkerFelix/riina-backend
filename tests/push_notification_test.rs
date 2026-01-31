@@ -2,7 +2,7 @@ use reqwest::Client;
 use serde_json::json;
 
 mod common;
-use common::utils::spawn_app;
+use common::utils::{spawn_app, generate_valid_username_suffix};
 
 #[tokio::test]
 async fn register_push_token_requires_authentication() {
@@ -38,7 +38,7 @@ async fn register_push_token_succeeds_with_valid_data() {
     let client = Client::new();
 
     // Register and login a user
-    let username = format!("pushuser{}", uuid::Uuid::new_v4());
+    let username = format!("pushuser{}", generate_valid_username_suffix());
     let password = "password123";
     let email = format!("{}@example.com", username);
 
@@ -109,7 +109,7 @@ async fn register_push_token_rejects_invalid_platform() {
     let client = Client::new();
 
     // Register and login a user
-    let username = format!("pushuser{}", uuid::Uuid::new_v4());
+    let username = format!("pushuser{}", generate_valid_username_suffix());
     let password = "password123";
     let email = format!("{}@example.com", username);
 
@@ -163,7 +163,7 @@ async fn get_user_tokens_returns_registered_tokens() {
     let client = Client::new();
 
     // Register and login a user
-    let username = format!("pushuser{}", uuid::Uuid::new_v4());
+    let username = format!("pushuser{}", generate_valid_username_suffix());
     let password = "password123";
     let email = format!("{}@example.com", username);
 
@@ -230,7 +230,7 @@ async fn unregister_push_token_deactivates_token() {
     let client = Client::new();
 
     // Register and login a user
-    let username = format!("pushuser{}", uuid::Uuid::new_v4());
+    let username = format!("pushuser{}", generate_valid_username_suffix());
     let password = "password123";
     let email = format!("{}@example.com", username);
 
@@ -305,7 +305,7 @@ async fn update_existing_token_when_registering_same_token() {
     let client = Client::new();
 
     // Register and login a user
-    let username = format!("pushuser{}", uuid::Uuid::new_v4());
+    let username = format!("pushuser{}", generate_valid_username_suffix());
     let password = "password123";
     let email = format!("{}@example.com", username);
 

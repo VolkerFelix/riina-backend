@@ -149,9 +149,15 @@ pub fn parse_user_id_from_jwt_token(token: &str) -> Uuid {
         .expect("Failed to parse user ID from JWT")
 }
 
+/// Generate a valid username suffix from a UUID
+/// Removes hyphens to comply with username validation rules (only alphanumeric, underscore, hyphen allowed)
+pub fn generate_valid_username_suffix() -> String {
+    Uuid::new_v4().to_string().replace("-", "")[..8].to_string()
+}
+
 pub async fn create_test_user_and_login(app_address: &str) -> UserRegLoginResponse {
     let client = Client::new();
-    let username = format!("test_user_{}", &Uuid::new_v4().to_string()[..8]);
+    let username = format!("test_user_{}", generate_valid_username_suffix());
     let password = "password123";
     let email = format!("{}@example.com", username);
 
